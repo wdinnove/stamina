@@ -1,7 +1,7 @@
-import { NavLink, useNavigate } from 'react-router';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, BarChart2, FileText, Trophy, LogOut, ClipboardList,
+  CheckSquare, BarChart2, FileText, Trophy, LogOut, ClipboardList, Users,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
@@ -9,6 +9,7 @@ import { authApi } from '../api';
 export const navItems = [
   { path: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'     },
   { path: '/roster',        icon: ClipboardList,   label: 'Mon Roster'    },
+  { path: '/staff',         icon: Users,           label: 'Mon Staff'     },
   { path: '/rpe',           icon: Activity,        label: 'RPE Effort'    },
   { path: '/wellness',      icon: Heart,           label: 'Bien-être'     },
   { path: '/medical',       icon: Stethoscope,     label: 'Médical'       },
@@ -22,8 +23,13 @@ interface SidebarProps {
   collapsed: boolean;
 }
 
+function isNavActive(itemPath: string, currentPath: string): boolean {
+  return currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+}
+
 export function Sidebar({ collapsed }: SidebarProps) {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
 
   return (
     <aside style={{
@@ -41,44 +47,38 @@ export function Sidebar({ collapsed }: SidebarProps) {
         {!collapsed && (
           <div>
             <div style={{ color: '#F1F5F9', fontWeight: 900, fontSize: '1rem', letterSpacing: '0.12em', lineHeight: 1.1 }}>STAMINA</div>
-            <div style={{ color: '#00E5A080', fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Performance · NF2</div>
+            <div style={{ color: '#00E5A080', fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Management App</div>
           </div>
         )}
       </div>
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {navItems.map(item => (
-          <NavLink key={item.path} to={item.path} title={collapsed ? item.label : undefined}
-            style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: collapsed ? '10px 0' : '10px 16px',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              color: isActive ? '#00E5A0' : '#94A3B8',
-              backgroundColor: isActive ? 'rgba(0,229,160,0.08)' : 'transparent',
-              borderLeft: isActive ? '2px solid #00E5A0' : '2px solid transparent',
-              textDecoration: 'none', fontSize: '0.85rem',
-              fontWeight: isActive ? 600 : 400, transition: 'all 0.15s',
-              whiteSpace: 'nowrap', overflow: 'hidden',
-            })}>
-            <item.icon size={18} style={{ flexShrink: 0 }} />
-            {!collapsed && item.label}
-          </NavLink>
-        ))}
+        {navItems.map(item => {
+          const active = isNavActive(item.path, location.pathname);
+          return (
+            <Link key={item.path} to={item.path} title={collapsed ? item.label : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: collapsed ? '10px 0' : '10px 16px',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                color: active ? '#00E5A0' : '#94A3B8',
+                backgroundColor: active ? 'rgba(0,229,160,0.08)' : 'transparent',
+                borderLeft: active ? '2px solid #00E5A0' : '2px solid transparent',
+                textDecoration: 'none', fontSize: '0.85rem',
+                fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+                whiteSpace: 'nowrap', overflow: 'hidden',
+              }}>
+              <item.icon size={18} style={{ flexShrink: 0 }} />
+              {!collapsed && item.label}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Profile + logout */}
       <div style={{ borderTop: '1px solid #2A2F3A', padding: collapsed ? '12px 0' : '12px 16px' }}>
-        {!collapsed && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #3B82F6, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff' }}>TM</div>
-            <div>
-              <div style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600 }}>Thomas Martin</div>
-              <div style={{ color: '#475569', fontSize: '0.65rem' }}>Entraîneur principal</div>
-            </div>
-          </div>
-        )}
-        <button onClick={async () => { await authApi.signOut(); navigate('/login', { replace: true }); }}
+<button onClick={async () => { await authApi.signOut(); navigate('/login', { replace: true }); }}
           style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: collapsed ? 'center' : 'flex-start', width: '100%', padding: '8px 0', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.82rem', transition: 'color 0.15s' }}
           onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
           onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>

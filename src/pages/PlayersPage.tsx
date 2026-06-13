@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useLocation } from 'react-router';
 import {
   Plus, Search, ArrowLeft, Activity, Heart,
   Stethoscope, CheckSquare, BarChart2, X, AlertCircle, Edit,
 } from 'lucide-react';
-import { playersApi } from '../api';
-import { StatusBadge, PlayerAvatar } from '../components';
-import { getPlayerRPE, getPlayerWellness, getPlayerMedical, getPlayerActions, formatDate, getAge } from '../data';
-import type { Player } from '../data/types';
+import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi } from '../api';
+import { StatusBadge, PlayerAvatar, Breadcrumb } from '../components';
+import { formatDate, getAge } from '../data';
+import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action } from '../data/types';
 
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
 
@@ -19,16 +19,43 @@ const inputStyle: React.CSSProperties = {
 
 const flagEmoji: Record<string, string> = { FR: '🇫🇷', ES: '🇪🇸', CI: '🇨🇮', MA: '🇲🇦', IT: '🇮🇹' };
 
+const BACK_LABELS: Record<string, string> = {
+  '/players':  'Joueurs',
+  '/roster':   'Effectif',
+  '/dashboard': 'Dashboard',
+};
+
 function PlayerProfile({ playerId }: { playerId: string }) {
   const navigate = useNavigate();
-  const [player, setPlayer]     = useState<Player | null>(null);
-  const [loadingP, setLoadingP] = useState(true);
+  const location = useLocation();
+  const fromPath  = (location.state as { from?: string } | null)?.from ?? '/players';
+  const fromLabel = BACK_LABELS[fromPath] ?? 'Retour';
+
+  const [player,   setPlayer]   = useState<Player | null>(null);
+  const [rpe,      setRpe]      = useState<RPEEntry[]>([]);
+  const [wellness, setWellness] = useState<WellnessEntry[]>([]);
+  const [medical,  setMedical]  = useState<MedicalRecord[]>([]);
+  const [actions,  setActions]  = useState<Action[]>([]);
+  const [loading,  setLoading]  = useState(true);
 
   useEffect(() => {
-    playersApi.getById(playerId).then(setPlayer).finally(() => setLoadingP(false));
+    setLoading(true);
+    Promise.all([
+      playersApi.getById(playerId),
+      rpeApi.listPlayerHistory(playerId),
+      wellnessApi.getByPlayer(playerId),
+      medicalApi.getByPlayer(playerId),
+      actionsApi.getByPlayer(playerId),
+    ]).then(([p, rpeData, wellnessData, medicalData, actionsData]) => {
+      setPlayer(p);
+      setRpe(rpeData);
+      setWellness(wellnessData);
+      setMedical(medicalData);
+      setActions(actionsData);
+    }).finally(() => setLoading(false));
   }, [playerId]);
 
-  if (loadingP) {
+  if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}>
         <div style={{ width: 24, height: 24, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -38,10 +65,6 @@ function PlayerProfile({ playerId }: { playerId: string }) {
   }
   if (!player) return <div style={{ padding: 24, color: '#EF4444' }}>Joueur introuvable</div>;
 
-  const rpe            = getPlayerRPE(playerId);
-  const wellness       = getPlayerWellness(playerId);
-  const medical        = getPlayerMedical(playerId);
-  const actions        = getPlayerActions(playerId);
   const lastRPE        = rpe[0];
   const lastWellness   = wellness[0];
   const activeMedical  = medical.filter(m => m.status === 'active');
@@ -49,18 +72,16 @@ function PlayerProfile({ playerId }: { playerId: string }) {
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <button onClick={() => navigate('/players')}
-          style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-          <ArrowLeft size={16} /> Joueurs
-        </button>
-        <span style={{ color: '#2A2F3A' }}>|</span>
-        <h2 style={{ color: '#F1F5F9', margin: 0 }}>{player.firstName} {player.lastName}</h2>
-        <span style={{ color: '#475569', fontSize: '0.9rem' }}>#{player.number}</span>
-        <div style={{ marginLeft: 'auto' }}>
-          <button style={{ padding: '6px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Edit size={14} /> Modifier
-          </button>
+      <div style={{ marginBottom: 20 }}>
+        <Breadcrumb items={[{ label: fromLabel, path: fromPath }]} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+          <h2 style={{ color: '#F1F5F9', margin: 0 }}>{player.firstName} {player.lastName}</h2>
+          <span style={{ color: '#475569', fontSize: '0.9rem' }}>#{player.number}</span>
+          <div style={{ marginLeft: 'auto' }}>
+            <button style={{ padding: '6px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Edit size={14} /> Modifier
+            </button>
+          </div>
         </div>
       </div>
 
@@ -92,13 +113,13 @@ function PlayerProfile({ playerId }: { playerId: string }) {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'Effort RPE', icon: Activity,   path: '/rpe'              },
-          { label: 'Émotions',   icon: Heart,       path: '/wellness'         },
-          { label: 'Médical',    icon: Stethoscope, path: '/medical'          },
-          { label: 'Actions',    icon: CheckSquare, path: '/actions'          },
-          { label: 'Stats',      icon: BarChart2,   path: `/stats/${playerId}` },
-        ].map(({ label, icon: Icon, path }) => (
-          <button key={label} onClick={() => navigate(path)}
+          { label: 'Effort RPE', icon: Activity,   path: '/rpe',               state: undefined },
+          { label: 'Émotions',   icon: Heart,       path: '/wellness',          state: undefined },
+          { label: 'Médical',    icon: Stethoscope, path: '/medical',           state: undefined },
+          { label: 'Actions',    icon: CheckSquare, path: '/actions',           state: undefined },
+          { label: 'Stats',      icon: BarChart2,   path: `/stats/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
+        ].map(({ label, icon: Icon, path, state }) => (
+          <button key={label} onClick={() => navigate(path, state ? { state } : {})}
             style={{ padding: '8px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}
             onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.borderColor = '#00E5A0'; }}
             onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.borderColor = '#2A2F3A'; }}>
@@ -113,7 +134,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
           {lastRPE ? (
             <>
               <p style={{ color: '#F1F5F9', fontSize: '1.4rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{lastRPE.rpe}</p>
-              <p style={{ color: '#475569', fontSize: '0.75rem', margin: '4px 0 0' }}>{formatDate(lastRPE.date)} · {lastRPE.duration} min</p>
+              <p style={{ color: '#475569', fontSize: '0.75rem', margin: '4px 0 0' }}>{formatDate(lastRPE.date)} · {lastRPE.actualDuration ?? lastRPE.plannedDuration} min</p>
             </>
           ) : <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune saisie</p>}
         </div>
@@ -272,7 +293,7 @@ export default function PlayersPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
           {filtered.map(player => (
-            <div key={player.id} onClick={() => navigate(`/players/${player.id}`)}
+            <div key={player.id} onClick={() => navigate(`/players/${player.id}`, { state: { from: '/players' } })}
               style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>

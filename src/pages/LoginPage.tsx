@@ -70,7 +70,7 @@ const input = {
         <StaminaLogo size={44} />
         <div>
           <div style={{ color: '#F1F5F9', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '0.14em', lineHeight: 1 }}>STAMINA</div>
-          <div style={{ color: '#00E5A066', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 2 }}>AL Meyzieu · NF2</div>
+          <div style={{ color: '#00E5A066', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 2 }}>Management App</div>
         </div>
       </div>
 

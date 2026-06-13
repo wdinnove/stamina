@@ -1,21 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Clock, CheckCircle, Circle, AlertCircle } from 'lucide-react';
+import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
+import { staffApi }   from '../api/staff';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { categoryConfig, priorityConfig } from '../data/config';
 import { PlayerAvatar } from '../components';
-import type { Action, ActionStatus, ActionCategory, ActionPriority, Player } from '../data/types';
+import type { Action, ActionStatus, ActionCategory, ActionPriority, Player, StaffMember } from '../data/types';
 
 const TODAY = new Date().toISOString().slice(0, 10);
-
-type View = 'list' | 'kanban';
-
-const statusColumns: { key: ActionStatus; label: string; color: string }[] = [
-  { key: 'todo',        label: 'À faire',    color: '#94A3B8' },
-  { key: 'in_progress', label: 'En cours',   color: '#3B82F6' },
-  { key: 'waiting',     label: 'En attente', color: '#F59E0B' },
-  { key: 'done',        label: 'Terminé ✅', color: '#00E5A0' },
-];
+const _eow = new Date(TODAY);
+_eow.setDate(_eow.getDate() + (7 - (_eow.getDay() || 7)));
+const END_OF_WEEK = _eow.toISOString().slice(0, 10);
 
 const emptyForm = {
   playerId:    '',
@@ -34,15 +30,18 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function ActionsPage() {
-  const [view,       setView]       = useState<View>('list');
+  const { selected } = useTeamSeason();
   const [acts,       setActs]       = useState<Action[]>([]);
   const [players,    setPlayers]    = useState<Player[]>([]);
+  const [staff,      setStaff]      = useState<StaffMember[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
   const [showForm,   setShowForm]   = useState(false);
   const [form,       setForm]       = useState(emptyForm);
   const [saving,     setSaving]     = useState(false);
   const [formError,  setFormError]  = useState('');
+  const [staffError, setStaffError] = useState('');
+  const [showDone,   setShowDone]   = useState(false);
 
   useEffect(() => {
     Promise.all([actionsApi.list(), playersApi.list()])
@@ -51,19 +50,34 @@ export default function ActionsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const getPlayer = (id: string) => players.find(p => p.id === id);
+  useEffect(() => {
+    if (!selected) return;
+    setStaffError('');
+    staffApi.listByTeam(selected.team.id)
+      .then(setStaff)
+      .catch(err => { setStaffError(err?.message ?? String(err)); setStaff([]); });
+  }, [selected?.team.id]);
 
-  const overdue  = acts.filter(a => a.status !== 'done' && a.dueDate < TODAY);
-  const todayActs = acts.filter(a => a.status !== 'done' && a.dueDate === TODAY);
-  const upcoming = acts.filter(a => a.status !== 'done' && a.dueDate > TODAY);
+  const getPlayer    = (id: string) => players.find(p => p.id === id);
+  const getStaffName = (id: string) => {
+    const s = staff.find(m => m.id === id);
+    return s ? `${s.firstName} ${s.lastName}` : id;
+  };
+
+  const thisWeek = acts.filter(a => a.status !== 'done' && a.dueDate <= END_OF_WEEK);
+  const later    = acts.filter(a => a.status !== 'done' && a.dueDate > END_OF_WEEK);
   const done     = acts.filter(a => a.status === 'done');
 
-  async function markDone(id: string) {
-    setActs(prev => prev.map(a => a.id === id ? { ...a, status: 'done' as ActionStatus } : a));
+  async function toggleDone(id: string) {
+    const action = acts.find(a => a.id === id);
+    if (!action) return;
+    const next: ActionStatus = action.status === 'done' ? 'todo' : 'done';
+    const prev = action.status;
+    setActs(as => as.map(a => a.id === id ? { ...a, status: next } : a));
     try {
-      await actionsApi.update(id, { status: 'done' });
+      await actionsApi.update(id, { status: next });
     } catch {
-      setActs(prev => prev.map(a => a.id === id ? { ...a, status: 'todo' as ActionStatus } : a));
+      setActs(as => as.map(a => a.id === id ? { ...a, status: prev } : a));
     }
   }
 
@@ -112,7 +126,7 @@ export default function ActionsPage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <button
-            onClick={() => markDone(action.id)}
+            onClick={() => toggleDone(action.id)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDone ? '#00E5A0' : '#475569', padding: 0, marginTop: 2, flexShrink: 0 }}
           >
             {isDone ? <CheckCircle size={18} /> : <Circle size={18} />}
@@ -140,7 +154,7 @@ export default function ActionsPage() {
               <span style={{ color: priCfg.color, fontSize: '0.7rem', fontWeight: 600 }}>
                 {priCfg.label}
               </span>
-              <span style={{ color: '#475569', fontSize: '0.72rem' }}>Assigné : {action.assignedTo}</span>
+              <span style={{ color: '#475569', fontSize: '0.72rem' }}>Assigné : {getStaffName(action.assignedTo)}</span>
             </div>
           </div>
           {showDate && (
@@ -159,31 +173,12 @@ export default function ActionsPage() {
     );
   };
 
-  const Section = ({ title, items, color }: { title: string; items: Action[]; color: string }) =>
-    items.length > 0 ? (
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <span style={{ color, fontWeight: 700, fontSize: '0.88rem' }}>{title}</span>
-          <span style={{ backgroundColor: color + '22', color, borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{items.length}</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {items.map(a => <ActionCard key={a.id} action={a} />)}
-        </div>
-      </div>
-    ) : null;
 
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Actions à Réaliser</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 2, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
-            {(['list', 'kanban'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)} style={{ padding: '6px 14px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: view === v ? '#1E2229' : 'transparent', color: view === v ? '#F1F5F9' : '#94A3B8' }}>
-                {v === 'list' ? 'Liste' : 'Kanban'}
-              </button>
-            ))}
-          </div>
           <button
             onClick={() => setShowForm(true)}
             style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
@@ -205,71 +200,47 @@ export default function ActionsPage() {
           <div style={{ width: 24, height: 24, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
-      ) : view === 'list' ? (
-        <div>
-          {acts.length === 0 && (
-            <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0 }}>Aucune action. Créez-en une avec le bouton ci-dessus.</p>
-          )}
-          <Section title="En retard"     items={overdue}   color="#EF4444" />
-          <Section title="Aujourd'hui"   items={todayActs} color="#F59E0B" />
-          <Section title="À venir"       items={upcoming}  color="#3B82F6" />
-          <Section title="Terminées"     items={done}      color="#00E5A0" />
-        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, overflowX: 'auto' }}>
-          {statusColumns.map(col => {
-            const colItems = acts.filter(a => a.status === col.key);
-            return (
-              <div key={col.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px', minWidth: 220 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: col.color }} />
-                  <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.85rem' }}>{col.label}</span>
-                  <span style={{ marginLeft: 'auto', color: '#475569', fontSize: '0.75rem' }}>{colItems.length}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {colItems.map(action => {
-                    const player = getPlayer(action.playerId);
-                    const catCfg = categoryConfig[action.category];
-                    const priCfg = priorityConfig[action.priority];
-                    return (
-                      <div key={action.id} style={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, padding: '10px' }}>
-                        {player && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                            <PlayerAvatar player={player} size={18} />
-                            <span style={{ color: '#94A3B8', fontSize: '0.72rem' }}>{player.lastName} {player.firstName[0]}.</span>
-                          </div>
-                        )}
-                        <p style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 500, margin: '0 0 6px' }}>{action.title}</p>
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          <span style={{ color: catCfg.color, fontSize: '0.65rem', backgroundColor: catCfg.color + '18', padding: '1px 5px', borderRadius: 3 }}>{catCfg.label}</span>
-                          <span style={{ color: priCfg.color, fontSize: '0.65rem', fontWeight: 600 }}>{priCfg.label}</span>
-                        </div>
-                        <p style={{ color: '#475569', fontSize: '0.68rem', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 3 }}>
-                          <Clock size={10} /> {action.dueDate.slice(5).replace('-', '/')}
-                        </p>
-                        {col.key !== 'done' && (
-                          <button
-                            onClick={() => markDone(action.id)}
-                            style={{ marginTop: 6, width: '100%', padding: '4px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 4, color: '#475569', cursor: 'pointer', fontSize: '0.72rem' }}
-                          >
-                            Marquer fait
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {col.key === 'todo' && (
-                    <button
-                      onClick={() => setShowForm(true)}
-                      style={{ padding: '8px', backgroundColor: 'transparent', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
-                    >
-                      <Plus size={13} /> Ajouter
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ color: '#F59E0B', fontWeight: 700, fontSize: '0.88rem' }}>Cette semaine</span>
+              <span style={{ backgroundColor: '#F59E0B22', color: '#F59E0B', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{thisWeek.length}</span>
+            </div>
+            {thisWeek.length === 0
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action cette semaine.</p>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{thisWeek.map(a => <ActionCard key={a.id} action={a} />)}</div>
+            }
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ color: '#3B82F6', fontWeight: 700, fontSize: '0.88rem' }}>Plus tard</span>
+              <span style={{ backgroundColor: '#3B82F622', color: '#3B82F6', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{later.length}</span>
+            </div>
+            {later.length === 0
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action à venir.</p>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{later.map(a => <ActionCard key={a.id} action={a} />)}</div>
+            }
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <button
+              onClick={() => setShowDone(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 10px', width: '100%', textAlign: 'left' }}
+            >
+              <span style={{ color: '#475569', fontWeight: 700, fontSize: '0.88rem' }}>Historique</span>
+              <span style={{ backgroundColor: '#47556922', color: '#475569', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{done.length}</span>
+              <span style={{ marginLeft: 'auto' }}>
+                {showDone ? <ChevronDown size={15} color="#475569" /> : <ChevronRight size={15} color="#475569" />}
+              </span>
+            </button>
+            {showDone && (
+              done.length === 0
+                ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action terminée.</p>
+                : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{done.map(a => <ActionCard key={a.id} action={a} />)}</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -321,7 +292,12 @@ export default function ActionsPage() {
                 </div>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Assigné à *</label>
-                  <input type="text" required placeholder="Nom du responsable" value={form.assignedTo} onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))} style={inputStyle} />
+                  <select required value={form.assignedTo} onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))} style={inputStyle}>
+                    <option value="">Sélectionner un membre…</option>
+                    {staff.map(s => <option key={s.id} value={s.id}>{s.firstName} {s.lastName} — {s.role}</option>)}
+                  </select>
+                  {staffError && <p style={{ color: '#EF4444', fontSize: '0.7rem', margin: '4px 0 0' }}>{staffError}</p>}
+                  {!staffError && staff.length === 0 && !selected && <p style={{ color: '#F59E0B', fontSize: '0.7rem', margin: '4px 0 0' }}>Sélectionnez d'abord une équipe.</p>}
                 </div>
               </div>
               <div>

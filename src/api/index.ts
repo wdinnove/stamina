@@ -6,6 +6,7 @@ export { wellnessApi } from './wellness';
 export { rpeApi }      from './rpe';
 export { medicalApi }  from './medical';
 export { actionsApi }  from './actions';
+export { staffApi }    from './staff';
 export { statsApi }    from './stats';
 
 export type { ListPlayersFilters }       from './players';

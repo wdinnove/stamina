@@ -6,9 +6,9 @@ export function RequireAuth() {
   const [status, setStatus] = useState<'loading' | 'auth' | 'unauth'>('loading');
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setStatus(data.session ? 'auth' : 'unauth');
-    });
+    supabase.auth.getSession()
+      .then(({ data }) => setStatus(data.session ? 'auth' : 'unauth'))
+      .catch(() => setStatus('unauth'));
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setStatus(session ? 'auth' : 'unauth');

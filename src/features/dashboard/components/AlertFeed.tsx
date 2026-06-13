@@ -23,7 +23,7 @@ export function AlertFeed({ alerts }: AlertFeedProps) {
         const borderColor = alert.type === 'danger' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)';
         const dotColor    = alert.type === 'danger' ? '#EF4444' : '#F59E0B';
         return (
-          <div key={idx} onClick={() => navigate(`/players/${alert.playerId}`)}
+          <div key={idx} onClick={() => navigate(`/players/${alert.playerId}`, { state: { from: '/dashboard' } })}
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px', backgroundColor: '#1E2229', borderRadius: 6, cursor: 'pointer', border: `1px solid ${borderColor}` }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0 }} />
             <PlayerAvatar player={player} size={30} />

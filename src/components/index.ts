@@ -4,3 +4,5 @@ export { StatusBadge }   from './StatusBadge';
 export { PlayerAvatar }  from './PlayerAvatar';
 export { StaminaLogo }   from './StaminaLogo';
 export { ChartTooltip }  from './ChartTooltip';
+export { Breadcrumb }    from './Breadcrumb';
+export type { BreadcrumbItem } from './Breadcrumb';

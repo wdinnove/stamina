@@ -9,13 +9,19 @@
 --   • Table matches (entité centrale, lien match_stats ↔ team_match_stats)
 --   • Table organizations (niveau club)
 --   • Table staff (intervenants avec ou sans compte app)
---   • Table player_team_history (transferts intra-club)
 --   • medical_records.resolved_date remplace days_absent
 --   • player_actions.completed_at + trigger automatique
 --   • position validée via enum basketball_position
 --   • game_number sur matches
---   • RLS team-scoped
+--   • RLS team-scoped via accessible_team_ids()
 --   • Formule wellness correcte (métriques inversées)
+--   • handle_new_user : propage organization_id depuis raw_user_meta_data
+--   • ON DELETE SET NULL sur toutes les FK optionnelles vers profiles et staff
+--     (staff.profile_id, training_sessions.created_by, rpe_entries.created_by,
+--      wellness_entries.created_by, player_actions.created_by/assigned_to,
+--      medical_records.created_by/updated_by)
+--   • Fonction upsert_staff_profile (SECURITY DEFINER) pour création de compte staff
+--   • Rôle 'assistant' remplace 'analyste' dans staff
 -- ================================================================
 
 
@@ -133,9 +139,10 @@ CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public AS $$
 BEGIN
-  INSERT INTO profiles (id, first_name, last_name, role)
+  INSERT INTO profiles (id, organization_id, first_name, last_name, role)
   VALUES (
     NEW.id,
+    (NEW.raw_user_meta_data->>'organization_id')::UUID,
     COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
     COALESCE(NEW.raw_user_meta_data->>'last_name',  ''),
     COALESCE(NEW.raw_user_meta_data->>'role', 'staff')
@@ -157,16 +164,16 @@ CREATE TRIGGER on_auth_user_created
 
 CREATE TABLE staff (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  profile_id      UUID REFERENCES profiles(id),  -- NULL si pas de compte
+  team_id         UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  profile_id      UUID REFERENCES profiles(id) ON DELETE SET NULL,  -- NULL si pas de compte
   first_name      TEXT NOT NULL,
   last_name       TEXT NOT NULL,
-  -- 'coach' | 'kine' | 'medecin' | 'prep_physique' | 'analyste'
+  -- 'coach' | 'kine' | 'medecin' | 'prep_physique' | 'assistant' | 'autre'
   role            TEXT NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX ON staff (organization_id);
+CREATE INDEX ON staff (team_id);
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -239,7 +246,7 @@ CREATE TABLE training_sessions (
   session_type     session_type NOT NULL,
   planned_duration SMALLINT NOT NULL CHECK (planned_duration BETWEEN 1 AND 300),
   notes            TEXT,
-  created_by       UUID REFERENCES profiles(id),
+  created_by       UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -260,7 +267,7 @@ CREATE TABLE rpe_entries (
   rpe             SMALLINT NOT NULL CHECK (rpe BETWEEN 1 AND 10),
   actual_duration SMALLINT CHECK (actual_duration BETWEEN 1 AND 300),
   notes           TEXT,
-  created_by      UUID REFERENCES profiles(id),
+  created_by      UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   UNIQUE (session_id, player_id)
@@ -298,7 +305,7 @@ CREATE TABLE wellness_entries (
   ) STORED,
 
   notes       TEXT,
-  created_by  UUID REFERENCES profiles(id),
+  created_by  UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   UNIQUE (player_id, date)
@@ -328,8 +335,8 @@ CREATE TABLE medical_records (
   rtp_step      SMALLINT DEFAULT 0 CHECK (rtp_step >= 0),
   rtp_total     SMALLINT DEFAULT 6 CHECK (rtp_total > 0),
   treatment     TEXT,
-  created_by    UUID REFERENCES staff(id),
-  updated_by    UUID REFERENCES staff(id),
+  created_by    UUID REFERENCES staff(id) ON DELETE SET NULL,
+  updated_by    UUID REFERENCES staff(id) ON DELETE SET NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -371,10 +378,10 @@ CREATE TABLE player_actions (
   category     action_category NOT NULL,
   priority     action_priority NOT NULL DEFAULT 'normal',
   due_date     DATE NOT NULL,
-  assigned_to  UUID REFERENCES staff(id),
+  assigned_to  UUID REFERENCES staff(id) ON DELETE SET NULL,
   status       action_status NOT NULL DEFAULT 'todo',
   completed_at TIMESTAMPTZ,             -- SET auto via trigger
-  created_by   UUID REFERENCES profiles(id),
+  created_by   UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -800,11 +807,23 @@ CREATE POLICY "team_match_stats_access" ON team_match_stats
     )
   );
 
--- Staff : visible au niveau organisation
+-- Création de profil pour un nouveau compte staff (SECURITY DEFINER pour contourner la RLS own_profile)
+CREATE OR REPLACE FUNCTION upsert_staff_profile(
+  p_id              UUID,
+  p_organization_id UUID,
+  p_first_name      TEXT,
+  p_last_name       TEXT,
+  p_role            TEXT
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO profiles (id, organization_id, first_name, last_name, role)
+  VALUES (p_id, p_organization_id, p_first_name, p_last_name, p_role)
+  ON CONFLICT (id) DO NOTHING;
+END;
+$$;
+
+-- Staff : visible au niveau équipe
 CREATE POLICY "staff_access" ON staff
   FOR ALL TO authenticated
-  USING (
-    organization_id IN (
-      SELECT organization_id FROM profiles WHERE id = auth.uid()
-    )
-  );
+  USING (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));

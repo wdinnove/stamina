@@ -1,5 +1,4 @@
 import { supabase } from './client';
-import { CURRENT_DATE } from '../data/config';
 import type { Action, ActionStatus, ActionPriority, ActionCategory } from '../data/types';
 
 export interface ListActionsFilters {
@@ -16,7 +15,7 @@ export const actionsApi = {
     if (filters.status)   query = query.eq('status', filters.status);
     if (filters.priority) query = query.eq('priority', filters.priority);
     if (filters.category) query = query.eq('category', filters.category);
-    const { data, error } = await query.order('due_date');
+    const { data, error } = await query.order('due_date').limit(500);
     if (error) throw error;
     return (data ?? []).map(toAction);
   },
@@ -31,7 +30,7 @@ export const actionsApi = {
     return (data ?? []).map(toAction);
   },
 
-  async getOverdue(refDate = CURRENT_DATE): Promise<Action[]> {
+  async getOverdue(refDate = new Date().toISOString().split('T')[0]): Promise<Action[]> {
     const { data, error } = await supabase
       .from('player_actions')
       .select('*')

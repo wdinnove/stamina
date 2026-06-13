@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Bell, ChevronDown, Menu, Check, Shield, Users } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { navItems } from './Sidebar';
-import { NavLink } from 'react-router';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router';
 import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonContext';
+import { supabase } from '../api/client';
 
 interface TopBarProps {
   onMenuOpen: () => void;
@@ -11,8 +12,21 @@ interface TopBarProps {
 
 export function TopBar({ onMenuOpen }: TopBarProps) {
   const { options, selected, setSelected, loading } = useTeamSeason();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [open,     setOpen]     = useState(false);
+  const [initials, setInitials] = useState('');
+  const ref      = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (data) setInitials(`${data.first_name?.[0] ?? ''}${data.last_name?.[0] ?? ''}`.toUpperCase());
+        });
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -50,35 +64,28 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
           <Menu size={20} />
         </button>
 
-        {/* Mes équipes */}
-        <NavLink to="/teams"
-          style={({ isActive }) => ({
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 11px',
-            backgroundColor: isActive ? 'rgba(0,229,160,0.08)' : '#1E2229',
-            border: `1px solid ${isActive ? 'rgba(0,229,160,0.3)' : '#2A2F3A'}`,
-            borderRadius: 6, color: isActive ? '#00E5A0' : '#94A3B8',
-            textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500,
-            whiteSpace: 'nowrap',
-          })}>
-          <Shield size={14} />
-          <span>Mes équipes</span>
-        </NavLink>
-
-        {/* Mes joueurs */}
-        <NavLink to="/players"
-          style={({ isActive }) => ({
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 11px',
-            backgroundColor: isActive ? 'rgba(0,229,160,0.08)' : '#1E2229',
-            border: `1px solid ${isActive ? 'rgba(0,229,160,0.3)' : '#2A2F3A'}`,
-            borderRadius: 6, color: isActive ? '#00E5A0' : '#94A3B8',
-            textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500,
-            whiteSpace: 'nowrap',
-          })}>
-          <Users size={14} />
-          <span>Mes joueurs</span>
-        </NavLink>
+        {/* Mes équipes / Mes joueurs */}
+        {([
+          { to: '/teams',   icon: Shield, label: 'Mes équipes' },
+          { to: '/players', icon: Users,  label: 'Mes joueurs' },
+        ] as const).map(({ to, icon: Icon, label }) => {
+          const active = location.pathname === to || location.pathname.startsWith(to + '/');
+          return (
+            <Link key={to} to={to}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '5px 11px',
+                backgroundColor: active ? 'rgba(0,229,160,0.08)' : '#1E2229',
+                border: `1px solid ${active ? 'rgba(0,229,160,0.3)' : '#2A2F3A'}`,
+                borderRadius: 6, color: active ? '#00E5A0' : '#94A3B8',
+                textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500,
+                whiteSpace: 'nowrap',
+              }}>
+              <Icon size={14} />
+              <span>{label}</span>
+            </Link>
+          );
+        })}
 
         {/* Team + Season selector */}
         <div ref={ref} style={{ position: 'relative' }}>
@@ -167,7 +174,18 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
           </button>
           <span style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, backgroundColor: '#EF4444', borderRadius: '50%', fontSize: '0.6rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>3</span>
         </div>
-        <div style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{today}</div>
+<button
+          onClick={() => navigate('/profile')}
+          title="Mon profil"
+          style={{
+            width: 34, height: 34, borderRadius: '50%',
+            backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
+            color: '#00E5A0', fontWeight: 700, fontSize: '0.72rem',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          {initials || '?'}
+        </button>
       </div>
     </header>
   );
@@ -175,6 +193,7 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
 
 /** Sidebar mobile (drawer) */
 export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const location = useLocation();
   return (
     <>
       {open && <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 40 }} />}
@@ -183,24 +202,30 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
         <div style={{ padding: '16px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <StaminaLogo size={28} />
-            <span style={{ color: '#F1F5F9', fontWeight: 900, fontSize: '0.95rem', letterSpacing: '0.1em' }}>STAMINA</span>
+            <div>
+              <div style={{ color: '#F1F5F9', fontWeight: 900, fontSize: '0.95rem', letterSpacing: '0.1em', lineHeight: 1.1 }}>STAMINA</div>
+              <div style={{ color: '#00E5A080', fontSize: '0.55rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Management App</div>
+            </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
         </div>
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {navItems.map(item => (
-            <NavLink key={item.path} to={item.path} onClick={onClose}
-              style={({ isActive }) => ({
-                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
-                color: isActive ? '#00E5A0' : '#94A3B8',
-                backgroundColor: isActive ? 'rgba(0,229,160,0.08)' : 'transparent',
-                borderLeft: isActive ? '2px solid #00E5A0' : '2px solid transparent',
-                textDecoration: 'none', fontSize: '0.85rem', fontWeight: isActive ? 600 : 400,
-              })}>
-              <item.icon size={18} />
-              {item.label}
-            </NavLink>
-          ))}
+          {navItems.map(item => {
+            const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+            return (
+              <Link key={item.path} to={item.path} onClick={onClose}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+                  color: active ? '#00E5A0' : '#94A3B8',
+                  backgroundColor: active ? 'rgba(0,229,160,0.08)' : 'transparent',
+                  borderLeft: active ? '2px solid #00E5A0' : '2px solid transparent',
+                  textDecoration: 'none', fontSize: '0.85rem', fontWeight: active ? 600 : 400,
+                }}>
+                <item.icon size={18} />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
       </aside>
     </>

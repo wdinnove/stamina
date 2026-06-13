@@ -65,6 +65,7 @@ export const rpeApi = {
     date: string;
     sessionType: SessionType;
     plannedDuration: number;
+    actualDuration?: number;
     entries: { playerId: string; rpe: number }[];
     existingSessionId?: string;
   }): Promise<string> {
@@ -100,7 +101,7 @@ export const rpeApi = {
         session_id:      sessionId,
         player_id:       e.playerId,
         rpe:             e.rpe,
-        actual_duration: input.plannedDuration,
+        actual_duration: input.actualDuration ?? null,
       }));
       const { error } = await supabase
         .from('rpe_entries')

@@ -13,7 +13,7 @@ export const wellnessApi = {
     if (filters.playerId) query = query.eq('player_id', filters.playerId);
     if (filters.from)     query = query.gte('date', filters.from);
     if (filters.to)       query = query.lte('date', filters.to);
-    const { data, error } = await query.order('date', { ascending: false });
+    const { data, error } = await query.order('date', { ascending: false }).limit(500);
     if (error) throw error;
     return (data ?? []).map(toWellness);
   },

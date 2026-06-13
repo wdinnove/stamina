@@ -15,6 +15,8 @@ import StatsPage         from './pages/StatsPage';
 import PlayerReportPage  from './pages/PlayerReportPage';
 import TeamReportPage    from './pages/TeamReportPage';
 import RosterPage        from './pages/RosterPage';
+import StaffPage         from './pages/StaffPage';
+import ProfilePage       from './pages/ProfilePage';
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +42,8 @@ export const router = createBrowserRouter([
           { path: 'stats',          Component: StatsPage        },
           { path: 'stats/:id',      Component: StatsPage        },
           { path: 'roster',          Component: RosterPage       },
+          { path: 'staff',           Component: StaffPage        },
+          { path: 'profile',         Component: ProfilePage      },
           { path: 'reports/player', Component: PlayerReportPage },
           { path: 'reports/team',   Component: TeamReportPage   },
           { path: '*', element: <Navigate to="/dashboard" replace /> },

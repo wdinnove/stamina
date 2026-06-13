@@ -50,7 +50,7 @@ export interface TrainingSession {
 
 export interface StaffMember {
   id: string;
-  organizationId: string;
+  teamId: string;
   profileId?: string;
   firstName: string;
   lastName: string;

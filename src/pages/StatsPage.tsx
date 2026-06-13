@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, Legend } from 'recharts';
 import { ArrowLeft, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { players, matchStats, teamMatchStats, getPlayerById, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, TeamMatchStat, MatchStat } from '../data';
-import { PlayerAvatar } from '../components';
+import { PlayerAvatar, Breadcrumb } from '../components';
 
 type Tab = 'player' | 'team' | 'match';
 
@@ -406,22 +406,27 @@ function TeamStatsView() {
 
 // ── Page principale ──────────────────────────────────────────────────────────
 export default function StatsPage() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+  const { id }     = useParams();
+  const navigate   = useNavigate();
+  const location   = useLocation();
+  const locState   = location.state as { from?: string; playerName?: string } | null;
   const [tab, setTab] = useState<Tab>(id ? 'player' : 'team');
   const [selectedMatch, setSelectedMatch] = useState<string>(teamMatchStats[0]?.id ?? '');
 
+  const breadcrumbItems = id && locState?.playerName
+    ? [
+        { label: 'Joueurs',          path: '/players'         },
+        { label: locState.playerName, path: locState.from ?? `/players/${id}` },
+      ]
+    : id
+      ? [{ label: 'Profil', path: `/players/${id}` }]
+      : [];
+
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        {id && (
-          <>
-            <button onClick={() => navigate(`/players/${id}`)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-              <ArrowLeft size={16} /> Profil
-            </button>
-            <span style={{ color: '#2A2F3A' }}>|</span>
-          </>
-        )}
+      <div style={{ marginBottom: 20 }}>
+        <Breadcrumb items={breadcrumbItems} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: breadcrumbItems.length > 0 ? 8 : 0 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Statistiques</h1>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {(['team', 'player', 'match'] as Tab[]).map(t => (
@@ -430,6 +435,7 @@ export default function StatsPage() {
               {t === 'team' ? 'Équipe' : t === 'player' ? 'Joueur' : 'Par match'}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
