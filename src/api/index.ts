@@ -7,6 +7,7 @@ export { rpeApi }      from './rpe';
 export { medicalApi }  from './medical';
 export { actionsApi }  from './actions';
 export { staffApi }    from './staff';
+export { meetingsApi } from './meetings';
 export { statsApi }    from './stats';
 
 export type { ListPlayersFilters }       from './players';

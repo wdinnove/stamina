@@ -57,6 +57,16 @@ export interface StaffMember {
   role: string;
 }
 
+export interface StaffMeeting {
+  id: string;
+  teamId: string;
+  title: string;
+  date: string;
+  time: string;
+  notes?: string;
+  createdAt: string;
+}
+
 // ─── Domain entities ──────────────────────────────────────────────────────────
 export interface Player {
   id: string;

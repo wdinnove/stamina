@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, AlertCircle, UserCheck, User, UserPlus } from 'lucide-react';
+import { Plus, X, AlertCircle, UserCheck, UserPlus, Calendar, Clock, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { staffApi } from '../api/staff';
+import { meetingsApi } from '../api/meetings';
 import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { StaffMember } from '../data/types';
+import type { StaffMember, StaffMeeting } from '../data/types';
 
 const ROLES = [
   { value: 'coach',         label: 'Coach' },
@@ -23,7 +24,10 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
-const emptyForm = { firstName: '', lastName: '', role: 'coach' };
+const TODAY = new Date().toISOString().slice(0, 10);
+
+const emptyForm    = { firstName: '', lastName: '', role: 'coach' };
+const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '' };
 
 export default function StaffPage() {
   const { selected } = useTeamSeason();
@@ -39,6 +43,20 @@ export default function StaffPage() {
   const [inviteError,  setInviteError]  = useState('');
   const [inviteSaving, setInviteSaving] = useState(false);
 
+  const [meetings,      setMeetings]      = useState<StaffMeeting[]>([]);
+  const [meetingsError, setMeetingsError] = useState('');
+  const [showMeetForm,  setShowMeetForm]  = useState(false);
+  const [meetForm,      setMeetForm]      = useState(emptyMeeting);
+  const [meetSaving,    setMeetSaving]    = useState(false);
+  const [meetFormError, setMeetFormError] = useState('');
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const [showPast,      setShowPast]      = useState(false);
+  const [editingMeeting,  setEditingMeeting]  = useState<StaffMeeting | null>(null);
+  const [editNotes,       setEditNotes]       = useState('');
+  const [editSaving,      setEditSaving]      = useState(false);
+  const [editError,       setEditError]       = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!selected) return;
     setLoading(true);
@@ -47,6 +65,14 @@ export default function StaffPage() {
       .then(setStaff)
       .catch(err => setError(err?.message ?? String(err)))
       .finally(() => setLoading(false));
+  }, [selected?.team.id]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setMeetingsError('');
+    meetingsApi.listByTeam(selected.team.id)
+      .then(setMeetings)
+      .catch(err => setMeetingsError(err?.message ?? String(err)));
   }, [selected?.team.id]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -146,6 +172,76 @@ export default function StaffPage() {
     }
   }
 
+  async function handleMeetingSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    if (!meetForm.title || !meetForm.date || !meetForm.time) {
+      setMeetFormError('Titre, date et heure sont obligatoires.');
+      return;
+    }
+    setMeetSaving(true);
+    setMeetFormError('');
+    try {
+      const created = await meetingsApi.create({
+        teamId: selected.team.id,
+        title:  meetForm.title,
+        date:   meetForm.date,
+        time:   meetForm.time,
+        notes:  meetForm.notes || undefined,
+      });
+      setMeetings(prev => [created, ...prev].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
+      setShowMeetForm(false);
+      setMeetForm(emptyMeeting);
+    } catch (err: unknown) {
+      setMeetFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
+    } finally {
+      setMeetSaving(false);
+    }
+  }
+
+  async function confirmAndDelete() {
+    if (!confirmDeleteId) return;
+    const id = confirmDeleteId;
+    setConfirmDeleteId(null);
+    const snapshot = meetings;
+    setMeetings(prev => prev.filter(m => m.id !== id));
+    try { await meetingsApi.delete(id); }
+    catch { setMeetings(snapshot); }
+  }
+
+  function openEditNotes(m: StaffMeeting) {
+    setEditingMeeting(m);
+    setEditNotes(m.notes ?? '');
+    setEditError('');
+  }
+
+  async function handleEditNotes(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingMeeting) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await meetingsApi.updateNotes(editingMeeting.id, editNotes);
+      setMeetings(prev => prev.map(m => m.id === editingMeeting.id ? { ...m, notes: editNotes || undefined } : m));
+      setEditingMeeting(null);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  function toggleNotes(id: string) {
+    setExpandedNotes(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  const upcomingMeetings = meetings.filter(m => m.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+  const pastMeetings     = meetings.filter(m => m.date < TODAY).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -242,6 +338,139 @@ export default function StaffPage() {
         </div>
       )}
 
+      {/* ── Planning de réunions ─────────────────────────────────────── */}
+      {selected && !loading && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={16} style={{ color: '#94A3B8' }} />
+              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>Planning de réunions</span>
+            </div>
+            <button
+              onClick={() => setShowMeetForm(true)}
+              style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              <Plus size={13} /> Planifier
+            </button>
+          </div>
+
+          {meetingsError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{meetingsError}</span>
+            </div>
+          )}
+
+          {/* À venir */}
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, margin: '0 0 8px' }}>À venir</p>
+            {upcomingMeetings.length === 0
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune réunion planifiée.</p>
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {upcomingMeetings.map(m => (
+                    <div key={m.id} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: '3px solid #00E5A0', borderRadius: 8, padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>{m.title}</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
+                              <Calendar size={11} /> {m.date.slice(8)}/{m.date.slice(5, 7)}/{m.date.slice(0, 4)}
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
+                              <Clock size={11} /> {m.time.slice(0, 5)}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          {m.notes && (
+                            <button onClick={() => toggleNotes(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
+                              {expandedNotes.has(m.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
+                          )}
+                          <button onClick={() => openEditNotes(m)}
+                            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px', borderRadius: 4 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
+                            Compte rendu
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                      {m.notes && expandedNotes.has(m.id) && (
+                        <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '10px 0 0', padding: '10px 0 0', borderTop: '1px solid #2A2F3A', whiteSpace: 'pre-wrap' }}>{m.notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+          </div>
+
+          {/* Passées */}
+          <div>
+            <button
+              onClick={() => setShowPast(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 8px', textAlign: 'left' }}
+            >
+              <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Passées</span>
+              <span style={{ backgroundColor: '#47556922', color: '#475569', borderRadius: 10, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>{pastMeetings.length}</span>
+              {showPast ? <ChevronDown size={13} color="#475569" /> : <ChevronRight size={13} color="#475569" />}
+            </button>
+            {showPast && (
+              pastMeetings.length === 0
+                ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune réunion passée.</p>
+                : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {pastMeetings.map(m => (
+                      <div key={m.id} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: '3px solid #2A2F3A', borderRadius: 8, padding: '12px 14px', opacity: 0.7 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>{m.title}</p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
+                                <Calendar size={11} /> {m.date.slice(8)}/{m.date.slice(5, 7)}/{m.date.slice(0, 4)}
+                              </span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
+                                <Clock size={11} /> {m.time.slice(0, 5)}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            {m.notes && (
+                              <button onClick={() => toggleNotes(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
+                                {expandedNotes.has(m.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                            )}
+                            <button onClick={() => openEditNotes(m)}
+                              style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px', borderRadius: 4 }}
+                              onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
+                              onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
+                              Compte rendu
+                            </button>
+                            <button onClick={() => setConfirmDeleteId(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}
+                              onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                              onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                        {m.notes && expandedNotes.has(m.id) && (
+                          <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '10px 0 0', padding: '10px 0 0', borderTop: '1px solid #2A2F3A', whiteSpace: 'pre-wrap' }}>{m.notes}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Modal création de compte */}
       {inviting && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -289,6 +518,113 @@ export default function StaffPage() {
                 </button>
                 <button type="submit" disabled={inviteSaving} style={{ flex: 1, padding: '10px', backgroundColor: inviteSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: inviteSaving ? '#475569' : '#0D0F14', cursor: inviteSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                   {inviteSaving ? 'Création…' : 'Créer le compte'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmation suppression */}
+      {confirmDeleteId && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 380 }}>
+            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la réunion ?</h2>
+            <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>
+              {meetings.find(m => m.id === confirmDeleteId)?.title} — cette action est irréversible.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+                Annuler
+              </button>
+              <button onClick={confirmAndDelete} style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal modifier le compte rendu */}
+      {editingMeeting && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 500 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Compte rendu</h2>
+              <button onClick={() => setEditingMeeting(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            <p style={{ color: '#94A3B8', fontSize: '0.8rem', margin: '0 0 18px' }}>
+              {editingMeeting.title} — {editingMeeting.date.slice(8)}/{editingMeeting.date.slice(5, 7)}/{editingMeeting.date.slice(0, 4)} à {editingMeeting.time.slice(0, 5)}
+            </p>
+
+            {editError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editError}</span>
+              </div>
+            )}
+
+            <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleEditNotes}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes / Compte rendu</label>
+                <textarea
+                  autoFocus
+                  placeholder="Ordre du jour, décisions, notes…"
+                  value={editNotes}
+                  onChange={e => setEditNotes(e.target.value)}
+                  style={{ ...inputStyle, resize: 'vertical', minHeight: 140, fontFamily: 'Inter, sans-serif' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button type="button" onClick={() => setEditingMeeting(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                <button type="submit" disabled={editSaving} style={{ flex: 1, padding: '10px', backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal planifier une réunion */}
+      {showMeetForm && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 460 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Planifier une réunion</h2>
+              <button onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            {meetFormError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{meetFormError}</span>
+              </div>
+            )}
+
+            <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleMeetingSubmit}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre *</label>
+                <input type="text" required autoFocus placeholder="Ex : Réunion hebdo staff" value={meetForm.title} onChange={e => setMeetForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
+                  <input type="date" required value={meetForm.date} onChange={e => setMeetForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Heure *</label>
+                  <input type="time" required value={meetForm.time} onChange={e => setMeetForm(f => ({ ...f, time: e.target.value }))} style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compte rendu / Notes</label>
+                <textarea placeholder="Ordre du jour, décisions, notes…" value={meetForm.notes} onChange={e => setMeetForm(f => ({ ...f, notes: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', minHeight: 88, fontFamily: 'Inter, sans-serif' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button type="button" onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                <button type="submit" disabled={meetSaving} style={{ flex: 1, padding: '10px', backgroundColor: meetSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: meetSaving ? '#475569' : '#0D0F14', cursor: meetSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                  {meetSaving ? 'Enregistrement…' : 'Planifier'}
                 </button>
               </div>
             </form>

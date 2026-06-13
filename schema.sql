@@ -827,3 +827,21 @@ CREATE POLICY "staff_access" ON staff
   FOR ALL TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Réunions staff
+CREATE TABLE staff_meetings (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id    UUID REFERENCES teams(id) ON DELETE CASCADE NOT NULL,
+  title      TEXT NOT NULL,
+  date       DATE NOT NULL,
+  time       TIME NOT NULL,
+  notes      TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE staff_meetings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "staff_meetings_access" ON staff_meetings
+  FOR ALL TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
