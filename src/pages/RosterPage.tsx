@@ -322,7 +322,7 @@ export default function RosterPage() {
     <div style={{ padding: '24px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Mon Roster</h1>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Effectif</h1>
         {selected && (
           <button
             onClick={() => setShowModal(true)}

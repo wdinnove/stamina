@@ -149,7 +149,7 @@ export default function StaffPage() {
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Mon Staff</h1>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Staff</h1>
         {selected && (
           <button
             onClick={() => setShowForm(true)}

@@ -8,8 +8,8 @@ import { authApi } from '../api';
 
 export const navItems = [
   { path: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'     },
-  { path: '/roster',        icon: ClipboardList,   label: 'Mon Roster'    },
-  { path: '/staff',         icon: Users,           label: 'Mon Staff'     },
+  { path: '/roster',        icon: ClipboardList,   label: 'Effectif'      },
+  { path: '/staff',         icon: Users,           label: 'Staff'         },
   { path: '/rpe/new',       icon: Activity,        label: 'RPE Effort'    },
   { path: '/wellness/new',  icon: Heart,           label: 'Bien-être'     },
   { path: '/medical/infirmary', icon: Stethoscope,  label: 'Médical'       },
