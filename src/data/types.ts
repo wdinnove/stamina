@@ -1,0 +1,214 @@
+// ─── Primitive types ──────────────────────────────────────────────────────────
+export type PlayerStatus      = 'active' | 'injured' | 'limited' | 'suspended' | 'unavailable';
+export type BasketballPosition = 'Meneur' | 'Arrière' | 'Ailier' | 'Ailier Fort' | 'Pivot';
+export type SessionType       = 'training' | 'match' | 'gym' | 'rest';
+export type ActionStatus      = 'todo' | 'in_progress' | 'waiting' | 'done';
+export type ActionPriority    = 'low' | 'normal' | 'high' | 'critical';
+export type ActionCategory    =
+  | 'medical' | 'physical' | 'mental' | 'tactical'
+  | 'administrative' | 'interview' | 'video' | 'discussion';
+
+// ─── New top-level entities ───────────────────────────────────────────────────
+export interface Organization {
+  id: string;
+  name: string;
+}
+
+export interface Season {
+  id: string;
+  teamId: string;
+  label: string;          // '2025/2026'
+  startDate: string;
+  endDate: string;
+  totalGames?: number;
+  isCurrent: boolean;
+}
+
+export interface Match {
+  id: string;
+  teamId: string;
+  seasonId: string;
+  gameNumber?: number;
+  date: string;
+  opponent: string;
+  homeAway: 'home' | 'away';
+  competition: string;
+  result: 'win' | 'loss';
+  scoreUs: number;
+  scoreThem: number;
+}
+
+export interface TrainingSession {
+  id: string;
+  teamId: string;
+  seasonId: string;
+  date: string;
+  sessionType: SessionType;
+  plannedDuration: number;
+  notes?: string;
+}
+
+export interface StaffMember {
+  id: string;
+  organizationId: string;
+  profileId?: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+}
+
+// ─── Domain entities ──────────────────────────────────────────────────────────
+export interface Player {
+  id: string;
+  firstName: string;
+  lastName: string;
+  number: number;
+  position: BasketballPosition;
+  secondaryPosition?: BasketballPosition;
+  organizationId: string;
+  status: PlayerStatus;
+  nationality: string;
+  birthDate: string;
+  height?: number;
+  weight?: number;
+  hand: 'right' | 'left' | 'both';
+  contractEnd?: string;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  category: string;
+  color: string;
+  organizationName?: string;
+  createdAt?: string;
+  playerCount?: number;
+  currentSeason?: string;
+}
+
+export interface RPEEntry {
+  id: string;
+  sessionId: string;
+  playerId: string;
+  rpe: number;
+  actualDuration?: number;
+  notes?: string;
+  // Enriched from training_sessions join
+  date: string;
+  sessionType: SessionType;
+  plannedDuration: number;
+  teamName?: string;
+}
+
+export interface WellnessEntry {
+  id: string;
+  playerId: string;
+  date: string;
+  fatigue: number;
+  mood: number;
+  stress: number;
+  motivation: number;
+  sleep: number;
+  soreness: number;
+  score: number;
+  notes?: string;
+}
+
+export interface MedicalRecord {
+  id: string;
+  playerId: string;
+  date: string;
+  type: 'injury' | 'checkup' | 'treatment';
+  description: string;
+  location?: string;
+  severity?: 'mild' | 'moderate' | 'severe';
+  daysAbsent?: number;
+  status: 'active' | 'resolved';
+  resolvedDate?: string;
+  rtpDate?: string;
+  treatment?: string;
+}
+
+export interface Action {
+  id: string;
+  playerId: string;
+  title: string;
+  description?: string;
+  category: ActionCategory;
+  priority: ActionPriority;
+  dueDate: string;
+  assignedTo: string;
+  status: ActionStatus;
+}
+
+/** Stats individuelles par match — nomenclature NF2 */
+export interface MatchStat {
+  id: string;
+  playerId: string;
+  date: string;
+  opponent: string;
+  homeAway: 'home' | 'away';
+  competition: string;
+  result: 'win' | 'loss';
+  scoreUs: number;
+  scoreThem: number;
+  starter: boolean;
+  min: number;
+  pts: number;
+  fg2m: number; fg2a: number;
+  fg3m: number; fg3a: number;
+  ftm: number;  fta: number;
+  ro: number; rd: number;
+  pd: number; ct: number; intercepts: number; bp: number;
+  fte: number; fpr: number;
+  eval: number;
+  plusMinus: number;
+}
+
+/** Stats avancées équipe par match */
+export interface TeamMatchStat {
+  id: string;
+  date: string;
+  opponent: string;
+  homeAway: 'home' | 'away';
+  result: 'win' | 'loss';
+  scoreUs: number;
+  scoreThem: number;
+  fg2m: number; fg2a: number;
+  fg3m: number; fg3a: number;
+  ftm: number;  fta: number;
+  ro: number; rd: number; rt: number;
+  pd: number; ct: number; intercepts: number; bp: number; fte: number;
+  possessions: number;
+  offRating: number;
+  defRating: number;
+  efgPct: number;
+  ftRate: number;
+  toPct: number;
+  orebPct: number;
+  drebPct: number;
+  opp_fg2m: number; opp_fg2a: number;
+  opp_fg3m: number; opp_fg3a: number;
+  opp_ftm: number;  opp_fta: number;
+  opp_ro: number; opp_rd: number; opp_rt: number;
+  opp_pd: number; opp_ct: number; opp_intercepts: number; opp_bp: number;
+  opp_possessions: number;
+  opp_efgPct: number;
+  opp_toPct: number;
+  opp_orebPct: number;
+}
+
+/** Moyennes calculées d'une joueur sur la saison */
+export interface PlayerSeasonAvg {
+  gp: number;
+  min: number;
+  pts: number;
+  fg2m: number; fg2a: number; fg2pct: number;
+  fg3m: number; fg3a: number; fg3pct: number;
+  ftm: number;  fta: number;  ftpct: number;
+  ro: number; rd: number; rt: number;
+  pd: number; ct: number; intercepts: number; bp: number;
+  fte: number; fpr: number;
+  eval: number;
+  plusMinus: number;
+}
