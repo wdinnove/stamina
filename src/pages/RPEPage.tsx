@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import {
   LineChart, Line, BarChart, Bar, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
@@ -75,7 +76,6 @@ function computeAcwr(history: RPEEntry[]): number | null {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab    = 'collective' | 'individual' | 'team_history';
 type Period = '7j' | '30j' | 'saison';
 
 interface TeamChartDay {
@@ -148,15 +148,34 @@ function StatCard({ label, value, unit, color, icon }: { label: string; value: s
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+type Tab = 'collective' | 'individual' | 'team_history';
+
+const TAB_SLUGS: Record<string, Tab> = {
+  new:          'collective',
+  individual:   'individual',
+  team:         'team_history',
+};
+
 export default function RPEPage() {
   const { selected } = useTeamSeason();
+  const navigate     = useNavigate();
+  const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
+
+  const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'collective';
+  const setActiveTab = (t: Tab) => {
+    if (t === 'individual') {
+      const first = roster[0]?.id;
+      navigate(first ? `/rpe/individual/${first}` : '/rpe/individual', { replace: true });
+    } else if (t === 'team_history' && selected) {
+      navigate(`/rpe/team/${selected.team.id}`, { replace: true });
+    } else {
+      navigate('/rpe/new', { replace: true });
+    }
+  };
 
   // ── Roster
   const [roster, setRoster]               = useState<Player[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
-
-  // ── Shared tab state
-  const [activeTab, setActiveTab] = useState<Tab>('collective');
 
   // ── Collective tab state
   const [sessionDate, setSessionDate]     = useState(todayStr());
@@ -169,10 +188,12 @@ export default function RPEPage() {
   const [saveError, setSaveError]         = useState('');
 
   // ── Individual tab state
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const selectedPlayerId = activeTab === 'individual' ? (urlId ?? null) : null;
+  const setSelectedPlayerId = (id: string) => navigate(`/rpe/individual/${id}`, { replace: true });
   const [history, setHistory]                   = useState<RPEEntry[]>([]);
   const [loadingHistory, setLoadingHistory]     = useState(false);
   const [historyVersion, setHistoryVersion]     = useState(0);
+  const [individualFilter, setIndividualFilter] = useState<'all' | SessionType>('all');
 
   // ── Team history tab state
   const [teamPeriod, setTeamPeriod]             = useState<Period>('30j');
@@ -191,7 +212,9 @@ export default function RPEPage() {
       .then(players => {
         setRoster(players);
         setRpeValues(Object.fromEntries(players.map(p => [p.id, null])));
-        if (players.length > 0 && !selectedPlayerId) setSelectedPlayerId(players[0].id);
+        if (players.length > 0 && activeTab === 'individual' && !urlId) {
+          navigate(`/rpe/individual/${players[0].id}`, { replace: true });
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingRoster(false));
@@ -457,7 +480,7 @@ export default function RPEPage() {
           {(['collective', 'individual', 'team_history'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ padding: '6px 16px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', transition: 'all 0.15s' }}>
-              {tab === 'collective' ? 'Saisie collective' : tab === 'individual' ? 'Historique joueur' : 'Historique équipe'}
+              {tab === 'collective' ? 'Nouvelle séance' : tab === 'individual' ? 'Historique joueur' : 'Historique équipe'}
             </button>
           ))}
         </div>
@@ -563,82 +586,133 @@ export default function RPEPage() {
       {/* ══ INDIVIDUAL ══════════════════════════════════════════════════════ */}
       {activeTab === 'individual' && (
         <div>
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 24 }}>
             <select value={selectedPlayerId ?? ''} onChange={e => setSelectedPlayerId(e.target.value)}
               style={{ padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}>
               {roster.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
             </select>
           </div>
 
+
           {loadingHistory ? (
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement…</div>
-          ) : history.length === 0 ? (
+          ) : history.length === 0 && selectedPlayerId ? (
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-              Aucune donnée RPE pour {selectedPlayer?.firstName} {selectedPlayer?.lastName} cette saison.
+              Aucune donnée RPE pour {selectedPlayer?.firstName} {selectedPlayer?.lastName}.
             </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 20 }}>
-                <h3 style={{ color: '#F1F5F9', marginBottom: 4 }}>RPE — {selectedPlayer?.firstName} {selectedPlayer?.lastName}</h3>
-                <p style={{ color: '#94A3B8', fontSize: '0.78rem', marginBottom: 16 }}>{individualChartData.length} dernière{individualChartData.length > 1 ? 's' : ''} séance{individualChartData.length > 1 ? 's' : ''}</p>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={individualChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" vertical={false} />
-                    <XAxis dataKey="i" tickFormatter={i => individualChartData[i]?.date ?? ''} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 10]} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} width={24} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <ReferenceLine y={8} stroke="#EF4444" strokeDasharray="4 4" />
-                    <Line type="monotone" dataKey="rpe" stroke="#00E5A0" strokeWidth={2} dot={{ fill: '#00E5A0', r: 3 }} name="RPE" />
-                  </LineChart>
-                </ResponsiveContainer>
-                {acwr !== null && (
-                  <div style={{ marginTop: 16, padding: 12, backgroundColor: '#1E2229', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                    <div>
-                      <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>ACWR (ratio charge aiguë/chronique)</p>
-                      <p style={{ color: acwr < 1.3 ? '#00E5A0' : '#EF4444', fontSize: '1.2rem', fontWeight: 800, margin: '4px 0 0', fontFamily: 'JetBrains Mono, monospace' }}>
-                        {acwr} {acwr < 1.3 ? '✅' : '⚠️'}
-                      </p>
-                    </div>
-                    <div style={{ backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, padding: '8px 12px', maxWidth: 280 }}>
-                      <p style={{ color: '#F59E0B', fontSize: '0.75rem', margin: 0 }}>⚠️ Seuil d'alerte : ACWR &gt; 1.5 = risque blessure élevé</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+          ) : history.length > 0 ? (() => {
+            const filtered   = individualFilter === 'all' ? history : history.filter(e => e.sessionType === individualFilter);
+            const sessionTypes = [...new Set(history.map(e => e.sessionType))] as SessionType[];
+            const chartData  = [...filtered].sort((a, b) => a.date.localeCompare(b.date)).map(e => ({
+              date:  fmtDate(e.date),
+              rpe:   e.rpe,
+              load:  Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
+            }));
+            const lastRPE    = filtered[0];
+            const avgRPE     = filtered.length ? Math.round(filtered.reduce((s, e) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
+            const totalLoad  = filtered.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+            const RPE_LABELS: Record<number, string> = { 1: 'Très facile', 2: 'Facile', 3: 'Modéré', 4: 'Assez difficile', 5: 'Difficile', 6: 'Difficile+', 7: 'Très difficile', 8: 'Intense', 9: 'Très intense', 10: 'Maximal' };
+            return (
+              <>
+                {/* Filtres par type */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+                  {(['all', ...sessionTypes] as ('all' | SessionType)[]).map(f => {
+                    const active = individualFilter === f;
+                    const label  = f === 'all' ? 'Tout' : SESSION_TYPE_LABELS[f];
+                    const color  = f === 'all' ? '#94A3B8' : SESSION_TYPE_COLORS[f];
+                    return (
+                      <button key={f} onClick={() => setIndividualFilter(f)}
+                        style={{ padding: '5px 12px', borderRadius: 5, fontSize: '0.78rem', cursor: 'pointer', backgroundColor: active ? color + '18' : '#1E2229', border: `1px solid ${active ? color : '#2A2F3A'}`, color: active ? color : '#94A3B8', fontWeight: active ? 600 : 400 }}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 20 }}>
-                <h3 style={{ color: '#F1F5F9', marginBottom: 4 }}>Charge d'entraînement</h3>
-                <p style={{ color: '#94A3B8', fontSize: '0.78rem', marginBottom: 16 }}>RPE × durée (UA)</p>
-                <ResponsiveContainer width="100%" height={160}>
-                  <BarChart data={individualChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" vertical={false} />
-                    <XAxis dataKey="i" tickFormatter={i => individualChartData[i]?.date ?? ''} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} width={36} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="charge" fill="#22d3ee" radius={[3, 3, 0, 0]} name="Charge (UA)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 20px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '110px 1fr 140px 50px 70px 80px', gap: 8 }}>
-                  {['Date', 'Séance', 'Équipe', 'RPE', 'Durée', 'Charge'].map(h => (
-                    <span key={h} style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+                {/* KPIs */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
+                  {[
+                    { label: 'Dernière RPE',  value: lastRPE ? String(lastRPE.rpe) : '—', sub: lastRPE ? RPE_LABELS[lastRPE.rpe] : '', color: lastRPE ? rpeColorScale(lastRPE.rpe) : '#F1F5F9' },
+                    { label: 'RPE moyenne',   value: avgRPE !== null ? String(avgRPE) : '—', sub: `sur ${filtered.length} séance${filtered.length > 1 ? 's' : ''}`, color: avgRPE !== null ? rpeColorScale(avgRPE) : '#F1F5F9' },
+                    { label: 'Charge totale', value: totalLoad > 0 ? String(totalLoad) : '—', sub: 'UA (RPE × min)', color: '#F1F5F9' },
+                    { label: 'Séances',       value: String(filtered.length), sub: 'enregistrées', color: '#F1F5F9' },
+                  ].map(kpi => (
+                    <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
+                      <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{kpi.label}</p>
+                      <p style={{ color: kpi.color, fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{kpi.value}</p>
+                      <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>{kpi.sub}</p>
+                    </div>
                   ))}
                 </div>
-                {tableData.map((entry, idx) => (
-                  <div key={idx} style={{ padding: '10px 20px', borderBottom: '1px solid #1E2229', display: 'grid', gridTemplateColumns: '110px 1fr 140px 50px 70px 80px', gap: 8, alignItems: 'center' }}>
-                    <span style={{ color: '#94A3B8', fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(entry.date)}</span>
-                    <span style={{ color: '#F1F5F9', fontSize: '0.82rem' }}>{SESSION_TYPE_LABELS[entry.sessionType] ?? entry.sessionType}</span>
-                    <span style={{ color: '#94A3B8', fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.teamName ?? '—'}</span>
-                    <span style={{ color: rpeColorScale(entry.rpe), fontWeight: 700, fontSize: '0.88rem', fontFamily: 'JetBrains Mono, monospace' }}>{entry.rpe}</span>
-                    <span style={{ color: '#94A3B8', fontSize: '0.82rem' }}>{entry.actualDuration ?? entry.plannedDuration}min</span>
-                    <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{entry.rpe * (entry.actualDuration ?? entry.plannedDuration)} UA</span>
+
+                {/* Charts côte à côte */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                  <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
+                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 14px' }}>Évolution RPE</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" />
+                        <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} />
+                        <YAxis domain={[0, 10]} tick={{ fill: '#475569', fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <ReferenceLine y={7} stroke="#EF444440" strokeDasharray="4 4" />
+                        <ReferenceLine y={5} stroke="#F59E0B40" strokeDasharray="4 4" />
+                        <Line type="monotone" dataKey="rpe" name="RPE" stroke="#00E5A0" dot={{ fill: '#00E5A0', r: 3 }} strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
+                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 14px' }}>Charge (UA)</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" />
+                        <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} />
+                        <YAxis tick={{ fill: '#475569', fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="load" name="Charge" fill="#3B82F6" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Tableau historique */}
+                <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #2A2F3A' }}>
+                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Historique des séances</p>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          {['Date', 'Type', 'RPE', 'Ressenti', 'Durée', 'Charge', 'Équipe'].map(h => (
+                            <th key={h} style={{ padding: '8px 14px', textAlign: 'left', color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, borderBottom: '1px solid #2A2F3A', backgroundColor: '#1E2229', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(e => {
+                          const dur  = e.actualDuration ?? e.plannedDuration;
+                          return (
+                            <tr key={e.id} style={{ borderBottom: '1px solid #2A2F3A22' }}
+                              onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
+                              onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
+                              <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fmtDate(e.date)}</td>
+                              <td style={{ padding: '9px 14px' }}><span style={{ color: SESSION_TYPE_COLORS[e.sessionType], fontSize: '0.75rem', fontWeight: 600 }}>{SESSION_TYPE_LABELS[e.sessionType]}</span></td>
+                              <td style={{ padding: '9px 14px' }}><span style={{ color: rpeColorScale(e.rpe), fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{e.rpe}</span></td>
+                              <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: '0.78rem' }}>{RPE_LABELS[e.rpe] ?? '—'}</td>
+                              <td style={{ padding: '9px 14px', color: '#F1F5F9', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{dur} min</td>
+                              <td style={{ padding: '9px 14px', color: '#F1F5F9', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{e.rpe * dur} UA</td>
+                              <td style={{ padding: '9px 14px', color: '#475569', fontSize: '0.78rem' }}>{e.teamName ?? '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })() : null}
         </div>
       )}
 

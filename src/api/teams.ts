@@ -14,7 +14,7 @@ export const teamsApi = {
   async getById(id: string): Promise<Team | null> {
     const { data, error } = await supabase
       .from('teams')
-      .select('*')
+      .select('*, seasons(label, is_current), organizations(name)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;

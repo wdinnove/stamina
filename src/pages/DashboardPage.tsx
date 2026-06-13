@@ -260,7 +260,7 @@ export default function DashboardPage() {
           accentColor="#EF4444"
           trendLabel={`${injuredPlayers} blessés`}
           trend={injuries.length > 0 ? -1 : 0}
-          onClick={() => navigate('/medical')}
+          onClick={() => navigate('/medical/infirmary')}
         />
         <KPICard
           label="Actions en retard"
@@ -279,7 +279,7 @@ export default function DashboardPage() {
           accentColor="#3B82F6"
           trendLabel={avgRpe7d ? (avgRpe7d > 7 ? 'charge élevée' : 'charge modérée') : 'aucune séance'}
           trend={0}
-          onClick={() => navigate('/rpe')}
+          onClick={() => navigate('/rpe/new')}
         />
       </div>
 
@@ -293,7 +293,7 @@ export default function DashboardPage() {
               <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: 0 }}>RPE moyen de l'équipe par séance</p>
             </div>
             <button
-              onClick={() => navigate('/rpe')}
+              onClick={() => navigate('/rpe/new')}
               style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}
             >
               Voir tout <ArrowRight size={13} />

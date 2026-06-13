@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
 import { staffApi }   from '../api/staff';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useLocation, useNavigate } from 'react-router';
 import { categoryConfig, priorityConfig } from '../data/config';
 import { PlayerAvatar } from '../components';
 import type { Action, ActionStatus, ActionCategory, ActionPriority, Player, StaffMember } from '../data/types';
@@ -31,17 +32,25 @@ const inputStyle: React.CSSProperties = {
 
 export default function ActionsPage() {
   const { selected } = useTeamSeason();
-  const [acts,       setActs]       = useState<Action[]>([]);
-  const [players,    setPlayers]    = useState<Player[]>([]);
-  const [staff,      setStaff]      = useState<StaffMember[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState('');
-  const [showForm,   setShowForm]   = useState(false);
-  const [form,       setForm]       = useState(emptyForm);
-  const [saving,     setSaving]     = useState(false);
-  const [formError,  setFormError]  = useState('');
-  const [staffError, setStaffError] = useState('');
-  const [showDone,   setShowDone]   = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const locState = location.state as { playerId?: string; playerName?: string; from?: string } | null;
+
+  const [acts,         setActs]         = useState<Action[]>([]);
+  const [players,      setPlayers]      = useState<Player[]>([]);
+  const [staff,        setStaff]        = useState<StaffMember[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState('');
+  const [showForm,     setShowForm]     = useState(false);
+  const [form,         setForm]         = useState(emptyForm);
+  const [saving,       setSaving]       = useState(false);
+  const [formError,    setFormError]    = useState('');
+  const [staffError,   setStaffError]   = useState('');
+  const [showDone,       setShowDone]       = useState(false);
+  const [playerFilter,   setPlayerFilter]   = useState<string>(locState?.playerId ?? '');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [search,         setSearch]         = useState('');
 
   useEffect(() => {
     Promise.all([actionsApi.list(), playersApi.list()])
@@ -64,9 +73,20 @@ export default function ActionsPage() {
     return s ? `${s.firstName} ${s.lastName}` : id;
   };
 
-  const thisWeek = acts.filter(a => a.status !== 'done' && a.dueDate <= END_OF_WEEK);
-  const later    = acts.filter(a => a.status !== 'done' && a.dueDate > END_OF_WEEK);
-  const done     = acts.filter(a => a.status === 'done');
+  const visibleActs = acts.filter(a => {
+    if (playerFilter   && a.playerId !== playerFilter)    return false;
+    if (categoryFilter && a.category !== categoryFilter)  return false;
+    if (priorityFilter && a.priority !== priorityFilter)  return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!a.title.toLowerCase().includes(q) && !(a.description ?? '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const thisWeek = visibleActs.filter(a => a.status !== 'done' && a.dueDate <= END_OF_WEEK);
+  const later    = visibleActs.filter(a => a.status !== 'done' && a.dueDate > END_OF_WEEK);
+  const done     = visibleActs.filter(a => a.status === 'done');
+  const hasFilters = !!(playerFilter || categoryFilter || priorityFilter || search);
 
   async function toggleDone(id: string) {
     const action = acts.find(a => a.id === id);
@@ -176,17 +196,57 @@ export default function ActionsPage() {
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Actions à Réaliser</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setShowForm(true)}
-            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Plus size={16} /> Nouvelle action
+        <button
+          onClick={() => setShowForm(true)}
+          style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <Plus size={16} /> Nouvelle action
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1 1 180px', minWidth: 160 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+          <input
+            placeholder="Rechercher…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', padding: '8px 10px 8px 30px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
+          />
+        </div>
+        <select value={playerFilter} onChange={e => setPlayerFilter(e.target.value)}
+          style={{ padding: '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: playerFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', flex: '0 1 160px' }}>
+          <option value="">Tous les joueurs</option>
+          {players.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName[0]}.</option>)}
+        </select>
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+          style={{ padding: '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: categoryFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', flex: '0 1 140px' }}>
+          <option value="">Toutes catégories</option>
+          {Object.entries(categoryConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+          style={{ padding: '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: priorityFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', flex: '0 1 140px' }}>
+          <option value="">Toutes priorités</option>
+          {Object.entries(priorityConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        {hasFilters && (
+          <button onClick={() => { setPlayerFilter(''); setCategoryFilter(''); setPriorityFilter(''); setSearch(''); }}
+            style={{ padding: '8px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+            <X size={13} /> Effacer
+          </button>
+        )}
+      </div>
+
+      {locState?.from && playerFilter === locState.playerId && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <button onClick={() => navigate(locState.from!)}
+            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.78rem', padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+            ← Retour au profil
           </button>
         </div>
-      </div>
+      )}
 
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16 }}>

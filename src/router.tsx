@@ -17,6 +17,7 @@ import TeamReportPage    from './pages/TeamReportPage';
 import RosterPage        from './pages/RosterPage';
 import StaffPage         from './pages/StaffPage';
 import ProfilePage       from './pages/ProfilePage';
+import PlayerRPEPage     from './pages/PlayerRPEPage';
 
 export const router = createBrowserRouter([
   {
@@ -32,12 +33,20 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard',      Component: DashboardPage    },
-          { path: 'teams',          Component: TeamsPage        },
-          { path: 'players',        Component: PlayersPage      },
-          { path: 'players/:id',    Component: PlayersPage      },
-          { path: 'rpe',            Component: RPEPage          },
-          { path: 'wellness',       Component: WellnessPage     },
-          { path: 'medical',        Component: MedicalPage      },
+          { path: 'teams',           Component: TeamsPage        },
+          { path: 'teams/:id',      Component: TeamsPage        },
+          { path: 'players',           Component: PlayersPage      },
+          { path: 'players/:id',     Component: PlayersPage      },
+          { path: 'players/:id/rpe', Component: PlayerRPEPage    },
+          { path: 'rpe',             Component: RPEPage          },
+          { path: 'rpe/:tab',        Component: RPEPage          },
+          { path: 'rpe/:tab/:id',    Component: RPEPage          },
+          { path: 'wellness',           Component: WellnessPage     },
+          { path: 'wellness/:tab',      Component: WellnessPage     },
+          { path: 'wellness/:tab/:id',  Component: WellnessPage     },
+          { path: 'medical',             Component: MedicalPage      },
+          { path: 'medical/:tab',        Component: MedicalPage      },
+          { path: 'medical/:tab/:id',    Component: MedicalPage      },
           { path: 'actions',        Component: ActionsPage      },
           { path: 'stats',          Component: StatsPage        },
           { path: 'stats/:id',      Component: StatsPage        },

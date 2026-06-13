@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Save, Check } from 'lucide-react';
 import { playersApi } from '../api/players';
@@ -44,14 +45,33 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 
 type Tab = 'entry' | 'history';
 
+const TAB_SLUGS: Record<string, Tab> = {
+  new:     'entry',
+  history: 'history',
+};
+
 export default function WellnessPage() {
   const { selected } = useTeamSeason();
+  const navigate     = useNavigate();
+  const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
+
+  const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'entry';
+  const selectedPlayerId = urlId ?? null;
+
+  const setActiveTab = (t: Tab) => {
+    const slug = t === 'entry' ? 'new' : 'history';
+    const pid  = selectedPlayerId ?? roster[0]?.id;
+    navigate(pid ? `/wellness/${slug}/${pid}` : `/wellness/${slug}`, { replace: true });
+  };
+
+  const setSelectedPlayerId = (id: string) => {
+    const slug = activeTab === 'entry' ? 'new' : 'history';
+    navigate(`/wellness/${slug}/${id}`, { replace: true });
+  };
 
   const [roster, setRoster]               = useState<Player[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<Tab>('entry');
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [values, setValues]       = useState<Record<string, number>>(
     Object.fromEntries(dimensions.map(d => [d.key, 5]))
@@ -62,7 +82,7 @@ export default function WellnessPage() {
   const [saved, setSaved]         = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  const [history, setHistory]             = useState<WellnessEntry[]>([]);
+  const [history, setHistory]               = useState<WellnessEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -72,7 +92,10 @@ export default function WellnessPage() {
     playersApi.listBySeason(selected.season.id)
       .then(players => {
         setRoster(players);
-        setSelectedPlayerId(prev => prev ?? (players[0]?.id ?? null));
+        if (players.length > 0 && !urlId) {
+          const slug = activeTab === 'entry' ? 'new' : 'history';
+          navigate(`/wellness/${slug}/${players[0].id}`, { replace: true });
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingRoster(false));
@@ -87,21 +110,13 @@ export default function WellnessPage() {
       .finally(() => setLoadingHistory(false));
   }, [selectedPlayerId, historyVersion]);
 
-  // Pre-load existing entry when player or date changes
   useEffect(() => {
     if (!selectedPlayerId) { setExistingEntryId(null); return; }
     wellnessApi.getByPlayerDate(selectedPlayerId, entryDate)
       .then(entry => {
         if (entry) {
           setExistingEntryId(entry.id);
-          setValues({
-            fatigue:    entry.fatigue,
-            mood:       entry.mood,
-            stress:     entry.stress,
-            motivation: entry.motivation,
-            sleep:      entry.sleep,
-            soreness:   entry.soreness,
-          });
+          setValues({ fatigue: entry.fatigue, mood: entry.mood, stress: entry.stress, motivation: entry.motivation, sleep: entry.sleep, soreness: entry.soreness });
           setNote(entry.notes ?? '');
         } else {
           setExistingEntryId(null);
@@ -115,21 +130,14 @@ export default function WellnessPage() {
   const selectedPlayer = roster.find(p => p.id === selectedPlayerId);
   const score = previewScore(values);
 
-  // oldest → newest for charts
-  const historyAsc  = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const last14      = historyAsc.slice(-14);
-  const lastEntry   = historyAsc[historyAsc.length - 1];
+  const historyAsc = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const last14     = historyAsc.slice(-14);
+  const lastEntry  = historyAsc[historyAsc.length - 1];
 
   const lineData = last14.map((e, i) => ({
-    idx:        i,
-    date:       fmtDate(e.date),
-    fatigue:    e.fatigue,
-    humeur:     e.mood,
-    stress:     e.stress,
-    motivation: e.motivation,
-    sommeil:    e.sleep,
-    douleur:    e.soreness,
-    score:      e.score,
+    idx: i, date: fmtDate(e.date),
+    fatigue: e.fatigue, humeur: e.mood, stress: e.stress,
+    motivation: e.motivation, sommeil: e.sleep, douleur: e.soreness, score: e.score,
   }));
 
   const radarData = lastEntry
@@ -137,16 +145,13 @@ export default function WellnessPage() {
     : [];
 
   const heatmapData = last14.map(e => ({
-    date:  e.date,
-    score: e.score,
+    date: e.date, score: e.score,
     label: new Date(e.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 3),
   }));
 
-  // newest → oldest for table
-  const tableData = [...history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
-
-  const heatColor   = (v: number) => v >= 7 ? '#00E5A033' : v >= 5 ? '#F59E0B33' : '#EF444433';
-  const heatBorder  = (v: number) => v >= 7 ? '#00E5A0'   : v >= 5 ? '#F59E0B'   : '#EF4444';
+  const tableData  = [...history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
+  const heatColor  = (v: number) => v >= 7 ? '#00E5A033' : v >= 5 ? '#F59E0B33' : '#EF444433';
+  const heatBorder = (v: number) => v >= 7 ? '#00E5A0'   : v >= 5 ? '#F59E0B'   : '#EF4444';
 
   async function handleSave() {
     if (!selectedPlayerId) return;
@@ -154,15 +159,10 @@ export default function WellnessPage() {
     setSaveError('');
     try {
       await wellnessApi.create({
-        playerId:   selectedPlayerId,
-        date:       entryDate,
-        fatigue:    values.fatigue,
-        mood:       values.mood,
-        stress:     values.stress,
-        motivation: values.motivation,
-        sleep:      values.sleep,
-        soreness:   values.soreness,
-        notes:      note || undefined,
+        playerId: selectedPlayerId, date: entryDate,
+        fatigue: values.fatigue, mood: values.mood, stress: values.stress,
+        motivation: values.motivation, sleep: values.sleep, soreness: values.soreness,
+        notes: note || undefined,
       });
       setSaved(true);
       setHistoryVersion(v => v + 1);
@@ -193,24 +193,21 @@ export default function WellnessPage() {
           {(['entry', 'history'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ padding: '6px 16px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8' }}>
-              {tab === 'entry' ? 'Saisie' : 'Historique'}
+              {tab === 'entry' ? 'Nouvelle saisie' : 'Historique'}
             </button>
           ))}
         </div>
       </div>
 
       {/* Player selector */}
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 24 }}>
         {loadingRoster ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Chargement…</span>
         ) : roster.length === 0 ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune joueur dans le roster pour cette saison.</span>
         ) : (
-          <select
-            value={selectedPlayerId ?? ''}
-            onChange={e => setSelectedPlayerId(e.target.value)}
-            style={{ padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}
-          >
+          <select value={selectedPlayerId ?? ''} onChange={e => setSelectedPlayerId(e.target.value)}
+            style={{ padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}>
             {roster.map(p => (
               <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
             ))}
@@ -230,12 +227,8 @@ export default function WellnessPage() {
                 </div>
               )}
             </div>
-            <input
-              type="date"
-              value={entryDate}
-              onChange={e => setEntryDate(e.target.value)}
-              style={{ padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}
-            />
+            <input type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)}
+              style={{ padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -252,16 +245,8 @@ export default function WellnessPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
-                      <button key={v}
-                        onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                        style={{
-                          flex: 1, minWidth: 32, height: 36, borderRadius: 6,
-                          border: `1px solid ${val === v ? scoreColor(v) : '#2A2F3A'}`,
-                          backgroundColor: val === v ? scoreColor(v) + '22' : '#1E2229',
-                          color: val === v ? scoreColor(v) : '#94A3B8',
-                          cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400,
-                          transition: 'all 0.1s',
-                        }}
+                      <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
+                        style={{ flex: 1, minWidth: 32, height: 36, borderRadius: 6, border: `1px solid ${val === v ? scoreColor(v) : '#2A2F3A'}`, backgroundColor: val === v ? scoreColor(v) + '22' : '#1E2229', color: val === v ? scoreColor(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
                       >{v}</button>
                     ))}
                   </div>
@@ -273,11 +258,9 @@ export default function WellnessPage() {
 
           <div style={{ marginTop: 20 }}>
             <label style={{ color: '#94A3B8', display: 'block', marginBottom: 6 }}>💬 Note libre (facultatif)</label>
-            <textarea
-              value={note} onChange={e => setNote(e.target.value)}
+            <textarea value={note} onChange={e => setNote(e.target.value)}
               placeholder="Je sens mes jambes lourdes depuis hier soir..."
-              style={{ width: '100%', padding: '10px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }}
-            />
+              style={{ width: '100%', padding: '10px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }} />
           </div>
 
           <div style={{ marginTop: 20, padding: '12px 16px', backgroundColor: '#1E2229', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -289,11 +272,8 @@ export default function WellnessPage() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               {saveError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{saveError}</span>}
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                style={{ padding: '10px 24px', backgroundColor: saved ? '#1E2229' : '#00E5A0', border: saved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: saved ? '#00E5A0' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}
-              >
+              <button onClick={handleSave} disabled={saving}
+                style={{ padding: '10px 24px', backgroundColor: saved ? '#1E2229' : '#00E5A0', border: saved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: saved ? '#00E5A0' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
                 {saved ? <><Check size={15} /> Enregistré !</> : <><Save size={15} /> {saving ? 'Enregistrement…' : 'Enregistrer'}</>}
               </button>
             </div>
@@ -312,7 +292,6 @@ export default function WellnessPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {/* Radar */}
               <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
                 <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Profil POMS — dernière saisie</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -323,8 +302,6 @@ export default function WellnessPage() {
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
-
-              {/* Line chart */}
               <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
                 <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Évolution 14 jours</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -341,7 +318,6 @@ export default function WellnessPage() {
               </div>
             </div>
 
-            {/* Heatmap */}
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
               <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Heatmap bien-être (14 jours)</h3>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -363,7 +339,6 @@ export default function WellnessPage() {
               </div>
             </div>
 
-            {/* Table */}
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4 }}>
                 {['Date', 'Fat.', 'Hum.', 'Str.', 'Mot.', 'Som.', 'Doul.', 'Score'].map(h => (

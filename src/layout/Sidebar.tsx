@@ -10,9 +10,9 @@ export const navItems = [
   { path: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'     },
   { path: '/roster',        icon: ClipboardList,   label: 'Mon Roster'    },
   { path: '/staff',         icon: Users,           label: 'Mon Staff'     },
-  { path: '/rpe',           icon: Activity,        label: 'RPE Effort'    },
-  { path: '/wellness',      icon: Heart,           label: 'Bien-être'     },
-  { path: '/medical',       icon: Stethoscope,     label: 'Médical'       },
+  { path: '/rpe/new',       icon: Activity,        label: 'RPE Effort'    },
+  { path: '/wellness/new',  icon: Heart,           label: 'Bien-être'     },
+  { path: '/medical/infirmary', icon: Stethoscope,  label: 'Médical'       },
   { path: '/actions',       icon: CheckSquare,     label: 'Actions'       },
   { path: '/stats',         icon: BarChart2,       label: 'Statistiques'  },
   { path: '/reports/player',icon: FileText,        label: 'Bilan Joueur' },
@@ -24,7 +24,12 @@ interface SidebarProps {
 }
 
 function isNavActive(itemPath: string, currentPath: string): boolean {
-  return currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+  if (currentPath === itemPath) return true;
+  if (currentPath.startsWith(itemPath + '/')) return true;
+  // Pour les entrées sous-chemin (ex: /rpe/new), activer sur tout le segment parent (/rpe/*)
+  const itemRoot = '/' + itemPath.split('/').filter(Boolean)[0];
+  if (itemPath !== itemRoot && currentPath.startsWith(itemRoot + '/')) return true;
+  return false;
 }
 
 export function Sidebar({ collapsed }: SidebarProps) {

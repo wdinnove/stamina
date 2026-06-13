@@ -3,6 +3,7 @@ import { Plus, X, AlertCircle, Pencil } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useNavigate, useParams } from 'react-router';
 import { StatusBadge, PlayerAvatar } from '../components';
 import type { MedicalRecord, Player } from '../data/types';
 
@@ -32,19 +33,37 @@ const typeIcons: Record<string, string> = {
 
 type Tab = 'infirmary' | 'record';
 
+const TAB_SLUGS: Record<string, Tab> = {
+  infirmary: 'infirmary',
+  record:    'record',
+};
+
 const TODAY = new Date().toISOString().split('T')[0];
 
 export default function MedicalPage() {
   const { selected } = useTeamSeason();
-  const [activeTab, setActiveTab] = useState<Tab>('infirmary');
+  const navigate     = useNavigate();
+  const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
-  const [teamPlayers, setTeamPlayers]         = useState<Player[]>([]);
-  const [allPlayers, setAllPlayers]           = useState<Player[]>([]);
-  const [activeInjuries, setActiveInjuries]   = useState<MedicalRecord[]>([]);
-  const [seasonInjuries, setSeasonInjuries]   = useState<MedicalRecord[]>([]);
-  const [selectedPlayerId, setSelectedPlayerId] = useState('');
-  const [playerRecords, setPlayerRecords]     = useState<MedicalRecord[]>([]);
-  const [version, setVersion]                 = useState(0);
+  const activeTab: Tab        = TAB_SLUGS[tabSlug ?? ''] ?? 'infirmary';
+  const selectedPlayerId: string = activeTab === 'record' ? (urlId ?? '') : '';
+
+  const setActiveTab = (t: Tab) => {
+    if (t === 'infirmary' && selected) navigate(`/medical/infirmary/${selected.team.id}`, { replace: true });
+    else if (t === 'record') {
+      const pid = allPlayers[0]?.id ?? '';
+      navigate(pid ? `/medical/record/${pid}` : '/medical/record', { replace: true });
+    }
+  };
+
+  const setSelectedPlayerId = (id: string) => navigate(`/medical/record/${id}`, { replace: true });
+
+  const [teamPlayers, setTeamPlayers]       = useState<Player[]>([]);
+  const [allPlayers, setAllPlayers]         = useState<Player[]>([]);
+  const [activeInjuries, setActiveInjuries] = useState<MedicalRecord[]>([]);
+  const [seasonInjuries, setSeasonInjuries] = useState<MedicalRecord[]>([]);
+  const [playerRecords, setPlayerRecords]   = useState<MedicalRecord[]>([]);
+  const [version, setVersion]               = useState(0);
 
   // clôture modal
   const [closeModal, setCloseModal] = useState<{ recordId: string; playerId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
@@ -75,7 +94,9 @@ export default function MedicalPage() {
   useEffect(() => {
     playersApi.list().then(list => {
       setAllPlayers(list);
-      setSelectedPlayerId(p => p || list[0]?.id || '');
+      if (activeTab === 'record' && !urlId && list[0]?.id) {
+        navigate(`/medical/record/${list[0].id}`, { replace: true });
+      }
     });
   }, [version]);
 
