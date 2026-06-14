@@ -151,18 +151,28 @@ export default function ActionsPage() {
             {isDone ? <CheckCircle size={18} /> : <Circle size={18} />}
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+            {/* Ligne 1 : joueur + date */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
               {player && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <PlayerAvatar player={player} size={20} />
-                  <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span>
+                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName[0]}.</span>
                 </div>
               )}
-              <span style={{ color: '#2A2F3A' }}>—</span>
-              <span style={{ color: isDone ? '#475569' : '#F1F5F9', fontSize: '0.85rem', fontWeight: 500, textDecoration: isDone ? 'line-through' : 'none' }}>
-                {action.title}
-              </span>
+              {showDate && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, color: isOverdue ? '#EF4444' : action.dueDate === TODAY ? '#F59E0B' : '#94A3B8', fontSize: '0.72rem', fontWeight: isOverdue ? 700 : 400 }}>
+                  <Clock size={11} />
+                  {isOverdue
+                    ? `Échue J-${Math.abs(Math.ceil((new Date(action.dueDate).getTime() - new Date(TODAY).getTime()) / 86400000))}`
+                    : action.dueDate === TODAY ? 'Aujourd\'hui'
+                    : action.dueDate.slice(5).replace('-', '/')}
+                </span>
+              )}
             </div>
+            {/* Ligne 2 : titre */}
+            <p style={{ color: isDone ? '#475569' : '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, margin: '0 0 4px', textDecoration: isDone ? 'line-through' : 'none' }}>
+              {action.title}
+            </p>
             {action.description && (
               <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }}>{action.description}</p>
             )}
@@ -176,17 +186,6 @@ export default function ActionsPage() {
               <span style={{ color: '#475569', fontSize: '0.72rem' }}>Assigné : {getStaffName(action.assignedTo)}</span>
             </div>
           </div>
-          {showDate && (
-            <div style={{ flexShrink: 0, textAlign: 'right' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: isOverdue ? '#EF4444' : action.dueDate === TODAY ? '#F59E0B' : '#94A3B8', fontSize: '0.75rem', fontWeight: isOverdue ? 700 : 400 }}>
-                <Clock size={11} />
-                {isOverdue
-                  ? `Échue J-${Math.abs(Math.ceil((new Date(action.dueDate).getTime() - new Date(TODAY).getTime()) / 86400000))}`
-                  : action.dueDate === TODAY ? 'Aujourd\'hui'
-                  : action.dueDate.slice(5).replace('-', '/')}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -194,18 +193,22 @@ export default function ActionsPage() {
 
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Actions à Réaliser</h1>
+    <div className="p-4 md:p-6">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>
+          <span className="hidden sm:inline">Actions  </span>
+          <span className="sm:hidden">Actions</span>
+        </h1>
         <button
           onClick={() => setShowForm(true)}
-          style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
         >
-          <Plus size={16} /> Nouvelle action
+          <Plus size={16} /><span className="hidden sm:inline">Nouvelle action</span>
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+      <style>{`@media (max-width: 639px) { .act-filters { flex-direction: column !important; } .act-filters > * { flex: none !important; width: 100% !important; } }`}</style>
+      <div className="act-filters" style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 180px', minWidth: 160 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input
@@ -260,7 +263,7 @@ export default function ActionsPage() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'start' }}>
+        <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16, alignItems: 'start' }}>
           <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#F59E0B', fontWeight: 700, fontSize: '0.88rem' }}>Cette semaine</span>
@@ -297,21 +300,27 @@ export default function ActionsPage() {
       )}
 
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle action</h2>
-              <button onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <style>{`
+            @media (max-width: 539px) {
+              .act-form-2col { grid-template-columns: 1fr !important; }
+            }
+          `}</style>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="px-4 sm:px-7" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 20, paddingBottom: 16, borderBottom: '1px solid #2A2F3A' }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Nouvelle action</h2>
+              <button onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
             </div>
 
-            {formError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formError}</span>
-              </div>
-            )}
+            <form className="px-4 sm:px-7" style={{ paddingTop: 18, paddingBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleSubmit}>
 
-            <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleSubmit}>
+              {formError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px' }}>
+                  <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                  <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formError}</span>
+                </div>
+              )}
+
               <div>
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Joueur concerné *</label>
                 <select required value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} style={inputStyle}>
@@ -323,7 +332,7 @@ export default function ActionsPage() {
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre de l'action *</label>
                 <input type="text" required placeholder="Ex : Séance kiné matin" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="act-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
                   <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value as ActionCategory }))} style={inputStyle}>
@@ -337,7 +346,7 @@ export default function ActionsPage() {
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="act-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date limite *</label>
                   <input type="date" required value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} style={inputStyle} />
@@ -356,9 +365,9 @@ export default function ActionsPage() {
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Description / Consigne</label>
                 <textarea placeholder="Description détaillée de l'action..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', minHeight: 72, fontFamily: 'Inter, sans-serif' }} />
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                <button type="button" onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-                <button type="submit" disabled={saving} style={{ flex: 1, padding: '10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button type="button" onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.88rem' }}>Annuler</button>
+                <button type="submit" disabled={saving} style={{ flex: 1, padding: '10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}>
                   {saving ? 'Création…' : 'Créer'}
                 </button>
               </div>

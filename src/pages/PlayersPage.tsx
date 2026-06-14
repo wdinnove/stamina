@@ -237,7 +237,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
 
       {/* Modal édition joueur */}
       {showEdit && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0 }}>Modifier {player.firstName} {player.lastName}</h2>
@@ -413,7 +413,7 @@ export default function PlayersPage() {
         <button
           onClick={() => setShowForm(true)}
           style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={16} /> Nouvelle joueur
+          <Plus size={16} /><span className="hidden md:inline">Nouvelle joueur</span>
         </button>
       </div>
 
@@ -425,8 +425,8 @@ export default function PlayersPage() {
       )}
 
       {/* Filtres */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+      <div className="flex flex-col md:flex-row" style={{ gap: 10, marginBottom: 20 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
           <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input
             placeholder="Rechercher une joueur..."
@@ -435,7 +435,8 @@ export default function PlayersPage() {
           />
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          style={{ padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
+          className="w-full md:w-auto"
+          style={{ padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
           <option value="all">Tous statuts</option>
           <option value="active">Active</option>
           <option value="injured">Blessé</option>
@@ -476,7 +477,7 @@ export default function PlayersPage() {
 
       {/* Modal nouvelle joueur */}
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle joueur</h2>

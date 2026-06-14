@@ -15,6 +15,8 @@ function toSession(row: Record<string, unknown>): TrainingSession {
     sessionType:     row.session_type     as SessionType,
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
+    partnerCount:    (row.partner_count   as number) ?? 0,
+    createdAt:       row.created_at       as string | undefined,
   };
 }
 
@@ -110,6 +112,33 @@ export const rpeApi = {
     }
 
     return sessionId;
+  },
+
+  async listBySession(sessionId: string): Promise<{ playerId: string; rpe: number; actualDuration?: number }[]> {
+    const { data, error } = await supabase
+      .from('rpe_entries')
+      .select('player_id, rpe, actual_duration')
+      .eq('session_id', sessionId);
+    if (error) throw error;
+    return (data ?? []).map(r => ({
+      playerId:       r.player_id      as string,
+      rpe:            r.rpe            as number,
+      actualDuration: r.actual_duration as number | undefined,
+    }));
+  },
+
+  async listBySessions(sessionIds: string[]): Promise<{ sessionId: string; playerId: string; rpe: number }[]> {
+    if (!sessionIds.length) return [];
+    const { data, error } = await supabase
+      .from('rpe_entries')
+      .select('session_id, player_id, rpe')
+      .in('session_id', sessionIds);
+    if (error) throw error;
+    return (data ?? []).map(r => ({
+      sessionId: r.session_id as string,
+      playerId:  r.player_id  as string,
+      rpe:       r.rpe        as number,
+    }));
   },
 
   // RPE history for a player — all seasons

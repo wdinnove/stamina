@@ -190,7 +190,8 @@ export default function RPEPage() {
   const [saveError, setSaveError]         = useState('');
   const [linkedSessions,       setLinkedSessions]       = useState<TrainingSession[]>([]);
   const [loadingLinkedSessions, setLoadingLinkedSessions] = useState(false);
-  const [manualMode,     setManualMode]     = useState(false);
+  const [manualMode,          setManualMode]          = useState(false);
+  const [showSessionPicker,   setShowSessionPicker]   = useState(false);
   const skipNextFindRef = useRef(false);
   const rosterRef = useRef<Player[]>([]);
 
@@ -476,6 +477,7 @@ export default function RPEPage() {
   async function pickSession(session: TrainingSession) {
     skipNextFindRef.current = true;
     setManualMode(false);
+    setShowSessionPicker(false);
     setSessionDate(session.date);
     setSessionType(session.sessionType as SessionType);
     setDuration(session.plannedDuration);
@@ -529,7 +531,7 @@ export default function RPEPage() {
 
   if (!selected) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div className="p-4 md:p-6">
         <h1 style={{ color: '#F1F5F9', margin: '0 0 24px' }}>Perception de l'Effort (RPE)</h1>
         <div style={{ textAlign: 'center', padding: '80px 20px', color: '#475569' }}>
           Sélectionnez une équipe et une saison dans la barre du haut.
@@ -539,14 +541,18 @@ export default function RPEPage() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Perception de l'Effort (RPE)</h1>
+    <div className="p-4 md:p-6">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>RPE</h1>
         <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {(['collective', 'individual', 'team_history'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              style={{ padding: '6px 16px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', transition: 'all 0.15s' }}>
-              {tab === 'collective' ? 'Nouvelle séance' : tab === 'individual' ? 'Historique joueur' : 'Historique équipe'}
+              style={{ padding: '6px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+              {tab === 'collective'
+                ? <><span className="hidden sm:inline">Nouvelle séance</span><span className="sm:hidden">Séance</span></>
+                : tab === 'individual'
+                ? <><span className="hidden sm:inline">Historique joueur</span><span className="sm:hidden">Joueur</span></>
+                : <><span className="hidden sm:inline">Historique équipe</span><span className="sm:hidden">Équipe</span></>}
             </button>
           ))}
         </div>
@@ -554,34 +560,19 @@ export default function RPEPage() {
 
       {/* ══ COLLECTIVE ═══════════════════════════════════════════════════════ */}
       {activeTab === 'collective' && (
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        <div>
 
-          {/* ── Liste de séances (panneau gauche) ── */}
-          <div style={{ width: 280, flexShrink: 0 }}>
-              {loadingLinkedSessions ? (
-                <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} style={{ padding: '13px 14px', borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 3, height: 32, backgroundColor: '#2A2F3A', borderRadius: 2, flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ height: 12, width: '60%', backgroundColor: '#2A2F3A', borderRadius: 3, marginBottom: 6 }} />
-                        <div style={{ height: 10, width: '40%', backgroundColor: '#1E2229', borderRadius: 3 }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : linkedSessions.length === 0 ? (
-                <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '24px 16px', textAlign: 'center' }}>
-                  <p style={{ color: '#475569', fontSize: '0.82rem', margin: '0 0 12px' }}>Aucune séance plannifiée.</p>
-                  <p style={{ color: '#334155', fontSize: '0.75rem', margin: '0 0 14px' }}>Ajoutez des séances depuis la page Présences.</p>
-                  <button onClick={() => setManualMode(true)} style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.78rem' }}>
-                    Saisie manuelle
-                  </button>
-                </div>
-              ) : (
-                <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden', maxHeight: 480, overflowY: 'auto' }}>
-                  <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Séances plannifiées</span>
+          {/* ── Modal sélecteur de séances ── */}
+          {showSessionPicker && (
+            <div
+              style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+              onClick={e => { if (e.target === e.currentTarget) setShowSessionPicker(false); }}
+            >
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 420, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {/* Header */}
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                  <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.9rem' }}>Choisir une séance</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button
                       onClick={() => nextSession && pickSession(nextSession)}
                       disabled={!nextSession}
@@ -589,86 +580,123 @@ export default function RPEPage() {
                     >
                       Aujourd'hui
                     </button>
-                  </div>
-                  {linkedSessions.map((s, idx) => {
-                    const d = new Date(s.date + 'T12:00:00');
-                    const today = todayStr();
-                    const isPast = s.date < today;
-                    const day = d.getDate();
-                    const month = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][d.getMonth()];
-                    const dow = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
-                    const typeColor = (SESSION_TYPE_COLORS as Record<string, string>)[s.sessionType as string] ?? '#94A3B8';
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => pickSession(s)}
-                        style={{
-                          width: '100%', padding: '11px 14px', textAlign: 'left', cursor: 'pointer',
-                          backgroundColor: s.id === existingSessionId ? '#1E2229' : 'transparent',
-                          border: 'none',
-                          borderBottom: idx < linkedSessions.length - 1 ? '1px solid #1E2229' : 'none',
-                          display: 'flex', alignItems: 'center', gap: 10, opacity: isPast ? 0.6 : 1,
-                          transition: 'background 0.12s',
-                          boxShadow: s.id === existingSessionId ? 'inset 2px 0 0 #00E5A0' : 'none',
-                        }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1E2229'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = s.id === existingSessionId ? '#1E2229' : 'transparent'; }}
-                      >
-                        <span style={{ width: 3, height: 32, backgroundColor: typeColor, borderRadius: 2, flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600 }}>
-                            {dow} {day} {month}
-                          </div>
-                          <div style={{ color: '#475569', fontSize: '0.72rem', marginTop: 1 }}>
-                            {s.notes ? s.notes + ' · ' : ''}{s.plannedDuration} min
-                          </div>
-                        </div>
-                        <span style={{ color: '#334155', fontSize: '0.7rem' }}>→</span>
-                      </button>
-                    );
-                  })}
-                  <div style={{ padding: '10px 14px', borderTop: '1px solid #2A2F3A' }}>
-                    <button onClick={() => setManualMode(true)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>
-                      Saisie manuelle
-                    </button>
+                    <button
+                      onClick={() => setShowSessionPicker(false)}
+                      style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1, padding: '0 2px', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F1F5F9'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569'; }}
+                    >×</button>
                   </div>
                 </div>
-              )}
+
+                {/* List */}
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {loadingLinkedSessions ? (
+                    <div>
+                      {[1, 2, 3, 4].map(i => (
+                        <div key={i} style={{ padding: '13px 14px', borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 3, height: 32, backgroundColor: '#2A2F3A', borderRadius: 2, flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ height: 12, width: '60%', backgroundColor: '#2A2F3A', borderRadius: 3, marginBottom: 6 }} />
+                            <div style={{ height: 10, width: '40%', backgroundColor: '#1E2229', borderRadius: 3 }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : linkedSessions.length === 0 ? (
+                    <div style={{ padding: '40px 16px', textAlign: 'center' }}>
+                      <p style={{ color: '#475569', fontSize: '0.82rem', margin: '0 0 6px' }}>Aucune séance plannifiée.</p>
+                      <p style={{ color: '#334155', fontSize: '0.75rem', margin: 0 }}>Ajoutez des séances depuis la page Présences.</p>
+                    </div>
+                  ) : (
+                    linkedSessions.map((s, idx) => {
+                      const d = new Date(s.date + 'T12:00:00');
+                      const today = todayStr();
+                      const isPast = s.date < today;
+                      const day = d.getDate();
+                      const month = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][d.getMonth()];
+                      const dow = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+                      const typeColor = (SESSION_TYPE_COLORS as Record<string, string>)[s.sessionType as string] ?? '#94A3B8';
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => pickSession(s)}
+                          style={{
+                            width: '100%', padding: '11px 14px', textAlign: 'left', cursor: 'pointer',
+                            backgroundColor: s.id === existingSessionId ? '#1E2229' : 'transparent',
+                            border: 'none',
+                            borderBottom: idx < linkedSessions.length - 1 ? '1px solid #1E2229' : 'none',
+                            display: 'flex', alignItems: 'center', gap: 10, opacity: isPast ? 0.6 : 1,
+                            transition: 'background 0.12s',
+                            boxShadow: s.id === existingSessionId ? 'inset 2px 0 0 #00E5A0' : 'none',
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1E2229'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = s.id === existingSessionId ? '#1E2229' : 'transparent'; }}
+                        >
+                          <span style={{ width: 3, height: 32, backgroundColor: typeColor, borderRadius: 2, flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600 }}>{dow} {day} {month}</div>
+                            <div style={{ color: '#475569', fontSize: '0.72rem', marginTop: 1 }}>{s.notes ? s.notes + ' · ' : ''}{s.plannedDuration} min</div>
+                          </div>
+                          <span style={{ color: '#334155', fontSize: '0.7rem' }}>→</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '10px 14px', borderTop: '1px solid #2A2F3A', flexShrink: 0 }}>
+                  <button
+                    onClick={() => { setManualMode(true); setShowSessionPicker(false); }}
+                    style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569'; }}
+                  >
+                    Saisie manuelle
+                  </button>
+                </div>
+              </div>
             </div>
+          )}
 
           {/* ── Colonne principale (info bar + grille) ── */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div>
 
             {/* Info bar — session sélectionnée */}
             {existingSessionId && (
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <span style={{ width: 4, height: 36, backgroundColor: selTypeColor, borderRadius: 2, flexShrink: 0 }} />
-                {selSession && selDate ? (
-                  <div>
-                    <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>
-                      {DAYS_RPE[selDate.getDay()]} {selDate.getDate()} {MONTHS_RPE[selDate.getMonth()]}
-                      {selSession.notes ? <span style={{ color: '#94A3B8', fontWeight: 400 }}> — {selSession.notes}</span> : null}
-                    </div>
-                    <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 2 }}>
-                      {SESSION_TYPE_LABELS[selSession.sessionType as string] ?? selSession.sessionType} · {selSession.plannedDuration} min
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ color: '#94A3B8', fontSize: '0.85rem' }}>Séance chargée</div>
-                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {selSession && selDate ? (
+                    <>
+                      <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>
+                        {DAYS_RPE[selDate.getDay()]} {selDate.getDate()} {MONTHS_RPE[selDate.getMonth()]}
+                        {selSession.notes ? <span style={{ color: '#94A3B8', fontWeight: 400 }}> — {selSession.notes}</span> : null}
+                      </div>
+                      <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 2 }}>
+                        {SESSION_TYPE_LABELS[selSession.sessionType as string] ?? selSession.sessionType} · {selSession.plannedDuration} min
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: '#94A3B8', fontSize: '0.85rem' }}>Séance chargée</div>
+                  )}
+                </div>
                 <button
-                  onClick={() => { setExistingSessionId(null); setRpeValues(prev => Object.fromEntries(Object.keys(prev).map(id => [id, null]))); setManualMode(false); }}
-                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.78rem', padding: '4px 8px', borderRadius: 4 }}
+                  onClick={() => setShowSessionPicker(true)}
+                  style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.78rem', padding: '4px 8px', borderRadius: 4, flexShrink: 0 }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F1F5F9'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569'; }}
                 >
                   Changer
                 </button>
-                <div style={{ color: '#94A3B8', fontSize: '0.78rem', textAlign: 'right', borderLeft: '1px solid #2A2F3A', paddingLeft: 14 }}>
-                  <div style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Charge estimée</div>
-                  <span style={{ color: '#00E5A0', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe}</span>
-                  <span style={{ color: '#475569' }}> × {duration} = </span>
-                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{estimatedLoad} UA</span>
+                <div style={{ width: '100%', borderTop: '1px solid #2A2F3A', paddingTop: 10, marginTop: 2, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Charge estimée</span>
+                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <span style={{ color: '#00E5A0', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe}</span>
+                    <span style={{ color: '#475569' }}>× {duration} =</span>
+                    <span style={{ color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{estimatedLoad} UA</span>
+                  </span>
                 </div>
               </div>
             )}
@@ -699,22 +727,35 @@ export default function RPEPage() {
                     <span style={{ color: '#94A3B8', fontSize: '0.82rem' }}>min</span>
                   </div>
                 </div>
-                <button onClick={() => setManualMode(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.78rem', marginLeft: 'auto' }}>
+                <button
+                  onClick={() => { setManualMode(false); setShowSessionPicker(true); }}
+                  style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.78rem', marginLeft: 'auto' }}
+                >
                   ← Retour à la liste
                 </button>
-                <div style={{ color: '#94A3B8', fontSize: '0.78rem', textAlign: 'right', borderLeft: '1px solid #2A2F3A', paddingLeft: 14 }}>
-                  <div style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Charge estimée</div>
-                  <span style={{ color: '#00E5A0', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe}</span>
-                  <span style={{ color: '#475569' }}> × {duration} = </span>
-                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{estimatedLoad} UA</span>
+                <div style={{ width: '100%', borderTop: '1px solid #2A2F3A', paddingTop: 10, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Charge estimée</span>
+                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <span style={{ color: '#00E5A0', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe}</span>
+                    <span style={{ color: '#475569' }}>× {duration} =</span>
+                    <span style={{ color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{estimatedLoad} UA</span>
+                  </span>
                 </div>
               </div>
             )}
 
             {/* Placeholder quand rien n'est sélectionné et pas en mode manuel */}
-            {!existingSessionId && !manualMode && linkedSessions.length > 0 && (
-              <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '48px', textAlign: 'center', color: '#334155', fontSize: '0.88rem' }}>
-                ← Sélectionnez une séance pour saisir les RPE
+            {!existingSessionId && !manualMode && (
+              <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '48px', textAlign: 'center', marginBottom: 16 }}>
+                <p style={{ color: '#475569', fontSize: '0.85rem', margin: '0 0 16px' }}>Aucune séance sélectionnée</p>
+                <button
+                  onClick={() => setShowSessionPicker(true)}
+                  style={{ padding: '9px 22px', backgroundColor: 'rgba(0,229,160,0.06)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 6, color: '#00E5A0', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(0,229,160,0.12)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(0,229,160,0.06)'; }}
+                >
+                  Choisir une séance
+                </button>
               </div>
             )}
 
@@ -727,38 +768,49 @@ export default function RPEPage() {
                 </div>
               ) : (
                 <>
+                  <style>{`
+                    @media (max-width: 767px) {
+                      .rpe-buttons { flex-wrap: wrap !important; }
+                      .rpe-buttons > button { flex: none !important; width: calc(20% - 3.2px) !important; }
+                    }
+                  `}</style>
                   <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 20px', borderBottom: '1px solid #2A2F3A', display: 'flex', gap: 20 }}>
-                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 180 }}>Joueur</span>
-                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>RPE (1 très facile → 10 maximal)</span>
-                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 100, textAlign: 'right' }}>Valeur</span>
+                    <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'flex', gap: 12 }}>
+                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 150, flexShrink: 0 }}>Joueur</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>RPE</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 130, textAlign: 'right', flexShrink: 0 }}>Valeur</span>
                     </div>
                     {roster.map(player => {
                       const val = rpeValues[player.id] ?? null;
+                      const rpeBtn = (v: number) => (
+                        <button key={v}
+                          onClick={() => setRpeValues(prev => ({ ...prev, [player.id]: prev[player.id] === v ? null : v }))}
+                          style={{ height: 30, borderRadius: 5, border: '1px solid', borderColor: val === v ? rpeColorScale(v) : '#2A2F3A', backgroundColor: val === v ? rpeColorScale(v) + '22' : 'transparent', color: val === v ? rpeColorScale(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}>
+                          {v}
+                        </button>
+                      );
                       return (
-                        <div key={player.id} style={{ padding: '12px 20px', borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 16 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 180, flexShrink: 0 }}>
-                            <PlayerAvatar player={player} size={28} />
-                            <div>
-                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span>
+                        <div key={player.id} style={{ borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 150, flexShrink: 0 }}>
+                            <div className="hidden md:block"><PlayerAvatar player={player} size={26} /></div>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName[0]}.</span>
                               <div style={{ marginTop: 1 }}><StatusBadge status={player.status} size="sm" /></div>
                             </div>
                           </div>
-                          <div style={{ flex: 1, display: 'flex', gap: 5 }}>
+                          <div className="rpe-buttons" style={{ flex: 1, display: 'flex', gap: 4, minWidth: 0 }}>
                             {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
                               <button key={v}
                                 onClick={() => setRpeValues(prev => ({ ...prev, [player.id]: prev[player.id] === v ? null : v }))}
-                                style={{ flex: 1, height: 32, borderRadius: 6, border: '1px solid', borderColor: val === v ? rpeColorScale(v) : '#2A2F3A', backgroundColor: val === v ? rpeColorScale(v) + '22' : 'transparent', color: val === v ? rpeColorScale(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}>
+                                style={{ flex: 1, height: 30, borderRadius: 5, border: '1px solid', borderColor: val === v ? rpeColorScale(v) : '#2A2F3A', backgroundColor: val === v ? rpeColorScale(v) + '22' : 'transparent', color: val === v ? rpeColorScale(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}>
                                 {v}
                               </button>
                             ))}
                           </div>
-                          <div style={{ width: 100, textAlign: 'right', flexShrink: 0 }}>
-                            {val !== null ? (
-                              <span style={{ color: rpeColorScale(val), fontWeight: 700, fontSize: '0.88rem', fontFamily: 'JetBrains Mono, monospace' }}>{val} — {rpeLabel(val)}</span>
-                            ) : (
-                              <span style={{ color: '#334155', fontSize: '0.78rem' }}>—</span>
-                            )}
+                          <div style={{ width: 130, textAlign: 'right', flexShrink: 0 }}>
+                            {val !== null
+                              ? <span style={{ color: rpeColorScale(val), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{val} — {rpeLabel(val)}</span>
+                              : <span style={{ color: '#334155', fontSize: '0.78rem' }}>—</span>}
                           </div>
                         </div>
                       );
@@ -774,7 +826,7 @@ export default function RPEPage() {
                 </>
               )
             )}
-          </div>{/* fin colonne principale */}
+          </div>
         </div>
       )}
 
@@ -829,7 +881,7 @@ export default function RPEPage() {
                 </div>
 
                 {/* Charts côte à côte */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16, marginBottom: 20 }}>
                   <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
                     <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 14px' }}>Évolution RPE</p>
                     <ResponsiveContainer width="100%" height={180}>
@@ -927,7 +979,7 @@ export default function RPEPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
               {/* KPI strip */}
-              <div style={{ display: 'flex', gap: 12 }}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5" style={{ gap: 12 }}>
                 <StatCard label="Séances" value={teamKpis.sessions} color="#3B82F6" icon={<Activity size={14} />} />
                 <StatCard label="RPE moyen" value={teamKpis.avg} unit="/ 10" color="#00E5A0" icon={<TrendingUp size={14} />} />
                 <StatCard label="RPE max" value={teamKpis.max} unit="/ 10" color="#EF4444" icon={<ArrowUp size={14} />} />
@@ -973,7 +1025,7 @@ export default function RPEPage() {
               </div>
 
               {/* Player ranking + Type distribution */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16 }}>
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_280px]" style={{ gap: 16 }}>
 
                 {/* Player ranking */}
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
@@ -1040,26 +1092,28 @@ export default function RPEPage() {
                 <div style={{ padding: '14px 20px', borderBottom: '1px solid #2A2F3A' }}>
                   <h3 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.95rem' }}>Détail des séances</h3>
                 </div>
-                <div style={{ padding: '8px 20px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '100px 130px 70px 60px 60px 60px 60px 100px', gap: 8 }}>
-                  {['Date', 'Type', 'Durée', 'Joueurs', 'Moy', 'Max', 'Min', 'Charge (UA)'].map(h => (
-                    <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+                <div style={{ overflowX: 'auto' }}>
+                  <div style={{ padding: '8px 20px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '100px 130px 70px 60px 60px 60px 60px 100px', gap: 8, minWidth: 640 }}>
+                    {['Date', 'Type', 'Durée', 'Joueurs', 'Moy', 'Max', 'Min', 'Charge (UA)'].map(h => (
+                      <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+                    ))}
+                  </div>
+                  {teamSessionRows.map(s => (
+                    <div key={s.id} style={{ padding: '9px 20px', borderBottom: '1px solid #1E2229', display: 'grid', gridTemplateColumns: '100px 130px 70px 60px 60px 60px 60px 100px', gap: 8, alignItems: 'center', minWidth: 640 }}>
+                      <span style={{ color: '#94A3B8', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(s.date)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: SESSION_TYPE_COLORS[s.type], flexShrink: 0 }} />
+                        <span style={{ color: '#F1F5F9', fontSize: '0.8rem' }}>{SESSION_TYPE_LABELS[s.type] ?? s.type}</span>
+                      </div>
+                      <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>{s.duration} min</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.nbPlayers}</span>
+                      <span style={{ color: rpeColorScale(s.avg), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.avg}</span>
+                      <span style={{ color: rpeColorScale(s.max), fontWeight: 600, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.max}</span>
+                      <span style={{ color: rpeColorScale(s.min), fontWeight: 600, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.min}</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.totalLoad.toLocaleString('fr')}</span>
+                    </div>
                   ))}
                 </div>
-                {teamSessionRows.map(s => (
-                  <div key={s.id} style={{ padding: '9px 20px', borderBottom: '1px solid #1E2229', display: 'grid', gridTemplateColumns: '100px 130px 70px 60px 60px 60px 60px 100px', gap: 8, alignItems: 'center' }}>
-                    <span style={{ color: '#94A3B8', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(s.date)}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: SESSION_TYPE_COLORS[s.type], flexShrink: 0 }} />
-                      <span style={{ color: '#F1F5F9', fontSize: '0.8rem' }}>{SESSION_TYPE_LABELS[s.type] ?? s.type}</span>
-                    </div>
-                    <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>{s.duration} min</span>
-                    <span style={{ color: '#94A3B8', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.nbPlayers}</span>
-                    <span style={{ color: rpeColorScale(s.avg), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.avg}</span>
-                    <span style={{ color: rpeColorScale(s.max), fontWeight: 600, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.max}</span>
-                    <span style={{ color: rpeColorScale(s.min), fontWeight: 600, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.min}</span>
-                    <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.totalLoad.toLocaleString('fr')}</span>
-                  </div>
-                ))}
               </div>
 
             </div>

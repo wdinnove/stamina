@@ -244,7 +244,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 12, marginBottom: 24 }}>
         <KPICard
           label="Joueurs en saison"
           value={loading ? '…' : `${activePlayers} / ${players.length}`}
@@ -284,7 +284,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Chart + Alerts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, marginBottom: 16 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px]" style={{ gap: 16, marginBottom: 16 }}>
         {/* RPE Chart */}
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -364,7 +364,7 @@ export default function DashboardPage() {
             onClick={() => navigate('/actions')}
             style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}
           >
-            Voir toutes les actions <ArrowRight size={13} />
+            <span className="hidden sm:inline">Voir toutes les actions</span> <ArrowRight size={13} />
           </button>
         </div>
         {!loading && upcomingActions.length === 0 ? (
@@ -385,10 +385,10 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <span style={{ color: catCfg.color, fontSize: '0.7rem', backgroundColor: catCfg.color + '18', padding: '2px 6px', borderRadius: 3 }}>
+                    <span className="hidden sm:inline" style={{ color: catCfg.color, fontSize: '0.7rem', backgroundColor: catCfg.color + '18', padding: '2px 6px', borderRadius: 3 }}>
                       {catCfg.label}
                     </span>
-                    <span style={{ color: priCfg.color, fontSize: '0.72rem', fontWeight: 600 }}>{priCfg.label}</span>
+                    <span className="hidden sm:inline" style={{ color: priCfg.color, fontSize: '0.72rem', fontWeight: 600 }}>{priCfg.label}</span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: isOverdue ? '#EF4444' : '#94A3B8', fontSize: '0.72rem' }}>
                       <Clock size={11} />{action.dueDate.slice(5).replace('-', '/')}
                     </span>

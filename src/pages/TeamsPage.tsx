@@ -250,7 +250,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
 
       {/* Modal édition */}
       {editingTeam && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 480 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0 }}>Modifier l'équipe</h2>
@@ -346,7 +346,7 @@ function TeamsList() {
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Équipes</h1>
         <button onClick={() => setShowForm(true)}
           style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={16} /> Nouvelle équipe
+          <Plus size={16} /><span className="hidden md:inline">Nouvelle équipe</span>
         </button>
       </div>
 
@@ -383,8 +383,8 @@ function TeamsList() {
                   <Users size={18} style={{ color: team.color }} />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.9rem' }}>{team.name}</span>
-                  <span style={{ color: '#475569', fontSize: '0.8rem', marginLeft: 8 }}>{team.category}</span>
+                  <div style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team.name}</div>
+                  <div style={{ color: '#475569', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team.category}</div>
                 </div>
               </div>
               {team.currentSeason && (
@@ -403,7 +403,7 @@ function TeamsList() {
 
       {/* Modal nouvelle équipe */}
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 480 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle équipe</h2>

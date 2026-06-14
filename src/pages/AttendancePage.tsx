@@ -327,16 +327,16 @@ export default function AttendancePage() {
   }
 
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
+    <div className="p-4 md:p-6" style={{ display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Présences</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0, gap: 12 }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Présences</h1>
         {selected && (
           <button
             onClick={() => setShowAddForm(true)}
-            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
           >
-            <Plus size={16} /> Ajouter une séance
+            <Plus size={16} /><span className="hidden md:inline">Ajouter une séance</span>
           </button>
         )}
       </div>
@@ -369,9 +369,10 @@ export default function AttendancePage() {
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
       {selected && !loading && sessions.length > 0 && (
         <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
+          <style>{`@media (max-width: 767px) { .att-name-col { width: 110px !important; } }`}</style>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: NAME_W + sessions.length * CELL_W }}>
             <colgroup>
-              <col style={{ width: NAME_W }} />
+              <col className="att-name-col" style={{ width: NAME_W }} />
               {sessions.map(s => <col key={s.id} style={{ width: CELL_W }} />)}
             </colgroup>
 
@@ -461,16 +462,16 @@ export default function AttendancePage() {
                     padding: '0 16px', height: 48, whiteSpace: 'nowrap',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
+                      <div className="hidden md:flex" style={{
                         width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                         backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        alignItems: 'center', justifyContent: 'center',
                         color: '#94A3B8', fontSize: '0.65rem', fontWeight: 700,
                       }}>
                         {p.firstName[0]}{p.lastName[0]}
                       </div>
                       <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500 }}>
-                        {p.lastName} {p.firstName}
+                        {p.lastName}<span className="hidden md:inline"> {p.firstName}</span>
                       </span>
                     </div>
                   </td>
@@ -630,7 +631,7 @@ export default function AttendancePage() {
 
       {/* ── Modal confirmation suppression séance ── */}
       {confirmDeleteSession && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 380 }}>
             <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la séance ?</h2>
             <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>

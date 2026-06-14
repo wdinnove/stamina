@@ -86,7 +86,7 @@ export default function PlayerRPEPage() {
     </div>
   );
 
-  if (!player) return <div style={{ padding: 24, color: '#EF4444' }}>Joueur introuvable</div>;
+  if (!player) return <div className="p-4 md:p-6" style={{ color: '#EF4444' }}>Joueur introuvable</div>;
 
   const fromPath  = locState?.from ?? `/players/${id}`;
   const fromLabel = locState?.playerName ?? `${player.firstName} ${player.lastName}`;
@@ -109,7 +109,7 @@ export default function PlayerRPEPage() {
   const sessionTypes = [...new Set(entries.map(e => e.sessionType))] as SessionType[];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <Breadcrumb items={[
@@ -189,7 +189,7 @@ export default function PlayerRPEPage() {
           </div>
 
           {/* Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16, marginBottom: 20 }}>
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
               <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 14px' }}>Évolution RPE</p>
               <ResponsiveContainer width="100%" height={180}>

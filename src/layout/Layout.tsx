@@ -26,7 +26,7 @@ export function Layout() {
 
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <TopBar onMenuOpen={() => setMobileOpen(true)} />
+        <TopBar onMenuOpen={() => setMobileOpen(v => !v)} />
         <main style={{ flex: 1, overflowY: 'auto' }}>
           <Outlet />
         </main>

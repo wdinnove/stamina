@@ -216,7 +216,7 @@ export default function TrainingSessionDetailPage() {
   );
 
   if (error || !session) return (
-    <div style={{ padding: 24 }}>
+    <div className="p-4 md:p-6">
       <button onClick={() => navigate('/sessions')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
         <ArrowLeft size={14} /> Toutes les séances
       </button>
@@ -241,7 +241,7 @@ export default function TrainingSessionDetailPage() {
   const totalLoad    = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="p-4 md:p-6">
       <button onClick={() => navigate('/sessions')}
         style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, padding: 0 }}>
         <ArrowLeft size={14} /> Toutes les séances
@@ -300,9 +300,15 @@ export default function TrainingSessionDetailPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                {['Joueur', 'Présence', 'RPE', 'Durée eff.', 'Charge'].map((h, i) => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: i === 0 ? 'left' : 'center', color: '#475569', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {h}
+                {[
+                  { label: 'Joueur',      hide: false },
+                  { label: 'Présence',    hide: false },
+                  { label: 'RPE',         hide: false },
+                  { label: 'Durée eff.',  hide: true  },
+                  { label: 'Charge',      hide: true  },
+                ].map(({ label, hide }, i) => (
+                  <th key={label} className={hide ? 'hidden md:table-cell' : ''} style={{ padding: '10px 16px', textAlign: i === 0 ? 'left' : 'center', color: '#475569', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {label}
                   </th>
                 ))}
               </tr>
@@ -319,7 +325,7 @@ export default function TrainingSessionDetailPage() {
                   <tr key={player.id} style={{ borderBottom: i < relevantPlayers.length - 1 ? '1px solid #1E2229' : 'none' }}>
                     <td style={{ padding: '10px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <PlayerAvatar player={player} size={28} />
+                        <div className="hidden md:block"><PlayerAvatar player={player} size={28} /></div>
                         <div>
                           <div style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600 }}>
                             {player.lastName} {player.firstName[0]}.
@@ -338,10 +344,10 @@ export default function TrainingSessionDetailPage() {
                         ? <span style={{ color: rpeColor(rpe.rpe), fontSize: '0.92rem', fontWeight: 700 }}>{rpe.rpe}</span>
                         : <span style={{ color: '#2A2F3A' }}>—</span>}
                     </td>
-                    <td style={{ padding: '10px 16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.8rem' }}>
+                    <td className="hidden md:table-cell" style={{ padding: '10px 16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.8rem' }}>
                       {rpe ? `${dur} min` : '—'}
                     </td>
-                    <td style={{ padding: '10px 16px', textAlign: 'center', color: load ? '#F1F5F9' : '#2A2F3A', fontSize: '0.82rem', fontWeight: load ? 600 : 400 }}>
+                    <td className="hidden md:table-cell" style={{ padding: '10px 16px', textAlign: 'center', color: load ? '#F1F5F9' : '#2A2F3A', fontSize: '0.82rem', fontWeight: load ? 600 : 400 }}>
                       {load !== null ? load : '—'}
                     </td>
                   </tr>

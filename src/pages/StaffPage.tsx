@@ -258,7 +258,7 @@ export default function StaffPage() {
             onClick={() => setShowForm(true)}
             style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <Plus size={16} /> Ajouter un membre
+            <Plus size={16} /><span className="hidden md:inline">Ajouter un membre</span>
           </button>
         )}
       </div>
@@ -283,11 +283,11 @@ export default function StaffPage() {
 
       {selected && !loading && (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
-          {/* Header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 120px', gap: 16, padding: '10px 20px', borderBottom: '1px solid #2A2F3A' }}>
-            <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</span>
-            <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rôle</span>
-            <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Compte app</span>
+          {/* Header — desktop only */}
+          <div className="hidden md:flex" style={{ gap: 16, padding: '10px 20px', borderBottom: '1px solid #2A2F3A' }}>
+            <span style={{ flex: 1, color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</span>
+            <span style={{ width: 180, color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rôle</span>
+            <span style={{ width: 120, color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Compte app</span>
           </div>
 
           {staff.length === 0 && (
@@ -300,13 +300,13 @@ export default function StaffPage() {
             <div
               key={member.id}
               style={{
-                display: 'grid', gridTemplateColumns: '1fr 180px 120px', gap: 16,
-                padding: '14px 20px', alignItems: 'center',
+                display: 'flex', alignItems: 'center', gap: 16,
+                padding: '14px 20px',
                 borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none',
               }}
             >
-              {/* Nom + initiales */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* Nom + initiales + rôle (mobile) */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: '50%',
                   backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
@@ -315,18 +315,21 @@ export default function StaffPage() {
                 }}>
                   {member.firstName[0]}{member.lastName[0]}
                 </div>
-                <div>
-                  <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {member.lastName} {member.firstName}
+                  </p>
+                  <p className="md:hidden" style={{ color: '#94A3B8', fontSize: '0.75rem', margin: '2px 0 0' }}>
+                    {roleLabel(member.role)}
                   </p>
                 </div>
               </div>
 
-              {/* Rôle */}
-              <span style={{ color: '#94A3B8', fontSize: '0.82rem' }}>{roleLabel(member.role)}</span>
+              {/* Rôle — desktop only */}
+              <span className="hidden md:block" style={{ width: 180, color: '#94A3B8', fontSize: '0.82rem', flexShrink: 0 }}>{roleLabel(member.role)}</span>
 
               {/* Compte app */}
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div style={{ width: 120, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
                 {member.profileId ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
                     <UserCheck size={14} /> Lié
@@ -355,7 +358,7 @@ export default function StaffPage() {
               onClick={() => setShowMeetForm(true)}
               style={{ padding: '7px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 5 }}
             >
-              <Plus size={13} /> Planifier
+              <Plus size={13} /><span className="hidden md:inline">Planifier</span>
             </button>
           </div>
 
@@ -408,7 +411,8 @@ export default function StaffPage() {
                             style={{ background: 'none', border: `1px solid ${isUpcoming ? '#2A2F3A' : '#252B36'}`, color: isUpcoming ? '#94A3B8' : '#475569', cursor: 'pointer', fontSize: '0.73rem', padding: '4px 10px', borderRadius: 6, lineHeight: '18px', fontWeight: 500 }}
                             onMouseEnter={e => { const el = e.currentTarget; el.style.borderColor = accent; el.style.color = accent; if (isUpcoming) el.style.backgroundColor = 'rgba(0,229,160,0.06)'; }}
                             onMouseLeave={e => { const el = e.currentTarget; el.style.borderColor = isUpcoming ? '#2A2F3A' : '#252B36'; el.style.color = isUpcoming ? '#94A3B8' : '#475569'; el.style.backgroundColor = 'transparent'; }}>
-                            Compte rendu
+                            <span className="hidden sm:inline">Compte rendu</span>
+                            <span className="sm:hidden">CR</span>
                           </button>
                           <button
                             onClick={() => setConfirmDeleteId(m.id)}
@@ -448,7 +452,7 @@ export default function StaffPage() {
 
       {/* Modal création de compte */}
       {inviting && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 420 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Créer un compte</h2>
@@ -502,7 +506,7 @@ export default function StaffPage() {
 
       {/* Modal confirmation suppression */}
       {confirmDeleteId && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 380 }}>
             <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la réunion ?</h2>
             <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>
@@ -522,7 +526,7 @@ export default function StaffPage() {
 
       {/* Modal modifier le compte rendu */}
       {editingMeeting && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 500 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Compte rendu</h2>
@@ -563,7 +567,7 @@ export default function StaffPage() {
 
       {/* Modal planifier une réunion */}
       {showMeetForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 460 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Planifier une réunion</h2>
@@ -582,7 +586,7 @@ export default function StaffPage() {
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre *</label>
                 <input type="text" required autoFocus placeholder="Ex : Réunion hebdo staff" value={meetForm.title} onChange={e => setMeetForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
                   <input type="date" required value={meetForm.date} onChange={e => setMeetForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
@@ -609,7 +613,7 @@ export default function StaffPage() {
 
       {/* Modal ajout */}
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 440 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouveau membre du staff</h2>
@@ -626,7 +630,7 @@ export default function StaffPage() {
             )}
 
             <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom *</label>
                   <input

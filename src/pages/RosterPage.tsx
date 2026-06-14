@@ -328,8 +328,7 @@ export default function RosterPage() {
             onClick={() => setShowModal(true)}
             style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <UserPlus size={16} />
-            Ajouter au roster
+            <UserPlus size={16} /><span className="hidden md:inline">Ajouter au roster</span>
           </button>
         )}
       </div>
@@ -344,8 +343,8 @@ export default function RosterPage() {
       {selected && (
         <>
           {/* Filtres */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <div className="flex flex-col md:flex-row" style={{ gap: 10, marginBottom: 20 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
               <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
               <input
                 placeholder="Rechercher un joueur…"
@@ -355,7 +354,8 @@ export default function RosterPage() {
               />
             </div>
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              style={{ padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
+              className="w-full md:w-auto"
+              style={{ padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
               <option value="all">Tous statuts</option>
               <option value="active">Actif</option>
               <option value="injured">Blessé</option>

@@ -89,7 +89,7 @@ export default function TrainingSessionsPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="p-4 md:p-6">
       <h1 style={{ color: '#F1F5F9', margin: '0 0 20px' }}>Séances</h1>
 
       {error && (
@@ -145,7 +145,7 @@ export default function TrainingSessionsPage() {
                     <div style={{ flex: 1 }} />
 
                     {counts && (
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                      <div className="hidden sm:flex" style={{ gap: 8, alignItems: 'center', flexShrink: 0 }}>
                         {counts.present > 0 && <span style={{ color: '#00E5A0', fontSize: '0.76rem' }}>{counts.present} prés.</span>}
                         {counts.absent  > 0 && <span style={{ color: '#EF4444',  fontSize: '0.76rem' }}>{counts.absent} abs.</span>}
                         {counts.late    > 0 && <span style={{ color: '#F59E0B',  fontSize: '0.76rem' }}>{counts.late} retard</span>}
@@ -153,7 +153,7 @@ export default function TrainingSessionsPage() {
                     )}
 
                     {avg !== undefined && (
-                      <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 54 }}>
+                      <div className="hidden sm:block" style={{ textAlign: 'right', flexShrink: 0, minWidth: 54 }}>
                         <div style={{ color: '#475569', fontSize: '0.62rem', textTransform: 'uppercase' }}>RPE moy.</div>
                         <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{avg.toFixed(1)}</div>
                       </div>

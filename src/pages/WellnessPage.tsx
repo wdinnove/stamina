@@ -177,7 +177,7 @@ export default function WellnessPage() {
 
   if (!selected) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div className="p-4 md:p-6">
         <h1 style={{ color: '#F1F5F9', margin: '0 0 24px' }}>Perception Émotionnelle</h1>
         <div style={{ textAlign: 'center', padding: '80px 20px', color: '#475569' }}>
           Sélectionnez une équipe et une saison dans la barre du haut.
@@ -187,14 +187,16 @@ export default function WellnessPage() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Perception Émotionnelle</h1>
+    <div className="p-4 md:p-6">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Bien-être</h1>
         <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {(['entry', 'history'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              style={{ padding: '6px 16px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8' }}>
-              {tab === 'entry' ? 'Nouvelle saisie' : 'Historique'}
+              style={{ padding: '6px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
+              {tab === 'entry'
+                ? <><span className="hidden sm:inline">Nouvelle saisie</span><span className="sm:hidden">Saisie</span></>
+                : 'Historique'}
             </button>
           ))}
         </div>
@@ -232,7 +234,7 @@ export default function WellnessPage() {
               style={{ padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 20 }}>
             {dimensions.map(dim => {
               const val = values[dim.key];
               return (
@@ -247,7 +249,7 @@ export default function WellnessPage() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
                       <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                        style={{ flex: 1, minWidth: 32, height: 36, borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
+                        style={{ width: 'calc(20% - 3.2px)', height: 36, borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
                       >{v}</button>
                     ))}
                   </div>
@@ -264,7 +266,7 @@ export default function WellnessPage() {
               style={{ width: '100%', padding: '10px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }} />
           </div>
 
-          <div style={{ marginTop: 20, padding: '12px 16px', backgroundColor: '#1E2229', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ marginTop: 20, padding: '12px 16px', backgroundColor: '#1E2229', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: 0 }}>Score bien-être global</p>
               <p style={{ color: scoreColor(score), fontSize: '1.4rem', fontWeight: 800, margin: '2px 0 0', fontFamily: 'JetBrains Mono, monospace' }}>
@@ -292,7 +294,7 @@ export default function WellnessPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
               <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
                 <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Profil POMS — dernière saisie</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -341,20 +343,22 @@ export default function WellnessPage() {
             </div>
 
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4 }}>
-                {['Date', 'Fat.', 'Hum.', 'Str.', 'Mot.', 'Som.', 'Doul.', 'Score'].map(h => (
-                  <span key={h} style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</span>
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4, minWidth: 560 }}>
+                  {['Date', 'Fat.', 'Hum.', 'Str.', 'Mot.', 'Som.', 'Doul.', 'Score'].map(h => (
+                    <span key={h} style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</span>
+                  ))}
+                </div>
+                {tableData.map((e, idx) => (
+                  <div key={idx} style={{ padding: '9px 16px', borderBottom: '1px solid #1E2229', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4, alignItems: 'center', minWidth: 560 }}>
+                    <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
+                    {[e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness].map((v, i) => (
+                      <span key={i} style={{ color: '#F1F5F9', fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{v}</span>
+                    ))}
+                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{e.score}</span>
+                  </div>
                 ))}
               </div>
-              {tableData.map((e, idx) => (
-                <div key={idx} style={{ padding: '9px 16px', borderBottom: '1px solid #1E2229', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4, alignItems: 'center' }}>
-                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
-                  {[e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness].map((v, i) => (
-                    <span key={i} style={{ color: '#F1F5F9', fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{v}</span>
-                  ))}
-                  <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{e.score}</span>
-                </div>
-              ))}
             </div>
           </div>
         )
