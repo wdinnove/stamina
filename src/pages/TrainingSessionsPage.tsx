@@ -1,10 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Plus, X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession } from '../data/types';
+
+const SESSION_TYPE_OPTIONS = [
+  { value: 'training', label: 'Entraînement' },
+  { value: 'match',    label: 'Match' },
+  { value: 'gym',      label: 'Salle' },
+  { value: 'rest',     label: 'Repos' },
+];
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
+  border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
+  fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
+};
 
 const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
@@ -36,6 +49,11 @@ export default function TrainingSessionsPage() {
   const [rpeAvg,           setRpeAvg]           = useState<Record<string, number>>({});
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState('');
+
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [addSaving,  setAddSaving]  = useState(false);
+  const [addError,   setAddError]   = useState('');
+  const [addForm,    setAddForm]    = useState({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
 
   useEffect(() => {
     if (!selected) return;
@@ -88,9 +106,45 @@ export default function TrainingSessionsPage() {
     grouped[grouped.length - 1].sessions.push(s);
   }
 
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    setAddSaving(true);
+    setAddError('');
+    try {
+      const created = await attendanceApi.createSession({
+        teamId:   selected.team.id,
+        seasonId: selected.season.id,
+        date:     addForm.date,
+        duration: parseInt(addForm.duration),
+        notes:    addForm.notes || undefined,
+      });
+      // createSession uses session_type='training' by default; patch if different
+      const final = addForm.sessionType !== 'training'
+        ? await attendanceApi.updateSession(created.id, { sessionType: addForm.sessionType })
+        : created;
+      setSessions(prev => [final, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+      setShowAdd(false);
+      setAddForm({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
+      navigate(`/sessions/${final.id}`);
+    } catch (err: unknown) {
+      setAddError(err instanceof Error ? err.message : 'Erreur lors de la création.');
+    } finally {
+      setAddSaving(false);
+    }
+  }
+
   return (
     <div className="p-4 md:p-6">
-      <h1 style={{ color: '#F1F5F9', margin: '0 0 20px' }}>Séances</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Séances</h1>
+        {selected && (
+          <button onClick={() => setShowAdd(true)}
+            style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Plus size={15} /><span className="hidden sm:inline">Nouvelle séance</span>
+          </button>
+        )}
+      </div>
 
       {error && (
         <div style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16, color: '#EF4444', fontSize: '0.82rem' }}>
@@ -166,6 +220,53 @@ export default function TrainingSessionsPage() {
             </div>
           </div>
         ))
+      )}
+
+      {/* Modal nouvelle séance */}
+      {showAdd && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowAdd(false); setAddError(''); } }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 440, padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouvelle séance</h2>
+              <button onClick={() => { setShowAdd(false); setAddError(''); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            {addError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{addError}</span>
+              </div>
+            )}
+            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
+                  <input type="date" required value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
+                  <select required value={addForm.sessionType} onChange={e => setAddForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
+                    {SESSION_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+                <input type="number" required min={1} max={300} value={addForm.duration} onChange={e => setAddForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+                <input type="text" placeholder="Optionnel…" value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button type="button" onClick={() => { setShowAdd(false); setAddError(''); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                <button type="submit" disabled={addSaving} style={{ flex: 1, padding: '10px', backgroundColor: addSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: addSaving ? '#475569' : '#0D0F14', cursor: addSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                  {addSaving ? 'Création…' : 'Créer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

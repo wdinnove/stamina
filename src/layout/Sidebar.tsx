@@ -29,7 +29,7 @@ interface SidebarProps {
   collapsed: boolean;
 }
 
-function isNavActive(itemPath: string, currentPath: string): boolean {
+export function isNavActive(itemPath: string, currentPath: string): boolean {
   if (currentPath === itemPath) return true;
   if (currentPath.startsWith(itemPath + '/')) return true;
   const itemRoot = '/' + itemPath.split('/').filter(Boolean)[0];

@@ -218,27 +218,30 @@ export default function ActionsPage() {
             style={{ width: '100%', padding: '8px 10px 8px 30px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
-        <select value={playerFilter} onChange={e => setPlayerFilter(e.target.value)}
-          style={{ padding: '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: playerFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', flex: '0 1 160px' }}>
-          <option value="">Tous les joueurs</option>
-          {players.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName[0]}.</option>)}
-        </select>
-        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-          style={{ padding: '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: categoryFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', flex: '0 1 140px' }}>
-          <option value="">Toutes catégories</option>
-          {Object.entries(categoryConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-        <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
-          style={{ padding: '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: priorityFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', flex: '0 1 140px' }}>
-          <option value="">Toutes priorités</option>
-          {Object.entries(priorityConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-        {hasFilters && (
-          <button onClick={() => { setPlayerFilter(''); setCategoryFilter(''); setPriorityFilter(''); setSearch(''); }}
-            style={{ padding: '8px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-            <X size={13} /> Effacer
-          </button>
-        )}
+        <div style={{ position: 'relative', flex: '0 1 160px' }}>
+          <select value={playerFilter} onChange={e => setPlayerFilter(e.target.value)}
+            style={{ width: '100%', padding: playerFilter ? '8px 28px 8px 10px' : '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: playerFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+            <option value="">Tous les joueurs</option>
+            {players.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName[0]}.</option>)}
+          </select>
+          {playerFilter && <button onClick={() => setPlayerFilter('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
+        </div>
+        <div style={{ position: 'relative', flex: '0 1 140px' }}>
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+            style={{ width: '100%', padding: categoryFilter ? '8px 28px 8px 10px' : '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: categoryFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+            <option value="">Toutes catégories</option>
+            {Object.entries(categoryConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          {categoryFilter && <button onClick={() => setCategoryFilter('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
+        </div>
+        <div style={{ position: 'relative', flex: '0 1 140px' }}>
+          <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+            style={{ width: '100%', padding: priorityFilter ? '8px 28px 8px 10px' : '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: priorityFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+            <option value="">Toutes priorités</option>
+            {Object.entries(priorityConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          {priorityFilter && <button onClick={() => setPriorityFilter('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
+        </div>
       </div>
 
       {locState?.from && playerFilter === locState.playerId && (

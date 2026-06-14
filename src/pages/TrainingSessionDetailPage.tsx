@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, Upload, File, FileText, Image, Video, Trash2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Clock, Upload, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -188,6 +188,11 @@ export default function TrainingSessionDetailPage() {
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
 
+  const [showEdit,   setShowEdit]   = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError,  setEditError]  = useState('');
+  const [editForm,   setEditForm]   = useState({ date: '', sessionType: 'training', duration: '90', notes: '' });
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -224,6 +229,39 @@ export default function TrainingSessionDetailPage() {
     </div>
   );
 
+  function openEdit() {
+    setEditForm({ date: session!.date, sessionType: session!.sessionType, duration: String(session!.plannedDuration), notes: session!.notes ?? '' });
+    setEditError('');
+    setShowEdit(true);
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      const updated = await attendanceApi.updateSession(session.id, {
+        date:            editForm.date,
+        sessionType:     editForm.sessionType,
+        plannedDuration: parseInt(editForm.duration),
+        notes:           editForm.notes || null,
+      });
+      setSession(updated);
+      setShowEdit(false);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur lors de la modification.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
+    border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
+    fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
+  };
+
   const typeCfg = SESSION_TYPES[session.sessionType] ?? SESSION_TYPES.training;
   const attMap  = Object.fromEntries(attendance.map(a => [a.playerId, a.status]));
   const rpeMap  = Object.fromEntries(rpeEntries.map(e => [e.playerId, e]));
@@ -249,7 +287,12 @@ export default function TrainingSessionDetailPage() {
 
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.25rem' }}>{fmtDateFull(session.date)}</h1>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <h1 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.25rem' }}>{fmtDateFull(session.date)}</h1>
+          <button onClick={openEdit} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <Edit size={13} /> Modifier
+          </button>
+        </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 4 }}>
             {typeCfg.label}
@@ -359,6 +402,56 @@ export default function TrainingSessionDetailPage() {
       )}
 
       <SessionDocuments sessionId={session.id} />
+
+      {/* Modal édition séance */}
+      {showEdit && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 440, padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Modifier la séance</h2>
+              <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            {editError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editError}</span>
+              </div>
+            )}
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
+                  <input type="date" required value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
+                  <select required value={editForm.sessionType} onChange={e => setEditForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
+                    <option value="training">Entraînement</option>
+                    <option value="match">Match</option>
+                    <option value="gym">Salle</option>
+                    <option value="rest">Repos</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+                <input type="number" required min={1} max={300} value={editForm.duration} onChange={e => setEditForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+                <input type="text" placeholder="Optionnel…" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button type="button" onClick={() => setShowEdit(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                <button type="submit" disabled={editSaving} style={{ flex: 1, padding: '10px', backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

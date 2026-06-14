@@ -137,7 +137,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
   const pendingActions = actions.filter(a => a.status !== 'done').length;
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       <div style={{ marginBottom: 20 }}>
         <Breadcrumb items={[{ label: fromLabel, path: fromPath }]} />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8 }}>
@@ -147,7 +147,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16, marginBottom: 20 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-[240px_1fr]" style={{ gap: 16, marginBottom: 20 }}>
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '28px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
           <PlayerAvatar player={player} size={72} />
           <div style={{ textAlign: 'center', marginTop: 16 }}>
@@ -216,7 +216,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 20 }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5" style={{ gap: 8, marginTop: 20 }}>
         {[
           { label: 'Charge & RPE',       icon: Activity,   path: `/rpe/individual/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
           { label: 'Bien-être',          icon: Heart,       path: `/wellness/history/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
@@ -406,7 +406,7 @@ export default function PlayersPage() {
   });
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Joueurs</h1>
@@ -434,16 +434,18 @@ export default function PlayersPage() {
             style={{ width: '100%', padding: '8px 10px 8px 32px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="w-full md:w-auto"
-          style={{ padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
-          <option value="all">Tous statuts</option>
-          <option value="active">Active</option>
-          <option value="injured">Blessé</option>
-          <option value="limited">Limité</option>
-          <option value="suspended">Suspendu</option>
-          <option value="unavailable">Indisponible</option>
-        </select>
+        <div className="w-full md:w-auto" style={{ position: 'relative' }}>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            style={{ width: '100%', padding: statusFilter !== 'all' ? '8px 28px 8px 12px' : '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+            <option value="all">Tous statuts</option>
+            <option value="active">Actif</option>
+            <option value="injured">Blessé</option>
+            <option value="limited">Limité</option>
+            <option value="suspended">Suspendu</option>
+            <option value="unavailable">Indisponible</option>
+          </select>
+          {statusFilter !== 'all' && <button onClick={() => setStatusFilter('all')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
+        </div>
       </div>
 
       {/* Contenu */}

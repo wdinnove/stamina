@@ -65,6 +65,22 @@ export const attendanceApi = {
     return toSession(data);
   },
 
+  async updateSession(id: string, input: { date?: string; sessionType?: string; plannedDuration?: number; notes?: string | null }): Promise<TrainingSession> {
+    const payload: Record<string, unknown> = {};
+    if (input.date !== undefined) payload.date = input.date;
+    if (input.sessionType !== undefined) payload.session_type = input.sessionType;
+    if (input.plannedDuration !== undefined) payload.planned_duration = input.plannedDuration;
+    if ('notes' in input) payload.notes = input.notes ?? null;
+    const { data, error } = await supabase
+      .from('training_sessions')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return toSession(data as Record<string, unknown>);
+  },
+
   async deleteSession(id: string): Promise<void> {
     const { error } = await supabase.from('training_sessions').delete().eq('id', id);
     if (error) throw error;

@@ -770,8 +770,11 @@ export default function RPEPage() {
                 <>
                   <style>{`
                     @media (max-width: 767px) {
-                      .rpe-buttons { flex-wrap: wrap !important; }
-                      .rpe-buttons > button { flex: none !important; width: calc(20% - 3.2px) !important; }
+                      .rpe-row { flex-wrap: wrap !important; padding: 10px 12px !important; }
+                      .rpe-player-col { width: auto !important; flex: 1 !important; }
+                      .rpe-value-col { display: none !important; }
+                      .rpe-buttons { width: 100% !important; flex: none !important; margin-top: 6px !important; }
+                      .rpe-buttons > button { flex: 1 !important; }
                     }
                   `}</style>
                   <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
@@ -790,15 +793,15 @@ export default function RPEPage() {
                         </button>
                       );
                       return (
-                        <div key={player.id} style={{ borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 150, flexShrink: 0 }}>
+                        <div key={player.id} className="rpe-row" style={{ borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
+                          <div className="rpe-player-col" style={{ display: 'flex', alignItems: 'center', gap: 8, width: 150, flexShrink: 0 }}>
                             <div className="hidden md:block"><PlayerAvatar player={player} size={26} /></div>
                             <div style={{ minWidth: 0 }}>
                               <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName[0]}.</span>
                               <div style={{ marginTop: 1 }}><StatusBadge status={player.status} size="sm" /></div>
                             </div>
                           </div>
-                          <div className="rpe-buttons" style={{ flex: 1, display: 'flex', gap: 4, minWidth: 0 }}>
+                          <div className="rpe-buttons" style={{ flex: 1, display: 'flex', gap: 4, minWidth: 0, overflow: 'hidden' }}>
                             {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
                               <button key={v}
                                 onClick={() => setRpeValues(prev => ({ ...prev, [player.id]: prev[player.id] === v ? null : v }))}
@@ -807,7 +810,7 @@ export default function RPEPage() {
                               </button>
                             ))}
                           </div>
-                          <div style={{ width: 130, textAlign: 'right', flexShrink: 0 }}>
+                          <div className="rpe-value-col" style={{ width: 130, textAlign: 'right', flexShrink: 0 }}>
                             {val !== null
                               ? <span style={{ color: rpeColorScale(val), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{val} — {rpeLabel(val)}</span>
                               : <span style={{ color: '#334155', fontSize: '0.78rem' }}>—</span>}

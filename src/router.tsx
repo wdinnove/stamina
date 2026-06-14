@@ -21,6 +21,7 @@ import ProfilePage       from './pages/ProfilePage';
 import PlayerRPEPage               from './pages/PlayerRPEPage';
 import TrainingSessionsPage        from './pages/TrainingSessionsPage';
 import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
+import MeetingDetailPage           from './pages/MeetingDetailPage';
 
 export const router = createBrowserRouter([
   {
@@ -54,7 +55,8 @@ export const router = createBrowserRouter([
           { path: 'stats',          Component: StatsPage        },
           { path: 'stats/:id',      Component: StatsPage        },
           { path: 'roster',          Component: RosterPage       },
-          { path: 'staff',           Component: StaffPage        },
+          { path: 'staff',               Component: StaffPage          },
+          { path: 'staff/meeting/:id',   Component: MeetingDetailPage  },
           { path: 'attendance',      Component: AttendancePage   },
           { path: 'sessions',        Component: TrainingSessionsPage      },
           { path: 'sessions/:id',    Component: TrainingSessionDetailPage },

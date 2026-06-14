@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, AlertCircle, UserCheck, UserPlus, Calendar, Clock, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Plus, X, AlertCircle, UserCheck, UserPlus, Calendar, Clock, ChevronRight } from 'lucide-react';
 import { staffApi } from '../api/staff';
 import { meetingsApi } from '../api/meetings';
 import { supabase } from '../api/client';
@@ -38,6 +39,7 @@ const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '' };
 
 export default function StaffPage() {
   const { selected } = useTeamSeason();
+  const navigate = useNavigate();
   const [staff,     setStaff]     = useState<StaffMember[]>([]);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
@@ -56,13 +58,6 @@ export default function StaffPage() {
   const [meetForm,      setMeetForm]      = useState(emptyMeeting);
   const [meetSaving,    setMeetSaving]    = useState(false);
   const [meetFormError, setMeetFormError] = useState('');
-  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
-  const [showPast,      setShowPast]      = useState(false);
-  const [editingMeeting,  setEditingMeeting]  = useState<StaffMeeting | null>(null);
-  const [editNotes,       setEditNotes]       = useState('');
-  const [editSaving,      setEditSaving]      = useState(false);
-  const [editError,       setEditError]       = useState('');
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selected) return;
@@ -206,46 +201,6 @@ export default function StaffPage() {
     }
   }
 
-  async function confirmAndDelete() {
-    if (!confirmDeleteId) return;
-    const id = confirmDeleteId;
-    setConfirmDeleteId(null);
-    const snapshot = meetings;
-    setMeetings(prev => prev.filter(m => m.id !== id));
-    try { await meetingsApi.delete(id); }
-    catch { setMeetings(snapshot); }
-  }
-
-  function openEditNotes(m: StaffMeeting) {
-    setEditingMeeting(m);
-    setEditNotes(m.notes ?? '');
-    setEditError('');
-  }
-
-  async function handleEditNotes(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingMeeting) return;
-    setEditSaving(true);
-    setEditError('');
-    try {
-      await meetingsApi.updateNotes(editingMeeting.id, editNotes);
-      setMeetings(prev => prev.map(m => m.id === editingMeeting.id ? { ...m, notes: editNotes || undefined } : m));
-      setEditingMeeting(null);
-    } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour.');
-    } finally {
-      setEditSaving(false);
-    }
-  }
-
-  function toggleNotes(id: string) {
-    setExpandedNotes(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
   const upcomingMeetings = meetings.filter(m => m.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
   const pastMeetings     = meetings.filter(m => m.date < TODAY).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
 
@@ -381,17 +336,23 @@ export default function StaffPage() {
                 const fd = fmtMeetDate(m.date);
                 const isUpcoming = m.date >= TODAY;
                 const isToday = m.date === TODAY;
-                const isExpanded = expandedNotes.has(m.id);
                 const accent = isToday ? '#F59E0B' : isUpcoming ? '#00E5A0' : '#475569';
                 return (
-                  <div key={m.id} style={{
-                    backgroundColor: '#161920',
-                    border: `1px solid ${isToday ? 'rgba(245,158,11,0.25)' : isUpcoming ? '#252B36' : '#1A1F28'}`,
-                    borderLeft: `3px solid ${accent}`,
-                    borderRadius: 10,
-                    overflow: 'hidden',
-                    display: 'flex',
-                  }}>
+                  <div key={m.id}
+                    onClick={() => navigate(`/staff/meeting/${m.id}`)}
+                    style={{
+                      backgroundColor: '#161920',
+                      border: `1px solid ${isToday ? 'rgba(245,158,11,0.25)' : isUpcoming ? '#252B36' : '#1A1F28'}`,
+                      borderLeft: `3px solid ${accent}`,
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      display: 'flex',
+                      cursor: 'pointer',
+                      transition: 'border-color 0.15s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.borderRightColor = '#3B3F4A')}
+                    onMouseLeave={e => (e.currentTarget.style.borderRightColor = isToday ? 'rgba(245,158,11,0.25)' : isUpcoming ? '#252B36' : '#1A1F28')}
+                  >
                     {/* Date badge */}
                     <div style={{ width: 76, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '18px 0', borderRight: '1px solid #1E2229', gap: 3 }}>
                       <span style={{ color: '#475569', fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{fd.dow}</span>
@@ -399,48 +360,20 @@ export default function StaffPage() {
                       <span style={{ color: isUpcoming ? '#94A3B8' : '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{fd.month}</span>
                     </div>
                     {/* Body */}
-                    <div style={{ flex: 1, minWidth: 0, padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
-                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                           <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.9rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
                           {isToday && <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 8, letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>Aujourd'hui</span>}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          <button
-                            onClick={() => openEditNotes(m)}
-                            style={{ background: 'none', border: `1px solid ${isUpcoming ? '#2A2F3A' : '#252B36'}`, color: isUpcoming ? '#94A3B8' : '#475569', cursor: 'pointer', fontSize: '0.73rem', padding: '4px 10px', borderRadius: 6, lineHeight: '18px', fontWeight: 500 }}
-                            onMouseEnter={e => { const el = e.currentTarget; el.style.borderColor = accent; el.style.color = accent; if (isUpcoming) el.style.backgroundColor = 'rgba(0,229,160,0.06)'; }}
-                            onMouseLeave={e => { const el = e.currentTarget; el.style.borderColor = isUpcoming ? '#2A2F3A' : '#252B36'; el.style.color = isUpcoming ? '#94A3B8' : '#475569'; el.style.backgroundColor = 'transparent'; }}>
-                            <span className="hidden sm:inline">Compte rendu</span>
-                            <span className="sm:hidden">CR</span>
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(m.id)}
-                            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, borderRadius: 5, display: 'flex', alignItems: 'center' }}
-                            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-                            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                            <Trash2 size={14} />
-                          </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748B', fontSize: '0.75rem' }}>
+                            <Clock size={11} /> {m.time.slice(0, 5)}
+                          </span>
+                          {m.notes && <span style={{ color: '#334155', fontSize: '0.72rem' }}>· Compte rendu disponible</span>}
                         </div>
                       </div>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748B', fontSize: '0.75rem' }}>
-                        <Clock size={11} /> {m.time.slice(0, 5)}
-                      </span>
-                      {m.notes && (
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1E2229' }}>
-                          <button
-                            onClick={() => toggleNotes(m.id)}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#475569', fontSize: '0.72rem' }}
-                            onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
-                            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            {isExpanded ? 'Masquer les notes' : 'Voir les notes'}
-                          </button>
-                          {isExpanded && (
-                            <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '8px 0 0', padding: '10px 12px', backgroundColor: '#0D0F14', borderRadius: 6, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{m.notes}</p>
-                          )}
-                        </div>
-                      )}
+                      <ChevronRight size={14} color="#2A2F3A" style={{ flexShrink: 0 }} />
                     </div>
                   </div>
                 );
@@ -497,67 +430,6 @@ export default function StaffPage() {
                 </button>
                 <button type="submit" disabled={inviteSaving} style={{ flex: 1, padding: '10px', backgroundColor: inviteSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: inviteSaving ? '#475569' : '#0D0F14', cursor: inviteSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                   {inviteSaving ? 'Création…' : 'Créer le compte'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal confirmation suppression */}
-      {confirmDeleteId && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 380 }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la réunion ?</h2>
-            <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>
-              {meetings.find(m => m.id === confirmDeleteId)?.title} — cette action est irréversible.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                Annuler
-              </button>
-              <button onClick={confirmAndDelete} style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>
-                Supprimer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal modifier le compte rendu */}
-      {editingMeeting && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 500 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Compte rendu</h2>
-              <button onClick={() => setEditingMeeting(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            <p style={{ color: '#94A3B8', fontSize: '0.8rem', margin: '0 0 18px' }}>
-              {editingMeeting.title} — {editingMeeting.date.slice(8)}/{editingMeeting.date.slice(5, 7)}/{editingMeeting.date.slice(0, 4)} à {editingMeeting.time.slice(0, 5)}
-            </p>
-
-            {editError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editError}</span>
-              </div>
-            )}
-
-            <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleEditNotes}>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes / Compte rendu</label>
-                <textarea
-                  autoFocus
-                  placeholder="Ordre du jour, décisions, notes…"
-                  value={editNotes}
-                  onChange={e => setEditNotes(e.target.value)}
-                  style={{ ...inputStyle, resize: 'vertical', minHeight: 140, fontFamily: 'Inter, sans-serif' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => setEditingMeeting(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-                <button type="submit" disabled={editSaving} style={{ flex: 1, padding: '10px', backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
                 </button>
               </div>
             </form>

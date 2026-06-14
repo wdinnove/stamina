@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ChevronDown, Menu, Check, X } from 'lucide-react';
+import { ChevronDown, Menu, Check, X, ArrowLeft } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
-import { navItems } from './Sidebar';
+import { navItems, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonContext';
 import { supabase } from '../api/client';
@@ -16,6 +16,7 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
   const [initials, setInitials]   = useState('');
   const dropRef  = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -138,8 +139,19 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
         </div>
       </div>
 
-      {/* Right: avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      {/* Right: back + avatar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {location.pathname !== '/dashboard' && (
+          <button
+            onClick={() => navigate(-1)}
+            title="Retour"
+            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4, borderRadius: 6 }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+          >
+            <ArrowLeft size={18} />
+          </button>
+        )}
         <button
           onClick={() => navigate('/profile')}
           title="Mon profil"
@@ -191,7 +203,7 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {navItems.map((item, i) => {
-            const active = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+            const active = isNavActive(item.path, location.pathname);
             return (
               <Fragment key={item.path}>
                 {i === 2 && (

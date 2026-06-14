@@ -29,6 +29,22 @@ export const meetingsApi = {
     return toMeeting(data);
   },
 
+  async update(id: string, input: { title?: string; date?: string; time?: string; notes?: string | null }): Promise<StaffMeeting> {
+    const payload: Record<string, unknown> = {};
+    if (input.title !== undefined) payload.title = input.title;
+    if (input.date  !== undefined) payload.date  = input.date;
+    if (input.time  !== undefined) payload.time  = input.time;
+    if ('notes' in input) payload.notes = input.notes ?? null;
+    const { data, error } = await supabase
+      .from('staff_meetings')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return toMeeting(data as Record<string, unknown>);
+  },
+
   async updateNotes(id: string, notes: string): Promise<void> {
     const { error } = await supabase
       .from('staff_meetings')
