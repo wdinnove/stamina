@@ -16,8 +16,11 @@ import PlayerReportPage  from './pages/PlayerReportPage';
 import TeamReportPage    from './pages/TeamReportPage';
 import RosterPage        from './pages/RosterPage';
 import StaffPage         from './pages/StaffPage';
+import AttendancePage    from './pages/AttendancePage';
 import ProfilePage       from './pages/ProfilePage';
-import PlayerRPEPage     from './pages/PlayerRPEPage';
+import PlayerRPEPage               from './pages/PlayerRPEPage';
+import TrainingSessionsPage        from './pages/TrainingSessionsPage';
+import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
 
 export const router = createBrowserRouter([
   {
@@ -44,7 +47,7 @@ export const router = createBrowserRouter([
           { path: 'wellness',           Component: WellnessPage     },
           { path: 'wellness/:tab',      Component: WellnessPage     },
           { path: 'wellness/:tab/:id',  Component: WellnessPage     },
-          { path: 'medical',             Component: MedicalPage      },
+          { path: 'medical',              Component: MedicalPage      },
           { path: 'medical/:tab',        Component: MedicalPage      },
           { path: 'medical/:tab/:id',    Component: MedicalPage      },
           { path: 'actions',        Component: ActionsPage      },
@@ -52,6 +55,9 @@ export const router = createBrowserRouter([
           { path: 'stats/:id',      Component: StatsPage        },
           { path: 'roster',          Component: RosterPage       },
           { path: 'staff',           Component: StaffPage        },
+          { path: 'attendance',      Component: AttendancePage   },
+          { path: 'sessions',        Component: TrainingSessionsPage      },
+          { path: 'sessions/:id',    Component: TrainingSessionDetailPage },
           { path: 'profile',         Component: ProfilePage      },
           { path: 'reports/player', Component: PlayerReportPage },
           { path: 'reports/team',   Component: TeamReportPage   },

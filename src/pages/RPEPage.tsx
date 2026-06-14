@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   LineChart, Line, BarChart, Bar, ComposedChart,
@@ -7,6 +7,8 @@ import {
 import { Save, Check, TrendingUp, Zap, ArrowDown, ArrowUp, Activity } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
+import { attendanceApi } from '../api';
+import type { TrainingSession } from '../data/types';
 import { supabase } from '../api/client';
 import { StatusBadge, PlayerAvatar } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -186,6 +188,11 @@ export default function RPEPage() {
   const [saving, setSaving]               = useState(false);
   const [saved, setSaved]                 = useState(false);
   const [saveError, setSaveError]         = useState('');
+  const [linkedSessions,       setLinkedSessions]       = useState<TrainingSession[]>([]);
+  const [loadingLinkedSessions, setLoadingLinkedSessions] = useState(false);
+  const [manualMode,     setManualMode]     = useState(false);
+  const skipNextFindRef = useRef(false);
+  const rosterRef = useRef<Player[]>([]);
 
   // ── Individual tab state
   const selectedPlayerId = activeTab === 'individual' ? (urlId ?? null) : null;
@@ -203,14 +210,16 @@ export default function RPEPage() {
   const [teamKpis, setTeamKpis]                 = useState<TeamKpis | null>(null);
   const [typeStats, setTypeStats]               = useState<Record<string, { count: number; avgRpe: number; totalLoad: number }>>({});
   const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
+  const [teamHistoryError, setTeamHistoryError]     = useState<string | null>(null);
 
   // ── Load roster when season changes
   useEffect(() => {
-    if (!selected) { setRoster([]); return; }
+    if (!selected) { setRoster([]); rosterRef.current = []; return; }
     setLoadingRoster(true);
     playersApi.listBySeason(selected.season.id)
       .then(players => {
         setRoster(players);
+        rosterRef.current = players;
         setRpeValues(Object.fromEntries(players.map(p => [p.id, null])));
         if (players.length > 0 && activeTab === 'individual' && !urlId) {
           navigate(`/rpe/individual/${players[0].id}`, { replace: true });
@@ -220,9 +229,20 @@ export default function RPEPage() {
       .finally(() => setLoadingRoster(false));
   }, [selected?.season.id]);
 
+  // ── Load planned attendance sessions for the picker
+  useEffect(() => {
+    if (!selected || activeTab !== 'collective') return;
+    setLoadingLinkedSessions(true);
+    attendanceApi.listSessions(selected.team.id, selected.season.id)
+      .then(sessions => setLinkedSessions([...sessions].sort((a, b) => b.date.localeCompare(a.date))))
+      .catch(() => {})
+      .finally(() => setLoadingLinkedSessions(false));
+  }, [selected?.team.id, selected?.season.id, activeTab]);
+
   // ── Check existing session (collective tab)
   useEffect(() => {
     if (!selected) return;
+    if (skipNextFindRef.current) { skipNextFindRef.current = false; return; }
     rpeApi.findSession(selected.team.id, selected.season.id, sessionDate)
       .then(async session => {
         if (session) {
@@ -253,12 +273,17 @@ export default function RPEPage() {
   useEffect(() => {
     if (activeTab !== 'team_history' || !selected) return;
     setLoadingTeamHistory(true);
+    setTeamHistoryError(null);
 
     const today = todayStr();
     let fromDate: string | null = null;
+    let toDate: string = today;
     let allDates: string[] | null = null;
 
-    if (teamPeriod !== 'saison') {
+    if (teamPeriod === 'saison') {
+      fromDate = selected.season.startDate;
+      toDate   = selected.season.endDate;
+    } else {
       const n = teamPeriod === '7j' ? 7 : 30;
       const dates = Array.from({ length: n }, (_, i) => {
         const d = new Date();
@@ -274,12 +299,16 @@ export default function RPEPage() {
       .select('id, date, session_type, planned_duration')
       .eq('team_id', selected.team.id)
       .eq('season_id', selected.season.id)
-      .lte('date', today)
+      .lte('date', toDate)
       .order('date', { ascending: true });
     if (fromDate) q = q.gte('date', fromDate);
 
-    q.then(async ({ data: sessionsData, error }) => {
-      if (error) { setLoadingTeamHistory(false); return; }
+    q.then(async ({ data: sessionsData, error: sessErr }) => {
+      if (sessErr) {
+        setTeamHistoryError(sessErr.message);
+        setLoadingTeamHistory(false);
+        return;
+      }
       const sessions = (sessionsData ?? []) as Array<{ id: string; date: string; session_type: string; planned_duration: number }>;
       const sessionIds = sessions.map(s => s.id);
       const sessionMap = new Map(sessions.map(s => [s.id, s]));
@@ -294,11 +323,15 @@ export default function RPEPage() {
         return;
       }
 
-      const { data: rpeData } = await supabase
+      const { data: rpeData, error: rpeErr } = await supabase
         .from('rpe_entries')
         .select('rpe, player_id, session_id')
         .in('session_id', sessionIds);
-
+      if (rpeErr) {
+        setTeamHistoryError(rpeErr.message);
+        setLoadingTeamHistory(false);
+        return;
+      }
       const rpeRows = (rpeData ?? []) as Array<{ rpe: number; player_id: string; session_id: string }>;
 
       // ── Per-session aggregation
@@ -372,7 +405,7 @@ export default function RPEPage() {
       });
 
       const ranking: PlayerRank[] = Array.from(playerMap.entries()).map(([playerId, data]) => {
-        const player = roster.find(p => p.id === playerId);
+        const player = rosterRef.current.find(p => p.id === playerId);
         const avg    = data.rpes.reduce((s, v) => s + v, 0) / data.rpes.length;
         return {
           playerId,
@@ -410,13 +443,46 @@ export default function RPEPage() {
       });
       setTypeStats(typeResult);
       setLoadingTeamHistory(false);
-    }).catch(() => setLoadingTeamHistory(false));
-  }, [activeTab, selected, teamPeriod, roster]);
+    }).catch(err => {
+      setTeamHistoryError(err?.message ?? 'Erreur inattendue');
+      setLoadingTeamHistory(false);
+    });
+  }, [activeTab, selected, teamPeriod]);
 
   // ── Derived (collective tab)
   const activeEntries = Object.entries(rpeValues).filter(([, v]) => v !== null) as [string, number][];
   const avgRpe        = activeEntries.length ? Math.round(activeEntries.reduce((s, [, v]) => s + v, 0) / activeEntries.length * 10) / 10 : 0;
   const estimatedLoad = Math.round(avgRpe * duration);
+
+  const selSession     = linkedSessions.find(s => s.id === existingSessionId) ?? null;
+  const selDate        = selSession ? new Date(selSession.date + 'T12:00:00') : null;
+  const selTypeColor   = selSession ? (SESSION_TYPE_COLORS as Record<string, string>)[selSession.sessionType as string] ?? '#94A3B8' : '#94A3B8';
+  const MONTHS_RPE     = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  const DAYS_RPE       = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const nextSession    = linkedSessions.filter(s => s.date >= todayStr()).at(-1) ?? null;
+
+  const filtered     = individualFilter === 'all' ? history : history.filter((e: RPEEntry) => e.sessionType === individualFilter);
+  const sessionTypes = [...new Set(history.map((e: RPEEntry) => e.sessionType))] as SessionType[];
+  const chartData    = [...filtered].sort((a, b) => a.date.localeCompare(b.date)).map((e: RPEEntry) => ({
+    date:  fmtDate(e.date),
+    rpe:   e.rpe,
+    load:  Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
+  }));
+  const lastRPE      = filtered[0];
+  const avgRPE       = filtered.length ? Math.round(filtered.reduce((s: number, e: RPEEntry) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
+  const totalLoad    = filtered.reduce((s: number, e: RPEEntry) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+  const RPE_LABELS: Record<number, string> = { 1: 'Très facile', 2: 'Facile', 3: 'Modéré', 4: 'Assez difficile', 5: 'Difficile', 6: 'Difficile+', 7: 'Très difficile', 8: 'Intense', 9: 'Très intense', 10: 'Maximal' };
+
+  async function pickSession(session: TrainingSession) {
+    skipNextFindRef.current = true;
+    setManualMode(false);
+    setSessionDate(session.date);
+    setSessionType(session.sessionType as SessionType);
+    setDuration(session.plannedDuration);
+    setExistingSessionId(session.id);
+    const existing = await rpeApi.loadEntriesForSession(session.id);
+    setRpeValues(prev => Object.fromEntries(Object.keys(prev).map(id => [id, existing[id] ?? null])));
+  }
 
   async function handleSave() {
     if (activeEntries.length === 0 || !selected) return;
@@ -488,98 +554,227 @@ export default function RPEPage() {
 
       {/* ══ COLLECTIVE ═══════════════════════════════════════════════════════ */}
       {activeTab === 'collective' && (
-        <div>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div>
-              <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Date</p>
-              <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)}
-                style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Type de séance</p>
-              <select value={sessionType} onChange={e => setSessionType(e.target.value as SessionType)}
-                style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
-                <option value="training">Entraînement</option>
-                <option value="match">Match</option>
-                <option value="gym">Gym</option>
-                <option value="rest">Repos</option>
-              </select>
-            </div>
-            <div>
-              <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Durée planifiée</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="number" value={duration} min={1} max={300} onChange={e => setDuration(Number(e.target.value))}
-                  style={{ width: 64, padding: '5px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', textAlign: 'center' }} />
-                <span style={{ color: '#94A3B8', fontSize: '0.82rem' }}>min</span>
-              </div>
-            </div>
-            {existingSessionId && (
-              <div style={{ padding: '4px 10px', borderRadius: 5, backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)', color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                Séance existante chargée
-              </div>
-            )}
-            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-              <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Charge collective estimée</p>
-              <p style={{ color: '#00E5A0', fontSize: '1.05rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
-                {avgRpe} × {duration} = <span style={{ color: '#F1F5F9' }}>{estimatedLoad} UA</span>
-              </p>
-            </div>
-          </div>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
 
-          {loadingRoster ? (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement du roster…</div>
-          ) : roster.length === 0 ? (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-              Aucun joueur dans le roster pour cette saison. Ajoutez des joueurs depuis <em>Mon Roster</em>.
-            </div>
-          ) : (
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '12px 20px', borderBottom: '1px solid #2A2F3A', display: 'flex', gap: 20 }}>
-                <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 180 }}>Joueur</span>
-                <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>RPE (1 très facile → 10 maximal)</span>
-                <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 100, textAlign: 'right' }}>Valeur</span>
-              </div>
-              {roster.map(player => {
-                const val         = rpeValues[player.id] ?? null;
-                const unavailable = player.status === 'injured' || player.status === 'unavailable';
-                return (
-                  <div key={player.id} style={{ padding: '12px 20px', borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 16, opacity: unavailable ? 0.45 : 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 180, flexShrink: 0 }}>
-                      <PlayerAvatar player={player} size={28} />
-                      <div>
-                        <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span>
-                        <div style={{ marginTop: 1 }}><StatusBadge status={player.status} size="sm" /></div>
+          {/* ── Liste de séances (panneau gauche) ── */}
+          <div style={{ width: 280, flexShrink: 0 }}>
+              {loadingLinkedSessions ? (
+                <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} style={{ padding: '13px 14px', borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 3, height: 32, backgroundColor: '#2A2F3A', borderRadius: 2, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ height: 12, width: '60%', backgroundColor: '#2A2F3A', borderRadius: 3, marginBottom: 6 }} />
+                        <div style={{ height: 10, width: '40%', backgroundColor: '#1E2229', borderRadius: 3 }} />
                       </div>
                     </div>
-                    <div style={{ flex: 1, display: 'flex', gap: 5 }}>
-                      {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
-                        <button key={v} disabled={unavailable}
-                          onClick={() => setRpeValues(prev => ({ ...prev, [player.id]: prev[player.id] === v ? null : v }))}
-                          style={{ flex: 1, height: 32, borderRadius: 6, border: '1px solid', borderColor: val === v ? rpeColorScale(v) : '#2A2F3A', backgroundColor: val === v ? rpeColorScale(v) + '22' : 'transparent', color: val === v ? rpeColorScale(v) : '#94A3B8', cursor: unavailable ? 'not-allowed' : 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}>
-                          {v}
-                        </button>
-                      ))}
+                  ))}
+                </div>
+              ) : linkedSessions.length === 0 ? (
+                <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '24px 16px', textAlign: 'center' }}>
+                  <p style={{ color: '#475569', fontSize: '0.82rem', margin: '0 0 12px' }}>Aucune séance plannifiée.</p>
+                  <p style={{ color: '#334155', fontSize: '0.75rem', margin: '0 0 14px' }}>Ajoutez des séances depuis la page Présences.</p>
+                  <button onClick={() => setManualMode(true)} style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', padding: '6px 12px', fontSize: '0.78rem' }}>
+                    Saisie manuelle
+                  </button>
+                </div>
+              ) : (
+                <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden', maxHeight: 480, overflowY: 'auto' }}>
+                  <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Séances plannifiées</span>
+                    <button
+                      onClick={() => nextSession && pickSession(nextSession)}
+                      disabled={!nextSession}
+                      style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 4, color: nextSession?.id === existingSessionId ? '#00E5A0' : nextSession ? '#94A3B8' : '#334155', cursor: nextSession ? 'pointer' : 'default', fontSize: '0.68rem', padding: '2px 8px', fontWeight: 600, borderColor: nextSession?.id === existingSessionId ? '#00E5A040' : '#2A2F3A' }}
+                    >
+                      Aujourd'hui
+                    </button>
+                  </div>
+                  {linkedSessions.map((s, idx) => {
+                    const d = new Date(s.date + 'T12:00:00');
+                    const today = todayStr();
+                    const isPast = s.date < today;
+                    const day = d.getDate();
+                    const month = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][d.getMonth()];
+                    const dow = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+                    const typeColor = (SESSION_TYPE_COLORS as Record<string, string>)[s.sessionType as string] ?? '#94A3B8';
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => pickSession(s)}
+                        style={{
+                          width: '100%', padding: '11px 14px', textAlign: 'left', cursor: 'pointer',
+                          backgroundColor: s.id === existingSessionId ? '#1E2229' : 'transparent',
+                          border: 'none',
+                          borderBottom: idx < linkedSessions.length - 1 ? '1px solid #1E2229' : 'none',
+                          display: 'flex', alignItems: 'center', gap: 10, opacity: isPast ? 0.6 : 1,
+                          transition: 'background 0.12s',
+                          boxShadow: s.id === existingSessionId ? 'inset 2px 0 0 #00E5A0' : 'none',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1E2229'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = s.id === existingSessionId ? '#1E2229' : 'transparent'; }}
+                      >
+                        <span style={{ width: 3, height: 32, backgroundColor: typeColor, borderRadius: 2, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600 }}>
+                            {dow} {day} {month}
+                          </div>
+                          <div style={{ color: '#475569', fontSize: '0.72rem', marginTop: 1 }}>
+                            {s.notes ? s.notes + ' · ' : ''}{s.plannedDuration} min
+                          </div>
+                        </div>
+                        <span style={{ color: '#334155', fontSize: '0.7rem' }}>→</span>
+                      </button>
+                    );
+                  })}
+                  <div style={{ padding: '10px 14px', borderTop: '1px solid #2A2F3A' }}>
+                    <button onClick={() => setManualMode(true)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}>
+                      Saisie manuelle
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+          {/* ── Colonne principale (info bar + grille) ── */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+
+            {/* Info bar — session sélectionnée */}
+            {existingSessionId && (
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span style={{ width: 4, height: 36, backgroundColor: selTypeColor, borderRadius: 2, flexShrink: 0 }} />
+                {selSession && selDate ? (
+                  <div>
+                    <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>
+                      {DAYS_RPE[selDate.getDay()]} {selDate.getDate()} {MONTHS_RPE[selDate.getMonth()]}
+                      {selSession.notes ? <span style={{ color: '#94A3B8', fontWeight: 400 }}> — {selSession.notes}</span> : null}
                     </div>
-                    <div style={{ width: 100, textAlign: 'right', flexShrink: 0 }}>
-                      {val !== null ? (
-                        <span style={{ color: rpeColorScale(val), fontWeight: 700, fontSize: '0.88rem', fontFamily: 'JetBrains Mono, monospace' }}>{val} — {rpeLabel(val)}</span>
-                      ) : (
-                        <span style={{ color: '#334155', fontSize: '0.78rem' }}>—</span>
-                      )}
+                    <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 2 }}>
+                      {SESSION_TYPE_LABELS[selSession.sessionType as string] ?? selSession.sessionType} · {selSession.plannedDuration} min
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ) : (
+                  <div style={{ color: '#94A3B8', fontSize: '0.85rem' }}>Séance chargée</div>
+                )}
+                <button
+                  onClick={() => { setExistingSessionId(null); setRpeValues(prev => Object.fromEntries(Object.keys(prev).map(id => [id, null]))); setManualMode(false); }}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.78rem', padding: '4px 8px', borderRadius: 4 }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F1F5F9'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569'; }}
+                >
+                  Changer
+                </button>
+                <div style={{ color: '#94A3B8', fontSize: '0.78rem', textAlign: 'right', borderLeft: '1px solid #2A2F3A', paddingLeft: 14 }}>
+                  <div style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Charge estimée</div>
+                  <span style={{ color: '#00E5A0', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe}</span>
+                  <span style={{ color: '#475569' }}> × {duration} = </span>
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{estimatedLoad} UA</span>
+                </div>
+              </div>
+            )}
 
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
-            {saveError && <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{saveError}</span>}
-            <button onClick={handleSave} disabled={activeEntries.length === 0 || saving}
-              style={{ padding: '10px 24px', backgroundColor: saved ? '#1E2229' : activeEntries.length === 0 ? '#1A1F27' : '#00E5A0', border: saved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: saved ? '#00E5A0' : activeEntries.length === 0 ? '#334155' : '#0D0F14', cursor: activeEntries.length === 0 || saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
-              {saved ? <><Check size={15} /> Enregistré !</> : <><Save size={15} /> {saving ? 'Enregistrement…' : `Enregistrer (${activeEntries.length})`}</>}
-            </button>
-          </div>
+            {/* Info bar — mode manuel */}
+            {manualMode && (
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 16, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div>
+                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Date</p>
+                  <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)}
+                    style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
+                </div>
+                <div>
+                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Type</p>
+                  <select value={sessionType} onChange={e => setSessionType(e.target.value as SessionType)}
+                    style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
+                    <option value="training">Entraînement</option>
+                    <option value="match">Match</option>
+                    <option value="gym">Gym</option>
+                    <option value="rest">Repos</option>
+                  </select>
+                </div>
+                <div>
+                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Durée</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="number" value={duration} min={1} max={300} onChange={e => setDuration(Number(e.target.value))}
+                      style={{ width: 64, padding: '5px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', textAlign: 'center' }} />
+                    <span style={{ color: '#94A3B8', fontSize: '0.82rem' }}>min</span>
+                  </div>
+                </div>
+                <button onClick={() => setManualMode(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.78rem', marginLeft: 'auto' }}>
+                  ← Retour à la liste
+                </button>
+                <div style={{ color: '#94A3B8', fontSize: '0.78rem', textAlign: 'right', borderLeft: '1px solid #2A2F3A', paddingLeft: 14 }}>
+                  <div style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Charge estimée</div>
+                  <span style={{ color: '#00E5A0', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe}</span>
+                  <span style={{ color: '#475569' }}> × {duration} = </span>
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{estimatedLoad} UA</span>
+                </div>
+              </div>
+            )}
+
+            {/* Placeholder quand rien n'est sélectionné et pas en mode manuel */}
+            {!existingSessionId && !manualMode && linkedSessions.length > 0 && (
+              <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '48px', textAlign: 'center', color: '#334155', fontSize: '0.88rem' }}>
+                ← Sélectionnez une séance pour saisir les RPE
+              </div>
+            )}
+
+            {(existingSessionId || manualMode) && (
+              loadingRoster ? (
+                <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement du roster…</div>
+              ) : roster.length === 0 ? (
+                <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
+                  Aucun joueur dans le roster pour cette saison. Ajoutez des joueurs depuis <em>Mon Roster</em>.
+                </div>
+              ) : (
+                <>
+                  <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 20px', borderBottom: '1px solid #2A2F3A', display: 'flex', gap: 20 }}>
+                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 180 }}>Joueur</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>RPE (1 très facile → 10 maximal)</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 100, textAlign: 'right' }}>Valeur</span>
+                    </div>
+                    {roster.map(player => {
+                      const val = rpeValues[player.id] ?? null;
+                      return (
+                        <div key={player.id} style={{ padding: '12px 20px', borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 16 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 180, flexShrink: 0 }}>
+                            <PlayerAvatar player={player} size={28} />
+                            <div>
+                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span>
+                              <div style={{ marginTop: 1 }}><StatusBadge status={player.status} size="sm" /></div>
+                            </div>
+                          </div>
+                          <div style={{ flex: 1, display: 'flex', gap: 5 }}>
+                            {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
+                              <button key={v}
+                                onClick={() => setRpeValues(prev => ({ ...prev, [player.id]: prev[player.id] === v ? null : v }))}
+                                style={{ flex: 1, height: 32, borderRadius: 6, border: '1px solid', borderColor: val === v ? rpeColorScale(v) : '#2A2F3A', backgroundColor: val === v ? rpeColorScale(v) + '22' : 'transparent', color: val === v ? rpeColorScale(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}>
+                                {v}
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ width: 100, textAlign: 'right', flexShrink: 0 }}>
+                            {val !== null ? (
+                              <span style={{ color: rpeColorScale(val), fontWeight: 700, fontSize: '0.88rem', fontFamily: 'JetBrains Mono, monospace' }}>{val} — {rpeLabel(val)}</span>
+                            ) : (
+                              <span style={{ color: '#334155', fontSize: '0.78rem' }}>—</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
+                    {saveError && <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{saveError}</span>}
+                    <button onClick={handleSave} disabled={activeEntries.length === 0 || saving}
+                      style={{ padding: '10px 24px', backgroundColor: saved ? '#1E2229' : activeEntries.length === 0 ? '#1A1F27' : '#00E5A0', border: saved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: saved ? '#00E5A0' : activeEntries.length === 0 ? '#334155' : '#0D0F14', cursor: activeEntries.length === 0 || saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
+                      {saved ? <><Check size={15} /> Enregistré !</> : <><Save size={15} /> {saving ? 'Enregistrement…' : `Enregistrer (${activeEntries.length})`}</>}
+                    </button>
+                  </div>
+                </>
+              )
+            )}
+          </div>{/* fin colonne principale */}
         </div>
       )}
 
@@ -600,20 +795,8 @@ export default function RPEPage() {
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
               Aucune donnée RPE pour {selectedPlayer?.firstName} {selectedPlayer?.lastName}.
             </div>
-          ) : history.length > 0 ? (() => {
-            const filtered   = individualFilter === 'all' ? history : history.filter(e => e.sessionType === individualFilter);
-            const sessionTypes = [...new Set(history.map(e => e.sessionType))] as SessionType[];
-            const chartData  = [...filtered].sort((a, b) => a.date.localeCompare(b.date)).map(e => ({
-              date:  fmtDate(e.date),
-              rpe:   e.rpe,
-              load:  Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
-            }));
-            const lastRPE    = filtered[0];
-            const avgRPE     = filtered.length ? Math.round(filtered.reduce((s, e) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
-            const totalLoad  = filtered.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
-            const RPE_LABELS: Record<number, string> = { 1: 'Très facile', 2: 'Facile', 3: 'Modéré', 4: 'Assez difficile', 5: 'Difficile', 6: 'Difficile+', 7: 'Très difficile', 8: 'Intense', 9: 'Très intense', 10: 'Maximal' };
-            return (
-              <>
+          ) : history.length > 0 ? (
+            <>
                 {/* Filtres par type */}
                 <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
                   {(['all', ...sessionTypes] as ('all' | SessionType)[]).map(f => {
@@ -711,8 +894,7 @@ export default function RPEPage() {
                   </div>
                 </div>
               </>
-            );
-          })() : null}
+          ) : null}
         </div>
       )}
 
@@ -732,9 +914,14 @@ export default function RPEPage() {
 
           {loadingTeamHistory ? (
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '60px 0', textAlign: 'center' }}>Chargement…</div>
+          ) : teamHistoryError ? (
+            <div style={{ backgroundColor: '#1E1215', border: '1px solid #EF444440', borderRadius: 8, padding: '20px 24px', color: '#EF4444', fontSize: '0.85rem' }}>
+              Erreur lors du chargement : {teamHistoryError}
+            </div>
           ) : !teamKpis || teamKpis.sessions === 0 ? (
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '60px 0', textAlign: 'center' }}>
-              Aucune séance enregistrée sur cette période.
+              Aucune séance RPE enregistrée sur cette période.
+              {teamPeriod !== 'saison' && <><br /><button onClick={() => setTeamPeriod('saison')} style={{ marginTop: 10, background: 'none', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', padding: '5px 12px', fontSize: '0.78rem' }}>Voir toute la saison</button></>}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

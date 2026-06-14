@@ -845,3 +845,30 @@ CREATE POLICY "staff_meetings_access" ON staff_meetings
   FOR ALL TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- ── Présences aux entraînements ────────────────────────────────────────────
+-- training_sessions existe déjà (voir section 10). On ajoute uniquement la table d'attendance.
+
+CREATE TABLE training_attendance (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES training_sessions(id) ON DELETE CASCADE NOT NULL,
+  player_id  UUID REFERENCES players(id) ON DELETE CASCADE NOT NULL,
+  status     TEXT CHECK (status IN ('present', 'absent', 'late')) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (session_id, player_id)
+);
+ALTER TABLE training_attendance ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "training_attendance_access" ON training_attendance
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions
+      WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions
+      WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );

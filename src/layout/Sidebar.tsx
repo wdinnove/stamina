@@ -1,7 +1,7 @@
 import { Link, NavLink, useNavigate, useLocation } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, BarChart2, FileText, Trophy, LogOut, ClipboardList, Users,
+  CheckSquare, BarChart2, FileText, Trophy, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
@@ -10,6 +10,8 @@ export const navItems = [
   { path: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'     },
   { path: '/roster',        icon: ClipboardList,   label: 'Effectif'      },
   { path: '/staff',         icon: Users,           label: 'Staff'         },
+  { path: '/attendance',    icon: CalendarCheck,   label: 'Présences'     },
+  { path: '/sessions',      icon: Dumbbell,        label: 'Séances'       },
   { path: '/rpe/new',       icon: Activity,        label: 'RPE Effort'    },
   { path: '/wellness/new',  icon: Heart,           label: 'Bien-être'     },
   { path: '/medical/infirmary', icon: Stethoscope,  label: 'Médical'       },

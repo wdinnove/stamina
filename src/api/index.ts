@@ -7,8 +7,10 @@ export { rpeApi }      from './rpe';
 export { medicalApi }  from './medical';
 export { actionsApi }  from './actions';
 export { staffApi }    from './staff';
-export { meetingsApi } from './meetings';
-export { statsApi }    from './stats';
+export { meetingsApi }    from './meetings';
+export { attendanceApi }  from './attendance';
+export { statsApi }     from './stats';
+export { documentsApi } from './documents';
 
 export type { ListPlayersFilters }       from './players';
 export type { ListWellnessFilters }      from './wellness';

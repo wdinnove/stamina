@@ -8,15 +8,16 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, WellnessEntry } from '../data/types';
 
 const dimensions = [
-  { key: 'fatigue',    label: 'Fatigue',              emoji: '😴', desc: 'Très reposé ← → Épuisé' },
-  { key: 'mood',       label: 'Humeur',               emoji: '😊', desc: 'Très bonne ← → Très mauvaise' },
-  { key: 'stress',     label: 'Stress / Tension',     emoji: '😰', desc: 'Calme ← → Très stressé' },
-  { key: 'motivation', label: 'Motivation',            emoji: '💪', desc: 'Aucune motivation ← → Très motivé' },
-  { key: 'sleep',      label: 'Qualité du sommeil',   emoji: '🌙', desc: 'Mauvaise ← → Excellente' },
-  { key: 'soreness',   label: 'Douleurs musculaires', emoji: '🦵', desc: 'Aucune ← → Très intenses' },
+  { key: 'fatigue',    label: 'Fatigue',              emoji: '😴', desc: 'Très reposé ← → Épuisé',           inverted: true  },
+  { key: 'mood',       label: 'Humeur',               emoji: '😊', desc: 'Très mauvaise ← → Très bonne',     inverted: false },
+  { key: 'stress',     label: 'Stress / Tension',     emoji: '😰', desc: 'Calme ← → Très stressé',           inverted: true  },
+  { key: 'motivation', label: 'Motivation',            emoji: '💪', desc: 'Aucune motivation ← → Très motivé', inverted: false },
+  { key: 'sleep',      label: 'Qualité du sommeil',   emoji: '🌙', desc: 'Mauvaise ← → Excellente',          inverted: false },
+  { key: 'soreness',   label: 'Douleurs musculaires', emoji: '🦵', desc: 'Aucune ← → Très intenses',         inverted: true  },
 ];
 
-const scoreColor = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
+const scoreColor  = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
+const dimColor    = (v: number, inverted: boolean) => scoreColor(inverted ? 11 - v : v);
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtDate(iso: string): string {
@@ -231,7 +232,7 @@ export default function WellnessPage() {
               style={{ padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             {dimensions.map(dim => {
               const val = values[dim.key];
               return (
@@ -241,12 +242,12 @@ export default function WellnessPage() {
                       <span style={{ fontSize: '1.1rem' }}>{dim.emoji}</span>
                       <span style={{ fontWeight: 500 }}>{dim.label}</span>
                     </label>
-                    <span style={{ color: scoreColor(val), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
+                    <span style={{ color: dimColor(val, dim.inverted), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
                       <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                        style={{ flex: 1, minWidth: 32, height: 36, borderRadius: 6, border: `1px solid ${val === v ? scoreColor(v) : '#2A2F3A'}`, backgroundColor: val === v ? scoreColor(v) + '22' : '#1E2229', color: val === v ? scoreColor(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
+                        style={{ flex: 1, minWidth: 32, height: 36, borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
                       >{v}</button>
                     ))}
                   </div>

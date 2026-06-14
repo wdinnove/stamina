@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search } from 'lucide-react';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
 import { staffApi }   from '../api/staff';
@@ -46,7 +46,6 @@ export default function ActionsPage() {
   const [saving,       setSaving]       = useState(false);
   const [formError,    setFormError]    = useState('');
   const [staffError,   setStaffError]   = useState('');
-  const [showDone,       setShowDone]       = useState(false);
   const [playerFilter,   setPlayerFilter]   = useState<string>(locState?.playerId ?? '');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -261,9 +260,9 @@ export default function ActionsPage() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : (
-        <div>
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'start' }}>
+          <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#F59E0B', fontWeight: 700, fontSize: '0.88rem' }}>Cette semaine</span>
               <span style={{ backgroundColor: '#F59E0B22', color: '#F59E0B', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{thisWeek.length}</span>
             </div>
@@ -273,8 +272,8 @@ export default function ActionsPage() {
             }
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#3B82F6', fontWeight: 700, fontSize: '0.88rem' }}>Plus tard</span>
               <span style={{ backgroundColor: '#3B82F622', color: '#3B82F6', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{later.length}</span>
             </div>
@@ -284,22 +283,15 @@ export default function ActionsPage() {
             }
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <button
-              onClick={() => setShowDone(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 10px', width: '100%', textAlign: 'left' }}
-            >
+          <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#475569', fontWeight: 700, fontSize: '0.88rem' }}>Historique</span>
               <span style={{ backgroundColor: '#47556922', color: '#475569', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{done.length}</span>
-              <span style={{ marginLeft: 'auto' }}>
-                {showDone ? <ChevronDown size={15} color="#475569" /> : <ChevronRight size={15} color="#475569" />}
-              </span>
-            </button>
-            {showDone && (
-              done.length === 0
-                ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action terminée.</p>
-                : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{done.map(a => <ActionCard key={a.id} action={a} />)}</div>
-            )}
+            </div>
+            {done.length === 0
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action terminée.</p>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{done.map(a => <ActionCard key={a.id} action={a} />)}</div>
+            }
           </div>
         </div>
       )}

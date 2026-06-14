@@ -26,6 +26,13 @@ const inputStyle: React.CSSProperties = {
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
+const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+const DAYS_FR   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+function fmtMeetDate(dateStr: string) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return { day: d.getDate(), month: MONTHS_FR[d.getMonth()], dow: DAYS_FR[d.getDay()] };
+}
+
 const emptyForm    = { firstName: '', lastName: '', role: 'coach' };
 const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '' };
 
@@ -340,15 +347,13 @@ export default function StaffPage() {
 
       {/* ── Planning de réunions ─────────────────────────────────────── */}
       {selected && !loading && (
-        <div style={{ marginTop: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Calendar size={16} style={{ color: '#94A3B8' }} />
-              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>Planning de réunions</span>
-            </div>
+        <div style={{ marginTop: 40 }}>
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h1 style={{ color: '#F1F5F9', margin: 0 }}>Planning de réunions</h1>
             <button
               onClick={() => setShowMeetForm(true)}
-              style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 5 }}
+              style={{ padding: '7px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 5 }}
             >
               <Plus size={13} /> Planifier
             </button>
@@ -361,113 +366,83 @@ export default function StaffPage() {
             </div>
           )}
 
-          {/* À venir */}
-          <div style={{ marginBottom: 16 }}>
-            <p style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, margin: '0 0 8px' }}>À venir</p>
-            {upcomingMeetings.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune réunion planifiée.</p>
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {upcomingMeetings.map(m => (
-                    <div key={m.id} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: '3px solid #00E5A0', borderRadius: 8, padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>{m.title}</p>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
-                              <Calendar size={11} /> {m.date.slice(8)}/{m.date.slice(5, 7)}/{m.date.slice(0, 4)}
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
-                              <Clock size={11} /> {m.time.slice(0, 5)}
-                            </span>
-                          </div>
+          {/* Liste unifiée — à venir (vert) puis passées (gris) */}
+          {meetings.length === 0 ? (
+            <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '28px', textAlign: 'center' }}>
+              <Calendar size={22} style={{ color: '#2A2F3A', display: 'block', margin: '0 auto 8px' }} />
+              <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune réunion planifiée.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[...upcomingMeetings, ...pastMeetings].map(m => {
+                const fd = fmtMeetDate(m.date);
+                const isUpcoming = m.date >= TODAY;
+                const isToday = m.date === TODAY;
+                const isExpanded = expandedNotes.has(m.id);
+                const accent = isToday ? '#F59E0B' : isUpcoming ? '#00E5A0' : '#475569';
+                return (
+                  <div key={m.id} style={{
+                    backgroundColor: '#161920',
+                    border: `1px solid ${isToday ? 'rgba(245,158,11,0.25)' : isUpcoming ? '#252B36' : '#1A1F28'}`,
+                    borderLeft: `3px solid ${accent}`,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    display: 'flex',
+                  }}>
+                    {/* Date badge */}
+                    <div style={{ width: 76, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '18px 0', borderRight: '1px solid #1E2229', gap: 3 }}>
+                      <span style={{ color: '#475569', fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{fd.dow}</span>
+                      <span style={{ color: accent, fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>{fd.day}</span>
+                      <span style={{ color: isUpcoming ? '#94A3B8' : '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{fd.month}</span>
+                    </div>
+                    {/* Body */}
+                    <div style={{ flex: 1, minWidth: 0, padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.9rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
+                          {isToday && <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 8, letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>Aujourd'hui</span>}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          {m.notes && (
-                            <button onClick={() => toggleNotes(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
-                              {expandedNotes.has(m.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
-                          )}
-                          <button onClick={() => openEditNotes(m)}
-                            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px', borderRadius: 4 }}
-                            onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
-                            onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
+                          <button
+                            onClick={() => openEditNotes(m)}
+                            style={{ background: 'none', border: `1px solid ${isUpcoming ? '#2A2F3A' : '#252B36'}`, color: isUpcoming ? '#94A3B8' : '#475569', cursor: 'pointer', fontSize: '0.73rem', padding: '4px 10px', borderRadius: 6, lineHeight: '18px', fontWeight: 500 }}
+                            onMouseEnter={e => { const el = e.currentTarget; el.style.borderColor = accent; el.style.color = accent; if (isUpcoming) el.style.backgroundColor = 'rgba(0,229,160,0.06)'; }}
+                            onMouseLeave={e => { const el = e.currentTarget; el.style.borderColor = isUpcoming ? '#2A2F3A' : '#252B36'; el.style.color = isUpcoming ? '#94A3B8' : '#475569'; el.style.backgroundColor = 'transparent'; }}>
                             Compte rendu
                           </button>
-                          <button onClick={() => setConfirmDeleteId(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}
+                          <button
+                            onClick={() => setConfirmDeleteId(m.id)}
+                            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, borderRadius: 5, display: 'flex', alignItems: 'center' }}
                             onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
                             onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                            <Trash2 size={13} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </div>
-                      {m.notes && expandedNotes.has(m.id) && (
-                        <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '10px 0 0', padding: '10px 0 0', borderTop: '1px solid #2A2F3A', whiteSpace: 'pre-wrap' }}>{m.notes}</p>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748B', fontSize: '0.75rem' }}>
+                        <Clock size={11} /> {m.time.slice(0, 5)}
+                      </span>
+                      {m.notes && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1E2229' }}>
+                          <button
+                            onClick={() => toggleNotes(m.id)}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#475569', fontSize: '0.72rem' }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {isExpanded ? 'Masquer les notes' : 'Voir les notes'}
+                          </button>
+                          {isExpanded && (
+                            <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '8px 0 0', padding: '10px 12px', backgroundColor: '#0D0F14', borderRadius: 6, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{m.notes}</p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              )
-            }
-          </div>
-
-          {/* Passées */}
-          <div>
-            <button
-              onClick={() => setShowPast(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 8px', textAlign: 'left' }}
-            >
-              <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Passées</span>
-              <span style={{ backgroundColor: '#47556922', color: '#475569', borderRadius: 10, padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>{pastMeetings.length}</span>
-              {showPast ? <ChevronDown size={13} color="#475569" /> : <ChevronRight size={13} color="#475569" />}
-            </button>
-            {showPast && (
-              pastMeetings.length === 0
-                ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune réunion passée.</p>
-                : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {pastMeetings.map(m => (
-                      <div key={m.id} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: '3px solid #2A2F3A', borderRadius: 8, padding: '12px 14px', opacity: 0.7 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>{m.title}</p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
-                                <Calendar size={11} /> {m.date.slice(8)}/{m.date.slice(5, 7)}/{m.date.slice(0, 4)}
-                              </span>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94A3B8', fontSize: '0.75rem' }}>
-                                <Clock size={11} /> {m.time.slice(0, 5)}
-                              </span>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                            {m.notes && (
-                              <button onClick={() => toggleNotes(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
-                                {expandedNotes.has(m.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                              </button>
-                            )}
-                            <button onClick={() => openEditNotes(m)}
-                              style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px', borderRadius: 4 }}
-                              onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
-                              onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
-                              Compte rendu
-                            </button>
-                            <button onClick={() => setConfirmDeleteId(m.id)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}
-                              onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-                              onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                        {m.notes && expandedNotes.has(m.id) && (
-                          <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '10px 0 0', padding: '10px 0 0', borderTop: '1px solid #2A2F3A', whiteSpace: 'pre-wrap' }}>{m.notes}</p>
-                        )}
-                      </div>
-                    ))}
                   </div>
-                )
-            )}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

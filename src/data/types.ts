@@ -38,16 +38,6 @@ export interface Match {
   scoreThem: number;
 }
 
-export interface TrainingSession {
-  id: string;
-  teamId: string;
-  seasonId: string;
-  date: string;
-  sessionType: SessionType;
-  plannedDuration: number;
-  notes?: string;
-}
-
 export interface StaffMember {
   id: string;
   teamId: string;
@@ -206,6 +196,36 @@ export interface TeamMatchStat {
   opp_efgPct: number;
   opp_toPct: number;
   opp_orebPct: number;
+}
+
+export interface TrainingSession {
+  id: string;
+  teamId: string;
+  seasonId: string;
+  date: string;
+  sessionType: SessionType | string;
+  plannedDuration: number;
+  notes?: string;
+  partnerCount?: number;
+  createdAt?: string;
+}
+
+export interface SessionDocument {
+  id: string;
+  sessionId: string;
+  storagePath: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  createdAt: string;
+}
+
+export interface TrainingAttendance {
+  id: string;
+  sessionId: string;
+  playerId: string;
+  status: 'present' | 'absent' | 'late';
+  createdAt: string;
 }
 
 /** Moyennes calculées d'une joueur sur la saison */
