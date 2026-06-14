@@ -436,7 +436,7 @@ export default function PlayersPage() {
         </div>
         <div className="w-full md:w-auto" style={{ position: 'relative' }}>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            style={{ width: '100%', padding: statusFilter !== 'all' ? '8px 28px 8px 12px' : '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+            style={{ width: '100%', padding: statusFilter !== 'all' ? '8px 52px 8px 12px' : '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
             <option value="all">Tous statuts</option>
             <option value="active">Actif</option>
             <option value="injured">Blessé</option>
@@ -444,7 +444,7 @@ export default function PlayersPage() {
             <option value="suspended">Suspendu</option>
             <option value="unavailable">Indisponible</option>
           </select>
-          {statusFilter !== 'all' && <button onClick={() => setStatusFilter('all')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
+          {statusFilter !== 'all' && <button onClick={() => setStatusFilter('all')} style={{ position: 'absolute', right: 28, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
         </div>
       </div>
 
