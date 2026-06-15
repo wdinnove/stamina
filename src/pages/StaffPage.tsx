@@ -262,8 +262,8 @@ export default function StaffPage() {
                   borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none',
                 }}
               >
-                {/* Col 1 : avatar + prénom nom — 40% */}
-                <div style={{ width: '40%', minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+                {/* Col 1 : avatar + prénom nom */}
+                <div className="flex-1 md:flex-none md:w-2/5" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: '50%',
                     backgroundColor: color + '22', border: `2px solid ${color}`,
@@ -282,13 +282,13 @@ export default function StaffPage() {
                   </div>
                 </div>
 
-                {/* Col 2 : rôle — 40% desktop only */}
-                <span className="hidden md:block" style={{ width: '40%', color: '#94A3B8', fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {/* Col 2 : rôle — desktop only */}
+                <span className="hidden md:block md:w-2/5" style={{ color: '#94A3B8', fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {roleLabel(member.role)}
                 </span>
 
-                {/* Bouton compte app — 20% */}
-                <div style={{ width: '20%', display: 'flex', justifyContent: 'flex-start', flexShrink: 0 }}>
+                {/* Bouton compte app */}
+                <div className="flex-shrink-0 md:w-1/5" style={{ display: 'flex', justifyContent: 'flex-start' }}>
                   {member.profileId ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
                       <UserCheck size={14} /> Lié
