@@ -207,7 +207,7 @@ export default function WellnessPage() {
         {loadingRoster ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Chargement…</span>
         ) : roster.length === 0 ? (
-          <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune joueur dans le roster pour cette saison.</span>
+          <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun joueur dans le roster pour cette saison.</span>
         ) : (
           <select value={selectedPlayerId ?? ''} onChange={e => setSelectedPlayerId(e.target.value)}
             style={{ padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}>
@@ -246,10 +246,10 @@ export default function WellnessPage() {
                     </label>
                     <span style={{ color: dimColor(val, dim.inverted), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  <div className="grid grid-cols-5 lg:grid-cols-10" style={{ gap: 4 }}>
                     {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
                       <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                        style={{ width: 'calc(20% - 3.2px)', height: 36, borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
+                        style={{ height: 36, borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
                       >{v}</button>
                     ))}
                   </div>
