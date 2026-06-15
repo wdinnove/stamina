@@ -22,6 +22,8 @@
 --      medical_records.created_by/updated_by)
 --   • Fonction upsert_staff_profile (SECURITY DEFINER) pour création de compte staff
 --   • Rôle 'assistant' remplace 'analyste' dans staff
+--   • Table session_blocks : contenu structuré d'une séance (blocs d'exercices)
+--     drill_id nullable — FK future vers table drills
 -- ================================================================
 
 
@@ -859,6 +861,53 @@ CREATE TABLE training_attendance (
 );
 ALTER TABLE training_attendance ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "training_attendance_access" ON training_attendance
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions
+      WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions
+      WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+-- ── Contenu structuré des séances ─────────────────────────────────────────────
+-- Blocs d'exercices d'une séance (durée, catégorie, intensité, nom exercice)
+-- drill_id : FK nullable, réservée à la future table drills
+
+CREATE TYPE block_intensity AS ENUM ('basse', 'moyenne', 'haute', 'très élevée');
+
+CREATE TABLE session_blocks (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id  UUID        NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  position    SMALLINT    NOT NULL DEFAULT 1,
+  duration    SMALLINT    NOT NULL CHECK (duration > 0),   -- minutes
+  category    TEXT        NOT NULL,                        -- 'Échauffement', 'Jeu réduit'…
+  intensity   block_intensity NOT NULL DEFAULT 'moyenne',
+  label       TEXT        NOT NULL,                        -- nom de l'exercice
+  drill_id    UUID        NULL,                            -- FK future : REFERENCES drills(id)
+  -- Charge UA = durée × valeur intensité (basse=2, moyenne=5, haute=7, très élevée=9)
+  load_ua     SMALLINT    GENERATED ALWAYS AS (
+    duration * CASE intensity
+      WHEN 'basse'       THEN 2
+      WHEN 'moyenne'     THEN 5
+      WHEN 'haute'       THEN 7
+      WHEN 'très élevée' THEN 9
+      ELSE 5
+    END
+  ) STORED,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON session_blocks (session_id, position);
+
+ALTER TABLE session_blocks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "session_blocks_access" ON session_blocks
   FOR ALL TO authenticated
   USING (
     session_id IN (

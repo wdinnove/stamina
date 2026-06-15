@@ -8,16 +8,16 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StaffMember, StaffMeeting } from '../data/types';
 
 const ROLES = [
-  { value: 'coach',         label: 'Coach' },
-  { value: 'kine',          label: 'Kinésithérapeute' },
-  { value: 'medecin',       label: 'Médecin' },
-  { value: 'prep_physique', label: 'Préparateur physique' },
-  { value: 'assistant',     label: 'Assistant' },
-  { value: 'autre',         label: 'Autre' },
+  { value: 'coach',         label: 'Coach',                color: '#3B82F6' },
+  { value: 'kine',          label: 'Kinésithérapeute',     color: '#10B981' },
+  { value: 'medecin',       label: 'Médecin',              color: '#EF4444' },
+  { value: 'prep_physique', label: 'Préparateur physique', color: '#8B5CF6' },
+  { value: 'assistant',     label: 'Assistant',            color: '#F59E0B' },
+  { value: 'autre',         label: 'Autre',                color: '#64748B' },
 ];
 
-const roleLabel = (role: string) =>
-  ROLES.find(r => r.value === role)?.label ?? role;
+const roleLabel = (role: string) => ROLES.find(r => r.value === role)?.label ?? role;
+const roleColor = (role: string) => ROLES.find(r => r.value === role)?.color ?? '#64748B';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -239,10 +239,10 @@ export default function StaffPage() {
       {selected && !loading && (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
           {/* Header — desktop only */}
-          <div className="hidden md:flex" style={{ gap: 16, padding: '10px 20px', borderBottom: '1px solid #2A2F3A' }}>
-            <span style={{ flex: 1, color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</span>
-            <span style={{ width: 180, color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rôle</span>
-            <span style={{ width: 120, color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Compte app</span>
+          <div className="hidden md:flex" style={{ alignItems: 'center', padding: '10px 20px', borderBottom: '1px solid #2A2F3A' }}>
+            <span style={{ width: '40%', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</span>
+            <span style={{ width: '40%', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rôle</span>
+            <span style={{ width: '20%', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compte</span>
           </div>
 
           {staff.length === 0 && (
@@ -251,55 +251,60 @@ export default function StaffPage() {
             </p>
           )}
 
-          {staff.map((member, idx) => (
-            <div
-              key={member.id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 16,
-                padding: '14px 20px',
-                borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none',
-              }}
-            >
-              {/* Nom + initiales + rôle (mobile) */}
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#94A3B8', fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
-                }}>
-                  {member.firstName[0]}{member.lastName[0]}
+          {staff.map((member, idx) => {
+            const color = roleColor(member.role);
+            return (
+              <div
+                key={member.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '14px 20px',
+                  borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none',
+                }}
+              >
+                {/* Col 1 : avatar + prénom nom — 40% */}
+                <div style={{ width: '40%', minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    backgroundColor: color + '22', border: `2px solid ${color}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: color, fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {member.firstName[0]}{member.lastName[0]}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {member.firstName} {member.lastName}
+                    </p>
+                    <p className="md:hidden" style={{ color: '#94A3B8', fontSize: '0.75rem', margin: '2px 0 0' }}>
+                      {roleLabel(member.role)}
+                    </p>
+                  </div>
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {member.lastName} {member.firstName}
-                  </p>
-                  <p className="md:hidden" style={{ color: '#94A3B8', fontSize: '0.75rem', margin: '2px 0 0' }}>
-                    {roleLabel(member.role)}
-                  </p>
+
+                {/* Col 2 : rôle — 40% desktop only */}
+                <span className="hidden md:block" style={{ width: '40%', color: '#94A3B8', fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {roleLabel(member.role)}
+                </span>
+
+                {/* Bouton compte app — 20% */}
+                <div style={{ width: '20%', display: 'flex', justifyContent: 'flex-start', flexShrink: 0 }}>
+                  {member.profileId ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
+                      <UserCheck size={14} /> Lié
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setInviting(member)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.75rem', background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}
+                    >
+                      <UserPlus size={13} /> Créer
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* Rôle — desktop only */}
-              <span className="hidden md:block" style={{ width: 180, color: '#94A3B8', fontSize: '0.82rem', flexShrink: 0 }}>{roleLabel(member.role)}</span>
-
-              {/* Compte app */}
-              <div style={{ width: 120, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-                {member.profileId ? (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                    <UserCheck size={14} /> Lié
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => setInviting(member)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.75rem', background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}
-                  >
-                    <UserPlus size={13} /> Créer
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

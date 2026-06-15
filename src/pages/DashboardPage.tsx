@@ -8,6 +8,7 @@ import { Users, AlertTriangle, CheckSquare, TrendingUp, ArrowRight, Clock } from
 import { KPICard, PlayerAvatar } from '../components';
 import { categoryConfig, priorityConfig } from '../data/config';
 import { playersApi, medicalApi, actionsApi, wellnessApi } from '../api';
+import { weekMonday, getWeekTier, WEEK_TIERS } from '../utils/weeklyLoad';
 import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, Action, MedicalRecord } from '../data/types';
@@ -64,6 +65,7 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [chartData, setChartData] = useState<ChartDay[]>([]);
   const [avgRpe7d, setAvgRpe7d] = useState(0);
+  const [weekTierCounts, setWeekTierCounts] = useState<{ légère: number; normale: number; surcharge: number } | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Fetch current user's first name once
@@ -91,7 +93,7 @@ export default function DashboardPage() {
       actionsApi.list(),
       supabase
         .from('training_sessions')
-        .select('id, date')
+        .select('id, date, planned_duration')
         .eq('team_id', selected.team.id)
         .eq('season_id', selected.season.id)
         .gte('date', chartFrom)
@@ -104,27 +106,51 @@ export default function DashboardPage() {
         setOverdueActions(overdue);
 
         const seasonPlayerIds = new Set(seasonPlayers.map(p => p.id));
+        const d = new Date();
+        const daysUntilSunday = d.getDay() === 0 ? 0 : 7 - d.getDay();
+        d.setDate(d.getDate() + daysUntilSunday);
+        const endOfWeek = d.toLocaleDateString('sv');
         setUpcomingActions(
           allActions
-            .filter(a => a.status !== 'done' && a.dueDate >= today && seasonPlayerIds.has(a.playerId))
-            .slice(0, 5)
+            .filter(a => a.status !== 'done' && a.dueDate <= endOfWeek && seasonPlayerIds.has(a.playerId))
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .slice(0, 8)
         );
 
         const playerMap = new Map(seasonPlayers.map(p => [p.id, p]));
 
         // Two-step RPE: sessions → entries
-        const sessions = (sessionsResult.data ?? []) as Array<{ id: string; date: string }>;
+        const sessions = (sessionsResult.data ?? []) as Array<{ id: string; date: string; planned_duration: number }>;
         const sessionIds = sessions.map(s => s.id);
         const sessionDateMap = Object.fromEntries(sessions.map(s => [s.id, s.date]));
+        const sessionDurMap  = Object.fromEntries(sessions.map(s => [s.id, s.planned_duration]));
 
-        let rpeRows: Array<{ rpe: number; player_id: string; session_id: string }> = [];
+        let rpeRows: Array<{ rpe: number; player_id: string; session_id: string; actual_duration: number | null }> = [];
         if (sessionIds.length > 0) {
           const { data } = await supabase
             .from('rpe_entries')
-            .select('rpe, player_id, session_id')
+            .select('rpe, player_id, session_id, actual_duration')
             .in('session_id', sessionIds);
           rpeRows = (data ?? []) as typeof rpeRows;
         }
+
+        // Charge semaine par joueur
+        const weekStart = weekMonday();
+        const weekSessionIds = new Set(sessions.filter(s => s.date >= weekStart).map(s => s.id));
+        const weekUaByPlayer = new Map<string, number>();
+        rpeRows.forEach(r => {
+          if (!weekSessionIds.has(r.session_id)) return;
+          const dur = r.actual_duration ?? sessionDurMap[r.session_id] ?? 90;
+          weekUaByPlayer.set(r.player_id, (weekUaByPlayer.get(r.player_id) ?? 0) + r.rpe * dur);
+        });
+        const counts = { légère: 0, normale: 0, surcharge: 0 };
+        weekUaByPlayer.forEach(ua => {
+          const tier = getWeekTier(ua);
+          if (tier.label === 'Légère')    counts.légère++;
+          else if (tier.label === 'Normale') counts.normale++;
+          else                               counts.surcharge++;
+        });
+        setWeekTierCounts(weekUaByPlayer.size > 0 ? counts : null);
 
         // Group RPE values by date
         const rpeByDate = new Map<string, number[]>();
@@ -165,7 +191,7 @@ export default function DashboardPage() {
           seen.add(player.id);
           alertItems.push({
             player,
-            type: inj.severity === 'severe' ? 'danger' : 'warning',
+            type: 'danger',
             message: inj.description,
             detail: inj.rtpDate ? `RTP ${inj.rtpDate.slice(5).replace('-', '/')}` : 'En cours',
           });
@@ -283,7 +309,28 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Chart + Alerts */}
+      {/* Charge semaine — répartition */}
+      {!loading && weekTierCounts && (
+        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+          <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>Charge semaine</span>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', flex: 1 }}>
+            {WEEK_TIERS.map(tier => {
+              const count = tier.label === 'Légère' ? weekTierCounts.légère : tier.label === 'Normale' ? weekTierCounts.normale : weekTierCounts.surcharge;
+              return (
+                <div key={tier.label} style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: tier.bg, border: `1px solid ${tier.color}44`, borderRadius: 6, padding: '5px 12px' }}>
+                  <span style={{ color: tier.color, fontSize: '1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{count}</span>
+                  <div>
+                    <div style={{ color: tier.color, fontSize: '0.72rem', fontWeight: 700 }}>{tier.label}</div>
+                    <div style={{ color: '#475569', fontSize: '0.62rem' }}>{tier.ref}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Chart + Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px]" style={{ gap: 16, marginBottom: 16 }}>
         {/* RPE Chart */}
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
@@ -311,94 +358,94 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Alerts */}
+        {/* Prochaines actions */}
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <h3 style={{ color: '#F1F5F9' }}>Joueurs à surveiller</h3>
-            <span style={{
-              backgroundColor: alerts.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(71,85,105,0.12)',
-              color: alerts.length > 0 ? '#EF4444' : '#475569',
-              borderRadius: 4, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700,
-            }}>
-              {loading ? '…' : alerts.length}
-            </span>
+            <h3 style={{ color: '#F1F5F9' }}>Prochaines actions</h3>
+            <button
+              onClick={() => navigate('/actions')}
+              style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              Voir tout <ArrowRight size={13} />
+            </button>
           </div>
-          {!loading && alerts.length === 0 ? (
-            <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune alerte active.</p>
+          {!loading && upcomingActions.length === 0 ? (
+            <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action à venir.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {alerts.map((alert, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => navigate(`/players/${alert.player.id}`, { state: { from: '/dashboard' } })}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px',
-                    backgroundColor: '#1E2229', borderRadius: 6, cursor: 'pointer',
-                    border: `1px solid ${alert.type === 'danger' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`,
-                    transition: 'border-color 0.15s',
-                  }}
-                >
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: alert.type === 'danger' ? '#EF4444' : '#F59E0B', flexShrink: 0 }} />
-                  <PlayerAvatar player={alert.player} size={30} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, margin: 0 }}>
-                      {alert.player.lastName} {alert.player.firstName[0]}.
-                    </p>
-                    <p style={{ color: '#94A3B8', fontSize: '0.75rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {alert.message}
-                    </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {upcomingActions.map(action => {
+                const player = players.find(p => p.id === action.playerId);
+                const catCfg = categoryConfig[action.category];
+                const isOverdue = action.dueDate < today;
+                return (
+                  <div key={action.id} onClick={() => navigate('/actions')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', backgroundColor: isOverdue ? 'rgba(239,68,68,0.07)' : '#1E2229', borderRadius: 6, cursor: 'pointer', border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.25)' : 'transparent'}` }}>
+                    {player && <PlayerAvatar player={player} size={26} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {player ? `${player.lastName} ${player.firstName[0]}.` : '—'} · {action.title}
+                      </p>
+                      <p style={{ color: catCfg.color, fontSize: '0.68rem', margin: '2px 0 0' }}>{catCfg.label}</p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                      {isOverdue && <span style={{ color: '#EF4444', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>En retard</span>}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: isOverdue ? '#EF4444' : '#94A3B8', fontSize: '0.7rem' }}>
+                        <Clock size={10} />{action.dueDate.slice(5).replace('-', '/')}
+                      </span>
+                    </div>
                   </div>
-                  <span style={{ color: '#475569', fontSize: '0.7rem', flexShrink: 0 }}>{alert.detail}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* Upcoming actions */}
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h3 style={{ color: '#F1F5F9' }}>Prochaines actions</h3>
-          <button
-            onClick={() => navigate('/actions')}
-            style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}
-          >
-            <span className="hidden sm:inline">Voir toutes les actions</span> <ArrowRight size={13} />
-          </button>
-        </div>
-        {!loading && upcomingActions.length === 0 ? (
-          <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action à venir.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {upcomingActions.map(action => {
-              const player = players.find(p => p.id === action.playerId);
-              const catCfg = categoryConfig[action.category];
-              const priCfg = priorityConfig[action.priority];
-              const isOverdue = action.dueDate < today;
-              return (
-                <div key={action.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', backgroundColor: '#1E2229', borderRadius: 6 }}>
-                  {player && <PlayerAvatar player={player} size={28} />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {player ? `${player.lastName} ${player.firstName[0]}.` : '—'} · {action.title}
-                    </p>
+      {/* Joueurs à surveiller — tous les joueurs */}
+      {!loading && players.length > 0 && (() => {
+        const alertById = new Map(alerts.map(a => [a.player.id, a]));
+        return (
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <h3 style={{ color: '#F1F5F9' }}>Joueurs à surveiller</h3>
+              {alerts.length > 0 && (
+                <span style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444', borderRadius: 4, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700 }}>
+                  {alerts.length} alerte{alerts.length > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4" style={{ gap: 8 }}>
+              {players.map(player => {
+                const alert = alertById.get(player.id);
+                const isDanger = alert?.type === 'danger';
+                const isWarning = alert?.type === 'warning';
+                const dotColor   = isDanger ? '#EF4444' : isWarning ? '#F59E0B' : '#00E5A0';
+                const borderColor = isDanger ? '#EF4444' : isWarning ? '#F59E0B' : 'rgba(0,229,160,0.15)';
+                const borderWidth = alert ? '2px' : '1px';
+                const bgColor     = isDanger ? 'rgba(239,68,68,0.08)' : isWarning ? 'rgba(245,158,11,0.08)' : '#1E2229';
+                return (
+                  <div
+                    key={player.id}
+                    onClick={() => navigate(`/players/${player.id}`, { state: { from: '/dashboard' } })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', backgroundColor: bgColor, borderRadius: 6, border: `${borderWidth} solid ${borderColor}`, cursor: 'pointer', transition: 'opacity 0.15s' }}
+                  >
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0, boxShadow: alert ? `0 0 6px ${dotColor}` : 'none' }} />
+                    <PlayerAvatar player={player} size={26} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {player.lastName} {player.firstName[0]}.
+                      </p>
+                      <p style={{ color: alert ? dotColor : '#00E5A0', fontSize: '0.7rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: alert ? 600 : 400 }}>
+                        {alert ? alert.message : 'Tout va bien'}
+                      </p>
+                    </div>
+                    {alert && <span style={{ color: dotColor, fontSize: '0.65rem', flexShrink: 0, textAlign: 'right', fontWeight: 600 }}>{alert.detail}</span>}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <span className="hidden sm:inline" style={{ color: catCfg.color, fontSize: '0.7rem', backgroundColor: catCfg.color + '18', padding: '2px 6px', borderRadius: 3 }}>
-                      {catCfg.label}
-                    </span>
-                    <span className="hidden sm:inline" style={{ color: priCfg.color, fontSize: '0.72rem', fontWeight: 600 }}>{priCfg.label}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: isOverdue ? '#EF4444' : '#94A3B8', fontSize: '0.72rem' }}>
-                      <Clock size={11} />{action.dueDate.slice(5).replace('-', '/')}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })()}
     </div>
   );
 }

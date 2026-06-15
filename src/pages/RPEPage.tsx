@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useLocation } from 'react-router';
+import { computeWeeklyUa, getWeekTier, WEEK_TIERS } from '../utils/weeklyLoad';
 import {
   LineChart, Line, BarChart, Bar, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
@@ -161,6 +162,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 export default function RPEPage() {
   const { selected } = useTeamSeason();
   const navigate     = useNavigate();
+  const location     = useLocation();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
   const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'collective';
@@ -180,11 +182,12 @@ export default function RPEPage() {
   const [loadingRoster, setLoadingRoster] = useState(false);
 
   // ── Collective tab state
-  const [sessionDate, setSessionDate]     = useState(todayStr());
-  const [sessionType, setSessionType]     = useState<SessionType>('training');
-  const [duration, setDuration]           = useState(90);
+  const _navState = (location.state as { sessionDate?: string; sessionType?: string; duration?: number; sessionId?: string } | null);
+  const [sessionDate, setSessionDate]     = useState(_navState?.sessionDate ?? todayStr());
+  const [sessionType, setSessionType]     = useState<SessionType>((_navState?.sessionType as SessionType) ?? 'training');
+  const [duration, setDuration]           = useState(_navState?.duration ?? 90);
   const [rpeValues, setRpeValues]         = useState<Record<string, number | null>>({});
-  const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
+  const [existingSessionId, setExistingSessionId] = useState<string | null>(_navState?.sessionId ?? null);
   const [saving, setSaving]               = useState(false);
   const [saved, setSaved]                 = useState(false);
   const [saveError, setSaveError]         = useState('');
@@ -794,7 +797,7 @@ export default function RPEPage() {
                       );
                       return (
                         <div key={player.id} className="rpe-row" style={{ borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
-                          <div className="rpe-player-col" style={{ display: 'flex', alignItems: 'center', gap: 8, width: 150, flexShrink: 0 }}>
+                          <div className="rpe-player-col" onClick={() => navigate(`/players/${player.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: 150, flexShrink: 0, cursor: 'pointer' }}>
                             <div className="hidden md:block"><PlayerAvatar player={player} size={26} /></div>
                             <div style={{ minWidth: 0 }}>
                               <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName[0]}.</span>
@@ -868,20 +871,41 @@ export default function RPEPage() {
                 </div>
 
                 {/* KPIs */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
-                  {[
-                    { label: 'Dernière RPE',  value: lastRPE ? String(lastRPE.rpe) : '—', sub: lastRPE ? RPE_LABELS[lastRPE.rpe] : '', color: lastRPE ? rpeColorScale(lastRPE.rpe) : '#F1F5F9' },
-                    { label: 'RPE moyenne',   value: avgRPE !== null ? String(avgRPE) : '—', sub: `sur ${filtered.length} séance${filtered.length > 1 ? 's' : ''}`, color: avgRPE !== null ? rpeColorScale(avgRPE) : '#F1F5F9' },
-                    { label: 'Charge totale', value: totalLoad > 0 ? String(totalLoad) : '—', sub: 'UA (RPE × min)', color: '#F1F5F9' },
-                    { label: 'Séances',       value: String(filtered.length), sub: 'enregistrées', color: '#F1F5F9' },
-                  ].map(kpi => (
-                    <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
-                      <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{kpi.label}</p>
-                      <p style={{ color: kpi.color, fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{kpi.value}</p>
-                      <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>{kpi.sub}</p>
+                {(() => {
+                  const weeklyUa  = computeWeeklyUa(history);
+                  const weekTier  = weeklyUa > 0 ? getWeekTier(weeklyUa) : null;
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
+                      {[
+                        { label: 'Dernière RPE',  value: lastRPE ? String(lastRPE.rpe) : '—', sub: lastRPE ? RPE_LABELS[lastRPE.rpe] : '', color: lastRPE ? rpeColorScale(lastRPE.rpe) : '#F1F5F9' },
+                        { label: 'RPE moyenne',   value: avgRPE !== null ? String(avgRPE) : '—', sub: `sur ${filtered.length} séance${filtered.length > 1 ? 's' : ''}`, color: avgRPE !== null ? rpeColorScale(avgRPE) : '#F1F5F9' },
+                        { label: 'Charge totale', value: totalLoad > 0 ? String(totalLoad) : '—', sub: 'UA (RPE × min)', color: '#F1F5F9' },
+                        { label: 'Séances',       value: String(filtered.length), sub: 'enregistrées', color: '#F1F5F9' },
+                      ].map(kpi => (
+                        <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
+                          <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{kpi.label}</p>
+                          <p style={{ color: kpi.color, fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{kpi.value}</p>
+                          <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>{kpi.sub}</p>
+                        </div>
+                      ))}
+                      {/* Charge semaine */}
+                      <div style={{ backgroundColor: '#161920', border: `1px solid ${weekTier ? weekTier.color + '44' : '#2A2F3A'}`, borderRadius: 8, padding: '14px 16px' }}>
+                        <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>Charge semaine</p>
+                        <p style={{ color: weekTier ? weekTier.color : '#475569', fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
+                          {weeklyUa > 0 ? weeklyUa : '—'}
+                        </p>
+                        {weekTier ? (
+                          <span style={{ color: weekTier.color, backgroundColor: weekTier.bg, fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 3, display: 'inline-block', marginTop: 4 }}>{weekTier.label}</span>
+                        ) : (
+                          <p style={{ color: '#2A2F3A', fontSize: '0.72rem', margin: '3px 0 0' }}>aucune séance cette semaine</p>
+                        )}
+                        <p style={{ color: '#2A2F3A', fontSize: '0.65rem', margin: '6px 0 0' }}>
+                          {WEEK_TIERS.map(t => `${t.label} ${t.ref}`).join(' · ')}
+                        </p>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })()}
 
                 {/* Charts côte à côte */}
                 <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16, marginBottom: 20 }}>

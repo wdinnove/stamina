@@ -10,7 +10,8 @@ export { staffApi }    from './staff';
 export { meetingsApi }    from './meetings';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
-export { documentsApi } from './documents';
+export { documentsApi }     from './documents';
+export { sessionBlocksApi } from './sessionBlocks';
 
 export type { ListPlayersFilters }       from './players';
 export type { ListWellnessFilters }      from './wellness';

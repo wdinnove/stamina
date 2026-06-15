@@ -1,12 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, Upload, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Clock, Upload, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, Plus, GripVertical, ArrowRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
 import { documentsApi } from '../api/documents';
+import { sessionBlocksApi } from '../api/sessionBlocks';
 import { PlayerAvatar } from '../components';
-import type { TrainingSession, Player, TrainingAttendance, SessionDocument } from '../data/types';
+import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock } from '../data/types';
+
+function loadDelta(real: number, estimated: number): { Icon: React.ElementType; color: string } | null {
+  if (estimated === 0) return null;
+  const pct = (real - estimated) / estimated;
+  if (pct >  0.08) return { Icon: TrendingUp,   color: '#EF4444' }; // +8% → au-dessus
+  if (pct < -0.08) return { Icon: TrendingDown, color: '#3B82F6' }; // -8% → en dessous
+  return { Icon: Minus, color: '#00E5A0' };                          // ±8% → dans la cible
+}
+
+const BLOCK_CATEGORIES = [
+  'Échauffement', 'Jeu réduit', 'Jeu rapide', 'Tirs', 'Technique',
+  'Physique', 'Tactique', 'Retour au calme', 'Autre',
+];
+
+const INTENSITY_CFG: Record<string, { label: string; color: string; bg: string }> = {
+  'basse':       { label: 'Basse',       color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'   },
+  'moyenne':     { label: 'Moyenne',     color: '#3B82F6', bg: 'rgba(59,130,246,0.12)'  },
+  'haute':       { label: 'Haute',       color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
+  'très élevée': { label: 'Très élevée', color: '#EF4444', bg: 'rgba(239,68,68,0.12)'   },
+};
 
 const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
@@ -49,6 +70,253 @@ function DocIcon({ mimeType }: { mimeType?: string }) {
   if (m.startsWith('video/'))  return <Video  size={15} color="#F59E0B" />;
   if (m === 'application/pdf') return <FileText size={15} color="#EF4444" />;
   return <File size={15} color="#94A3B8" />;
+}
+
+const BLANK_BLOCK = { duration: '15', category: 'Échauffement', intensity: 'moyenne' as SessionBlock['intensity'], label: '' };
+
+function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
+  sessionId: string;
+  blocks: SessionBlock[];
+  onBlocksChange: (blocks: SessionBlock[]) => void;
+}) {
+  const [showForm,    setShowForm]    = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [blockError,  setBlockError]  = useState('');
+  const [form,        setForm]        = useState(BLANK_BLOCK);
+  const [editingId,   setEditingId]   = useState<string | null>(null);
+  const [editForm,    setEditForm]    = useState(BLANK_BLOCK);
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '7px 9px', backgroundColor: '#1E2229',
+    border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
+    fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box',
+  };
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.label.trim()) return;
+    setSaving(true);
+    setBlockError('');
+    try {
+      const next = await sessionBlocksApi.create(sessionId, {
+        position: blocks.length + 1,
+        duration: parseInt(form.duration),
+        category: form.category,
+        intensity: form.intensity,
+        label: form.label.trim(),
+      });
+      onBlocksChange([...blocks, next]);
+      setForm(BLANK_BLOCK);
+      setShowForm(false);
+    } catch (err: unknown) {
+      setBlockError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openEdit(block: SessionBlock) {
+    setEditingId(block.id);
+    setEditForm({ duration: String(block.duration), category: block.category, intensity: block.intensity, label: block.label });
+  }
+
+  async function handleEditSave(block: SessionBlock) {
+    setSaving(true);
+    setBlockError('');
+    try {
+      const updated = await sessionBlocksApi.update(block.id, {
+        duration:  parseInt(editForm.duration),
+        category:  editForm.category,
+        intensity: editForm.intensity,
+        label:     editForm.label.trim(),
+      });
+      onBlocksChange(blocks.map(b => b.id === block.id ? updated : b));
+      setEditingId(null);
+    } catch (err: unknown) {
+      setBlockError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await sessionBlocksApi.remove(id);
+      onBlocksChange(blocks.filter(b => b.id !== id));
+    } catch (err: unknown) {
+      setBlockError(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
+  const totalLoadUa   = blocks.reduce((s, b) => s + b.loadUa, 0);
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Contenu de la séance
+          </span>
+          {blocks.length > 0 && (
+            <span style={{ color: '#475569', fontSize: '0.72rem' }}>
+              {totalDuration} min · {blocks.length} bloc{blocks.length > 1 ? 's' : ''} · <span style={{ color: '#F59E0B' }}>{totalLoadUa} UA</span>
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => { setShowForm(v => !v); setBlockError(''); }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', fontSize: '0.76rem', padding: '5px 10px', cursor: 'pointer' }}
+        >
+          <Plus size={12} /> Ajouter
+        </button>
+      </div>
+
+      {blockError && (
+        <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: 10 }}>{blockError}</div>
+      )}
+
+      {/* Liste des blocs */}
+      {blocks.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: showForm ? 12 : 0 }}>
+          {blocks.map((block, i) => {
+            const intCfg = INTENSITY_CFG[block.intensity] ?? INTENSITY_CFG['moyenne'];
+            const isEditing = editingId === block.id;
+
+            return (
+              <div key={block.id}
+                style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: isEditing ? 10 : 0 }}>
+                {isEditing ? (
+                  /* Édition inline */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: 8 }}>
+                      <div>
+                        <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Durée (min)</label>
+                        <input type="number" min={1} max={180} value={editForm.duration}
+                          onChange={e => setEditForm(f => ({ ...f, duration: e.target.value }))}
+                          style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Catégorie</label>
+                        <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))} style={inputStyle}>
+                          {BLOCK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Intensité</label>
+                        <select value={editForm.intensity} onChange={e => setEditForm(f => ({ ...f, intensity: e.target.value as SessionBlock['intensity'] }))} style={inputStyle}>
+                          {Object.entries(INTENSITY_CFG).map(([val, cfg]) => <option key={val} value={val}>{cfg.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Exercice</label>
+                      <input type="text" placeholder="Nom de l'exercice…" value={editForm.label}
+                        onChange={e => setEditForm(f => ({ ...f, label: e.target.value }))}
+                        style={inputStyle} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setEditingId(null)}
+                        style={{ flex: 1, padding: '7px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        Annuler
+                      </button>
+                      <button disabled={saving} onClick={() => handleEditSave(block)}
+                        style={{ flex: 1, padding: '7px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.78rem' }}>
+                        {saving ? '…' : 'Enregistrer'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Affichage */
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ color: '#2A2F3A', flexShrink: 0 }}>
+                      <GripVertical size={14} />
+                    </div>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ color: '#475569', fontSize: '0.65rem', fontWeight: 700 }}>{i + 1}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600 }}>{block.duration} min</span>
+                    </div>
+                    <div style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>·</div>
+                    <span style={{ color: '#94A3B8', fontSize: '0.78rem', flexShrink: 0 }}>{block.category}</span>
+                    <div style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>·</div>
+                    <span style={{ color: intCfg.color, backgroundColor: intCfg.bg, fontSize: '0.68rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
+                      {intCfg.label}
+                    </span>
+                    <span style={{ color: '#F59E0B', fontSize: '0.72rem', fontWeight: 600, flexShrink: 0 }}>{block.loadUa} UA</span>
+                    <span style={{ color: '#F1F5F9', fontSize: '0.82rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.label}</span>
+                    <button onClick={() => openEdit(block)}
+                      style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, flexShrink: 0 }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                      <Edit size={12} />
+                    </button>
+                    <button onClick={() => handleDelete(block.id)}
+                      style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, flexShrink: 0 }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Formulaire d'ajout */}
+      {showForm && (
+        <form onSubmit={handleAdd}
+          style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: 8 }}>
+            <div>
+              <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Durée (min) *</label>
+              <input type="number" required min={1} max={180} value={form.duration}
+                onChange={e => setForm(f => ({ ...f, duration: e.target.value }))}
+                style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Catégorie *</label>
+              <select required value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inputStyle}>
+                {BLOCK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Intensité *</label>
+              <select required value={form.intensity} onChange={e => setForm(f => ({ ...f, intensity: e.target.value as SessionBlock['intensity'] }))} style={inputStyle}>
+                {Object.entries(INTENSITY_CFG).map(([val, cfg]) => <option key={val} value={val}>{cfg.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={{ color: '#475569', fontSize: '0.7rem', display: 'block', marginBottom: 3 }}>Exercice *</label>
+            <input type="text" required placeholder="Nom de l'exercice…" value={form.label}
+              onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+              style={inputStyle} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <button type="button" onClick={() => { setShowForm(false); setForm(BLANK_BLOCK); }}
+              style={{ flex: 1, padding: '8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.82rem' }}>
+              Annuler
+            </button>
+            <button type="submit" disabled={saving}
+              style={{ flex: 1, padding: '8px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>
+              {saving ? 'Ajout…' : 'Ajouter'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {blocks.length === 0 && !showForm && (
+        <div style={{ border: '1px dashed #2A2F3A', borderRadius: 8, padding: '16px', textAlign: 'center', color: '#475569', fontSize: '0.8rem', cursor: 'pointer' }}
+          onClick={() => setShowForm(true)}>
+          Aucun bloc — cliquer pour ajouter le contenu de la séance
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SessionDocuments({ sessionId }: { sessionId: string }) {
@@ -185,6 +453,7 @@ export default function TrainingSessionDetailPage() {
   const [players,    setPlayers]    = useState<Player[]>([]);
   const [attendance, setAttendance] = useState<TrainingAttendance[]>([]);
   const [rpeEntries, setRpeEntries] = useState<{ playerId: string; rpe: number; actualDuration?: number }[]>([]);
+  const [blocks,     setBlocks]     = useState<SessionBlock[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
 
@@ -202,12 +471,14 @@ export default function TrainingSessionDetailPage() {
       playersApi.list(),
       attendanceApi.listAttendance([id]),
       rpeApi.listBySession(id),
+      sessionBlocksApi.list(id),
     ])
-      .then(([sess, ps, att, rpe]) => {
+      .then(([sess, ps, att, rpe, blks]) => {
         setSession(sess);
         setPlayers(ps);
         setAttendance(att);
         setRpeEntries(rpe);
+        setBlocks(blks);
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
@@ -271,12 +542,16 @@ export default function TrainingSessionDetailPage() {
     .filter(p => knownIds.has(p.id))
     .sort((a, b) => a.lastName.localeCompare(b.lastName));
 
-  const presentCount = attendance.filter(a => a.status === 'present').length;
-  const absentCount  = attendance.filter(a => a.status === 'absent').length;
-  const lateCount    = attendance.filter(a => a.status === 'late').length;
-  const rpeValues    = rpeEntries.map(e => e.rpe);
-  const avgRpe       = rpeValues.length ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length : null;
-  const totalLoad    = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
+  const presentCount    = attendance.filter(a => a.status === 'present').length;
+  const absentCount     = attendance.filter(a => a.status === 'absent').length;
+  const lateCount       = attendance.filter(a => a.status === 'late').length;
+  const rpeValues       = rpeEntries.map(e => e.rpe);
+  const avgRpe          = rpeValues.length ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length : null;
+  const totalLoad       = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
+  const blockDuration   = blocks.reduce((s, b) => s + b.duration, 0);
+  const blockLoadUa     = blocks.reduce((s, b) => s + b.loadUa, 0);
+  const estimatedRpe    = blockDuration > 0 ? blockLoadUa / blockDuration : null;
+  const avgLoadPerPlayer = rpeEntries.length > 0 ? totalLoad / rpeEntries.length : null;
 
   return (
     <div className="p-4 md:p-6">
@@ -321,19 +596,71 @@ export default function TrainingSessionDetailPage() {
             <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>{k.label}</div>
           </div>
         ))}
-        {avgRpe !== null && (
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 18px', textAlign: 'center', minWidth: 72 }}>
-            <div style={{ color: '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{avgRpe.toFixed(1)}</div>
-            <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>RPE moy.</div>
+        {(estimatedRpe !== null || avgRpe !== null) && (
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            {estimatedRpe !== null && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: '#F59E0B', fontSize: '1.15rem', fontWeight: 700 }}>{estimatedRpe.toFixed(1)}</div>
+                <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>RPE estimé</div>
+              </div>
+            )}
+            {estimatedRpe !== null && (
+              <div style={{ width: 1, height: 28, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
+            )}
+            {avgRpe !== null ? (() => {
+              const d = estimatedRpe !== null ? loadDelta(avgRpe, estimatedRpe) : null;
+              return (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <span style={{ color: '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{avgRpe.toFixed(1)}</span>
+                    {d && <d.Icon size={13} style={{ color: d.color }} />}
+                  </div>
+                  <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>Moy. joueurs</div>
+                </div>
+              );
+            })() : (
+              <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                Saisir le RPE
+                <ArrowRight size={11} />
+              </button>
+            )}
           </div>
         )}
-        {totalLoad > 0 && (
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 18px', textAlign: 'center', minWidth: 72 }}>
-            <div style={{ color: '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{Math.round(totalLoad)}</div>
-            <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>Charge tot.</div>
+        {(blockLoadUa > 0 || avgLoadPerPlayer !== null) && (
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            {blockLoadUa > 0 && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: '#F59E0B', fontSize: '1.15rem', fontWeight: 700 }}>{blockLoadUa}</div>
+                <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>Charge est.</div>
+              </div>
+            )}
+            {blockLoadUa > 0 && (
+              <div style={{ width: 1, height: 28, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
+            )}
+            {avgLoadPerPlayer !== null ? (() => {
+              const d = blockLoadUa > 0 ? loadDelta(avgLoadPerPlayer, blockLoadUa) : null;
+              return (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <span style={{ color: '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{Math.round(avgLoadPerPlayer)}</span>
+                    {d && <d.Icon size={13} style={{ color: d.color }} />}
+                  </div>
+                  <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>Moy. joueurs</div>
+                </div>
+              );
+            })() : (
+              blockLoadUa > 0 && (
+                <span style={{ color: '#2A2F3A', fontSize: '0.72rem' }}>—</span>
+              )
+            )}
           </div>
         )}
       </div>
+
+      <SessionBlocks sessionId={session.id} blocks={blocks} onBlocksChange={setBlocks} />
 
       {/* Player table */}
       {relevantPlayers.length === 0 ? (
@@ -365,7 +692,7 @@ export default function TrainingSessionDetailPage() {
                 const statusCfg = attStatus ? STATUS_CFG[attStatus] : null;
 
                 return (
-                  <tr key={player.id} style={{ borderBottom: i < relevantPlayers.length - 1 ? '1px solid #1E2229' : 'none' }}>
+                  <tr key={player.id} onClick={() => navigate(`/players/${player.id}`)} style={{ borderBottom: i < relevantPlayers.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}>
                     <td style={{ padding: '10px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div className="hidden md:block"><PlayerAvatar player={player} size={28} /></div>

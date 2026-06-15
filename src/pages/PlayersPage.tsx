@@ -5,6 +5,7 @@ import {
   Stethoscope, CheckSquare, BarChart2, X, AlertCircle, Edit, ArrowRight,
 } from 'lucide-react';
 import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi } from '../api';
+import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
 import { StatusBadge, PlayerAvatar, Breadcrumb } from '../components';
 import { formatDate, getAge } from '../data';
 import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action } from '../data/types';
@@ -179,60 +180,201 @@ function PlayerProfile({ playerId }: { playerId: string }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, marginBottom: 20 }}>
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
-          <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Dernière RPE</p>
-          {lastRPE ? (
-            <>
-              <p style={{ color: '#F1F5F9', fontSize: '1.4rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{lastRPE.rpe}</p>
-              <p style={{ color: '#475569', fontSize: '0.75rem', margin: '4px 0 0' }}>{formatDate(lastRPE.date)} · {lastRPE.actualDuration ?? lastRPE.plannedDuration} min</p>
-            </>
-          ) : <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune saisie</p>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
+
+        {/* ── Charge & RPE ── */}
+        {(() => {
+          const avg7 = rpe.length > 0
+            ? (rpe.slice(0, 7).reduce((s, r) => s + r.rpe, 0) / Math.min(rpe.length, 7)).toFixed(1)
+            : null;
+          const weeklyUa = computeWeeklyUa(rpe);
+          const weekTier = weeklyUa > 0 ? getWeekTier(weeklyUa) : null;
+          return (
+            <div onClick={() => navigate(`/rpe/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
+              style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s', minHeight: 108, display: 'flex', flexDirection: 'column' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Activity size={15} style={{ color: '#00E5A0' }} />
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Charge & RPE</span>
+                </div>
+                <ArrowRight size={14} style={{ color: '#475569' }} />
+              </div>
+              {lastRPE ? (
+                <div style={{ flex: 1, display: 'flex', gap: 24, flexWrap: 'wrap', alignContent: 'flex-start', alignItems: 'flex-start' }}>
+                  <div>
+                    <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Dernière séance</p>
+                    <p style={{ color: '#F1F5F9', fontSize: '1.1rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
+                      {lastRPE.rpe}<span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 400 }}>/10</span>
+                    </p>
+                    <p style={{ color: '#475569', fontSize: '0.7rem', margin: '1px 0 0' }}>{formatDate(lastRPE.date)} · {lastRPE.actualDuration ?? lastRPE.plannedDuration} min</p>
+                  </div>
+                  {avg7 && (
+                    <div>
+                      <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Moy. 7 séances</p>
+                      <p style={{ color: '#94A3B8', fontSize: '1.1rem', fontWeight: 700, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{avg7}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Total séances</p>
+                    <p style={{ color: '#94A3B8', fontSize: '1.1rem', fontWeight: 700, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{rpe.length}</p>
+                  </div>
+                  {weekTier && (
+                    <div>
+                      <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 4px' }}>Semaine</p>
+                      <p style={{ color: '#94A3B8', fontSize: '0.9rem', fontWeight: 700, margin: '0 0 3px', fontFamily: 'JetBrains Mono, monospace' }}>{weeklyUa} UA</p>
+                      <span style={{ color: weekTier.color, backgroundColor: weekTier.bg, fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: 3 }}>{weekTier.label}</span>
+                    </div>
+                  )}
+                </div>
+              ) : <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}><p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune session enregistrée</p></div>}
+            </div>
+          );
+        })()}
+
+        {/* ── Bien-être ── */}
+        {(() => {
+          const trend = wellness.length >= 2 ? wellness[0].score - wellness[1].score : null;
+          const avg3 = wellness.length > 0
+            ? (wellness.slice(0, 3).reduce((s, w) => s + w.score, 0) / Math.min(wellness.length, 3)).toFixed(1)
+            : null;
+          return (
+            <div onClick={() => navigate(`/wellness/history/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
+              style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s', minHeight: 108, display: 'flex', flexDirection: 'column' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Heart size={15} style={{ color: '#F472B6' }} />
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Bien-être</span>
+                </div>
+                <ArrowRight size={14} style={{ color: '#475569' }} />
+              </div>
+              {lastWellness ? (
+                <div style={{ flex: 1, display: 'flex', gap: 24, flexWrap: 'wrap', alignContent: 'flex-start', alignItems: 'flex-start' }}>
+                  <div>
+                    <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Dernier score</p>
+                    <p style={{ color: lastWellness.score < 5 ? '#EF4444' : lastWellness.score < 7 ? '#F59E0B' : '#00E5A0', fontSize: '1.1rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
+                      {lastWellness.score}<span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 400 }}>/10</span>
+                    </p>
+                    <p style={{ color: '#475569', fontSize: '0.7rem', margin: '1px 0 0' }}>{formatDate(lastWellness.date)}</p>
+                  </div>
+                  {trend !== null && (
+                    <div>
+                      <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Tendance</p>
+                      <p style={{ color: trend > 0 ? '#00E5A0' : trend < 0 ? '#EF4444' : '#94A3B8', fontSize: '1.1rem', fontWeight: 700, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
+                        {trend > 0 ? '+' : ''}{trend.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                  {avg3 && (
+                    <div>
+                      <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Moy. 3 dernières</p>
+                      <p style={{ color: '#94A3B8', fontSize: '1.1rem', fontWeight: 700, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{avg3}</p>
+                    </div>
+                  )}
+                </div>
+              ) : <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}><p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune saisie bien-être</p></div>}
+            </div>
+          );
+        })()}
+
+        {/* ── Suivi médical ── */}
+        {(() => {
+          const lastRecord = medical[0];
+          return (
+            <div onClick={() => navigate(`/medical/record/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
+              style={{ backgroundColor: '#161920', border: `1px solid ${activeMedical.length > 0 ? 'rgba(239,68,68,0.25)' : '#2A2F3A'}`, borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s', minHeight: 108, display: 'flex', flexDirection: 'column' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = activeMedical.length > 0 ? 'rgba(239,68,68,0.5)' : '#00E5A066')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = activeMedical.length > 0 ? 'rgba(239,68,68,0.25)' : '#2A2F3A')}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Stethoscope size={15} style={{ color: activeMedical.length > 0 ? '#EF4444' : '#3B82F6' }} />
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Suivi médical</span>
+                </div>
+                <ArrowRight size={14} style={{ color: '#475569' }} />
+              </div>
+              <div style={{ flex: 1, display: 'flex', gap: 24, flexWrap: 'wrap', alignContent: 'flex-start', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Alertes actives</p>
+                  <p style={{ color: activeMedical.length > 0 ? '#EF4444' : '#00E5A0', fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
+                    {activeMedical.length > 0 ? activeMedical.length : '✓'}
+                  </p>
+                  {activeMedical.length > 0 && (
+                    <p style={{ color: '#EF4444', fontSize: '0.7rem', margin: '1px 0 0' }}>{activeMedical[0].description}</p>
+                  )}
+                </div>
+                <div>
+                  <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Entrées totales</p>
+                  <p style={{ color: '#94A3B8', fontSize: '1.1rem', fontWeight: 700, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{medical.length}</p>
+                </div>
+                {lastRecord && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Dernière entrée</p>
+                    <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lastRecord.description}</p>
+                    <p style={{ color: '#475569', fontSize: '0.7rem', margin: '1px 0 0' }}>{formatDate(lastRecord.date)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Actions en cours ── */}
+        {(() => {
+          const doneCount  = actions.filter(a => a.status === 'done').length;
+          const nextAction = actions.find(a => a.status !== 'done');
+          return (
+            <div onClick={() => navigate('/actions', { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}`, playerId } })}
+              style={{ backgroundColor: '#161920', border: `1px solid ${pendingActions > 0 ? 'rgba(245,158,11,0.25)' : '#2A2F3A'}`, borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s', minHeight: 108, display: 'flex', flexDirection: 'column' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = pendingActions > 0 ? 'rgba(245,158,11,0.25)' : '#2A2F3A')}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CheckSquare size={15} style={{ color: pendingActions > 0 ? '#F59E0B' : '#00E5A0' }} />
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Actions en cours</span>
+                </div>
+                <ArrowRight size={14} style={{ color: '#475569' }} />
+              </div>
+              <div style={{ flex: 1, display: 'flex', gap: 24, flexWrap: 'wrap', alignContent: 'flex-start', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>En attente</p>
+                  <p style={{ color: pendingActions > 0 ? '#F59E0B' : '#00E5A0', fontSize: '1.1rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{pendingActions}</p>
+                </div>
+                <div>
+                  <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Réalisées</p>
+                  <p style={{ color: '#94A3B8', fontSize: '1.1rem', fontWeight: 700, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{doneCount}</p>
+                </div>
+                {nextAction && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>Prochaine action</p>
+                    <p style={{ color: '#F59E0B', fontSize: '0.78rem', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nextAction.title}</p>
+                    <p style={{ color: '#475569', fontSize: '0.7rem', margin: '1px 0 0' }}>Échéance : {formatDate(nextAction.dueDate)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Statistiques ── */}
+        <div onClick={() => navigate(`/stats/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
+          style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s', minHeight: 108, display: 'flex', flexDirection: 'column' }}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <BarChart2 size={15} style={{ color: '#3B82F6' }} />
+              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Statistiques</span>
+            </div>
+            <ArrowRight size={14} style={{ color: '#475569' }} />
+          </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Points, rebonds, passes, minutes… Consulter les stats de match.</p>
+          </div>
         </div>
 
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
-          <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Bien-être</p>
-          {lastWellness ? (
-            <>
-              <p style={{ color: lastWellness.score < 5 ? '#EF4444' : lastWellness.score < 7 ? '#F59E0B' : '#00E5A0', fontSize: '1.4rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
-                {lastWellness.score}
-              </p>
-              <p style={{ color: '#475569', fontSize: '0.75rem', margin: '4px 0 0' }}>{formatDate(lastWellness.date)} · /10</p>
-            </>
-          ) : <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune saisie</p>}
-        </div>
-
-        <div style={{ backgroundColor: '#161920', border: `1px solid ${activeMedical.length > 0 ? 'rgba(239,68,68,0.3)' : '#2A2F3A'}`, borderRadius: 8, padding: '16px' }}>
-          <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Alerte médicale</p>
-          {activeMedical.length > 0
-            ? activeMedical.map(m => <p key={m.id} style={{ color: '#EF4444', fontSize: '0.82rem', margin: 0 }}>🔴 {m.description}</p>)
-            : <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucune alerte active</p>}
-        </div>
-
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
-          <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Actions en attente</p>
-          <p style={{ color: pendingActions > 0 ? '#F59E0B' : '#00E5A0', fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>{pendingActions}</p>
-          <p style={{ color: '#475569', fontSize: '0.75rem', margin: '4px 0 0' }}>action{pendingActions > 1 ? 's' : ''} non réalisée{pendingActions > 1 ? 's' : ''}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5" style={{ gap: 8, marginTop: 20 }}>
-        {[
-          { label: 'Charge & RPE',       icon: Activity,   path: `/rpe/individual/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
-          { label: 'Bien-être',          icon: Heart,       path: `/wellness/history/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
-          { label: 'Suivi médical',      icon: Stethoscope, path: `/medical/record/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
-          { label: 'Actions en cours',   icon: CheckSquare, path: '/actions',           state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}`, playerId } },
-          { label: 'Statistiques',       icon: BarChart2,   path: `/stats/${playerId}`, state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } },
-        ].map(({ label, icon: Icon, path, state }) => (
-          <button key={label} onClick={() => navigate(path, { state })}
-            style={{ padding: '12px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10, transition: 'border-color 0.15s, color 0.15s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.borderColor = '#00E5A0'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.borderColor = '#2A2F3A'; }}>
-            <Icon size={16} style={{ flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, fontSize: '0.78rem', flex: 1 }}>Voir {label}</span>
-            <ArrowRight size={14} style={{ opacity: 0.5, flexShrink: 0 }} />
-          </button>
-        ))}
       </div>
 
       {/* Modal édition joueur */}
@@ -413,7 +555,7 @@ export default function PlayersPage() {
         <button
           onClick={() => setShowForm(true)}
           style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={16} /><span className="hidden md:inline">Nouvelle joueur</span>
+          <Plus size={16} /><span className="hidden md:inline">Nouveau joueur</span>
         </button>
       </div>
 
@@ -429,7 +571,7 @@ export default function PlayersPage() {
         <div style={{ position: 'relative', flex: 1 }}>
           <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input
-            placeholder="Rechercher une joueur..."
+            placeholder="Rechercher un joueur..."
             value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', padding: '8px 10px 8px 32px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
           />
@@ -456,7 +598,7 @@ export default function PlayersPage() {
         </div>
       ) : filtered.length === 0 ? (
         <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0 }}>
-          {search || statusFilter !== 'all' ? 'Aucun résultat.' : 'Aucune joueur dans cette organisation.'}
+          {search || statusFilter !== 'all' ? 'Aucun résultat.' : 'Aucun joueur dans cette organisation.'}
         </p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
@@ -482,7 +624,7 @@ export default function PlayersPage() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle joueur</h2>
+              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouveau joueur</h2>
               <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
                 <X size={18} />
               </button>

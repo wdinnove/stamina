@@ -289,7 +289,7 @@ export default function MedicalPage() {
             )}
 
             <style>{`@media (min-width: 640px) { .med-card-actions { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; } }`}</style>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {teamActiveAll.map(record => {
                 const player = playerById(record.playerId);
                 if (!player) return null;
@@ -298,12 +298,12 @@ export default function MedicalPage() {
                 const col  = typeColors[record.type] ?? '#94A3B8';
                 const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
                 return (
-                  <div key={record.id} style={{ backgroundColor: '#1E2229', border: `1px solid ${col}30`, borderRadius: 8, padding: '10px 14px' }}>
+                  <div key={record.id} style={{ backgroundColor: '#1E2229', border: `1px solid ${col}30`, borderRadius: 8, padding: '14px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-                      <PlayerAvatar player={player} size={34} />
+                      <PlayerAvatar player={player} size={34} onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
-                          <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem' }}>{player.firstName} {player.lastName}</span>
+                          <span onClick={() => navigate(`/players/${player.id}`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>{player.firstName} {player.lastName}</span>
                           <StatusBadge status={player.status} size="sm" />
                           <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '1px 5px', borderRadius: 3 }}>{typeLabels[record.type]}</span>
                           {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
@@ -391,7 +391,7 @@ export default function MedicalPage() {
                       };
                       const c = statusColors[p.status] ?? '#475569';
                       return (
-                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', backgroundColor: '#1E2229', border: `1px solid ${isInjured ? 'rgba(239,68,68,0.3)' : '#2A2F3A'}`, borderRadius: 20 }}>
+                        <div key={p.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', backgroundColor: '#1E2229', border: `1px solid ${isInjured ? 'rgba(239,68,68,0.3)' : '#2A2F3A'}`, borderRadius: 20, cursor: 'pointer' }}>
                           <PlayerAvatar player={p} size={22} />
                           <span style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600 }}>{p.lastName}</span>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: c, flexShrink: 0 }} />
@@ -420,7 +420,7 @@ export default function MedicalPage() {
                         const sev = r.severity ? severityConfig[r.severity] : null;
                         const days = r.rtpDate ? rtpDaysLeft(r.rtpDate) : null;
                         return (
-                          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', backgroundColor: '#1E2229', borderRadius: 6, borderLeft: '3px solid #EF4444' }}>
+                          <div key={r.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', backgroundColor: '#1E2229', borderRadius: 6, borderLeft: '3px solid #EF4444', cursor: 'pointer' }}>
                             <PlayerAvatar player={p} size={28} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.82rem', margin: 0 }}>{p.lastName} {p.firstName[0]}.</p>
@@ -483,7 +483,7 @@ export default function MedicalPage() {
                           if (!p) return null;
                           const pct = Math.round((count / seasonCount) * 100);
                           return (
-                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div key={p.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                               <PlayerAvatar player={p} size={26} />
                               <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flex: 1 }}>{p.lastName}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

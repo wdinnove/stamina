@@ -220,6 +220,21 @@ export interface SessionDocument {
   createdAt: string;
 }
 
+export type BlockIntensity = 'basse' | 'moyenne' | 'haute' | 'très élevée';
+
+export interface SessionBlock {
+  id: string;
+  sessionId: string;
+  position: number;
+  duration: number;
+  category: string;
+  intensity: BlockIntensity;
+  label: string;
+  loadUa: number;
+  drillId: string | null;
+  createdAt: string;
+}
+
 export interface TrainingAttendance {
   id: string;
   sessionId: string;

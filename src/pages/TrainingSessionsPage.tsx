@@ -3,8 +3,12 @@ import { useNavigate } from 'react-router';
 import { ChevronRight, Plus, X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
+import { playersApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { TrainingSession } from '../data/types';
+import type { TrainingSession, Player } from '../data/types';
+
+const DAYS_FULL_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAYS_FULL = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
 const SESSION_TYPE_OPTIONS = [
   { value: 'training', label: 'Entraînement' },
@@ -50,10 +54,16 @@ export default function TrainingSessionsPage() {
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState('');
 
+  const [players, setPlayers] = useState<Player[]>([]);
+
   const [showAdd,    setShowAdd]    = useState(false);
+  const [addTab,     setAddTab]     = useState<'unique' | 'recurrente'>('unique');
   const [addSaving,  setAddSaving]  = useState(false);
   const [addError,   setAddError]   = useState('');
   const [addForm,    setAddForm]    = useState({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
+  const [recForm,    setRecForm]    = useState({ days: [] as number[], startDate: new Date().toLocaleDateString('sv'), endDate: '', duration: '90', notes: '' });
+  const [recSaving,  setRecSaving]  = useState(false);
+  const [recError,   setRecError]   = useState('');
 
   useEffect(() => {
     if (!selected) return;
@@ -94,6 +104,11 @@ export default function TrainingSessionsPage() {
       .finally(() => setLoading(false));
   }, [selected?.team.id, selected?.season.id]);
 
+  useEffect(() => {
+    if (!selected) return;
+    playersApi.listBySeason(selected.season.id).then(setPlayers).catch(() => {});
+  }, [selected?.season.id]);
+
   // Group by month
   const grouped: { monthLabel: string; sessions: TrainingSession[] }[] = [];
   const seenMonths = new Set<string>();
@@ -104,6 +119,18 @@ export default function TrainingSessionsPage() {
       grouped.push({ monthLabel, sessions: [] });
     }
     grouped[grouped.length - 1].sessions.push(s);
+  }
+
+  function generateRecurringDates(days: number[], startDate: string, endDate: string, notes: string): { date: string; notes: string }[] {
+    const result: { date: string; notes: string }[] = [];
+    if (!days.length || !startDate || !endDate) return result;
+    const end = new Date(endDate + 'T12:00:00');
+    const cur = new Date(startDate + 'T12:00:00');
+    while (cur <= end) {
+      if (days.includes(cur.getDay())) result.push({ date: cur.toISOString().split('T')[0], notes });
+      cur.setDate(cur.getDate() + 1);
+    }
+    return result;
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -119,11 +146,17 @@ export default function TrainingSessionsPage() {
         duration: parseInt(addForm.duration),
         notes:    addForm.notes || undefined,
       });
-      // createSession uses session_type='training' by default; patch if different
       const final = addForm.sessionType !== 'training'
         ? await attendanceApi.updateSession(created.id, { sessionType: addForm.sessionType })
         : created;
+      if (players.length) {
+        await attendanceApi.bulkSetPresent(players.map(p => ({ sessionId: final.id, playerId: p.id })));
+      }
       setSessions(prev => [final, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+      setAttendanceCounts(prev => ({
+        ...prev,
+        [final.id]: { present: players.length, absent: 0, late: 0 },
+      }));
       setShowAdd(false);
       setAddForm({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
       navigate(`/sessions/${final.id}`);
@@ -131,6 +164,37 @@ export default function TrainingSessionsPage() {
       setAddError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
       setAddSaving(false);
+    }
+  }
+
+  async function handleAddRecurring(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    const dates = generateRecurringDates(recForm.days, recForm.startDate, recForm.endDate, recForm.notes);
+    if (!dates.length) { setRecError('Aucune date générée avec ces paramètres.'); return; }
+    setRecSaving(true);
+    setRecError('');
+    try {
+      const dur = parseInt(recForm.duration);
+      const created = await Promise.all(dates.map(({ date, notes }) =>
+        attendanceApi.createSession({ teamId: selected.team.id, seasonId: selected.season.id, date, duration: dur, notes: notes || undefined })
+      ));
+      if (players.length) {
+        const entries = created.flatMap(s => players.map(p => ({ sessionId: s.id, playerId: p.id })));
+        await attendanceApi.bulkSetPresent(entries);
+      }
+      setSessions(prev => [...created, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+      setAttendanceCounts(prev => {
+        const next = { ...prev };
+        created.forEach(s => { next[s.id] = { present: players.length, absent: 0, late: 0 }; });
+        return next;
+      });
+      setShowAdd(false);
+      setRecForm({ days: [], startDate: new Date().toLocaleDateString('sv'), endDate: '', duration: '90', notes: '' });
+    } catch (err: unknown) {
+      setRecError(err instanceof Error ? err.message : 'Erreur lors de la création.');
+    } finally {
+      setRecSaving(false);
     }
   }
 
@@ -225,46 +289,118 @@ export default function TrainingSessionsPage() {
       {/* Modal nouvelle séance */}
       {showAdd && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) { setShowAdd(false); setAddError(''); } }}>
+          onClick={e => { if (e.target === e.currentTarget) { setShowAdd(false); setAddError(''); setRecError(''); } }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 440, padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouvelle séance</h2>
-              <button onClick={() => { setShowAdd(false); setAddError(''); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+              <button onClick={() => { setShowAdd(false); setAddError(''); setRecError(''); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
             </div>
-            {addError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{addError}</span>
-              </div>
-            )}
-            <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
-                  <input type="date" required value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
-                  <select required value={addForm.sessionType} onChange={e => setAddForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
-                    {SESSION_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
-                <input type="number" required min={1} max={300} value={addForm.duration} onChange={e => setAddForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
-                <input type="text" placeholder="Optionnel…" value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => { setShowAdd(false); setAddError(''); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-                <button type="submit" disabled={addSaving} style={{ flex: 1, padding: '10px', backgroundColor: addSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: addSaving ? '#475569' : '#0D0F14', cursor: addSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {addSaving ? 'Création…' : 'Créer'}
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 4, backgroundColor: '#1E2229', borderRadius: 8, padding: 4, marginBottom: 18 }}>
+              {(['unique', 'recurrente'] as const).map(tab => (
+                <button key={tab} type="button" onClick={() => { setAddTab(tab); setAddError(''); setRecError(''); }}
+                  style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                    backgroundColor: addTab === tab ? '#2A2F3A' : 'transparent',
+                    color: addTab === tab ? '#F1F5F9' : '#475569' }}>
+                  {tab === 'unique' ? 'Séance unique' : 'Récurrentes'}
                 </button>
-              </div>
-            </form>
+              ))}
+            </div>
+
+            {addTab === 'unique' ? (
+              <>
+                {addError && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                    <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                    <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{addError}</span>
+                  </div>
+                )}
+                <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
+                      <input type="date" required value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
+                      <select required value={addForm.sessionType} onChange={e => setAddForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
+                        {SESSION_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+                    <input type="number" required min={1} max={300} value={addForm.duration} onChange={e => setAddForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+                    <input type="text" placeholder="Optionnel…" value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                    <button type="button" onClick={() => { setShowAdd(false); setAddError(''); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                    <button type="submit" disabled={addSaving} style={{ flex: 1, padding: '10px', backgroundColor: addSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: addSaving ? '#475569' : '#0D0F14', cursor: addSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                      {addSaving ? 'Création…' : 'Créer'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <>
+                {recError && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                    <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                    <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{recError}</span>
+                  </div>
+                )}
+                <form onSubmit={handleAddRecurring} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 6 }}>Jours *</label>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {DAYS_FULL_ORDER.map(d => (
+                        <button key={d} type="button"
+                          onClick={() => setRecForm(f => ({ ...f, days: f.days.includes(d) ? f.days.filter(x => x !== d) : [...f.days, d] }))}
+                          style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                            borderColor: recForm.days.includes(d) ? '#00E5A0' : '#2A2F3A',
+                            backgroundColor: recForm.days.includes(d) ? 'rgba(0,229,160,0.12)' : '#1E2229',
+                            color: recForm.days.includes(d) ? '#00E5A0' : '#94A3B8' }}>
+                          {DAYS_FULL[d].slice(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Du *</label>
+                      <input type="date" required value={recForm.startDate} onChange={e => setRecForm(f => ({ ...f, startDate: e.target.value }))} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Au *</label>
+                      <input type="date" required value={recForm.endDate} onChange={e => setRecForm(f => ({ ...f, endDate: e.target.value }))} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+                    <input type="number" required min={1} max={300} value={recForm.duration} onChange={e => setRecForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+                    <input type="text" placeholder="Optionnel…" value={recForm.notes} onChange={e => setRecForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+                  </div>
+                  {recForm.days.length > 0 && recForm.startDate && recForm.endDate && (
+                    <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: 0 }}>
+                      {generateRecurringDates(recForm.days, recForm.startDate, recForm.endDate, '').length} séance(s) seront créées
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                    <button type="button" onClick={() => { setShowAdd(false); setRecError(''); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                    <button type="submit" disabled={recSaving} style={{ flex: 1, padding: '10px', backgroundColor: recSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: recSaving ? '#475569' : '#0D0F14', cursor: recSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                      {recSaving ? 'Création…' : 'Créer tout'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}

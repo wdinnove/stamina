@@ -226,7 +226,7 @@ export default function TeamReportPage() {
           </thead>
           <tbody>
             {allAvgs.map(({ player, avg }) => (
-              <tr key={player.id}>
+              <tr key={player.id} onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }}>
                 <Td left>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <PlayerAvatar player={player} size={22} />
