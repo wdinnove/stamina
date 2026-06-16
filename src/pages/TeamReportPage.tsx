@@ -82,13 +82,13 @@ export default function TeamReportPage() {
   }));
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+    <div className="p-4 md:p-6">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
         <div>
           <h1 style={{ color: '#F1F5F9', margin: 0 }}>Bilan Équipe</h1>
           <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '3px 0 0' }}>AL Meyzieu · NF2 · Saison 2025/26</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <select style={{ padding: '7px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
             <option>Saison 2025/26</option>
           </select>
@@ -102,7 +102,7 @@ export default function TeamReportPage() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5" style={{ gap: 10, marginBottom: 14 }}>
         <KPICard label="Bilan" value={`${wins}V - ${losses}D`} accentColor="#3B82F6" trendLabel={`${teamMatchStats.length} matchs`} />
         <KPICard label="Effectif" value={activePlayers} unit={`/ ${t1Players.length}`} accentColor="#00E5A0" trendLabel="joueurs disponibles" />
         <KPICard label="RPE moyen" value={avgRPE} accentColor="#F59E0B" trendLabel="charge collective" trend={0} />
@@ -111,7 +111,7 @@ export default function TeamReportPage() {
       </div>
 
       {/* Comparatif + Évolution */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14, marginBottom: 14 }}>
         {/* Bar chart */}
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -258,7 +258,7 @@ export default function TeamReportPage() {
       {/* Blessures */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 14 }}>
         <h3 style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, borderBottom: '1px solid #2A2F3A', paddingBottom: 7 }}>── Blessures Saison</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 10 }}>
           {[
             { l: 'Blessures', v: totalInjuries, c: '#EF4444' },
             { l: 'Jours perdus', v: totalDaysLost, c: '#F59E0B' },

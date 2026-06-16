@@ -423,7 +423,7 @@ export default function StatsPage() {
       : [];
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       <div style={{ marginBottom: 20 }}>
         <Breadcrumb items={breadcrumbItems} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: breadcrumbItems.length > 0 ? 8 : 0 }}>

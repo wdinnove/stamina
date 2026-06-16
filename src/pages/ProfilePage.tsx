@@ -104,7 +104,7 @@ export default function ProfilePage() {
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
 
   return (
-    <div style={{ padding: '24px', maxWidth: 560 }}>
+    <div className="p-4 md:p-6" style={{ maxWidth: 560 }}>
       <h1 style={{ color: '#F1F5F9', margin: '0 0 28px' }}>Mon profil</h1>
 
       {/* Avatar + email */}

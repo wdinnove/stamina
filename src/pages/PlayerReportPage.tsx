@@ -66,7 +66,7 @@ export default function PlayerReportPage() {
   }));
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <button onClick={() => navigate('/players')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>

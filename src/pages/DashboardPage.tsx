@@ -258,7 +258,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', marginBottom: 4 }}>

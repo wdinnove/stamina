@@ -285,7 +285,7 @@ export default function ExercisesPage() {
       </div>
 
       {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 20, maxWidth: 360 }}>
+      <div style={{ position: 'relative', marginBottom: 20, maxWidth: 360, width: '100%' }}>
         <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
         <input type="text" placeholder="Rechercher…" value={search}
           onChange={e => setSearch(e.target.value)}

@@ -115,7 +115,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
   if (!team) return <div style={{ padding: 24, color: '#EF4444' }}>Équipe introuvable</div>;
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <Breadcrumb items={[{ label: 'Équipes', path: '/teams' }]} />
@@ -341,7 +341,7 @@ function TeamsList() {
   };
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Équipes</h1>
         <button onClick={() => setShowForm(true)}
