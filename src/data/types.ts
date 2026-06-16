@@ -220,6 +220,15 @@ export interface SessionDocument {
   createdAt: string;
 }
 
+export interface Exercise {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  category?: string;
+  createdAt: string;
+}
+
 export type BlockIntensity = 'basse' | 'moyenne' | 'haute' | 'très élevée';
 
 export interface SessionBlock {

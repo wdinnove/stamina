@@ -33,6 +33,7 @@ export const sessionBlocksApi = {
     category: string;
     intensity: SessionBlock['intensity'];
     label: string;
+    drillId?: string | null;
   }): Promise<SessionBlock> {
     const { data, error } = await supabase
       .from('session_blocks')
@@ -43,7 +44,7 @@ export const sessionBlocksApi = {
         category:   block.category,
         intensity:  block.intensity,
         label:      block.label,
-        drill_id:   null,
+        drill_id:   block.drillId ?? null,
       })
       .select()
       .single();
@@ -51,13 +52,14 @@ export const sessionBlocksApi = {
     return toBlock(data as Record<string, unknown>);
   },
 
-  async update(id: string, patch: Partial<Pick<SessionBlock, 'duration' | 'category' | 'intensity' | 'label' | 'position'>>): Promise<SessionBlock> {
+  async update(id: string, patch: Partial<Pick<SessionBlock, 'duration' | 'category' | 'intensity' | 'label' | 'position' | 'drillId'>>): Promise<SessionBlock> {
     const payload: Record<string, unknown> = {};
     if (patch.duration  !== undefined) payload.duration  = patch.duration;
     if (patch.category  !== undefined) payload.category  = patch.category;
     if (patch.intensity !== undefined) payload.intensity = patch.intensity;
     if (patch.label     !== undefined) payload.label     = patch.label;
     if (patch.position  !== undefined) payload.position  = patch.position;
+    if (patch.drillId   !== undefined) payload.drill_id  = patch.drillId;
     const { data, error } = await supabase
       .from('session_blocks')
       .update(payload)

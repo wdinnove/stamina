@@ -22,6 +22,7 @@ import PlayerRPEPage               from './pages/PlayerRPEPage';
 import TrainingSessionsPage        from './pages/TrainingSessionsPage';
 import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
 import MeetingDetailPage           from './pages/MeetingDetailPage';
+import ExercisesPage               from './pages/ExercisesPage';
 
 export const router = createBrowserRouter([
   {
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
           { path: 'attendance',      Component: AttendancePage   },
           { path: 'sessions',        Component: TrainingSessionsPage      },
           { path: 'sessions/:id',    Component: TrainingSessionDetailPage },
+          { path: 'exercises',       Component: ExercisesPage             },
           { path: 'profile',         Component: ProfilePage      },
           { path: 'reports/player', Component: PlayerReportPage },
           { path: 'reports/team',   Component: TeamReportPage   },

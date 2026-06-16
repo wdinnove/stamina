@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, Shield,
+  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, Shield, BookOpen,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
@@ -16,6 +16,7 @@ export const navItems = [
   { path: '/staff',             icon: Users,           label: 'Staff'        },
   { path: '/attendance',        icon: CalendarCheck,   label: 'Présences'    },
   { path: '/sessions',          icon: Dumbbell,        label: 'Séances'      },
+  { path: '/exercises',         icon: BookOpen,        label: 'Exercices'    },
   { path: '/rpe/new',           icon: Activity,        label: 'RPE Effort'   },
   { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'    },
   { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'      },
