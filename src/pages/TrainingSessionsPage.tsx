@@ -5,6 +5,7 @@ import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { notifyOrg } from '../api/notifications';
 import type { TrainingSession, Player } from '../data/types';
 
 const DAYS_FULL_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -158,6 +159,7 @@ export default function TrainingSessionsPage() {
         [final.id]: { present: players.length, absent: 0, late: 0 },
       }));
       setShowAdd(false);
+      notifyOrg('session_added', `Séance du ${addForm.date}`, `${addForm.duration}min`, 'session', final.id);
       setAddForm({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
       navigate(`/sessions/${final.id}`);
     } catch (err: unknown) {
@@ -190,6 +192,7 @@ export default function TrainingSessionsPage() {
         return next;
       });
       setShowAdd(false);
+      notifyOrg('session_added', `${created.length} séance${created.length > 1 ? 's' : ''} créée${created.length > 1 ? 's' : ''}`, `${recForm.duration}min`, 'session');
       setRecForm({ days: [], startDate: new Date().toLocaleDateString('sv'), endDate: '', duration: '90', notes: '' });
     } catch (err: unknown) {
       setRecError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -317,7 +320,7 @@ export default function TrainingSessionsPage() {
                   </div>
                 )}
                 <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
                     <div>
                       <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
                       <input type="date" required value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
@@ -369,7 +372,7 @@ export default function TrainingSessionsPage() {
                       ))}
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
                     <div>
                       <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Du *</label>
                       <input type="date" required value={recForm.startDate} onChange={e => setRecForm(f => ({ ...f, startDate: e.target.value }))} style={inputStyle} />

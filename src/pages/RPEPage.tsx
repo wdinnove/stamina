@@ -8,6 +8,7 @@ import {
 import { Save, Check, TrendingUp, Zap, ArrowDown, ArrowUp, Activity } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
+import { notifyOrg } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
 import { supabase } from '../api/client';
@@ -494,7 +495,7 @@ export default function RPEPage() {
     setSaving(true);
     setSaveError('');
     try {
-      await rpeApi.saveSession({
+      const savedSessionId = await rpeApi.saveSession({
         teamId:            selected.team.id,
         seasonId:          selected.season.id,
         date:              sessionDate,
@@ -506,6 +507,7 @@ export default function RPEPage() {
       setSaved(true);
       setHistoryVersion(v => v + 1);
       setTimeout(() => setSaved(false), 2500);
+      notifyOrg('rpe_added', `RPE saisi — ${activeEntries.length} joueur${activeEntries.length > 1 ? 's' : ''}`, sessionDate, 'session', savedSessionId);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {

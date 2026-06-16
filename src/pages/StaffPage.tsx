@@ -5,6 +5,7 @@ import { staffApi } from '../api/staff';
 import { meetingsApi } from '../api/meetings';
 import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { notifyOrg } from '../api/notifications';
 import type { StaffMember, StaffMeeting } from '../data/types';
 
 const ROLES = [
@@ -194,6 +195,7 @@ export default function StaffPage() {
       setMeetings(prev => [created, ...prev].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
       setShowMeetForm(false);
       setMeetForm(emptyMeeting);
+      notifyOrg('meeting_added', meetForm.title, `${meetForm.date} à ${meetForm.time}`, 'meeting', created.id);
     } catch (err: unknown) {
       setMeetFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -205,7 +207,7 @@ export default function StaffPage() {
   const pastMeetings     = meetings.filter(m => m.date < TODAY).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Staff</h1>
         {selected && (

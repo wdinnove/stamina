@@ -3,6 +3,7 @@ import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search } from 'lucide
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
 import { staffApi }   from '../api/staff';
+import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useLocation, useNavigate } from 'react-router';
 import { categoryConfig, priorityConfig } from '../data/config';
@@ -122,6 +123,9 @@ export default function ActionsPage() {
       setActs(prev => [...prev, created].sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
       setShowForm(false);
       setForm(emptyForm);
+      const player = players.find(p => p.id === form.playerId);
+      const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+      notifyOrg('action_added', form.title, playerName, 'action', created.id);
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {

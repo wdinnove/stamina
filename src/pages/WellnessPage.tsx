@@ -4,6 +4,7 @@ import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Line
 import { Save, Check } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
+import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, WellnessEntry } from '../data/types';
 
@@ -168,6 +169,9 @@ export default function WellnessPage() {
       setSaved(true);
       setHistoryVersion(v => v + 1);
       setTimeout(() => setSaved(false), 2500);
+      const player = roster.find(p => p.id === selectedPlayerId);
+      const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+      notifyOrg('wellness_added', `Bien-être saisi${playerName ? ` — ${playerName}` : ''}`, entryDate, 'player', selectedPlayerId ?? undefined);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {

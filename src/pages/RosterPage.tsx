@@ -5,6 +5,7 @@ import { supabase } from '../api/client';
 import { playersApi } from '../api/players';
 import { StatusBadge, PlayerAvatar } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { notifyOrg } from '../api/notifications';
 import type { Player } from '../data/types';
 
 function toPlayer(row: Record<string, unknown>): Player {
@@ -106,6 +107,8 @@ function AddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, onSaved
         .insert(rows);
       if (err) throw err;
       onSaved();
+      const names = allPlayers.filter(p => selected.has(p.id)).map(p => `${p.firstName} ${p.lastName}`).join(', ');
+      notifyOrg('player_added', `${selected.size} joueur${selected.size > 1 ? 's' : ''} ajouté${selected.size > 1 ? 's' : ''} au roster`, names || undefined, 'player');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
       setSaving(false);
@@ -319,7 +322,7 @@ export default function RosterPage() {
   const rosterIds = new Set(players.map(p => p.id));
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Effectif</h1>

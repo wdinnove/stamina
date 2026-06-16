@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { TopBar, MobileSidebar } from './TopBar';
 import { TeamSeasonProvider } from '../contexts/TeamSeasonContext';
+import { NotificationProvider } from '../contexts/NotificationContext';
+import { NotificationCenter } from '../components/NotificationCenter';
 
 export function Layout() {
   const [collapsed,   setCollapsed]   = useState(false);
@@ -11,6 +13,7 @@ export function Layout() {
 
   return (
     <TeamSeasonProvider>
+    <NotificationProvider>
     <div style={{ display: 'flex', height: '100vh', backgroundColor: '#0D0F14', overflow: 'hidden' }}>
       {/* Desktop sidebar */}
       <div className="hidden md:flex" style={{ position: 'relative' }}>
@@ -31,7 +34,9 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <NotificationCenter />
     </div>
+    </NotificationProvider>
     </TeamSeasonProvider>
   );
 }

@@ -5,6 +5,7 @@ import { navItems, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonContext';
 import { supabase } from '../api/client';
+import { NotificationBell } from '../components/NotificationCenter';
 
 interface TopBarProps { onMenuOpen: () => void; }
 
@@ -145,8 +146,9 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
         </div>
       </div>
 
-      {/* Desktop right: avatar */}
+      {/* Desktop right: notifications + avatar */}
       <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <NotificationBell />
         <button onClick={() => navigate('/profile')} title="Mon profil"
           style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', color: '#00E5A0', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {initials || '?'}

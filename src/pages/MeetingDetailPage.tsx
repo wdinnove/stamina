@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Edit, Trash2, Save, X, Check, AlertCircle, Calendar, Clock } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
 import { supabase } from '../api/client';
+import { notifyOrg } from '../api/notifications';
 import type { StaffMeeting } from '../data/types';
 
 const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -131,7 +132,10 @@ export default function MeetingDetailPage() {
   async function confirmDelete() {
     setDeleting(true);
     try {
-      await meetingsApi.delete(meeting!.id);
+      const title = meeting!.title;
+      const id    = meeting!.id;
+      await meetingsApi.delete(id);
+      notifyOrg('meeting_deleted', `Réunion supprimée : ${title}`, undefined, 'meeting', id);
       navigate('/staff');
     } catch {
       setDeleting(false);

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, X, AlertCircle, Pencil, Search } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
+import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
 import { StatusBadge, PlayerAvatar } from '../components';
@@ -40,6 +41,73 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 const TODAY = new Date().toISOString().split('T')[0];
+
+// ─── Composant partagé ────────────────────────────────────────────────────────
+function MedCard({
+  record, player, daysLabel, daysColor,
+  onEdit, onClose,
+  navigate,
+}: {
+  record: MedicalRecord;
+  player?: Player;
+  daysLabel: string | null;
+  daysColor: string;
+  onEdit: () => void;
+  onClose?: () => void;
+  navigate: (path: string) => void;
+}) {
+  const col = typeColors[record.type] ?? '#94A3B8';
+  const sev = record.severity ? severityConfig[record.severity] : null;
+  return (
+    <div style={{ backgroundColor: '#1E2229', border: `1px solid ${col}30`, borderRadius: 8, padding: '14px 16px' }}>
+      <style>{`@media (min-width: 640px) { .med-card-actions { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; } }`}</style>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+
+        {/* Avatar joueur (infirmerie) ou icône type (dossier) */}
+        {player ? (
+          <PlayerAvatar player={player} size={34} onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }} />
+        ) : (
+          <div style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: col + '20', border: `1px solid ${col}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', flexShrink: 0 }}>
+            {typeIcons[record.type]}
+          </div>
+        )}
+
+        {/* Contenu central */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4, flexWrap: 'wrap' }}>
+            {player && (
+              <span onClick={() => navigate(`/players/${player.id}`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
+                {player.firstName} {player.lastName}
+              </span>
+            )}
+            {player && <StatusBadge status={player.status} size="sm" />}
+            <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '1px 5px', borderRadius: 3 }}>{typeLabels[record.type]}</span>
+            {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
+          </div>
+          <p style={{ color: col, fontWeight: 600, fontSize: '0.85rem', margin: '0 0 3px' }}>{typeIcons[record.type]} {record.description}</p>
+          <p style={{ color: record.treatment ? '#CBD5E1' : '#475569', fontSize: '0.8rem', margin: 0 }}>💊 {record.treatment || '—'}</p>
+        </div>
+
+        {/* Date + boutons */}
+        <div className="med-card-actions w-full sm:w-auto" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid #2A2F3A' }}>
+          <span style={{ color: daysColor, fontWeight: 700, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+            {fmtDate(record.date)}{daysLabel ? ` · ${daysLabel}` : ''}
+          </span>
+          <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+            <button onClick={onEdit} style={{ padding: '3px 9px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Pencil size={11} /> Modifier
+            </button>
+            {onClose && (
+              <button onClick={onClose} style={{ padding: '3px 9px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 4, color: '#00E5A0', cursor: 'pointer', fontSize: '0.72rem' }}>
+                Clôturer
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MedicalPage() {
   const { selected } = useTeamSeason();
@@ -222,6 +290,19 @@ export default function MedicalPage() {
         if (formType === 'injury') {
           await playersApi.update(fPlayerId, { status: 'injured' });
         }
+        const typeLabel = typeLabels[formType] ?? formType;
+        const player = allPlayers.find(p => p.id === fPlayerId);
+        const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+        let notifBody: string | undefined;
+        if (formType === 'injury') {
+          const parts: string[] = [severityConfig[fSeverity].label];
+          if (fDays) parts.push(`${fDays}j d'absence`);
+          if (fDesc) parts.push(fDesc);
+          notifBody = parts.join(' · ');
+        } else {
+          notifBody = fDesc || undefined;
+        }
+        notifyOrg('medical_added', `${typeLabel}${playerName ? ` — ${playerName}` : ''}`, notifBody, 'player', fPlayerId);
       }
       setShowForm(false);
       setVersion(v => v + 1);
@@ -236,8 +317,12 @@ export default function MedicalPage() {
     if (!closeModal) return;
     setCloseSaving(true);
     try {
-      await medicalApi.update(closeModal.recordId, { status: 'resolved', resolvedDate: closeModal.date });
-      await playersApi.update(closeModal.playerId, { status: closeModal.playerStatus });
+      const { recordId, playerId } = closeModal;
+      await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
+      await playersApi.update(playerId, { status: closeModal.playerStatus });
+      const player = allPlayers.find(p => p.id === playerId);
+      const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+      notifyOrg('medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, undefined, 'player', playerId);
       setCloseModal(null);
       setVersion(v => v + 1);
     } catch (err) {
@@ -288,44 +373,23 @@ export default function MedicalPage() {
               <p style={{ color: '#475569', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>Aucune blessure ni traitement actif</p>
             )}
 
-            <style>{`@media (min-width: 640px) { .med-card-actions { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; } }`}</style>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {teamActiveAll.map(record => {
                 const player = playerById(record.playerId);
                 if (!player) return null;
                 const days = record.rtpDate ? rtpDaysLeft(record.rtpDate) : null;
-                const sev  = record.severity ? severityConfig[record.severity] : null;
-                const col  = typeColors[record.type] ?? '#94A3B8';
                 const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
                 return (
-                  <div key={record.id} style={{ backgroundColor: '#1E2229', border: `1px solid ${col}30`, borderRadius: 8, padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-                      <PlayerAvatar player={player} size={34} onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
-                          <span onClick={() => navigate(`/players/${player.id}`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>{player.firstName} {player.lastName}</span>
-                          <StatusBadge status={player.status} size="sm" />
-                          <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '1px 5px', borderRadius: 3 }}>{typeLabels[record.type]}</span>
-                          {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
-                        </div>
-                        <p style={{ color: col, fontWeight: 600, fontSize: '0.85rem', margin: '0 0 2px' }}>{typeIcons[record.type]} {record.description}</p>
-                        <p style={{ color: record.treatment ? '#CBD5E1' : '#475569', fontSize: '0.8rem', margin: 0 }}>💊 {record.treatment || '—'}</p>
-                      </div>
-                      <div className="med-card-actions w-full sm:w-auto" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid #2A2F3A' }}>
-                        <span style={{ color: days !== null && days <= 3 ? '#00E5A0' : '#F59E0B', fontWeight: 700, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                          {fmtDate(record.date)}{days !== null ? ` · ${rtpLabel} J+${days}` : ''}
-                        </span>
-                        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                          <button onClick={() => openEdit(record)} style={{ padding: '3px 9px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3 }}>
-                            <Pencil size={11} /> Modifier
-                          </button>
-                          <button onClick={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })} style={{ padding: '3px 9px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 4, color: '#00E5A0', cursor: 'pointer', fontSize: '0.72rem' }}>
-                            Clôturer
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <MedCard
+                    key={record.id}
+                    record={record}
+                    player={player}
+                    daysLabel={days !== null ? `${rtpLabel} J+${days}` : null}
+                    daysColor={days !== null && days <= 3 ? '#00E5A0' : '#F59E0B'}
+                    onEdit={() => openEdit(record)}
+                    onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
+                    navigate={navigate}
+                  />
                 );
               })}
             </div>
@@ -670,38 +734,18 @@ export default function MedicalPage() {
               ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune entrée active.</p>
               : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {activeInjuryTreatment.map(record => {
-                    const color  = typeColors[record.type] ?? '#94A3B8';
-                    const sev    = record.severity ? severityConfig[record.severity] : null;
-                    const days   = record.rtpDate ? rtpDaysLeft(record.rtpDate) : null;
+                    const days = record.rtpDate ? rtpDaysLeft(record.rtpDate) : null;
                     const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
                     return (
-                      <div key={record.id} style={{ backgroundColor: '#1E2229', border: `1px solid ${color}33`, borderRadius: 8, padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-                          <div style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: color + '20', border: `1px solid ${color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', flexShrink: 0 }}>
-                            {typeIcons[record.type]}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
-                              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem' }}>{record.description}</span>
-                              {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
-                            </div>
-                            <p style={{ color: record.treatment ? '#CBD5E1' : '#475569', fontSize: '0.8rem', margin: 0 }}>💊 {record.treatment || '—'}</p>
-                          </div>
-                          <div className="med-card-actions w-full sm:w-auto" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid #2A2F3A' }}>
-                            <span style={{ color: days !== null && days <= 3 ? '#00E5A0' : '#F59E0B', fontWeight: 700, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                              {fmtDate(record.date)}{days !== null ? ` · ${rtpLabel} J+${days}` : ''}
-                            </span>
-                            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                              <button onClick={() => openEdit(record)} style={{ padding: '3px 9px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3 }}>
-                                <Pencil size={11} /> Modifier
-                              </button>
-                              <button onClick={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })} style={{ padding: '3px 9px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 4, color: '#00E5A0', cursor: 'pointer', fontSize: '0.72rem' }}>
-                                Clôturer
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <MedCard
+                        key={record.id}
+                        record={record}
+                        daysLabel={days !== null ? `${rtpLabel} J+${days}` : null}
+                        daysColor={days !== null && days <= 3 ? '#00E5A0' : '#F59E0B'}
+                        onEdit={() => openEdit(record)}
+                        onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
+                        navigate={navigate}
+                      />
                     );
                   })}
                 </div>
@@ -717,32 +761,16 @@ export default function MedicalPage() {
               ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucun antécédent.</p>
               : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {historyInjuryTreatment.map(record => {
-                    const color = typeColors[record.type] ?? '#94A3B8';
-                    const sev   = record.severity ? severityConfig[record.severity] : null;
                     const totalDays = record.rtpDate ? daysBetween(record.date, record.rtpDate) : null;
                     return (
-                      <div key={record.id} style={{ backgroundColor: '#1E2229', border: `1px solid ${color}33`, borderRadius: 8, padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-                          <div style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: color + '20', border: `1px solid ${color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', flexShrink: 0 }}>
-                            {typeIcons[record.type]}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
-                              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem' }}>{record.description}</span>
-                              {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
-                            </div>
-                            <p style={{ color: record.treatment ? '#CBD5E1' : '#475569', fontSize: '0.8rem', margin: 0 }}>💊 {record.treatment || '—'}</p>
-                          </div>
-                          <div className="med-card-actions w-full sm:w-auto" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid #2A2F3A' }}>
-                            <span style={{ color: '#475569', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                              {fmtDate(record.date)}{totalDays !== null && totalDays > 0 ? ` · ${totalDays}j` : ''}
-                            </span>
-                            <button onClick={() => openEdit(record)} style={{ padding: '3px 9px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                              <Pencil size={11} /> Modifier
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      <MedCard
+                        key={record.id}
+                        record={record}
+                        daysLabel={totalDays !== null && totalDays > 0 ? `${totalDays}j` : null}
+                        daysColor='#475569'
+                        onEdit={() => openEdit(record)}
+                        navigate={navigate}
+                      />
                     );
                   })}
                 </div>
@@ -806,7 +834,7 @@ export default function MedicalPage() {
               </div>
 
               {/* Grille de détails */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 14 }}>
                 {[
                   { label: 'Joueur',   value: p ? `${p.firstName} ${p.lastName}` : '—' },
                   { label: 'Date',     value: `${fmtDate(detailRecord.date)} ${detailRecord.date.slice(0,4)}` },

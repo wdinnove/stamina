@@ -24,6 +24,7 @@
 --   • Rôle 'assistant' remplace 'analyste' dans staff
 --   • Table session_blocks : contenu structuré d'une séance (blocs d'exercices)
 --     drill_id nullable — FK future vers table drills
+--   • Table notifications : centre de notifications par user, RPC notify_organization
 -- ================================================================
 
 
@@ -921,3 +922,55 @@ CREATE POLICY "session_blocks_access" ON session_blocks
       WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
   );
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 15. NOTIFICATIONS
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE notifications (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_by      UUID        REFERENCES auth.users(id),
+  type            TEXT        NOT NULL,          -- ex: 'player_added', 'medical_resolved'
+  title           TEXT        NOT NULL,
+  body            TEXT,
+  entity_type     TEXT,                          -- ex: 'player', 'medical_record', 'session'
+  entity_id       UUID,
+  read_at         TIMESTAMPTZ,                   -- NULL = non lu
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX idx_notifications_unread       ON notifications(user_id) WHERE read_at IS NULL;
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "notifications_user_own" ON notifications
+  FOR ALL USING (user_id = auth.uid());
+
+-- Crée une notification pour tous les membres de l'organisation
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+
+CREATE OR REPLACE FUNCTION notify_organization(
+  p_organization_id UUID,
+  p_created_by      UUID,
+  p_type            TEXT,
+  p_title           TEXT,
+  p_body            TEXT DEFAULT NULL,
+  p_entity_type     TEXT DEFAULT NULL,
+  p_entity_id       UUID DEFAULT NULL
+)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  INSERT INTO notifications
+    (organization_id, user_id, created_by, type, title, body, entity_type, entity_id)
+  SELECT
+    p_organization_id, p.id, p_created_by,
+    p_type, p_title, p_body, p_entity_type, p_entity_id
+  FROM profiles p
+  WHERE p.organization_id = p_organization_id
+    AND p.id != p_created_by;
+END;
+$$;
