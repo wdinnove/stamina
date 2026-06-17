@@ -1,11 +1,16 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { teamsApi, seasonsApi } from '../api';
 import { supabase } from '../api/client';
-import type { Team, Season } from '../data/types';
+import type { Team, Season, OrgRole } from '../data/types';
 
 export interface TeamSeasonOption {
   team: Team;
   season: Season;
+}
+
+export interface LoadThresholds {
+  lightMax:  number;
+  normalMax: number;
 }
 
 interface Ctx {
@@ -14,10 +19,16 @@ interface Ctx {
   setSelected: (opt: TeamSeasonOption) => void;
   loading:     boolean;
   reload:      () => void;
+  thresholds:  LoadThresholds;
+  orgId:       string | null;
+  orgRole:     OrgRole | null;
 }
+
+const DEFAULT_THRESHOLDS: LoadThresholds = { lightMax: 2750, normalMax: 4250 };
 
 const TeamSeasonContext = createContext<Ctx>({
   options: [], selected: null, setSelected: () => {}, loading: true, reload: () => {},
+  thresholds: DEFAULT_THRESHOLDS, orgId: null, orgRole: null,
 });
 
 function storageKey(userId: string) {
@@ -43,6 +54,7 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
   const [loading,  setLoading]  = useState(true);
   const [userId,   setUserId]   = useState<string | null>(null);
   const [tick,     setTick]     = useState(0);
+  const [orgRole,  setOrgRole]  = useState<OrgRole | null>(null);
 
   const reload = () => setTick(t => t + 1);
 
@@ -54,15 +66,28 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
       const uid = session?.user?.id ?? null;
       setUserId(uid);
       if (!uid) {
-        // Déconnexion : on vide la sélection en mémoire (le localStorage reste par user)
         setSelected(null);
         setOptions([]);
+        setOrgRole(null);
       } else {
         reload();
       }
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Charge le rôle organisation de l'utilisateur connecté
+  useEffect(() => {
+    if (!userId) { setOrgRole(null); return; }
+    let cancelled = false;
+    supabase.from('profiles').select('org_role').eq('id', userId).single()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        setOrgRole((data.org_role as OrgRole) ?? 'editor');
+      })
+      .catch(() => { /* réseau : orgRole reste null, le guard bloquera */ });
+    return () => { cancelled = true; };
+  }, [userId]);
 
   function handleSetSelected(opt: TeamSeasonOption) {
     setSelected(opt);
@@ -96,8 +121,15 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, [userId, tick]);
 
+  const thresholds: LoadThresholds = {
+    lightMax:  selected?.team.loadLightMax  ?? DEFAULT_THRESHOLDS.lightMax,
+    normalMax: selected?.team.loadNormalMax ?? DEFAULT_THRESHOLDS.normalMax,
+  };
+
+  const orgId = selected?.team.organizationId ?? options[0]?.team.organizationId ?? null;
+
   return (
-    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload }}>
+    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload, thresholds, orgId, orgRole }}>
       {children}
     </TeamSeasonContext.Provider>
   );

@@ -93,7 +93,11 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
                   const isSel = selected?.team.id === opt.team.id && selected?.season.id === opt.season.id;
                   return (
                     <button key={opt.season.id}
-                      onClick={() => { setSelected(opt); setDropOpen(false); }}
+                      onClick={() => {
+                        setSelected(opt);
+                        setDropOpen(false);
+                        if (location.pathname.startsWith('/team/')) navigate(`/team/${opt.team.id}`);
+                      }}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         width: '100%', padding: '8px 12px 8px 24px',
@@ -161,6 +165,7 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
 /** Mobile sidebar drawer */
 export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { options, selected, setSelected, loading } = useTeamSeason();
   const [initials, setInitials] = useState('');
   const [fullName, setFullName] = useState('');
@@ -224,7 +229,10 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
             onChange={e => {
               const [teamId, seasonId] = e.target.value.split('__');
               const opt = options.find(o => o.team.id === teamId && o.season.id === seasonId);
-              if (opt) setSelected(opt);
+              if (opt) {
+                setSelected(opt);
+                if (location.pathname.startsWith('/team/')) navigate(`/team/${opt.team.id}`);
+              }
             }}
             style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0F1117', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}
           >

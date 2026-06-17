@@ -1,4 +1,5 @@
 // ─── Primitive types ──────────────────────────────────────────────────────────
+export type OrgRole           = 'admin' | 'editor';
 export type PlayerStatus      = 'active' | 'injured' | 'limited' | 'suspended' | 'unavailable';
 export type BasketballPosition = 'Meneur' | 'Arrière' | 'Ailier' | 'Ailier Fort' | 'Pivot';
 export type SessionType       = 'training' | 'match' | 'gym' | 'rest';
@@ -12,6 +13,12 @@ export type ActionCategory    =
 export interface Organization {
   id: string;
   name: string;
+  address?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  logoUrl?: string;
 }
 
 export interface Season {
@@ -80,10 +87,13 @@ export interface Team {
   name: string;
   category: string;
   color: string;
+  organizationId?: string;
   organizationName?: string;
   createdAt?: string;
   playerCount?: number;
   currentSeason?: string;
+  loadLightMax?: number;
+  loadNormalMax?: number;
 }
 
 export interface RPEEntry {

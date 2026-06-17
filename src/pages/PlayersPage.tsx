@@ -7,6 +7,7 @@ import {
 import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi } from '../api';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
 import { StatusBadge, PlayerAvatar, Breadcrumb } from '../components';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { formatDate, getAge } from '../data';
 import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action } from '../data/types';
 
@@ -38,6 +39,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const fromPath  = (location.state as { from?: string } | null)?.from ?? '/players';
+  const { thresholds } = useTeamSeason();
   const fromLabel = BACK_LABELS[fromPath] ?? 'Retour';
 
   const [player,   setPlayer]   = useState<Player | null>(null);
@@ -188,7 +190,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
             ? (rpe.slice(0, 7).reduce((s, r) => s + r.rpe, 0) / Math.min(rpe.length, 7)).toFixed(1)
             : null;
           const weeklyUa = computeWeeklyUa(rpe);
-          const weekTier = weeklyUa > 0 ? getWeekTier(weeklyUa) : null;
+          const weekTier = weeklyUa > 0 ? getWeekTier(weeklyUa, thresholds.lightMax, thresholds.normalMax) : null;
           return (
             <div onClick={() => navigate(`/rpe/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
               style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s', minHeight: 108, display: 'flex', flexDirection: 'column' }}

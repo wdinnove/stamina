@@ -23,6 +23,8 @@ import TrainingSessionsPage        from './pages/TrainingSessionsPage';
 import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
 import MeetingDetailPage           from './pages/MeetingDetailPage';
 import ExercisesPage               from './pages/ExercisesPage';
+import ConfigPage                  from './pages/ConfigPage';
+import ClubPage                    from './pages/ClubPage';
 
 export const router = createBrowserRouter([
   {
@@ -63,6 +65,8 @@ export const router = createBrowserRouter([
           { path: 'sessions/:id',    Component: TrainingSessionDetailPage },
           { path: 'exercises',       Component: ExercisesPage             },
           { path: 'profile',         Component: ProfilePage      },
+          { path: 'team/:id',        Component: ConfigPage       },
+{ path: 'organization/:id', Component: ClubPage        },
           { path: 'reports/player', Component: PlayerReportPage },
           { path: 'reports/team',   Component: TeamReportPage   },
           { path: '*', element: <Navigate to="/dashboard" replace /> },

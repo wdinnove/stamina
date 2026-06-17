@@ -8,6 +8,8 @@ import { Activity, Heart, Stethoscope, CheckSquare, BarChart2 } from 'lucide-rea
 import { playersApi } from '../api/players';
 import { rpeApi }     from '../api/rpe';
 import { Breadcrumb, PlayerAvatar } from '../components';
+import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, RPEEntry, SessionType } from '../data/types';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
@@ -61,10 +63,11 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 type Filter = 'all' | SessionType;
 
 export default function PlayerRPEPage() {
-  const { id }    = useParams<{ id: string }>();
-  const location  = useLocation();
-  const navigate  = useNavigate();
-  const locState  = location.state as { from?: string; playerName?: string } | null;
+  const { id }         = useParams<{ id: string }>();
+  const location       = useLocation();
+  const navigate       = useNavigate();
+  const locState       = location.state as { from?: string; playerName?: string } | null;
+  const { thresholds } = useTeamSeason();
 
   const [player,  setPlayer]  = useState<Player | null>(null);
   const [entries, setEntries] = useState<RPEEntry[]>([]);
@@ -103,10 +106,12 @@ export default function PlayerRPEPage() {
       color: rpeColor(e.rpe),
     }));
 
-  const lastRPE   = filtered[0];
-  const avgRPE    = filtered.length ? Math.round(filtered.reduce((s, e) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
-  const totalLoad = filtered.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+  const lastRPE      = filtered[0];
+  const avgRPE       = filtered.length ? Math.round(filtered.reduce((s, e) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
+  const totalLoad    = filtered.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
   const sessionTypes = [...new Set(entries.map(e => e.sessionType))] as SessionType[];
+  const weeklyUa     = computeWeeklyUa(entries);
+  const weekTier     = weeklyUa > 0 ? getWeekTier(weeklyUa, thresholds.lightMax, thresholds.normalMax) : null;
 
   return (
     <div className="p-4 md:p-6">
@@ -173,12 +178,12 @@ export default function PlayerRPEPage() {
       ) : (
         <>
           {/* KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
             {[
-              { label: 'Dernière RPE',  value: lastRPE ? String(lastRPE.rpe) : '—', sub: lastRPE ? RPE_LABELS[lastRPE.rpe] : '', color: lastRPE ? rpeColor(lastRPE.rpe) : '#F1F5F9' },
-              { label: 'RPE moyenne',      value: avgRPE !== null ? String(avgRPE)       : '—', sub: `sur ${filtered.length} séance${filtered.length > 1 ? 's' : ''}`, color: avgRPE !== null ? rpeColor(avgRPE) : '#F1F5F9' },
-              { label: 'Charge totale',    value: totalLoad > 0 ? String(totalLoad)      : '—', sub: 'UA (RPE × min)',                    color: '#F1F5F9' },
-              { label: 'Séances',          value: String(filtered.length),               sub: 'enregistrées',                             color: '#F1F5F9' },
+              { label: 'Nb séances',    value: String(filtered.length),                                         sub: 'enregistrées',                                        color: '#F1F5F9'                                      },
+              { label: 'Charge totale', value: totalLoad > 0 ? String(totalLoad) : '—',                         sub: 'UA (RPE × min)',                                      color: '#F1F5F9'                                      },
+              { label: 'RPE moyen',     value: avgRPE !== null ? String(avgRPE) : '—',                          sub: `sur ${filtered.length} séance${filtered.length > 1 ? 's' : ''}`, color: avgRPE !== null ? rpeColor(avgRPE) : '#F1F5F9' },
+              { label: 'Dernier RPE',   value: lastRPE ? String(lastRPE.rpe) : '—',                             sub: lastRPE ? RPE_LABELS[lastRPE.rpe] : '',                color: lastRPE ? rpeColor(lastRPE.rpe) : '#F1F5F9'   },
             ].map(kpi => (
               <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
                 <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{kpi.label}</p>
@@ -186,6 +191,16 @@ export default function PlayerRPEPage() {
                 <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>{kpi.sub}</p>
               </div>
             ))}
+            {/* Charge semaine — 7 jours glissants, hors filtre type */}
+            <div style={{ backgroundColor: '#161920', border: `1px solid ${weekTier ? weekTier.color + '55' : '#2A2F3A'}`, borderRadius: 8, padding: '14px 16px' }}>
+              <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>Charge semaine</p>
+              <p style={{ color: weekTier ? weekTier.color : '#475569', fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
+                {weeklyUa > 0 ? weeklyUa : '—'}
+              </p>
+              {weekTier && (
+                <span style={{ color: weekTier.color, backgroundColor: weekTier.bg, fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 3, display: 'inline-block', marginTop: 4 }}>{weekTier.label}</span>
+              )}
+            </div>
           </div>
 
           {/* Charts */}

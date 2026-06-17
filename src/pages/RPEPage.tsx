@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
-import { computeWeeklyUa, getWeekTier, WEEK_TIERS } from '../utils/weeklyLoad';
+import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
 import {
   LineChart, Line, BarChart, Bar, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
@@ -161,7 +161,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 export default function RPEPage() {
-  const { selected } = useTeamSeason();
+  const { selected, thresholds } = useTeamSeason();
   const navigate     = useNavigate();
   const location     = useLocation();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
@@ -875,7 +875,7 @@ export default function RPEPage() {
                 {/* KPIs */}
                 {(() => {
                   const weeklyUa  = computeWeeklyUa(history);
-                  const weekTier  = weeklyUa > 0 ? getWeekTier(weeklyUa) : null;
+                  const weekTier  = weeklyUa > 0 ? getWeekTier(weeklyUa, thresholds.lightMax, thresholds.normalMax) : null;
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
                       {[
@@ -901,9 +901,6 @@ export default function RPEPage() {
                         ) : (
                           <p style={{ color: '#2A2F3A', fontSize: '0.72rem', margin: '3px 0 0' }}>aucune séance cette semaine</p>
                         )}
-                        <p style={{ color: '#2A2F3A', fontSize: '0.65rem', margin: '6px 0 0' }}>
-                          {WEEK_TIERS.map(t => `${t.label} ${t.ref}`).join(' · ')}
-                        </p>
                       </div>
                     </div>
                   );

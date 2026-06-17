@@ -1,30 +1,33 @@
 -- ================================================================
 -- STAMINA — Schéma Supabase
 -- ================================================================
--- Corrections appliquées :
---   • int renommé intercepts (mot-clé PostgreSQL réservé)
---   • Métriques avancées en colonnes GENERATED (pas stockées)
---   • Table seasons (séparation historique saison)
---   • Table training_sessions (RPE session-based)
---   • Table matches (entité centrale, lien match_stats ↔ team_match_stats)
---   • Table organizations (niveau club)
---   • Table staff (intervenants avec ou sans compte app)
---   • medical_records.resolved_date remplace days_absent
---   • player_actions.completed_at + trigger automatique
---   • position validée via enum basketball_position
---   • game_number sur matches
---   • RLS team-scoped via accessible_team_ids()
---   • Formule wellness correcte (métriques inversées)
---   • handle_new_user : propage organization_id depuis raw_user_meta_data
---   • ON DELETE SET NULL sur toutes les FK optionnelles vers profiles et staff
---     (staff.profile_id, training_sessions.created_by, rpe_entries.created_by,
---      wellness_entries.created_by, player_actions.created_by/assigned_to,
---      medical_records.created_by/updated_by)
---   • Fonction upsert_staff_profile (SECURITY DEFINER) pour création de compte staff
---   • Rôle 'assistant' remplace 'analyste' dans staff
---   • Table session_blocks : contenu structuré d'une séance (blocs d'exercices)
---     drill_id nullable — FK future vers table drills
---   • Table notifications : centre de notifications par user, RPC notify_organization
+--
+-- Structure :
+--   1.  Enums
+--   2.  Fonction utilitaire updated_at
+--   3.  Organizations
+--   4.  Teams
+--   5.  Seasons
+--   6.  Profiles  (+ trigger handle_new_user)
+--   7.  Staff
+--   8.  Players
+--   9.  Player Season
+--   10. Training Sessions
+--   11. Session Blocks
+--   12. RPE Entries
+--   13. Wellness Entries
+--   14. Medical Records  (+ vue medical_records_full)
+--   15. Player Actions
+--   16. Matches
+--   17. Match Stats
+--   18. Team Match Stats  (+ vue team_match_stats_full)
+--   19. Staff Meetings
+--   20. Training Attendance
+--   21. Notifications
+--   22. Row Level Security
+--   23. Fonctions SECURITY DEFINER
+--   MIGRATION — commandes pour bases existantes
+--
 -- ================================================================
 
 
@@ -32,24 +35,26 @@
 -- 1. ENUMS
 -- ────────────────────────────────────────────────────────────────
 
-CREATE TYPE player_status        AS ENUM ('active', 'injured', 'limited', 'suspended', 'unavailable');
-CREATE TYPE basketball_position  AS ENUM ('Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot');
-CREATE TYPE session_type         AS ENUM ('training', 'match', 'gym', 'rest');
-CREATE TYPE medical_type         AS ENUM ('injury', 'checkup', 'treatment');
-CREATE TYPE medical_severity     AS ENUM ('mild', 'moderate', 'severe');
-CREATE TYPE medical_status       AS ENUM ('active', 'resolved');
-CREATE TYPE action_status        AS ENUM ('todo', 'in_progress', 'waiting', 'done');
-CREATE TYPE action_priority      AS ENUM ('low', 'normal', 'high', 'critical');
-CREATE TYPE action_category      AS ENUM (
+CREATE TYPE player_status       AS ENUM ('active', 'injured', 'limited', 'suspended', 'unavailable');
+CREATE TYPE basketball_position AS ENUM ('Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot');
+CREATE TYPE session_type        AS ENUM ('training', 'match', 'gym', 'rest');
+CREATE TYPE block_intensity     AS ENUM ('basse', 'moyenne', 'haute', 'très élevée');
+CREATE TYPE medical_type        AS ENUM ('injury', 'checkup', 'treatment');
+CREATE TYPE medical_severity    AS ENUM ('mild', 'moderate', 'severe');
+CREATE TYPE medical_status      AS ENUM ('active', 'resolved');
+CREATE TYPE action_status       AS ENUM ('todo', 'in_progress', 'waiting', 'done');
+CREATE TYPE action_priority     AS ENUM ('low', 'normal', 'high', 'critical');
+CREATE TYPE action_category     AS ENUM (
   'medical', 'physical', 'mental', 'tactical',
   'administrative', 'interview', 'video', 'discussion'
 );
-CREATE TYPE home_away            AS ENUM ('home', 'away');
-CREATE TYPE match_result         AS ENUM ('win', 'loss');
+CREATE TYPE home_away           AS ENUM ('home', 'away');
+CREATE TYPE match_result        AS ENUM ('win', 'loss');
 
 
 -- ────────────────────────────────────────────────────────────────
--- 2. FONCTION updated_at (réutilisée par tous les triggers)
+-- 2. FONCTION UTILITAIRE updated_at
+--    Réutilisée par tous les triggers BEFORE UPDATE
 -- ────────────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -62,12 +67,19 @@ $$;
 
 
 -- ────────────────────────────────────────────────────────────────
--- 3. ORGANIZATIONS (niveau club — ex : "AL Meyzieu")
+-- 3. ORGANIZATIONS
+--    Niveau club (ex : "AL Meyzieu")
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE organizations (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name       TEXT NOT NULL,
+  address    TEXT,
+  city       TEXT,
+  phone      TEXT,
+  email      TEXT,
+  website    TEXT,
+  logo_url   TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -78,11 +90,13 @@ CREATE TABLE organizations (
 
 CREATE TABLE teams (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  name            TEXT NOT NULL,
-  category        TEXT NOT NULL,           -- 'NF2', 'U21', 'U18'
-  color           TEXT NOT NULL DEFAULT '#3B82F6',
+  organization_id UUID    NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name            TEXT    NOT NULL,
+  category        TEXT    NOT NULL,  -- 'NF2', 'U21', 'U18'
+  color           TEXT    NOT NULL DEFAULT '#3B82F6',
   description     TEXT,
+  load_light_max  INTEGER NOT NULL DEFAULT 2750,
+  load_normal_max INTEGER NOT NULL DEFAULT 4250,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -94,18 +108,17 @@ CREATE TRIGGER trg_teams_updated_at
 
 -- ────────────────────────────────────────────────────────────────
 -- 5. SEASONS
---    • season est une entité indépendante avec des bornes de date
---    • plus jamais lié à un label texte sur l'équipe
+--    Entité indépendante avec bornes de date ; rattachée à une équipe
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE seasons (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  label       TEXT NOT NULL,         -- '2025/2026'
-  start_date  DATE NOT NULL,
-  end_date    DATE NOT NULL,
+  id          UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID     NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  label       TEXT     NOT NULL,     -- '2025/2026'
+  start_date  DATE     NOT NULL,
+  end_date    DATE     NOT NULL,
   total_games SMALLINT,              -- nb de journées au calendrier
-  is_current  BOOLEAN NOT NULL DEFAULT FALSE,
+  is_current  BOOLEAN  NOT NULL DEFAULT FALSE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   UNIQUE (team_id, label),
@@ -119,7 +132,11 @@ CREATE UNIQUE INDEX one_current_season_per_team
 
 
 -- ────────────────────────────────────────────────────────────────
--- 6. PROFILES (extension de auth.users — comptes staff app)
+-- 6. PROFILES
+--    Extension de auth.users — comptes staff de l'application
+--    org_role : rôle dans l'organisation
+--      'admin'  → accès total (dont configuration club)
+--      'editor' → accès standard (sans configuration club)
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE profiles (
@@ -127,8 +144,10 @@ CREATE TABLE profiles (
   organization_id UUID REFERENCES organizations(id),
   first_name      TEXT NOT NULL DEFAULT '',
   last_name       TEXT NOT NULL DEFAULT '',
-  -- 'admin' | 'coach' | 'staff' | 'medical'
-  role            TEXT NOT NULL DEFAULT 'staff',
+  role            TEXT NOT NULL DEFAULT 'staff'   -- 'admin' | 'coach' | 'staff' | 'medical'
+                    CHECK (role IN ('admin', 'coach', 'staff', 'medical')),
+  org_role        TEXT NOT NULL DEFAULT 'editor'  -- 'admin' | 'editor'
+                    CHECK (org_role IN ('admin', 'editor')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -137,18 +156,19 @@ CREATE TRIGGER trg_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Trigger : création automatique du profil à l'inscription
+-- Création automatique du profil à l'inscription Supabase Auth
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public AS $$
 BEGIN
-  INSERT INTO profiles (id, organization_id, first_name, last_name, role)
+  INSERT INTO profiles (id, organization_id, first_name, last_name, role, org_role)
   VALUES (
     NEW.id,
     (NEW.raw_user_meta_data->>'organization_id')::UUID,
     COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
     COALESCE(NEW.raw_user_meta_data->>'last_name',  ''),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'staff')
+    COALESCE(NEW.raw_user_meta_data->>'role',     'staff'),
+    COALESCE(NEW.raw_user_meta_data->>'org_role', 'editor')
   );
   RETURN NEW;
 END;
@@ -161,19 +181,19 @@ CREATE TRIGGER on_auth_user_created
 
 -- ────────────────────────────────────────────────────────────────
 -- 7. STAFF
---    • Séparé de profiles : un intervenant (kiné, médecin) peut
---      exister sans avoir de compte dans l'app
+--    Intervenants ; peut exister sans compte app (profile_id NULL)
+--    role : 'coach' | 'kine' | 'medecin' | 'prep_physique' | 'assistant' | 'autre'
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE staff (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id         UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  profile_id      UUID REFERENCES profiles(id) ON DELETE SET NULL,  -- NULL si pas de compte
-  first_name      TEXT NOT NULL,
-  last_name       TEXT NOT NULL,
-  -- 'coach' | 'kine' | 'medecin' | 'prep_physique' | 'assistant' | 'autre'
-  role            TEXT NOT NULL,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  first_name TEXT NOT NULL,
+  last_name  TEXT NOT NULL,
+  role       TEXT NOT NULL
+               CHECK (role IN ('coach', 'kine', 'medecin', 'prep_physique', 'assistant', 'autre')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX ON staff (team_id);
@@ -181,26 +201,24 @@ CREATE INDEX ON staff (team_id);
 
 -- ────────────────────────────────────────────────────────────────
 -- 8. PLAYERS
---    • Rattachés à l'organisation, pas directement à une équipe
---    • L'affectation à une saison passe par player_season
---    • La team est retrouvable indirectement via seasons.team_id
+--    Rattachés à l'organisation (pas directement à une équipe)
+--    L'affectation à une saison passe par player_season
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE players (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id    UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  first_name         TEXT NOT NULL,
-  last_name          TEXT NOT NULL,
-  number             SMALLINT NOT NULL,
+  id                 UUID               PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id    UUID               NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  first_name         TEXT               NOT NULL,
+  last_name          TEXT               NOT NULL,
+  number             SMALLINT           NOT NULL,
   position           basketball_position NOT NULL,
   secondary_position basketball_position,
-  -- Champ autoritaire géré par le staff (pas dérivé auto des medical_records)
-  status             player_status NOT NULL DEFAULT 'active',
-  nationality        CHAR(2) NOT NULL DEFAULT 'FR',
-  birth_date         DATE NOT NULL,
-  height_cm          SMALLINT CHECK (height_cm BETWEEN 140 AND 230),
-  weight_kg          SMALLINT CHECK (weight_kg BETWEEN 40 AND 150),
-  hand               TEXT NOT NULL DEFAULT 'right'
+  status             player_status      NOT NULL DEFAULT 'active',
+  nationality        CHAR(2)            NOT NULL DEFAULT 'FR',
+  birth_date         DATE               NOT NULL,
+  height_cm          SMALLINT           CHECK (height_cm BETWEEN 140 AND 230),
+  weight_kg          SMALLINT           CHECK (weight_kg BETWEEN 40  AND 150),
+  hand               TEXT               NOT NULL DEFAULT 'right'
                        CHECK (hand IN ('right', 'left', 'both')),
   contract_end       DATE,
   avatar_url         TEXT,
@@ -216,11 +234,9 @@ CREATE TRIGGER trg_players_updated_at
 
 
 -- ────────────────────────────────────────────────────────────────
--- 9. PLAYER SEASON (inscription d'une joueuse à une saison)
---    • Lie une joueuse à une saison ; la team se retrouve via
---      seasons.team_id
---    • Contrainte d'unicité : une joueuse ne peut être inscrite
---      qu'une seule fois par saison
+-- 9. PLAYER SEASON
+--    Inscription d'une joueuse à une saison
+--    Contrainte d'unicité : une joueuse par saison max
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE player_season (
@@ -237,40 +253,71 @@ CREATE INDEX ON player_season (season_id);
 
 -- ────────────────────────────────────────────────────────────────
 -- 10. TRAINING SESSIONS
---     • Entité centrale du RPE : le coach crée UNE session,
---       chaque joueuse y soumet son RPE
+--     Entité centrale du RPE : le coach crée UNE session,
+--     chaque joueuse y soumet son RPE individuellement
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE training_sessions (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id          UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  season_id        UUID NOT NULL REFERENCES seasons(id),
-  date             DATE NOT NULL,
+  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id          UUID         NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  season_id        UUID         NOT NULL REFERENCES seasons(id),
+  date             DATE         NOT NULL,
   session_type     session_type NOT NULL,
-  planned_duration SMALLINT NOT NULL CHECK (planned_duration BETWEEN 1 AND 300),
+  planned_duration SMALLINT     NOT NULL CHECK (planned_duration BETWEEN 1 AND 300),
   notes            TEXT,
-  created_by       UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_by       UUID         REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX ON training_sessions (team_id, date DESC);
 
 
 -- ────────────────────────────────────────────────────────────────
--- 11. RPE ENTRIES
---     • UNIQUE (session_id, player_id) : une joueuse soumet
---       son RPE une seule fois par session
---     • Absence = pas d'entrée (pas de valeur NULL)
+-- 11. SESSION BLOCKS
+--     Contenu structuré d'une séance (blocs d'exercices)
+--     load_ua GENERATED : durée × coefficient d'intensité
+--     drill_id : FK nullable, réservée à la future table drills
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE session_blocks (
+  id         UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID            NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  position   SMALLINT        NOT NULL DEFAULT 1,
+  duration   SMALLINT        NOT NULL CHECK (duration > 0),  -- minutes
+  category   TEXT            NOT NULL,  -- 'Échauffement', 'Jeu réduit'…
+  intensity  block_intensity NOT NULL DEFAULT 'moyenne',
+  label      TEXT            NOT NULL,  -- nom de l'exercice
+  drill_id   UUID            NULL,      -- FK future : REFERENCES drills(id)
+  -- Charge UA = durée × valeur intensité (basse=2, moyenne=5, haute=7, très élevée=9)
+  load_ua    SMALLINT GENERATED ALWAYS AS (
+    duration * CASE intensity
+      WHEN 'basse'       THEN 2
+      WHEN 'moyenne'     THEN 5
+      WHEN 'haute'       THEN 7
+      WHEN 'très élevée' THEN 9
+      ELSE 5
+    END
+  ) STORED,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON session_blocks (session_id, position);
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 12. RPE ENTRIES
+--     UNIQUE (session_id, player_id) : une entrée par joueuse par session
+--     Absence = absence de ligne (pas de valeur NULL)
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE rpe_entries (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id      UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-  player_id       UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  id              UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id      UUID     NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  player_id       UUID     NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   rpe             SMALLINT NOT NULL CHECK (rpe BETWEEN 1 AND 10),
-  actual_duration SMALLINT CHECK (actual_duration BETWEEN 1 AND 300),
+  actual_duration SMALLINT          CHECK (actual_duration BETWEEN 1 AND 300),
   notes           TEXT,
-  created_by      UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_by      UUID     REFERENCES profiles(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   UNIQUE (session_id, player_id)
@@ -281,35 +328,33 @@ CREATE INDEX ON rpe_entries (session_id);
 
 
 -- ────────────────────────────────────────────────────────────────
--- 12. WELLNESS ENTRIES
---     • score GENERATED avec la formule correcte :
---       fatigue/stress/soreness sont des métriques INVERSÉES
---       (8 de fatigue = mauvais → contribue peu au score)
+-- 13. WELLNESS ENTRIES
+--     score GENERATED : fatigue / stress / soreness sont des
+--     métriques INVERSÉES (8 de fatigue = mauvais → score bas)
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE wellness_entries (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  player_id   UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  date        DATE NOT NULL,
-  fatigue     SMALLINT NOT NULL CHECK (fatigue    BETWEEN 1 AND 10),
-  mood        SMALLINT NOT NULL CHECK (mood       BETWEEN 1 AND 10),
-  stress      SMALLINT NOT NULL CHECK (stress     BETWEEN 1 AND 10),
-  motivation  SMALLINT NOT NULL CHECK (motivation BETWEEN 1 AND 10),
-  sleep       SMALLINT NOT NULL CHECK (sleep      BETWEEN 1 AND 10),
-  soreness    SMALLINT NOT NULL CHECK (soreness   BETWEEN 1 AND 10),
+  id         UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id  UUID     NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  date       DATE     NOT NULL,
+  fatigue    SMALLINT NOT NULL CHECK (fatigue    BETWEEN 1 AND 10),
+  mood       SMALLINT NOT NULL CHECK (mood       BETWEEN 1 AND 10),
+  stress     SMALLINT NOT NULL CHECK (stress     BETWEEN 1 AND 10),
+  motivation SMALLINT NOT NULL CHECK (motivation BETWEEN 1 AND 10),
+  sleep      SMALLINT NOT NULL CHECK (sleep      BETWEEN 1 AND 10),
+  soreness   SMALLINT NOT NULL CHECK (soreness   BETWEEN 1 AND 10),
 
-  -- Formule : inverser fatigue, stress, soreness
-  -- Score max = 10 (toutes métriques positives) ; min ≈ 0
-  score       NUMERIC(3,1) GENERATED ALWAYS AS (
+  -- Score 0–10 : métriques inversées contribuent moins quand elles sont élevées
+  score      NUMERIC(3,1) GENERATED ALWAYS AS (
     ROUND(
       ((10 - fatigue) + mood + (10 - stress) + motivation + sleep + (10 - soreness))::NUMERIC / 6,
       1
     )
   ) STORED,
 
-  notes       TEXT,
-  created_by  UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  notes      TEXT,
+  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   UNIQUE (player_id, date)
 );
@@ -318,32 +363,31 @@ CREATE INDEX ON wellness_entries (player_id, date DESC);
 
 
 -- ────────────────────────────────────────────────────────────────
--- 13. MEDICAL RECORDS
---     • resolved_date remplace days_absent (calculable : resolved_date - date)
---     • Contrainte : un dossier resolved doit avoir une resolved_date
---     • created_by / updated_by → staff (pas profiles)
+-- 14. MEDICAL RECORDS
+--     resolved_date remplace days_absent (calculable : resolved_date - date)
+--     Contrainte : un dossier resolved doit avoir une resolved_date
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE medical_records (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  player_id     UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  date          DATE NOT NULL,
-  type          medical_type NOT NULL,
-  description   TEXT NOT NULL,
+  id            UUID             PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id     UUID             NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  date          DATE             NOT NULL,
+  type          medical_type     NOT NULL,
+  description   TEXT             NOT NULL,
   location      TEXT,
   severity      medical_severity,
-  status        medical_status NOT NULL DEFAULT 'active',
+  status        medical_status   NOT NULL DEFAULT 'active',
   rtp_date      DATE,
-  resolved_date DATE,                    -- remplace days_absent
-  rtp_step      SMALLINT DEFAULT 0 CHECK (rtp_step >= 0),
-  rtp_total     SMALLINT DEFAULT 6 CHECK (rtp_total > 0),
+  resolved_date DATE,
+  rtp_step      SMALLINT DEFAULT 0 CHECK (rtp_step  >= 0),
+  rtp_total     SMALLINT DEFAULT 6 CHECK (rtp_total  > 0),
   treatment     TEXT,
   created_by    UUID REFERENCES staff(id) ON DELETE SET NULL,
   updated_by    UUID REFERENCES staff(id) ON DELETE SET NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  CONSTRAINT rtp_step_valid     CHECK (rtp_step IS NULL OR rtp_total IS NULL OR rtp_step <= rtp_total),
+  CONSTRAINT rtp_step_valid      CHECK (rtp_step IS NULL OR rtp_total IS NULL OR rtp_step <= rtp_total),
   CONSTRAINT resolved_needs_date CHECK (status != 'resolved' OR resolved_date IS NOT NULL)
 );
 
@@ -360,33 +404,32 @@ SELECT
   *,
   CASE
     WHEN type = 'injury' AND resolved_date IS NOT NULL THEN resolved_date - date
-    WHEN type = 'injury' AND rtp_date IS NOT NULL      THEN rtp_date - date
+    WHEN type = 'injury' AND rtp_date      IS NOT NULL THEN rtp_date      - date
     ELSE NULL
   END AS days_absent
 FROM medical_records;
 
 
 -- ────────────────────────────────────────────────────────────────
--- 14. PLAYER ACTIONS
---     • assigned_to → staff (pas profiles) : supporte les
---       intervenants externes sans compte app
---     • completed_at : renseigné automatiquement par trigger
+-- 15. PLAYER ACTIONS
+--     assigned_to → staff (supporte les intervenants sans compte app)
+--     completed_at : renseigné automatiquement par trigger
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE player_actions (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  player_id    UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  title        TEXT NOT NULL,
+  id           UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id    UUID            NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  title        TEXT            NOT NULL,
   description  TEXT,
   category     action_category NOT NULL,
   priority     action_priority NOT NULL DEFAULT 'normal',
-  due_date     DATE NOT NULL,
-  assigned_to  UUID REFERENCES staff(id) ON DELETE SET NULL,
-  status       action_status NOT NULL DEFAULT 'todo',
-  completed_at TIMESTAMPTZ,             -- SET auto via trigger
-  created_by   UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  due_date     DATE            NOT NULL,
+  assigned_to  UUID            REFERENCES staff(id) ON DELETE SET NULL,
+  status       action_status   NOT NULL DEFAULT 'todo',
+  completed_at TIMESTAMPTZ,
+  created_by   UUID            REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX ON player_actions (player_id, status, due_date);
@@ -397,7 +440,7 @@ CREATE TRIGGER trg_player_actions_updated_at
   BEFORE UPDATE ON player_actions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Trigger : completed_at automatique
+-- completed_at automatique via trigger
 CREATE OR REPLACE FUNCTION set_action_completed_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -416,26 +459,25 @@ CREATE TRIGGER trg_action_completed_at
 
 
 -- ────────────────────────────────────────────────────────────────
--- 15. MATCHES (entité centrale)
---     • Source de vérité pour date/adversaire/résultat/score
---     • match_stats ET team_match_stats y référencent via match_id
---     • game_number = numéro de journée (J14, J13…)
+-- 16. MATCHES
+--     Source de vérité : date / adversaire / résultat / score
+--     game_number = numéro de journée (J14, J13…)
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE matches (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  season_id   UUID NOT NULL REFERENCES seasons(id),
+  id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID         NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  season_id   UUID         NOT NULL REFERENCES seasons(id),
   game_number SMALLINT,
-  date        DATE NOT NULL,
-  opponent    TEXT NOT NULL,
-  home_away   home_away NOT NULL DEFAULT 'home',
-  competition TEXT NOT NULL DEFAULT 'NF2',
+  date        DATE         NOT NULL,
+  opponent    TEXT         NOT NULL,
+  home_away   home_away    NOT NULL DEFAULT 'home',
+  competition TEXT         NOT NULL DEFAULT 'NF2',
   result      match_result NOT NULL,
-  score_us    SMALLINT NOT NULL CHECK (score_us    >= 0),
-  score_them  SMALLINT NOT NULL CHECK (score_them  >= 0),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  score_us    SMALLINT     NOT NULL CHECK (score_us   >= 0),
+  score_them  SMALLINT     NOT NULL CHECK (score_them >= 0),
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
   UNIQUE (team_id, date, opponent)
 );
@@ -448,20 +490,18 @@ CREATE TRIGGER trg_matches_updated_at
 
 
 -- ────────────────────────────────────────────────────────────────
--- 16. MATCH STATS (statistiques individuelles)
---     • pts : GENERATED (fg2m×2 + fg3m×3 + ftm) — jamais à insérer
---     • intercepts : renommé depuis int (mot-clé réservé)
---     • UNIQUE (match_id, player_id) : une ligne par joueuse par match
+-- 17. MATCH STATS (statistiques individuelles)
+--     pts : GENERATED (fg2m×2 + fg3m×3 + ftm)
+--     intercepts : renommé depuis int (mot-clé PostgreSQL réservé)
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE match_stats (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  match_id   UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-  player_id  UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  starter    BOOLEAN NOT NULL DEFAULT FALSE,
+  id         UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id   UUID     NOT NULL REFERENCES matches(id)  ON DELETE CASCADE,
+  player_id  UUID     NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+  starter    BOOLEAN  NOT NULL DEFAULT FALSE,
   min        NUMERIC(4,1) NOT NULL DEFAULT 0,
 
-  -- Tirs
   fg2m       SMALLINT NOT NULL DEFAULT 0,
   fg2a       SMALLINT NOT NULL DEFAULT 0,
   fg3m       SMALLINT NOT NULL DEFAULT 0,
@@ -469,24 +509,19 @@ CREATE TABLE match_stats (
   ftm        SMALLINT NOT NULL DEFAULT 0,
   fta        SMALLINT NOT NULL DEFAULT 0,
 
-  -- Points : toujours cohérents avec les tirs
   pts        SMALLINT GENERATED ALWAYS AS (fg2m * 2 + fg3m * 3 + ftm) STORED,
 
-  -- Rebonds
   ro         SMALLINT NOT NULL DEFAULT 0,
   rd         SMALLINT NOT NULL DEFAULT 0,
 
-  -- Passes / Défense
   pd         SMALLINT NOT NULL DEFAULT 0,
   ct         SMALLINT NOT NULL DEFAULT 0,
-  intercepts SMALLINT NOT NULL DEFAULT 0,  -- anciennement "int"
+  intercepts SMALLINT NOT NULL DEFAULT 0,
   bp         SMALLINT NOT NULL DEFAULT 0,
 
-  -- Fautes
-  fpr        SMALLINT NOT NULL DEFAULT 0,  -- fautes personnelles commises
+  fpr        SMALLINT NOT NULL DEFAULT 0,  -- fautes commises
   fte        SMALLINT NOT NULL DEFAULT 0,  -- fautes reçues
 
-  -- Fourni par la feuille de match officielle (FFBB)
   eval       SMALLINT,
   plus_minus SMALLINT,
 
@@ -508,20 +543,17 @@ CREATE TRIGGER trg_match_stats_updated_at
 
 
 -- ────────────────────────────────────────────────────────────────
--- 17. TEAM MATCH STATS (statistiques collectives)
---     • 1:1 avec matches (UNIQUE match_id)
---     • rt / opp_rt : GENERATED (ro+rd)
---     • Métriques avancées : toutes GENERATED depuis stats brutes
---     • off_rating / def_rating : dans la VIEW (besoin du score
---       de matches — impossible en GENERATED sans subquery)
---     • intercepts / opp_intercepts : renommés depuis int/opp_int
+-- 18. TEAM MATCH STATS (statistiques collectives)
+--     1:1 avec matches (UNIQUE match_id)
+--     Métriques avancées : toutes GENERATED depuis stats brutes
+--     off_rating / def_rating : dans la VIEW (nécessite score matches)
+--     intercepts / opp_intercepts : renommés depuis int / opp_int
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE team_match_stats (
-  id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE UNIQUE,
 
-  -- Stats brutes équipe
   fg2m       SMALLINT NOT NULL DEFAULT 0,
   fg2a       SMALLINT NOT NULL DEFAULT 0,
   fg3m       SMALLINT NOT NULL DEFAULT 0,
@@ -537,11 +569,9 @@ CREATE TABLE team_match_stats (
   bp         SMALLINT NOT NULL DEFAULT 0,
   fte        SMALLINT NOT NULL DEFAULT 0,
 
-  -- Possessions (saisie manuelle — non calculable depuis box score seul)
   possessions     NUMERIC(5,1) NOT NULL DEFAULT 0,
   opp_possessions NUMERIC(5,1),
 
-  -- Stats brutes adversaire
   opp_fg2m       SMALLINT NOT NULL DEFAULT 0,
   opp_fg2a       SMALLINT NOT NULL DEFAULT 0,
   opp_fg3m       SMALLINT NOT NULL DEFAULT 0,
@@ -556,7 +586,6 @@ CREATE TABLE team_match_stats (
   opp_intercepts SMALLINT NOT NULL DEFAULT 0,
   opp_bp         SMALLINT NOT NULL DEFAULT 0,
 
-  -- Métriques avancées GÉNÉRÉES (cohérentes avec stats brutes)
   efg_pct      NUMERIC(4,1) GENERATED ALWAYS AS (
     CASE WHEN (fg2a + fg3a) > 0
     THEN ROUND((fg2m + fg3m * 1.5)::NUMERIC / (fg2a + fg3a) * 100, 1)
@@ -628,7 +657,7 @@ SELECT
   m.team_id,
   m.season_id,
   CASE WHEN tms.possessions > 0
-    THEN ROUND(m.score_us::NUMERIC  / tms.possessions * 100, 1)
+    THEN ROUND(m.score_us::NUMERIC   / tms.possessions * 100, 1)
     ELSE NULL END AS off_rating,
   CASE WHEN tms.possessions > 0
     THEN ROUND(m.score_them::NUMERIC / tms.possessions * 100, 1)
@@ -638,19 +667,74 @@ JOIN matches m ON m.id = tms.match_id;
 
 
 -- ────────────────────────────────────────────────────────────────
--- 18. ROW LEVEL SECURITY
---     • Cloisonnement par équipe : un staff ne voit que les
---       données des joueuses de son équipe
---     • Les données médicales / wellness sont des données de santé
---       (RGPD) — le cloisonnement est obligatoire
+-- 19. STAFF MEETINGS
 -- ────────────────────────────────────────────────────────────────
 
-ALTER TABLE organizations        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE teams                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE seasons              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE players              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE player_season         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE training_sessions    ENABLE ROW LEVEL SECURITY;
+CREATE TABLE staff_meetings (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL,
+  date       DATE NOT NULL,
+  time       TIME NOT NULL,
+  notes      TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 20. TRAINING ATTENDANCE
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE training_attendance (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  player_id  UUID NOT NULL REFERENCES players(id)           ON DELETE CASCADE,
+  status     TEXT NOT NULL CHECK (status IN ('present', 'absent', 'late')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (session_id, player_id)
+);
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 21. NOTIFICATIONS
+--     Centre de notifications par user ; temps réel via Supabase Realtime
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE notifications (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id         UUID NOT NULL REFERENCES auth.users(id)    ON DELETE CASCADE,
+  created_by      UUID REFERENCES auth.users(id),
+  type            TEXT NOT NULL,  -- ex : 'player_added', 'medical_resolved'
+  title           TEXT NOT NULL,
+  body            TEXT,
+  entity_type     TEXT,           -- ex : 'player', 'medical_record', 'session'
+  entity_id       UUID,
+  read_at         TIMESTAMPTZ,    -- NULL = non lu
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user_created ON notifications (user_id, created_at DESC);
+CREATE INDEX idx_notifications_unread       ON notifications (user_id) WHERE read_at IS NULL;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 22. ROW LEVEL SECURITY
+--     Cloisonnement par équipe / organisation (données de santé RGPD)
+-- ────────────────────────────────────────────────────────────────
+
+ALTER TABLE organizations      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE seasons            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE players            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_season      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_sessions  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_blocks     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rpe_entries        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wellness_entries   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE medical_records    ENABLE ROW LEVEL SECURITY;
@@ -658,18 +742,11 @@ ALTER TABLE player_actions     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_stats        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_match_stats   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE staff              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_meetings     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications      ENABLE ROW LEVEL SECURITY;
 
--- Helper : équipes accessibles par l'utilisateur courant
-CREATE OR REPLACE FUNCTION accessible_team_ids()
-RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT t.id
-  FROM teams t
-  JOIN organizations o ON o.id = t.organization_id
-  JOIN profiles p ON p.organization_id = o.id
-  WHERE p.id = auth.uid()
-$$;
+-- ── Policies ─────────────────────────────────────────────────────
 
 -- Profil : chaque utilisateur gère uniquement le sien
 CREATE POLICY "own_profile" ON profiles
@@ -677,140 +754,197 @@ CREATE POLICY "own_profile" ON profiles
   USING  (id = auth.uid())
   WITH CHECK (id = auth.uid());
 
--- Organisations : visibles si l'utilisateur y appartient
+-- Organisations : lecture pour tous les membres, écriture pour les admins uniquement
 CREATE POLICY "org_access" ON organizations
   FOR SELECT TO authenticated
   USING (id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+
+CREATE POLICY "org_update" ON organizations
+  FOR UPDATE TO authenticated
+  USING (
+    id IN (
+      SELECT organization_id FROM profiles
+      WHERE id = auth.uid() AND org_role = 'admin'
+    )
+  )
+  WITH CHECK (
+    id IN (
+      SELECT organization_id FROM profiles
+      WHERE id = auth.uid() AND org_role = 'admin'
+    )
+  );
 
 -- Équipes : accès limité aux équipes de l'organisation
 CREATE POLICY "team_access" ON teams
   FOR ALL TO authenticated
   USING (id IN (SELECT * FROM accessible_team_ids()))
   WITH CHECK (
-    organization_id = (
-      SELECT organization_id FROM profiles WHERE id = auth.uid()
-    )
+    organization_id = (SELECT organization_id FROM profiles WHERE id = auth.uid())
   );
 
 -- Saisons : suivent les équipes
 CREATE POLICY "season_access" ON seasons
   FOR ALL TO authenticated
-  USING (team_id IN (SELECT * FROM accessible_team_ids()))
+  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
 
 -- Joueuses : cloisonnement par organisation
 CREATE POLICY "player_access" ON players
   FOR ALL TO authenticated
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()))
+  USING    (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()))
   WITH CHECK (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
 
--- Inscription joueuse/saison : accessible si la saison appartient à une équipe de l'organisation
+-- Inscription joueuse/saison
 CREATE POLICY "player_season_access" ON player_season
   FOR ALL TO authenticated
   USING (
-    season_id IN (
-      SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
+    season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   )
   WITH CHECK (
-    season_id IN (
-      SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
+    season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
--- Sessions d'entraînement : cloisonnement par équipe
+-- Sessions d'entraînement
 CREATE POLICY "training_session_access" ON training_sessions
   FOR ALL TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
--- RPE : via la joueuse (organisation)
+-- Blocs de séance
+CREATE POLICY "session_blocks_access" ON session_blocks
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+-- RPE
 CREATE POLICY "rpe_access" ON rpe_entries
   FOR ALL TO authenticated
   USING (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   )
   WITH CHECK (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   );
 
--- Wellness : idem
+-- Wellness
 CREATE POLICY "wellness_access" ON wellness_entries
   FOR ALL TO authenticated
   USING (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   )
   WITH CHECK (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   );
 
--- Dossiers médicaux : idem
+-- Dossiers médicaux
 CREATE POLICY "medical_access" ON medical_records
   FOR ALL TO authenticated
   USING (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   )
   WITH CHECK (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   );
 
--- Actions : idem
+-- Actions joueurs
 CREATE POLICY "action_access" ON player_actions
   FOR ALL TO authenticated
   USING (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   )
   WITH CHECK (
     player_id IN (
-      SELECT id FROM players
-      WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     )
   );
 
--- Matches : cloisonnement par équipe
+-- Matches
 CREATE POLICY "match_access" ON matches
   FOR ALL TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
--- Stats individuelles : via match
+-- Stats individuelles
 CREATE POLICY "match_stats_access" ON match_stats
   FOR ALL TO authenticated
   USING (
-    match_id IN (
-      SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
--- Stats collectives : via match
+-- Stats collectives
 CREATE POLICY "team_match_stats_access" ON team_match_stats
   FOR ALL TO authenticated
   USING (
-    match_id IN (
-      SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+-- Staff
+CREATE POLICY "staff_access" ON staff
+  FOR ALL TO authenticated
+  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Réunions staff
+CREATE POLICY "staff_meetings_access" ON staff_meetings
+  FOR ALL TO authenticated
+  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Présences aux entraînements
+CREATE POLICY "training_attendance_access" ON training_attendance
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
   );
 
--- Création de profil pour un nouveau compte staff (SECURITY DEFINER pour contourner la RLS own_profile)
+-- Notifications : chaque user accède uniquement aux siennes
+CREATE POLICY "notifications_user_own" ON notifications
+  FOR ALL USING (user_id = auth.uid());
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 23. FONCTIONS SECURITY DEFINER
+-- ────────────────────────────────────────────────────────────────
+
+-- Helper RLS : équipes accessibles pour l'utilisateur courant
+CREATE OR REPLACE FUNCTION accessible_team_ids()
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT t.id
+  FROM   teams         t
+  JOIN   organizations o ON o.id = t.organization_id
+  JOIN   profiles      p ON p.organization_id = o.id
+  WHERE  p.id = auth.uid()
+$$;
+
+-- Création de profil pour un nouveau compte staff
+-- (SECURITY DEFINER contourne la RLS own_profile lors de l'invitation)
 CREATE OR REPLACE FUNCTION upsert_staff_profile(
   p_id              UUID,
   p_organization_id UUID,
@@ -825,134 +959,42 @@ BEGIN
 END;
 $$;
 
--- Staff : visible au niveau équipe
-CREATE POLICY "staff_access" ON staff
-  FOR ALL TO authenticated
-  USING (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+-- Changement de rôle organisation : réservé aux admins
+-- Appel client : supabase.rpc('set_user_org_role', { p_user_id, p_org_role })
+CREATE OR REPLACE FUNCTION set_user_org_role(p_user_id UUID, p_org_role TEXT)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_caller_org  UUID;
+  v_caller_role TEXT;
+  v_target_org  UUID;
+BEGIN
+  SELECT organization_id, org_role INTO v_caller_org, v_caller_role
+    FROM profiles WHERE id = auth.uid();
 
--- Réunions staff
-CREATE TABLE staff_meetings (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id    UUID REFERENCES teams(id) ON DELETE CASCADE NOT NULL,
-  title      TEXT NOT NULL,
-  date       DATE NOT NULL,
-  time       TIME NOT NULL,
-  notes      TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+  IF v_caller_role != 'admin' THEN
+    RAISE EXCEPTION 'Permission refusée : seul un admin peut modifier les rôles';
+  END IF;
 
-ALTER TABLE staff_meetings ENABLE ROW LEVEL SECURITY;
+  SELECT organization_id INTO v_target_org
+    FROM profiles WHERE id = p_user_id;
 
-CREATE POLICY "staff_meetings_access" ON staff_meetings
-  FOR ALL TO authenticated
-  USING (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Utilisateur introuvable : %', p_user_id;
+  END IF;
 
--- ── Présences aux entraînements ────────────────────────────────────────────
--- training_sessions existe déjà (voir section 10). On ajoute uniquement la table d'attendance.
+  IF v_caller_org IS DISTINCT FROM v_target_org THEN
+    RAISE EXCEPTION 'Permission refusée : utilisateur hors de votre organisation';
+  END IF;
 
-CREATE TABLE training_attendance (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id UUID REFERENCES training_sessions(id) ON DELETE CASCADE NOT NULL,
-  player_id  UUID REFERENCES players(id) ON DELETE CASCADE NOT NULL,
-  status     TEXT CHECK (status IN ('present', 'absent', 'late')) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (session_id, player_id)
-);
-ALTER TABLE training_attendance ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "training_attendance_access" ON training_attendance
-  FOR ALL TO authenticated
-  USING (
-    session_id IN (
-      SELECT id FROM training_sessions
-      WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
-  )
-  WITH CHECK (
-    session_id IN (
-      SELECT id FROM training_sessions
-      WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
-  );
+  IF p_org_role NOT IN ('admin', 'editor') THEN
+    RAISE EXCEPTION 'Rôle invalide : admin ou editor attendu';
+  END IF;
 
--- ── Contenu structuré des séances ─────────────────────────────────────────────
--- Blocs d'exercices d'une séance (durée, catégorie, intensité, nom exercice)
--- drill_id : FK nullable, réservée à la future table drills
+  UPDATE profiles SET org_role = p_org_role WHERE id = p_user_id;
+END;
+$$;
 
-CREATE TYPE block_intensity AS ENUM ('basse', 'moyenne', 'haute', 'très élevée');
-
-CREATE TABLE session_blocks (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id  UUID        NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-  position    SMALLINT    NOT NULL DEFAULT 1,
-  duration    SMALLINT    NOT NULL CHECK (duration > 0),   -- minutes
-  category    TEXT        NOT NULL,                        -- 'Échauffement', 'Jeu réduit'…
-  intensity   block_intensity NOT NULL DEFAULT 'moyenne',
-  label       TEXT        NOT NULL,                        -- nom de l'exercice
-  drill_id    UUID        NULL,                            -- FK future : REFERENCES drills(id)
-  -- Charge UA = durée × valeur intensité (basse=2, moyenne=5, haute=7, très élevée=9)
-  load_ua     SMALLINT    GENERATED ALWAYS AS (
-    duration * CASE intensity
-      WHEN 'basse'       THEN 2
-      WHEN 'moyenne'     THEN 5
-      WHEN 'haute'       THEN 7
-      WHEN 'très élevée' THEN 9
-      ELSE 5
-    END
-  ) STORED,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX ON session_blocks (session_id, position);
-
-ALTER TABLE session_blocks ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "session_blocks_access" ON session_blocks
-  FOR ALL TO authenticated
-  USING (
-    session_id IN (
-      SELECT id FROM training_sessions
-      WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
-  )
-  WITH CHECK (
-    session_id IN (
-      SELECT id FROM training_sessions
-      WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
-  );
-
-
--- ────────────────────────────────────────────────────────────────
--- 15. NOTIFICATIONS
--- ────────────────────────────────────────────────────────────────
-
-CREATE TABLE notifications (
-  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_by      UUID        REFERENCES auth.users(id),
-  type            TEXT        NOT NULL,          -- ex: 'player_added', 'medical_resolved'
-  title           TEXT        NOT NULL,
-  body            TEXT,
-  entity_type     TEXT,                          -- ex: 'player', 'medical_record', 'session'
-  entity_id       UUID,
-  read_at         TIMESTAMPTZ,                   -- NULL = non lu
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
-CREATE INDEX idx_notifications_unread       ON notifications(user_id) WHERE read_at IS NULL;
-
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "notifications_user_own" ON notifications
-  FOR ALL USING (user_id = auth.uid());
-
--- Crée une notification pour tous les membres de l'organisation
-ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
-
+-- Notification à tous les membres d'une organisation (sauf l'émetteur)
 CREATE OR REPLACE FUNCTION notify_organization(
   p_organization_id UUID,
   p_created_by      UUID,
@@ -974,3 +1016,47 @@ BEGIN
     AND p.id != p_created_by;
 END;
 $$;
+
+
+-- ================================================================
+-- MIGRATION — Sur une base existante antérieure à ce schéma
+-- Décommentez et exécutez les blocs nécessaires dans Supabase SQL Editor
+-- ================================================================
+
+-- Colonnes organizations (adresse, contact)
+-- ALTER TABLE organizations
+--   ADD COLUMN IF NOT EXISTS address  TEXT,
+--   ADD COLUMN IF NOT EXISTS city     TEXT,
+--   ADD COLUMN IF NOT EXISTS phone    TEXT,
+--   ADD COLUMN IF NOT EXISTS email    TEXT,
+--   ADD COLUMN IF NOT EXISTS website  TEXT,
+--   ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+-- Seuils de charge sur les équipes
+-- ALTER TABLE teams
+--   ADD COLUMN IF NOT EXISTS load_light_max  INTEGER NOT NULL DEFAULT 2750,
+--   ADD COLUMN IF NOT EXISTS load_normal_max INTEGER NOT NULL DEFAULT 4250;
+
+-- Rôles organisation (admin / editor)
+-- ALTER TABLE profiles
+--   ADD COLUMN IF NOT EXISTS org_role TEXT NOT NULL DEFAULT 'editor'
+--   CHECK (org_role IN ('admin', 'editor'));
+--
+-- DROP POLICY IF EXISTS "org_update" ON organizations;
+-- CREATE POLICY "org_update" ON organizations
+--   FOR UPDATE TO authenticated
+--   USING (
+--     id IN (
+--       SELECT organization_id FROM profiles
+--       WHERE id = auth.uid() AND org_role = 'admin'
+--     )
+--   )
+--   WITH CHECK (
+--     id IN (
+--       SELECT organization_id FROM profiles
+--       WHERE id = auth.uid() AND org_role = 'admin'
+--     )
+--   );
+--
+-- Promouvoir un utilisateur existant en admin :
+-- UPDATE profiles SET org_role = 'admin' WHERE id = '<uuid>';

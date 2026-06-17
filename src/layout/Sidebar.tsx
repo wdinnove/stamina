@@ -1,16 +1,13 @@
-import { Fragment } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, Shield, BookOpen,
+  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Shield, Settings,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
 export const navItems = [
-  { path: '/teams',             icon: Shield,          label: 'Mes équipes'  },
-  { path: '/players',           icon: Users,           label: 'Mes joueurs'  },
-  // separator before index 2
   { path: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard'    },
   { path: '/roster',            icon: ClipboardList,   label: 'Effectif'     },
   { path: '/staff',             icon: Users,           label: 'Staff'        },
@@ -21,9 +18,6 @@ export const navItems = [
   { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'    },
   { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'      },
   { path: '/actions',           icon: CheckSquare,     label: 'Actions'      },
-  // { path: '/stats',           icon: BarChart2,       label: 'Statistiques' },
-  // { path: '/reports/player',  icon: FileText,        label: 'Bilan Joueur' },
-  // { path: '/reports/team',    icon: Trophy,          label: 'Bilan Équipe' },
 ];
 
 interface SidebarProps {
@@ -41,6 +35,7 @@ export function isNavActive(itemPath: string, currentPath: string): boolean {
 export function Sidebar({ collapsed }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { orgId, orgRole, selected } = useTeamSeason();
 
   return (
     <aside style={{
@@ -67,35 +62,78 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {navItems.map((item, i) => {
-          const active = isNavActive(item.path, location.pathname);
+        {(() => {
+          const teamPath = selected ? `/team/${selected.team.id}` : '#';
+          const teamActive = location.pathname.startsWith('/team/');
+          const navStyle = (active: boolean): React.CSSProperties => ({
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: collapsed ? '10px 0' : '10px 16px',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            color: active ? '#00E5A0' : '#94A3B8',
+            backgroundColor: active ? 'rgba(0,229,160,0.08)' : 'transparent',
+            borderLeft: active ? '2px solid #00E5A0' : '2px solid transparent',
+            textDecoration: 'none', fontSize: '0.85rem',
+            fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+            whiteSpace: 'nowrap', overflow: 'hidden',
+          });
           return (
-            <Fragment key={item.path}>
-              {i === 2 && (
-                <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
-              )}
-              <Link to={item.path} title={collapsed ? item.label : undefined}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: collapsed ? '10px 0' : '10px 16px',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  color: active ? '#00E5A0' : '#94A3B8',
-                  backgroundColor: active ? 'rgba(0,229,160,0.08)' : 'transparent',
-                  borderLeft: active ? '2px solid #00E5A0' : '2px solid transparent',
-                  textDecoration: 'none', fontSize: '0.85rem',
-                  fontWeight: active ? 600 : 400, transition: 'all 0.15s',
-                  whiteSpace: 'nowrap', overflow: 'hidden',
-                }}>
-                <item.icon size={18} style={{ flexShrink: 0 }} />
-                {!collapsed && item.label}
+            <>
+              {/* Dashboard */}
+              {navItems.slice(0, 1).map(item => {
+                const active = isNavActive(item.path, location.pathname);
+                return (
+                  <Link key={item.path} to={item.path} title={collapsed ? item.label : undefined} style={navStyle(active)}>
+                    <item.icon size={18} style={{ flexShrink: 0 }} />
+                    {!collapsed && item.label}
+                  </Link>
+                );
+              })}
+              {/* Équipe — dynamique /team/:id */}
+              <Link to={teamPath} title={collapsed ? 'Équipe' : undefined} style={navStyle(teamActive)}>
+                <Shield size={18} style={{ flexShrink: 0 }} />
+                {!collapsed && 'Équipe'}
               </Link>
-            </Fragment>
+              {/* Reste des items */}
+              {navItems.slice(1).map(item => {
+                const active = isNavActive(item.path, location.pathname);
+                return (
+                  <Link key={item.path} to={item.path} title={collapsed ? item.label : undefined} style={navStyle(active)}>
+                    <item.icon size={18} style={{ flexShrink: 0 }} />
+                    {!collapsed && item.label}
+                  </Link>
+                );
+              })}
+            </>
           );
-        })}
+        })()}
       </nav>
 
-      {/* Logout */}
-      <div style={{ borderTop: '1px solid #2A2F3A', padding: collapsed ? '12px 0' : '12px 16px' }}>
+      {/* Club + Config + Logout */}
+      <div style={{ padding: collapsed ? '8px 0' : '8px 0' }}>
+        {orgRole === 'admin' && (() => {
+          const clubPath = orgId ? `/organization/${orgId}` : '#';
+          const active = location.pathname.startsWith('/organization');
+          return (
+            <Link to={clubPath} title={collapsed ? 'Configuration club' : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: collapsed ? '10px 0' : '10px 16px',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                color: active ? '#00E5A0' : '#94A3B8',
+                backgroundColor: active ? 'rgba(0,229,160,0.08)' : 'transparent',
+                borderLeft: active ? '2px solid #00E5A0' : '2px solid transparent',
+                textDecoration: 'none', fontSize: '0.85rem',
+                fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+                whiteSpace: 'nowrap', overflow: 'hidden',
+              }}>
+              <Settings size={18} style={{ flexShrink: 0 }} />
+              {!collapsed && 'Configuration club'}
+            </Link>
+          );
+        })()}
+        <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
+
+        <div style={{ padding: collapsed ? '4px 0' : '4px 16px' }}>
         <button
           onClick={async () => { await authApi.signOut(); navigate('/login', { replace: true }); }}
           style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: collapsed ? 'center' : 'flex-start', width: '100%', padding: '8px 0', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.82rem', transition: 'color 0.15s' }}
@@ -104,6 +142,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
           <LogOut size={16} />
           {!collapsed && 'Déconnexion'}
         </button>
+        </div>
       </div>
     </aside>
   );

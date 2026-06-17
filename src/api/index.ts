@@ -1,4 +1,6 @@
 export { authApi }     from './auth';
+export { configApi }   from './config';
+export type { OrgUpdateInput } from './config';
 export { playersApi }  from './players';
 export { teamsApi }    from './teams';
 export { seasonsApi }  from './seasons';

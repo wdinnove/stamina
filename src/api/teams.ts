@@ -21,6 +21,14 @@ export const teamsApi = {
     return data ? toTeam(data) : null;
   },
 
+  async updateThresholds(id: string, lightMax: number, normalMax: number): Promise<void> {
+    const { error } = await supabase
+      .from('teams')
+      .update({ load_light_max: lightMax, load_normal_max: normalMax })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   async create(input: { name: string; category: string; color: string }): Promise<Team> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non authentifié');
@@ -60,10 +68,10 @@ export const teamsApi = {
     };
   },
 
-  async update(id: string, input: { name: string; category: string; color: string }): Promise<void> {
+  async update(id: string, input: { name: string; category: string; color: string; description?: string }): Promise<void> {
     const { error } = await supabase
       .from('teams')
-      .update({ name: input.name, category: input.category, color: input.color })
+      .update({ name: input.name, category: input.category, color: input.color, description: input.description ?? null })
       .eq('id', id);
     if (error) throw error;
   },
@@ -73,14 +81,17 @@ function toTeam(row: Record<string, unknown>): Team {
   const seasonsArr = row.seasons as Array<{ label: string; is_current: boolean }> | undefined;
   const org        = row.organizations as { name: string } | null | undefined;
   return {
-    id:               row.id          as string,
-    name:             row.name        as string,
-    category:         row.category    as string,
-    color:            row.color       as string,
+    id:               row.id              as string,
+    name:             row.name            as string,
+    category:         row.category        as string,
+    color:            row.color           as string,
+    organizationId:   row.organization_id as string | undefined,
     organizationName: org?.name,
-    createdAt:        row.created_at  as string | undefined,
+    createdAt:        row.created_at      as string | undefined,
     playerCount:      undefined,
     currentSeason:    seasonsArr?.find(s => s.is_current)?.label,
+    loadLightMax:     (row.load_light_max  as number | undefined) ?? 2750,
+    loadNormalMax:    (row.load_normal_max as number | undefined) ?? 4250,
   };
 }
 
