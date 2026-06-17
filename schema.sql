@@ -1017,6 +1017,64 @@ BEGIN
 END;
 $$;
 
+-- Infos publiques d'un joueur — accessible sans authentification (anon)
+CREATE OR REPLACE FUNCTION get_player_public_info(p_player_id UUID)
+RETURNS TABLE(first_name TEXT, last_name TEXT)
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT first_name, last_name FROM players WHERE id = p_player_id;
+$$;
+GRANT EXECUTE ON FUNCTION get_player_public_info(UUID) TO anon;
+
+-- Soumission bien-être sans auth, avec limite de 10 entrées par semaine ISO
+CREATE OR REPLACE FUNCTION submit_wellness_public(
+  p_player_id  UUID,
+  p_date       DATE,
+  p_fatigue    INT,
+  p_mood       INT,
+  p_stress     INT,
+  p_motivation INT,
+  p_sleep      INT,
+  p_soreness   INT,
+  p_notes      TEXT DEFAULT NULL
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_count INT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM players WHERE id = p_player_id) THEN
+    RAISE EXCEPTION 'Joueur introuvable';
+  END IF;
+
+  IF p_fatigue    NOT BETWEEN 1 AND 10 OR p_mood       NOT BETWEEN 1 AND 10 OR
+     p_stress     NOT BETWEEN 1 AND 10 OR p_motivation NOT BETWEEN 1 AND 10 OR
+     p_sleep      NOT BETWEEN 1 AND 10 OR p_soreness   NOT BETWEEN 1 AND 10 THEN
+    RAISE EXCEPTION 'Valeurs invalides : chaque dimension doit être entre 1 et 10';
+  END IF;
+
+  IF p_date > CURRENT_DATE THEN
+    RAISE EXCEPTION 'La date ne peut pas être dans le futur';
+  END IF;
+  IF p_date < CURRENT_DATE - INTERVAL '6 days' THEN
+    RAISE EXCEPTION 'La date est trop ancienne (max 7 jours)';
+  END IF;
+
+  -- Compte les entrées de la semaine ISO en cours (lundi → dimanche)
+  SELECT COUNT(*) INTO v_count
+    FROM wellness_entries
+    WHERE player_id = p_player_id
+      AND date >= date_trunc('week', CURRENT_DATE)::DATE
+      AND date <  date_trunc('week', CURRENT_DATE)::DATE + 7;
+
+  IF v_count >= 10 THEN
+    RAISE EXCEPTION 'Limite hebdomadaire atteinte : 10 entrées maximum par semaine';
+  END IF;
+
+  INSERT INTO wellness_entries (player_id, date, fatigue, mood, stress, motivation, sleep, soreness, notes)
+  VALUES (p_player_id, p_date, p_fatigue, p_mood, p_stress, p_motivation, p_sleep, p_soreness, p_notes);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT, INT, INT, TEXT) TO anon;
+
 
 -- ================================================================
 -- MIGRATION — Sur une base existante antérieure à ce schéma

@@ -25,11 +25,16 @@ import MeetingDetailPage           from './pages/MeetingDetailPage';
 import ExercisesPage               from './pages/ExercisesPage';
 import ConfigPage                  from './pages/ConfigPage';
 import ClubPage                    from './pages/ClubPage';
+import PlayerWellnessPublicPage    from './pages/PlayerWellnessPublicPage';
 
 export const router = createBrowserRouter([
   {
     path: '/login',
     Component: LoginPage,
+  },
+  {
+    path: '/player/:playerId/wellness',
+    Component: PlayerWellnessPublicPage,
   },
   {
     element: <RequireAuth />,

@@ -135,7 +135,7 @@ export default function WellnessPage() {
 
   const historyAsc = [...history].sort((a, b) => a.date.localeCompare(b.date));
   const last14     = historyAsc.slice(-14);
-  const lastEntry  = historyAsc[historyAsc.length - 1];
+  const last3      = historyAsc.slice(-3);
 
   const lineData = last14.map((e, i) => ({
     idx: i, date: fmtDate(e.date),
@@ -143,11 +143,17 @@ export default function WellnessPage() {
     motivation: e.motivation, sommeil: e.sleep, douleur: e.soreness, score: e.score,
   }));
 
-  const radarData = lastEntry
-    ? dimensions.map(d => ({ dim: d.label, value: lastEntry[d.key as keyof WellnessEntry] as number, fullMark: 10 }))
+  const radarData = last3.length > 0
+    ? dimensions.map(d => ({
+        dim: d.label,
+        value: parseFloat((last3.reduce((s, e) => s + (e[d.key as keyof WellnessEntry] as number), 0) / last3.length).toFixed(1)),
+        fullMark: 10,
+      }))
     : [];
+  const avgScore      = last3.length > 0 ? last3.reduce((s, e) => s + e.score, 0) / last3.length : 5;
+  const radarColor    = scoreColor(avgScore);
 
-  const heatmapData = last14.map(e => ({
+  const heatmapData = historyAsc.map(e => ({
     date: e.date, score: e.score,
     label: new Date(e.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 3),
   }));
@@ -297,35 +303,10 @@ export default function WellnessPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-                <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Profil POMS — dernière saisie</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="#2A2F3A" />
-                    <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 11 }} />
-                    <Radar name="Score" dataKey="value" stroke="#00E5A0" fill="#00E5A0" fillOpacity={0.15} strokeWidth={2} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-                <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Évolution 14 jours</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={lineData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" vertical={false} />
-                    <XAxis dataKey="idx" tickFormatter={idx => lineData[idx]?.date ?? ''} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 10]} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} width={20} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Line dataKey="score"   stroke="#00E5A0" strokeWidth={2.5} dot={false} name="Score" />
-                    <Line dataKey="fatigue" stroke="#EF4444" strokeWidth={1}   dot={false} name="Fatigue" strokeOpacity={0.6} />
-                    <Line dataKey="stress"  stroke="#F59E0B" strokeWidth={1}   dot={false} name="Stress"  strokeOpacity={0.6} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
 
+            {/* Ligne 1 : Heatmap pleine largeur */}
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-              <h3 style={{ color: '#F1F5F9', marginBottom: 16 }}>Heatmap bien-être (14 jours)</h3>
+              <h3 style={{ color: '#F1F5F9', margin: '0 0 14px', fontSize: '0.9rem' }}>Heatmap bien-être — historique complet</h3>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {heatmapData.map((day, i) => (
                   <div key={i} title={`${fmtDate(day.date)} — Score: ${day.score}`}
@@ -335,34 +316,99 @@ export default function WellnessPage() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-                {[['#00E5A0', '≥ 7 Bien'], ['#F59E0B', '5-7 Modéré'], ['#EF4444', '< 5 Attention']].map(([c, l]) => (
-                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Indicateur de sens */}
+              <div style={{ display: 'flex', alignItems: 'center', marginTop: 8, gap: 6 }}>
+                <span style={{ color: '#475569', fontSize: '0.68rem' }}>← plus ancien</span>
+                <div style={{ flex: 1, height: 1, backgroundColor: '#2A2F3A' }} />
+                <span style={{ color: '#475569', fontSize: '0.68rem' }}>aujourd'hui →</span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+                {[['#00E5A0', '≥ 7 Bien'], ['#F59E0B', '5–7 Modéré'], ['#EF4444', '< 5 Attention']].map(([c, l]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: c + '44', border: `1px solid ${c}` }} />
-                    <span style={{ color: '#94A3B8', fontSize: '0.72rem' }}>{l}</span>
+                    <span style={{ color: '#94A3B8', fontSize: '0.7rem' }}>{l}</span>
                   </div>
                 ))}
               </div>
             </div>
 
+            {/* Ligne 2 : POMS | Graphique */}
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
+              {/* POMS — moyenne 3 dernières saisies */}
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
+                <h3 style={{ color: '#F1F5F9', margin: '0 0 2px', fontSize: '0.9rem' }}>Profil POMS</h3>
+                <p style={{ color: '#475569', fontSize: '0.74rem', margin: '0 0 8px' }}>Moyenne des {last3.length} dernière{last3.length > 1 ? 's' : ''} saisie{last3.length > 1 ? 's' : ''}</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke="#2A2F3A" />
+                    <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                    <Radar name="Moy." dataKey="value" stroke={radarColor} fill={radarColor} fillOpacity={0.15} strokeWidth={2}
+                      dot={(props: { cx: number; cy: number; index: number }) => {
+                        const dim = dimensions[props.index];
+                        const dataPoint = radarData[props.index];
+                        if (!dim || !dataPoint) return <circle key={props.index} cx={props.cx} cy={props.cy} r={0} />;
+                        const color = dimColor(dataPoint.value, dim.inverted);
+                        return <circle key={props.index} cx={props.cx} cy={props.cy} r={6} fill={color} stroke="#161920" strokeWidth={2} />;
+                      }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Graphique d'évolution + légende */}
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+                  <h3 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.9rem' }}>Évolution 14 jours</h3>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {[
+                      { color: '#00E5A0', label: 'Score',   opacity: 1   },
+                      { color: '#EF4444', label: 'Fatigue', opacity: 0.7 },
+                      { color: '#F59E0B', label: 'Stress',  opacity: 0.7 },
+                    ].map(({ color, label, opacity }) => (
+                      <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 18, height: 2, backgroundColor: color, borderRadius: 1, opacity }} />
+                        <span style={{ color: '#94A3B8', fontSize: '0.7rem' }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={lineData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" vertical={false} />
+                    <XAxis dataKey="idx" tickFormatter={idx => lineData[idx]?.date ?? ''} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 10]} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} width={20} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Line dataKey="score"   stroke="#00E5A0" strokeWidth={2.5} dot={false} name="Score" />
+                    <Line dataKey="fatigue" stroke="#EF4444" strokeWidth={1.5} dot={false} name="Fatigue" strokeOpacity={0.7} />
+                    <Line dataKey="stress"  stroke="#F59E0B" strokeWidth={1.5} dot={false} name="Stress"  strokeOpacity={0.7} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Ligne 3 : Tableau pleine largeur */}
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ overflowX: 'auto' }}>
-                <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4, minWidth: 560 }}>
-                  {['Date', 'Fat.', 'Hum.', 'Str.', 'Mot.', 'Som.', 'Doul.', 'Score'].map(h => (
-                    <span key={h} style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</span>
+                <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, minWidth: 500 }}>
+                  {['Date', 'Fatigue', 'Humeur', 'Stress', 'Motiv.', 'Sommeil', 'Douleurs', 'Score'].map(h => (
+                    <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: h === 'Score' ? 'right' : 'left' }}>{h}</span>
                   ))}
                 </div>
                 {tableData.map((e, idx) => (
-                  <div key={idx} style={{ padding: '9px 16px', borderBottom: '1px solid #1E2229', display: 'grid', gridTemplateColumns: '100px repeat(6, 1fr) 60px', gap: 4, alignItems: 'center', minWidth: 560 }}>
-                    <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
-                    {[e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness].map((v, i) => (
-                      <span key={i} style={{ color: '#F1F5F9', fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{v}</span>
-                    ))}
-                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{e.score}</span>
+                  <div key={idx} style={{ padding: '6px 14px', borderBottom: '1px solid #1A1E26', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, alignItems: 'center', minWidth: 500 }}>
+                    <span style={{ color: '#64748B', fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
+                    {dimensions.map((dim, i) => {
+                      const val = [e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness][i];
+                      return (
+                        <span key={i} style={{ color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{val}</span>
+                      );
+                    })}
+                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{e.score}</span>
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
         )
       )}
