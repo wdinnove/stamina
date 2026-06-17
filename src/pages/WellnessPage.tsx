@@ -307,14 +307,16 @@ export default function WellnessPage() {
             {/* Ligne 1 : Heatmap pleine largeur */}
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
               <h3 style={{ color: '#F1F5F9', margin: '0 0 14px', fontSize: '0.9rem' }}>Heatmap bien-être — historique complet</h3>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {heatmapData.map((day, i) => (
-                  <div key={i} title={`${fmtDate(day.date)} — Score: ${day.score}`}
-                    style={{ width: 44, height: 44, borderRadius: 6, backgroundColor: heatColor(day.score), border: `1px solid ${heatBorder(day.score)}44`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                    <span style={{ color: '#94A3B8', fontSize: '0.62rem' }}>{day.label}</span>
-                    <span style={{ color: heatBorder(day.score), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{day.score}</span>
-                  </div>
-                ))}
+              <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+                <div style={{ display: 'flex', gap: 6, minWidth: 'max-content' }}>
+                  {heatmapData.map((day, i) => (
+                    <div key={i} title={`${fmtDate(day.date)} — Score: ${day.score}`}
+                      style={{ width: 44, height: 44, borderRadius: 6, backgroundColor: heatColor(day.score), border: `1px solid ${heatBorder(day.score)}44`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, flexShrink: 0 }}>
+                      <span style={{ color: '#94A3B8', fontSize: '0.62rem' }}>{day.label}</span>
+                      <span style={{ color: heatBorder(day.score), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{day.score}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               {/* Indicateur de sens */}
               <div style={{ display: 'flex', alignItems: 'center', marginTop: 8, gap: 6 }}>
