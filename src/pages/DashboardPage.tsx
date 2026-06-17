@@ -220,7 +220,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* 3. Dernière séance */}
-        <Card accentColor={sessIsToday ? '#00E5A0' : '#3B82F6'} onClick={() => navigate('/sessions')}>
+        <Card accentColor={sessIsToday ? '#00E5A0' : '#3B82F6'} onClick={() => lastSession ? navigate(`/sessions/${lastSession.id}`) : navigate('/sessions')}>
           <CardLabel icon={<Activity size={12} />}>Dernière séance</CardLabel>
           {lastSession ? (
             <>
@@ -240,7 +240,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* 4. RPE moyen 7j */}
-        <Card accentColor={rpeColor} onClick={() => navigate('/rpe/new')}>
+        <Card accentColor={rpeColor} onClick={() => selected ? navigate(`/rpe/team/${selected.team.id}`) : navigate('/rpe')}>
           <CardLabel icon={<Activity size={12} />}>RPE moyen — 7j</CardLabel>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
             <span style={{ color: rpeColor, fontSize: '1.8rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
