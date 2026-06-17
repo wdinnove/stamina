@@ -255,7 +255,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Ligne 2 : joueurs à surveiller + actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px]" style={{ gap: 16 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px]" style={{ gap: 12 }}>
 
         {/* Joueurs à surveiller */}
         {!loading && players.length > 0 && (() => {

@@ -70,9 +70,6 @@ export function ActionCard({ action, showDate = true, compact = false, onMarkDon
               {action.title}
             </span>
           </div>
-          {action.description && (
-            <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }} dangerouslySetInnerHTML={{ __html: action.description }} />
-          )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ color: catCfg.color, fontSize: '0.7rem', backgroundColor: catCfg.color + '18', padding: '2px 6px', borderRadius: 3, fontWeight: 600 }}>{catCfg.label}</span>
             <span style={{ color: priCfg.color, fontSize: '0.7rem', fontWeight: 600 }}>{priCfg.label}</span>

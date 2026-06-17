@@ -30,7 +30,7 @@ const typeColors: Record<string, string> = {
 };
 
 const typeIcons: Record<string, string> = {
-  injury: '🔴', checkup: '🩺', treatment: '💊',
+  injury: '🚑', checkup: '🩺', treatment: '💊',
 };
 
 type Tab = 'infirmary' | 'record' | 'team';
@@ -46,7 +46,7 @@ const TODAY = new Date().toISOString().split('T')[0];
 // ─── Composant partagé ────────────────────────────────────────────────────────
 function MedCard({
   record, player, daysLabel, daysColor,
-  onEdit, onClose,
+  onEdit, onClose, onDetail, hideType, showTypeBadge,
   navigate,
 }: {
   record: MedicalRecord;
@@ -55,16 +55,75 @@ function MedCard({
   daysColor: string;
   onEdit: () => void;
   onClose?: () => void;
+  onDetail?: () => void;
+  hideType?: boolean;
+  showTypeBadge?: boolean;
   navigate: (path: string) => void;
 }) {
   const col = typeColors[record.type] ?? '#94A3B8';
   const sev = record.severity ? severityConfig[record.severity] : null;
+  const isResolved = record.status === 'resolved';
+
+  /* ── Mode compact (sections typées du dossier joueur) ── */
+  if (hideType) {
+    const badgeLabel = record.type === 'checkup'
+      ? 'Bilan santé'
+      : isResolved ? 'Clôturé' : 'En cours';
+    const badgeColor = record.type === 'checkup'
+      ? '#3B82F6'
+      : isResolved ? '#475569' : col;
+
+    return (
+      <div
+        onClick={onDetail}
+        style={{ backgroundColor: '#1E2229', border: `1px solid ${!isResolved && record.type !== 'checkup' ? col + '55' : '#2A2F3A'}`, borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: onDetail ? 'pointer' : 'default' }}
+      >
+        {/* Icône type — centrée verticalement */}
+        <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: col + '20', border: `1px solid ${col}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.88rem', flexShrink: 0 }}>
+          {typeIcons[record.type]}
+        </div>
+        {/* Contenu : 2 lignes */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Ligne 1 : titre + badges inline */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+            {showTypeBadge && (
+              <span style={{ color: col, fontSize: '0.65rem', fontWeight: 700, backgroundColor: col + '18', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
+                {typeLabels[record.type]}
+              </span>
+            )}
+            <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.87rem', lineHeight: 1.3 }}>
+              {record.description}
+            </span>
+            {record.type !== 'checkup' && (
+              <span style={{ color: badgeColor, fontSize: '0.65rem', fontWeight: 700, backgroundColor: badgeColor + '18', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
+                {badgeLabel}
+              </span>
+            )}
+            {sev && (
+              <span style={{ color: sev.color, fontSize: '0.65rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '2px 6px', borderRadius: 3, flexShrink: 0 }}>
+                {sev.label}
+              </span>
+            )}
+          </div>
+          {/* Ligne 2 : date */}
+          <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>
+            {fmtDate(record.date)}{daysLabel ? <span style={{ color: daysColor }}>{` · ${daysLabel}`}</span> : null}
+          </p>
+        </div>
+        {/* Bouton Modifier — centré verticalement */}
+        <button onClick={e => { e.stopPropagation(); onEdit(); }} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 4, color: '#475569', cursor: 'pointer', fontSize: '0.7rem', flexShrink: 0 }}>
+          <Pencil size={10} /> Modifier
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Mode infirmerie (avec avatar joueur) ── */
   return (
     <div style={{ backgroundColor: '#1E2229', border: `1px solid ${col}30`, borderRadius: 8, padding: '14px 16px' }}>
       <style>{`@media (min-width: 640px) { .med-card-actions { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; } }`}</style>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
 
-        {/* Avatar joueur (infirmerie) ou icône type (dossier) */}
         {player ? (
           <PlayerAvatar player={player} size={34} onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }} />
         ) : (
@@ -73,7 +132,6 @@ function MedCard({
           </div>
         )}
 
-        {/* Contenu central */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4, flexWrap: 'wrap' }}>
             {player && (
@@ -94,7 +152,6 @@ function MedCard({
           </div>
         </div>
 
-        {/* Date + boutons */}
         <div className="med-card-actions w-full sm:w-auto" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid #2A2F3A' }}>
           <span style={{ color: daysColor, fontWeight: 700, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
             {fmtDate(record.date)}{daysLabel ? ` · ${daysLabel}` : ''}
@@ -148,6 +205,7 @@ export default function MedicalPage() {
   const [recapStatusFilter, setRecapStatusFilter] = useState('');
   const [detailRecord,      setDetailRecord]      = useState<MedicalRecord | null>(null);
   const [version, setVersion]                 = useState(0);
+  const [recordView, setRecordView]           = useState<'section' | 'date'>('date');
 
   // clôture modal
   const [closeModal, setCloseModal] = useState<{ recordId: string; playerId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
@@ -211,9 +269,9 @@ export default function MedicalPage() {
   const teamActiveAll      = seasonAllRecords
     .filter(r => teamPlayerIds.has(r.playerId) && r.status === 'active' && r.type !== 'checkup')
     .sort((a, b) => b.date.localeCompare(a.date));
-  const activeInjuryTreatment  = playerRecords.filter(r => r.status === 'active'   && r.type !== 'checkup');
-  const historyInjuryTreatment = playerRecords.filter(r => r.status === 'resolved' && r.type !== 'checkup');
-  const allCheckups            = playerRecords.filter(r => r.type === 'checkup');
+  const recInjuries   = playerRecords.filter(r => r.type === 'injury');
+  const recTreatments = playerRecords.filter(r => r.type === 'treatment');
+  const allCheckups   = playerRecords.filter(r => r.type === 'checkup');
   const selectedPlayer     = allPlayers.find(p => p.id === selectedPlayerId);
   const playerById         = (id: string) => teamPlayers.find(p => p.id === id);
 
@@ -445,32 +503,6 @@ export default function MedicalPage() {
                   <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>{kpi.sub}</p>
                 </div>
               ))}
-            </div>
-
-            {/* Disponibilité joueurs */}
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
-              <h3 style={{ color: '#F1F5F9', margin: '0 0 14px', fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Disponibilité joueurs</h3>
-              {teamPlayers.length === 0
-                ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucun joueur dans l'équipe.</p>
-                : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {teamPlayers.map(p => {
-                      const isInjured = injuredIds.has(p.id);
-                      const statusColors: Record<string, string> = {
-                        active: '#00E5A0', injured: '#EF4444', limited: '#F59E0B', suspended: '#8B5CF6', unavailable: '#475569',
-                      };
-                      const c = statusColors[p.status] ?? '#475569';
-                      return (
-                        <div key={p.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', backgroundColor: '#1E2229', border: `1px solid ${isInjured ? 'rgba(239,68,68,0.3)' : '#2A2F3A'}`, borderRadius: 20, cursor: 'pointer' }}>
-                          <PlayerAvatar player={p} size={22} />
-                          <span style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600 }}>{p.lastName}</span>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: c, flexShrink: 0 }} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )
-              }
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14 }}>
@@ -730,89 +762,130 @@ export default function MedicalPage() {
             </div>
           )}
 
-          {/* ── Bloc 1 : Blessures & Traitements actifs ── */}
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: 12 }}>
-            <h4 style={{ color: '#F1F5F9', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px', fontWeight: 700 }}>
-              Blessures & Traitements actifs
-              {activeInjuryTreatment.length > 0 && <span style={{ color: '#EF4444', marginLeft: 8 }}>({activeInjuryTreatment.length})</span>}
-            </h4>
-            {activeInjuryTreatment.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune entrée active.</p>
-              : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {activeInjuryTreatment.map(record => {
-                    const days = record.rtpDate ? rtpDaysLeft(record.rtpDate) : null;
-                    const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                    return (
-                      <MedCard
-                        key={record.id}
-                        record={record}
-                        daysLabel={days !== null ? `${rtpLabel} J+${days}` : null}
-                        daysColor={days !== null && days <= 3 ? '#00E5A0' : '#F59E0B'}
-                        onEdit={() => openEdit(record)}
-                        onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
-                        navigate={navigate}
-                      />
-                    );
-                  })}
-                </div>
-            }
+          {/* ── Sous-onglets vue ── */}
+          <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, marginBottom: 14 }}>
+            {([
+              { id: 'date'    as const, label: 'Par date' },
+              { id: 'section' as const, label: 'Par type'  },
+            ]).map(v => (
+              <button key={v.id} onClick={() => setRecordView(v.id)}
+                style={{ flex: 1, padding: '5px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.8rem', backgroundColor: recordView === v.id ? '#1E2229' : 'transparent', color: recordView === v.id ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
+                {v.label}
+              </button>
+            ))}
           </div>
 
-          {/* ── Bloc 2 : Historique blessures & traitements ── */}
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: 12 }}>
-            <h4 style={{ color: '#94A3B8', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px', fontWeight: 700 }}>
-              Historique blessures & traitements ({historyInjuryTreatment.length})
-            </h4>
-            {historyInjuryTreatment.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucun antécédent.</p>
-              : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {historyInjuryTreatment.map(record => {
-                    const totalDays = record.rtpDate ? daysBetween(record.date, record.rtpDate) : null;
-                    return (
-                      <MedCard
-                        key={record.id}
-                        record={record}
-                        daysLabel={totalDays !== null && totalDays > 0 ? `${totalDays}j` : null}
-                        daysColor='#475569'
-                        onEdit={() => openEdit(record)}
-                        navigate={navigate}
-                      />
-                    );
-                  })}
+          {/* ── Vue par date ── */}
+          {recordView === 'date' && (() => {
+            const allSorted = [...playerRecords].sort((a, b) => b.date.localeCompare(a.date));
+            return (
+              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
+                {/* En-tête section */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: allSorted.length > 0 ? 14 : 0 }}>
+                  <h4 style={{ color: '#F1F5F9', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 700 }}>
+                    Tous les dossiers
+                  </h4>
+                  {allSorted.length > 0 && (
+                    <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.78rem', backgroundColor: '#2A2F3A', padding: '2px 8px', borderRadius: 3 }}>
+                      {allSorted.length}
+                    </span>
+                  )}
                 </div>
-            }
-          </div>
 
-          {/* ── Bloc 3 : Bilans santé ── */}
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
-            <h4 style={{ color: '#3B82F6', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px', fontWeight: 700 }}>
-              Bilans santé ({allCheckups.length})
-            </h4>
-            {allCheckups.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucun bilan enregistré.</p>
-              : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {allCheckups.map(record => (
-                    <div key={record.id} style={{ backgroundColor: '#1E2229', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0 }}>
-                          🩺
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <span style={{ color: '#CBD5E1', fontWeight: 600, fontSize: '0.85rem' }}>{record.description}</span>
-                          {record.treatment && <p style={{ color: '#475569', fontSize: '0.75rem', margin: '3px 0 0' }}>{record.treatment}</p>}
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <p style={{ color: '#475569', fontSize: '0.72rem', margin: '0 0 4px' }}>{fmtDate(record.date)}</p>
-                          <button onClick={() => openEdit(record)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
-                            <Pencil size={12} />
-                          </button>
-                        </div>
-                      </div>
+                {allSorted.length === 0
+                  ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune entrée médicale.</p>
+                  : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {allSorted.map(record => {
+                        const isActive = record.status === 'active';
+                        const days = record.rtpDate
+                          ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
+                          : null;
+                        const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
+                        const daysLabel = days !== null && days > 0
+                          ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
+                          : null;
+                        return (
+                          <MedCard
+                            key={record.id}
+                            record={record}
+                            daysLabel={daysLabel}
+                            daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
+                            onEdit={() => openEdit(record)}
+                            onDetail={() => setDetailRecord(record)}
+                            onClose={isActive && record.type !== 'checkup'
+                              ? () => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })
+                              : undefined}
+                            hideType
+                            showTypeBadge
+                            navigate={navigate}
+                          />
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-            }
-          </div>
+                }
+              </div>
+            );
+          })()}
+
+          {/* ── 3 sections uniformes : Blessures / Traitements / Bilans ── */}
+          {recordView === 'section' && ([
+            { key: 'injury',    title: 'Blessures',    icon: '🔴', color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée.'  },
+            { key: 'treatment', title: 'Traitements',  icon: '💊', color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré.' },
+            { key: 'checkup',   title: 'Bilans santé', icon: '🩺', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré.'     },
+          ]).map((section, si) => (
+            <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: si < 2 ? 12 : 0 }}>
+              {/* En-tête de section */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: section.records.length > 0 ? 14 : 0 }}>
+                <h4 style={{ color: '#F1F5F9', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 700, flex: 1 }}>
+                  {section.title}
+                </h4>
+                {section.records.length > 0 && (
+                  <span style={{ color: section.color, fontWeight: 700, fontSize: '0.78rem', backgroundColor: section.color + '18', padding: '2px 8px', borderRadius: 3 }}>
+                    {section.records.length}
+                  </span>
+                )}
+              </div>
+
+              {section.records.length === 0
+                ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>{section.emptyMsg}</p>
+                : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {[...section.records]
+                      .sort((a, b) => {
+                        if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+                        return b.date.localeCompare(a.date);
+                      })
+                      .map(record => {
+                        const isActive = record.status === 'active';
+                        const days = record.rtpDate
+                          ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
+                          : null;
+                        const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
+                        const daysLabel = days !== null && days > 0
+                          ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
+                          : null;
+                        return (
+                          <MedCard
+                            key={record.id}
+                            record={record}
+                            daysLabel={daysLabel}
+                            daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
+                            onEdit={() => openEdit(record)}
+                            onDetail={() => setDetailRecord(record)}
+                            onClose={isActive && record.type !== 'checkup'
+                              ? () => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })
+                              : undefined}
+                            hideType
+                            navigate={navigate}
+                          />
+                        );
+                      })
+                    }
+                  </div>
+                )
+              }
+            </div>
+          ))}
         </div>
       )}
 
@@ -841,14 +914,16 @@ export default function MedicalPage() {
 
               {/* Grille de détails */}
               <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 14 }}>
-                {[
+                {([
                   { label: 'Joueur',   value: p ? `${p.firstName} ${p.lastName}` : '—' },
                   { label: 'Date',     value: `${fmtDate(detailRecord.date)} ${detailRecord.date.slice(0,4)}` },
                   { label: 'Statut',   value: detailRecord.status === 'active' ? 'En cours' : 'Clôturé', color: detailRecord.status === 'active' ? '#F59E0B' : '#00E5A0' },
                   ...(sev ? [{ label: 'Gravité', value: sev.label, color: sev.color }] : []),
-                  ...(detailRecord.rtpDate ? [{ label: detailRecord.type === 'injury' ? 'Date de retour' : 'Date de fin', value: `${fmtDate(detailRecord.rtpDate)}${totalDays ? ` (${totalDays}j)` : ''}` }] : []),
-                  ...(detailRecord.resolvedDate ? [{ label: 'Clôturé le', value: fmtDate(detailRecord.resolvedDate) }] : []),
-                ].map(({ label, value, color }: { label: string; value: string; color?: string }) => (
+                  ...(detailRecord.location ? [{ label: 'Localisation', value: detailRecord.location }] : []),
+                  ...(detailRecord.daysAbsent != null ? [{ label: "Jours d'absence", value: `${detailRecord.daysAbsent} jour${detailRecord.daysAbsent > 1 ? 's' : ''}`, color: '#F59E0B' }] : []),
+                  ...(detailRecord.rtpDate ? [{ label: detailRecord.type === 'injury' ? 'Date de retour' : 'Date de fin', value: `${fmtDate(detailRecord.rtpDate)} ${detailRecord.rtpDate.slice(0,4)}${totalDays ? ` · ${totalDays}j` : ''}` }] : []),
+                  ...(detailRecord.resolvedDate ? [{ label: 'Clôturé le', value: `${fmtDate(detailRecord.resolvedDate)} ${detailRecord.resolvedDate.slice(0,4)}`, color: '#00E5A0' }] : []),
+                ] as { label: string; value: string; color?: string }[]).map(({ label, value, color }) => (
                   <div key={label} style={{ padding: '10px 12px', backgroundColor: '#1E2229', borderRadius: 6 }}>
                     <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 3px', fontWeight: 600 }}>{label}</p>
                     <p style={{ color: color ?? '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>{value}</p>
