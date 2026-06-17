@@ -4,6 +4,7 @@ import { ArrowLeft, Edit, Trash2, Save, X, Check, AlertCircle, Calendar, Clock }
 import { meetingsApi } from '../api/meetings';
 import { supabase } from '../api/client';
 import { notifyOrg } from '../api/notifications';
+import RichTextEditor from '../components/RichTextEditor';
 import type { StaffMeeting } from '../data/types';
 
 const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -20,24 +21,6 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
-function renderNotes(text: string): string {
-  let html = text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h4 style="color:#F1F5F9;margin:12px 0 4px;font-size:0.88rem">$1</h4>')
-    .replace(/^## (.+)$/gm,  '<h3 style="color:#F1F5F9;margin:14px 0 4px;font-size:0.95rem">$1</h3>')
-    .replace(/^# (.+)$/gm,   '<h2 style="color:#F1F5F9;margin:16px 0 6px;font-size:1.05rem">$1</h2>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^[-*] (.+)$/gm, '<li style="margin:2px 0">$1</li>');
-  // wrap consecutive <li> in <ul>
-  html = html.replace(/(<li[^>]*>.*?<\/li>\n?)+/gs, match => `<ul style="padding-left:18px;margin:6px 0">${match}</ul>`);
-  // paragraphs: split on double newline
-  html = html.split(/\n{2,}/).map(block => {
-    if (/^<[hul]/.test(block.trim())) return block;
-    return `<p style="margin:0 0 8px;line-height:1.65">${block.replace(/\n/g, '<br>')}</p>`;
-  }).join('');
-  return html;
-}
 
 export default function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -235,20 +218,19 @@ export default function MeetingDetailPage() {
 
         {notesEdit ? (
           <div style={{ padding: '16px 20px' }}>
-            <p style={{ color: '#475569', fontSize: '0.72rem', margin: '0 0 8px' }}>Supporte le Markdown : **gras**, *italique*, # Titre, - liste</p>
             {notesError && <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: 8 }}>{notesError}</div>}
-            <textarea
-              autoFocus
+            <RichTextEditor
               value={notesDraft}
-              onChange={e => setNotesDraft(e.target.value)}
+              onChange={setNotesDraft}
               placeholder="Ordre du jour, décisions, points importants…"
-              style={{ ...inputStyle, resize: 'vertical', minHeight: 280, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem', lineHeight: 1.6 }}
+              minHeight={280}
             />
           </div>
         ) : meeting.notes ? (
           <div
+            className="rich-display"
             style={{ padding: '16px 20px', color: '#94A3B8', fontSize: '0.85rem', lineHeight: 1.65 }}
-            dangerouslySetInnerHTML={{ __html: renderNotes(meeting.notes) }}
+            dangerouslySetInnerHTML={{ __html: meeting.notes }}
           />
         ) : (
           <div style={{ padding: '32px 20px', textAlign: 'center' }}>

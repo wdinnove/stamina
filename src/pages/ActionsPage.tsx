@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search } from 'lucide-react';
+import RichTextEditor from '../components/RichTextEditor';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
 import { staffApi }   from '../api/staff';
@@ -178,7 +179,7 @@ export default function ActionsPage() {
               {action.title}
             </p>
             {action.description && (
-              <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }}>{action.description}</p>
+              <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }} dangerouslySetInnerHTML={{ __html: action.description }} />
             )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: catCfg.color, fontSize: '0.7rem', backgroundColor: catCfg.color + '18', padding: '2px 6px', borderRadius: 3, fontWeight: 600 }}>
@@ -370,7 +371,7 @@ export default function ActionsPage() {
               </div>
               <div>
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Description / Consigne</label>
-                <textarea placeholder="Description détaillée de l'action..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', minHeight: 72, fontFamily: 'Inter, sans-serif' }} />
+                <RichTextEditor value={form.description} onChange={html => setForm(f => ({ ...f, description: html }))} placeholder="Description détaillée de l'action..." minHeight={72} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.88rem' }}>Annuler</button>

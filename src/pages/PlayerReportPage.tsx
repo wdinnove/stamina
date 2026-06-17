@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, Legend } from 'recharts';
 import { Download, Printer, Save, ArrowLeft } from 'lucide-react';
+import RichTextEditor from '../components/RichTextEditor';
 import { players, getPlayerById, getPlayerRPE, getPlayerWellness, getPlayerMedical, getPlayerActions, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, getAge } from '../data';
 import { PlayerAvatar, StatusBadge } from '../components';
 
@@ -279,8 +280,7 @@ export default function PlayerReportPage() {
           {/* Commentaire staff */}
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 14 }}>
             <h3 style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, borderBottom: '1px solid #2A2F3A', paddingBottom: 7 }}>── Commentaire Staff</h3>
-            <textarea value={comment} onChange={e => setComment(e.target.value)}
-              style={{ width: '100%', padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', resize: 'vertical', minHeight: 90, boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }} />
+            <RichTextEditor value={comment} onChange={setComment} placeholder="Ajouter un commentaire…" minHeight={90} />
             <div style={{ marginTop: 8 }}>
               <p style={{ color: '#94A3B8', fontSize: '0.75rem', margin: '0 0 4px' }}>Axes de progression :</p>
               <ul style={{ color: '#94A3B8', fontSize: '0.8rem', paddingLeft: 16, margin: 0 }}>

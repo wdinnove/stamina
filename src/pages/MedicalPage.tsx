@@ -3,6 +3,7 @@ import { Plus, X, AlertCircle, Pencil, Search } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
+import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
 import { StatusBadge, PlayerAvatar } from '../components';
@@ -85,7 +86,12 @@ function MedCard({
             {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
           </div>
           <p style={{ color: col, fontWeight: 600, fontSize: '0.85rem', margin: '0 0 3px' }}>{typeIcons[record.type]} {record.description}</p>
-          <p style={{ color: record.treatment ? '#CBD5E1' : '#475569', fontSize: '0.8rem', margin: 0 }}>💊 {record.treatment || '—'}</p>
+          <div style={{ display: 'flex', gap: 4, fontSize: '0.8rem', marginTop: 2 }}>
+            <span>💊</span>
+            {record.treatment
+              ? <div className="rich-display" style={{ color: '#CBD5E1' }} dangerouslySetInnerHTML={{ __html: record.treatment }} />
+              : <span style={{ color: '#475569' }}>—</span>}
+          </div>
         </div>
 
         {/* Date + boutons */}
@@ -856,7 +862,7 @@ export default function MedicalPage() {
                   <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 5px', fontWeight: 600 }}>
                     {detailRecord.type === 'injury' ? 'Traitement & protocole' : 'Notes'}
                   </p>
-                  <p style={{ color: '#CBD5E1', fontSize: '0.84rem', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{detailRecord.treatment}</p>
+                  <div className="rich-display" style={{ color: '#CBD5E1', fontSize: '0.84rem' }} dangerouslySetInnerHTML={{ __html: detailRecord.treatment }} />
                 </div>
               )}
 
@@ -1061,14 +1067,15 @@ export default function MedicalPage() {
                 <label style={labelStyle}>
                   {formType === 'injury' ? 'Traitement & protocole' : 'Notes'}
                 </label>
-                <textarea
-                  value={fTreatment} onChange={e => setFTreatment(e.target.value)} rows={3}
+                <RichTextEditor
+                  value={fTreatment}
+                  onChange={setFTreatment}
                   placeholder={
-                    formType === 'injury'    ? 'Ex : Glace 3×20min/j, repos strict 48h, rééducation kiné…' :
-                    formType === 'checkup'   ? 'Observations, recommandations…' :
-                                              'Détails du traitement, fréquence, observations…'
+                    formType === 'injury'  ? 'Ex : Glace 3×20min/j, repos strict 48h, rééducation kiné…' :
+                    formType === 'checkup' ? 'Observations, recommandations…' :
+                                            'Détails du traitement, fréquence, observations…'
                   }
-                  style={{ ...inputStyle, resize: 'vertical' as const, minHeight: 76, fontFamily: 'inherit', lineHeight: 1.5 }}
+                  minHeight={76}
                 />
               </div>
 

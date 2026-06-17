@@ -6,6 +6,7 @@ import { meetingsApi } from '../api/meetings';
 import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
+import RichTextEditor from '../components/RichTextEditor';
 import type { StaffMember, StaffMeeting } from '../data/types';
 
 const ROLES = [
@@ -477,7 +478,7 @@ export default function StaffPage() {
               </div>
               <div>
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compte rendu / Notes</label>
-                <textarea placeholder="Ordre du jour, décisions, notes…" value={meetForm.notes} onChange={e => setMeetForm(f => ({ ...f, notes: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', minHeight: 88, fontFamily: 'Inter, sans-serif' }} />
+                <RichTextEditor value={meetForm.notes} onChange={html => setMeetForm(f => ({ ...f, notes: html }))} placeholder="Ordre du jour, décisions, notes…" minHeight={88} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>

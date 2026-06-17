@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, Legend } from 'recharts';
 import { Download, Share2, Save } from 'lucide-react';
+import RichTextEditor from '../components/RichTextEditor';
 import { players, rpeEntries, medicalRecords, teamMatchStats, playerSeasonAvg, formatDate } from '../data';
 import { KPICard, PlayerAvatar, StatusBadge } from '../components';
 
@@ -276,8 +277,7 @@ export default function TeamReportPage() {
       {/* Recommandations */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 14 }}>
         <h3 style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, borderBottom: '1px solid #2A2F3A', paddingBottom: 7 }}>── Recommandations</h3>
-        <textarea value={comment} onChange={e => setComment(e.target.value)}
-          style={{ width: '100%', padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }} />
+        <RichTextEditor value={comment} onChange={setComment} placeholder="Recommandations, axes d'amélioration…" minHeight={80} />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

@@ -5,6 +5,7 @@ import { Save, Check } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
 import { notifyOrg } from '../api/notifications';
+import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, WellnessEntry } from '../data/types';
 
@@ -265,9 +266,7 @@ export default function WellnessPage() {
 
           <div style={{ marginTop: 20 }}>
             <label style={{ color: '#94A3B8', display: 'block', marginBottom: 6 }}>💬 Note libre (facultatif)</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)}
-              placeholder="Je sens mes jambes lourdes depuis hier soir..."
-              style={{ width: '100%', padding: '10px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }} />
+            <RichTextEditor value={note} onChange={setNote} placeholder="Je sens mes jambes lourdes depuis hier soir..." minHeight={80} />
           </div>
 
           <div style={{ marginTop: 20, padding: '12px 16px', backgroundColor: '#1E2229', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
