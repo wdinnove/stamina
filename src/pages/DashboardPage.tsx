@@ -24,7 +24,17 @@ function fmtWeekday(dateStr: string): string {
 }
 
 interface TrainingSession { id: string; date: string; planned_duration: number }
-interface AlertItem { player: Player; type: 'danger' | 'warning'; message: string; detail: string }
+
+type StatusLevel = 'injured' | 'rpe_overload' | 'wellness_bad' | 'limited' | 'rpe_medium' | 'wellness_medium' | 'ok';
+const LEVEL_PRIORITY: Record<StatusLevel, number> = {
+  injured: 0, rpe_overload: 1, wellness_bad: 2, limited: 3, rpe_medium: 4, wellness_medium: 5, ok: 6,
+};
+const LEVEL_COLOR: Record<StatusLevel, string> = {
+  injured: '#EF4444', rpe_overload: '#EF4444', wellness_bad: '#EF4444',
+  limited: '#F59E0B', rpe_medium: '#F59E0B', wellness_medium: '#F59E0B',
+  ok: '#00E5A0',
+};
+interface PlayerInfo { player: Player; level: StatusLevel; label: string; detail: string; }
 
 // ── Card commune ──────────────────────────────────────────────────────────────
 function Card({ children, style, onClick, accentColor }: {
@@ -57,7 +67,7 @@ function CardLabel({ icon, children }: { icon?: React.ReactNode; children: React
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { selected, loading: teamLoading } = useTeamSeason();
+  const { selected, loading: teamLoading, thresholds } = useTeamSeason();
 
   const today = useMemo(() => localDate(0), []);
   const todayLabel = useMemo(() => new Date().toLocaleDateString('fr-FR', {
@@ -68,7 +78,7 @@ export default function DashboardPage() {
   const [players,     setPlayers]     = useState<Player[]>([]);
   const [injuries,    setInjuries]    = useState<MedicalRecord[]>([]);
   const [actions,     setActions]     = useState<Action[]>([]);
-  const [alerts,      setAlerts]      = useState<AlertItem[]>([]);
+  const [playerInfos, setPlayerInfos] = useState<PlayerInfo[]>([]);
   const [lastSession, setLastSession] = useState<TrainingSession | null>(null);
   const [sessIsToday, setSessIsToday] = useState(false);
   const [avgRpe7d,    setAvgRpe7d]    = useState<number | null>(null);
@@ -131,37 +141,73 @@ export default function DashboardPage() {
           setAvgRpe7d(null);
         }
 
-        // Alertes
+        // Statut par joueur
         const playerMap = new Map(seasonPlayers.map(p => [p.id, p]));
-        const alertItems: AlertItem[] = [];
-        const seen = new Set<string>();
-        const yesterday = localDate(-1);
+        const injuryMap = new Map(activeInjuries.map(inj => [inj.playerId, inj]));
 
-        activeInjuries.slice(0, 6).forEach(inj => {
-          const player = playerMap.get(inj.playerId);
-          if (!player || seen.has(player.id)) return;
-          seen.add(player.id);
-          alertItems.push({ player, type: 'danger', message: inj.description, detail: inj.rtpDate ? `RTP ${inj.rtpDate.slice(5).replace('-', '/')}` : 'En cours' });
-        });
-        wellnessEntries.filter(w => w.score < 6 && !seen.has(w.playerId)).forEach(w => {
-          if (alertItems.length >= 8) return;
-          const player = playerMap.get(w.playerId);
-          if (!player) return;
-          seen.add(w.playerId);
-          alertItems.push({ player, type: 'warning', message: 'Bien-être dégradé', detail: `${w.score.toFixed(1)}/10` });
-        });
-        const yestIds = sessions.filter(s => s.date === yesterday).map(s => s.id);
-        if (yestIds.length > 0) {
-          const { data: yRpe } = await supabase.from('rpe_entries').select('rpe, player_id').in('session_id', yestIds);
-          (yRpe ?? []).filter((r: { rpe: number; player_id: string }) => r.rpe > 8 && !seen.has(r.player_id)).forEach((r: { rpe: number; player_id: string }) => {
-            if (alertItems.length >= 8) return;
-            const player = playerMap.get(r.player_id);
-            if (!player) return;
-            seen.add(r.player_id);
-            alertItems.push({ player, type: 'warning', message: 'RPE élevé hier', detail: `RPE ${r.rpe}/10` });
-          });
+        // RPE weekly UA par joueur (7 jours glissants)
+        const sessionDurMap = new Map(sessions.map(s => [s.id, s.planned_duration]));
+        const playerUaMap = new Map<string, number>();
+        if (sessionIds7d.length > 0) {
+          const { data: rpeRows7d } = await supabase
+            .from('rpe_entries')
+            .select('player_id, rpe, actual_duration, session_id')
+            .in('session_id', sessionIds7d);
+          for (const row of (rpeRows7d ?? []) as { player_id: string; rpe: number; actual_duration: number | null; session_id: string }[]) {
+            const dur = row.actual_duration ?? sessionDurMap.get(row.session_id) ?? 0;
+            playerUaMap.set(row.player_id, (playerUaMap.get(row.player_id) ?? 0) + row.rpe * dur);
+          }
         }
-        setAlerts(alertItems);
+
+        // Latest wellness par joueur
+        const latestWellMap = new Map<string, { score: number }>();
+        for (const w of wellnessEntries) {
+          const existing = latestWellMap.get(w.playerId);
+          if (!existing || w.date > (wellnessEntries.find(x => x.playerId === w.playerId && x !== w)?.date ?? '')) {
+            latestWellMap.set(w.playerId, w);
+          }
+        }
+
+        const { lightMax, normalMax } = thresholds;
+        const infos: PlayerInfo[] = seasonPlayers.map(player => {
+          const inj      = injuryMap.get(player.id);
+          const ua       = playerUaMap.get(player.id) ?? 0;
+          const wellness = latestWellMap.get(player.id);
+
+          if (player.status === 'injured') return {
+            player, level: 'injured',
+            label:  inj?.description ?? 'Blessé',
+            detail: inj?.rtpDate ? `RTP ${inj.rtpDate.slice(5).replace('-', '/')}` : 'En cours',
+          };
+          if (player.status === 'limited') return {
+            player, level: 'limited',
+            label:  inj?.description ?? 'Limité',
+            detail: inj ? 'Limité' : '',
+          };
+          if (ua > normalMax) return {
+            player, level: 'rpe_overload',
+            label:  'Surcharge RPE',
+            detail: `${Math.round(ua)} UA`,
+          };
+          if (wellness && wellness.score < 5) return {
+            player, level: 'wellness_bad',
+            label:  'Bien-être dégradé',
+            detail: `${wellness.score.toFixed(1)}/10`,
+          };
+          if (ua > lightMax) return {
+            player, level: 'rpe_medium',
+            label:  'Charge élevée',
+            detail: `${Math.round(ua)} UA`,
+          };
+          if (wellness && wellness.score < 7) return {
+            player, level: 'wellness_medium',
+            label:  'Bien-être moyen',
+            detail: `${wellness.score.toFixed(1)}/10`,
+          };
+          return { player, level: 'ok', label: 'En forme', detail: '' };
+        });
+        infos.sort((a, b) => LEVEL_PRIORITY[a.level] - LEVEL_PRIORITY[b.level]);
+        setPlayerInfos(infos);
         setLoading(false);
       })
       .catch(err => { console.error('[Dashboard]', err); setLoading(false); });
@@ -257,41 +303,39 @@ export default function DashboardPage() {
       {/* Ligne 2 : joueurs à surveiller + actions */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px]" style={{ gap: 12 }}>
 
-        {/* Joueurs à surveiller */}
-        {!loading && players.length > 0 && (() => {
-          const alertById = new Map(alerts.map(a => [a.player.id, a]));
+        {/* Joueurs */}
+        {!loading && playerInfos.length > 0 && (() => {
+          const alertCount = playerInfos.filter(i => i.level !== 'ok').length;
           return (
             <Card>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <p style={{ color: '#F1F5F9', fontWeight: 700, margin: 0 }}>Joueurs à surveiller</p>
-                {alerts.length > 0 && (
+                <p style={{ color: '#F1F5F9', fontWeight: 700, margin: 0 }}>Effectif</p>
+                {alertCount > 0 && (
                   <span style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444', borderRadius: 4, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700 }}>
-                    {alerts.length} alerte{alerts.length > 1 ? 's' : ''}
+                    {alertCount} alerte{alertCount > 1 ? 's' : ''}
                   </span>
                 )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3" style={{ gap: 8 }}>
-                {players.map(player => {
-                  const alert = alertById.get(player.id);
-                  const isDanger  = alert?.type === 'danger';
-                  const isWarning = alert?.type === 'warning';
-                  const dotColor    = isDanger ? '#EF4444' : isWarning ? '#F59E0B' : '#00E5A0';
-                  const borderColor = isDanger ? '#EF4444' : isWarning ? '#F59E0B' : 'rgba(0,229,160,0.15)';
-                  const bgColor     = isDanger ? 'rgba(239,68,68,0.08)' : isWarning ? 'rgba(245,158,11,0.08)' : '#1E2229';
+                {playerInfos.map(({ player, level, label, detail }) => {
+                  const col    = LEVEL_COLOR[level];
+                  const isOk   = level === 'ok';
+                  const border = isOk ? 'rgba(0,229,160,0.12)' : col;
+                  const bg     = isOk ? '#1E2229' : `${col}10`;
                   return (
                     <div key={player.id} onClick={() => navigate(`/players/${player.id}`, { state: { from: '/dashboard' } })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', backgroundColor: bgColor, borderRadius: 6, border: `${alert ? '2px' : '1px'} solid ${borderColor}`, cursor: 'pointer' }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0, boxShadow: alert ? `0 0 6px ${dotColor}` : 'none' }} />
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', backgroundColor: bg, borderRadius: 6, border: `${isOk ? '1px' : '2px'} solid ${border}`, cursor: 'pointer' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: col, flexShrink: 0, boxShadow: !isOk ? `0 0 6px ${col}` : 'none' }} />
                       <PlayerAvatar player={player} size={26} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {player.lastName} {player.firstName[0]}.
                         </p>
-                        <p style={{ color: alert ? dotColor : '#00E5A0', fontSize: '0.7rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: alert ? 600 : 400 }}>
-                          {alert ? alert.message : 'Disponible'}
+                        <p style={{ color: col, fontSize: '0.7rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isOk ? 400 : 600 }}>
+                          {label}
                         </p>
                       </div>
-                      {alert && <span style={{ color: dotColor, fontSize: '0.65rem', flexShrink: 0, fontWeight: 600 }}>{alert.detail}</span>}
+                      {detail && <span style={{ color: col, fontSize: '0.65rem', flexShrink: 0, fontWeight: 600 }}>{detail}</span>}
                     </div>
                   );
                 })}

@@ -223,6 +223,7 @@ export default function MedicalPage() {
   const [fDays, setFDays]             = useState('');
   const [fTreatment, setFTreatment]   = useState('');
   const [fRtpDate, setFRtpDate]       = useState('');
+  const [fPlayerStatus, setFPlayerStatus] = useState<'active' | 'limited' | 'injured' | 'unavailable'>('injured');
   const [saving, setSaving]           = useState(false);
   const [saveError, setSaveError]     = useState<string | null>(null);
 
@@ -311,6 +312,7 @@ export default function MedicalPage() {
     setFDate(TODAY); setFDesc(''); setFSeverity('mild');
     setFLocation(''); setFDays(''); setFTreatment(''); setFRtpDate('');
     setFormType('injury');
+    setFPlayerStatus('injured');
     setSaveError(null);
     setShowForm(true);
   };
@@ -326,6 +328,8 @@ export default function MedicalPage() {
     setFDays('');
     setFTreatment(record.treatment ?? '');
     setFRtpDate(record.rtpDate ?? '');
+    const currentPlayer = allPlayers.find(p => p.id === record.playerId);
+    setFPlayerStatus(currentPlayer?.status ?? (record.type === 'injury' ? 'injured' : 'active'));
     setSaveError(null);
     setShowForm(true);
   };
@@ -351,9 +355,6 @@ export default function MedicalPage() {
         await medicalApi.update(editingRecord.id, payload);
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
-        if (formType === 'injury') {
-          await playersApi.update(fPlayerId, { status: 'injured' });
-        }
         const typeLabel = typeLabels[formType] ?? formType;
         const player = allPlayers.find(p => p.id === fPlayerId);
         const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
@@ -367,6 +368,9 @@ export default function MedicalPage() {
           notifBody = fDesc || undefined;
         }
         notifyOrg('medical_added', `${typeLabel}${playerName ? ` — ${playerName}` : ''}`, notifBody, 'player', fPlayerId);
+      }
+      if (formType === 'injury' || formType === 'treatment') {
+        await playersApi.update(fPlayerId, { status: fPlayerStatus });
       }
       setShowForm(false);
       setVersion(v => v + 1);
@@ -1134,6 +1138,38 @@ export default function MedicalPage() {
                 <div>
                   <label style={labelStyle}>Date de fin <span style={{ color: '#475569', fontWeight: 400 }}>— optionnel</span></label>
                   <input type="date" value={fRtpDate} onChange={e => setFRtpDate(e.target.value)} style={inputStyle} />
+                </div>
+              )}
+
+              {/* Statut du joueur — blessure et traitement */}
+              {(formType === 'injury' || formType === 'treatment') && (
+                <div>
+                  <label style={labelStyle}>Statut du joueur</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                    {([
+                      { val: 'active'      as const, label: 'Actif',        color: '#00E5A0' },
+                      { val: 'limited'     as const, label: 'Limité',       color: '#F59E0B' },
+                      { val: 'injured'     as const, label: 'Blessé',       color: '#EF4444' },
+                      { val: 'unavailable' as const, label: 'Indisponible', color: '#6B7280' },
+                    ] as const).map(({ val, label, color }) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setFPlayerStatus(val)}
+                        style={{
+                          padding: '8px 0',
+                          borderRadius: 6,
+                          border: `1px solid ${fPlayerStatus === val ? color : '#2A2F3A'}`,
+                          backgroundColor: fPlayerStatus === val ? color + '18' : 'transparent',
+                          color: fPlayerStatus === val ? color : '#94A3B8',
+                          cursor: 'pointer', fontSize: '0.78rem',
+                          fontWeight: fPlayerStatus === val ? 700 : 400,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
