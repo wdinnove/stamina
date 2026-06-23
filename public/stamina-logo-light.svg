@@ -1,0 +1,22 @@
+<svg width="160" height="40" viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icône -->
+  <rect width="40" height="40" rx="10" fill="#0D0F14"/>
+  <rect width="40" height="40" rx="10" fill="url(#sg)" fill-opacity="0.12"/>
+  <polyline points="2.5,22.5 8.75,22.5 11.25,15 13.75,27.5 17.5,12.5 20,25 22.5,20 26.25,20 28.75,22.5 37.5,22.5"
+    stroke="#00E5A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.55"/>
+  <text x="20" y="27.5" text-anchor="middle" font-family="Inter, system-ui, sans-serif"
+    font-weight="900" font-size="20" fill="#00E5A0" letter-spacing="-0.5">S</text>
+
+  <!-- Texte -->
+  <text x="52" y="22" font-family="Inter, system-ui, sans-serif"
+    font-weight="900" font-size="13" fill="#0D0F14" letter-spacing="1.5">STAMINA</text>
+  <text x="52" y="33" font-family="Inter, system-ui, sans-serif"
+    font-weight="600" font-size="7" fill="#00A372" letter-spacing="1">MANAGEMENT APP</text>
+
+  <defs>
+    <linearGradient id="sg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E5A0"/>
+      <stop offset="100%" stop-color="#0D0F14"/>
+    </linearGradient>
+  </defs>
+</svg>

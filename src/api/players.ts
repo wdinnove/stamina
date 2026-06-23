@@ -51,6 +51,20 @@ export const playersApi = {
     if (error) throw error;
   },
 
+  async uploadPhoto(playerId: string, file: File): Promise<string> {
+    const ext  = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const path = `${playerId}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('player-photos')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) throw upErr;
+    const { data } = supabase.storage.from('player-photos').getPublicUrl(path);
+    const url = `${data.publicUrl}?v=${Date.now()}`;
+    const { error } = await supabase.from('players').update({ photo_url: url }).eq('id', playerId);
+    if (error) throw error;
+    return url;
+  },
+
   async delete(id: string): Promise<void> {
     const { error } = await supabase.from('players').delete().eq('id', id);
     if (error) throw error;
@@ -89,6 +103,7 @@ function toPlayer(row: Record<string, unknown>): Player {
     hand:              row.hand               as Player['hand'],
     contractEnd:       row.contract_end       as string | undefined,
     email:             row.email              as string | undefined,
+    photoUrl:          row.photo_url          as string | undefined,
   };
 }
 
@@ -108,5 +123,6 @@ function toRow(p: Partial<Omit<Player, 'id'>>): Record<string, unknown> {
   if (p.hand              !== undefined) row.hand               = p.hand;
   if (p.contractEnd       !== undefined) row.contract_end       = p.contractEnd;
   if (p.email             !== undefined) row.email              = p.email;
+  if (p.photoUrl          !== undefined) row.photo_url          = p.photoUrl;
   return row;
 }

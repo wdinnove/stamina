@@ -222,6 +222,8 @@ CREATE TABLE players (
                        CHECK (hand IN ('right', 'left', 'both')),
   contract_end       DATE,
   avatar_url         TEXT,
+  email              TEXT,
+  photo_url          TEXT,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -496,11 +498,18 @@ CREATE TRIGGER trg_matches_updated_at
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE match_stats (
-  id         UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
-  match_id   UUID     NOT NULL REFERENCES matches(id)  ON DELETE CASCADE,
-  player_id  UUID     NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
-  starter    BOOLEAN  NOT NULL DEFAULT FALSE,
-  min        NUMERIC(4,1) NOT NULL DEFAULT 0,
+  id          UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id    UUID     NOT NULL REFERENCES matches(id)  ON DELETE CASCADE,
+  player_id   UUID     NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+  date        DATE     NOT NULL,
+  opponent    TEXT     NOT NULL,
+  home_away   TEXT     NOT NULL CHECK (home_away IN ('home', 'away')),
+  competition TEXT,
+  result      TEXT     CHECK (result IN ('win', 'loss')),
+  score_us    SMALLINT,
+  score_them  SMALLINT,
+  starter     BOOLEAN  NOT NULL DEFAULT FALSE,
+  min         NUMERIC(4,1) NOT NULL DEFAULT 0,
 
   fg2m       SMALLINT NOT NULL DEFAULT 0,
   fg2a       SMALLINT NOT NULL DEFAULT 0,
@@ -927,6 +936,34 @@ CREATE POLICY "training_attendance_access" ON training_attendance
 -- Notifications : chaque user accède uniquement aux siennes
 CREATE POLICY "notifications_user_own" ON notifications
   FOR ALL USING (user_id = auth.uid());
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 22b. STORAGE — Bucket player-photos
+-- ────────────────────────────────────────────────────────────────
+
+-- Créer le bucket (à faire une seule fois dans le Dashboard Storage,
+-- ou via l'API admin ; cette section documente les policies associées)
+
+CREATE POLICY "player_photos_select"
+  ON storage.objects FOR SELECT
+  TO public
+  USING (bucket_id = 'player-photos');
+
+CREATE POLICY "player_photos_insert"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'player-photos');
+
+CREATE POLICY "player_photos_update"
+  ON storage.objects FOR UPDATE
+  TO authenticated
+  USING (bucket_id = 'player-photos');
+
+CREATE POLICY "player_photos_delete"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (bucket_id = 'player-photos');
 
 
 -- ────────────────────────────────────────────────────────────────

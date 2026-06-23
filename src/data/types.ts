@@ -81,6 +81,7 @@ export interface Player {
   hand: 'right' | 'left' | 'both';
   contractEnd?: string;
   email?: string;
+  photoUrl?: string;
 }
 
 export interface Team {

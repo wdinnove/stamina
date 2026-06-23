@@ -128,9 +128,10 @@ function PlayerProfile({ playerId }: { playerId: string }) {
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
 
-  const [showEdit,   setShowEdit]   = useState(false);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError,  setEditError]  = useState('');
+  const [showEdit,      setShowEdit]      = useState(false);
+  const [editSaving,    setEditSaving]    = useState(false);
+  const [editError,     setEditError]     = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [editForm,   setEditForm]   = useState({
     firstName: '', lastName: '', number: '',
     position:  'Meneur' as Player['position'],
@@ -202,6 +203,21 @@ function PlayerProfile({ playerId }: { playerId: string }) {
     });
     setEditError('');
     setShowEdit(true);
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !player) return;
+    setPhotoUploading(true);
+    try {
+      const url = await playersApi.uploadPhoto(player.id, file);
+      setPlayer(p => p ? { ...p, photoUrl: url } : p);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Erreur upload photo');
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
+    }
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -624,6 +640,23 @@ function PlayerProfile({ playerId }: { playerId: string }) {
                 <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editError}</span>
               </div>
             )}
+            <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+              <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} />
+              <div style={{ position: 'relative' }}>
+                <PlayerAvatar player={player} size={72} />
+                <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '0')}>
+                  {photoUploading
+                    ? <div style={{ width: 16, height: 16, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    : <span style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>Changer</span>
+                  }
+                </div>
+              </div>
+              <span style={{ color: '#475569', fontSize: '0.72rem' }}>
+                {photoUploading ? 'Envoi…' : 'Photo de profil'}
+              </span>
+            </label>
             <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
