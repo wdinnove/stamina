@@ -178,7 +178,7 @@ const emptyPlayerForm = {
   position: 'Meneur' as Player['position'],
   birthDate: '', nationality: 'FR',
   hand: 'right' as Player['hand'],
-  height: '', weight: '', contractEnd: '',
+  height: '', weight: '', contractEnd: '', email: '',
 };
 
 function PlayersTab() {
@@ -227,6 +227,7 @@ function PlayersTab() {
         height:      form.height ? parseInt(form.height) : undefined,
         weight:      form.weight ? parseInt(form.weight) : undefined,
         contractEnd: form.contractEnd || undefined,
+        email:       form.email       || undefined,
       });
       setPlayers(prev => [...prev, created].sort((a, b) => a.lastName.localeCompare(b.lastName)));
       setShowForm(false);
@@ -370,6 +371,11 @@ function PlayersTab() {
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
                 <input type="date" value={form.contractEnd}
                   onChange={e => setForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
+                <input type="email" placeholder="joueur@example.com" value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={closeForm}

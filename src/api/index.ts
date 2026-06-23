@@ -13,7 +13,8 @@ export { meetingsApi }    from './meetings';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
 export { documentsApi }     from './documents';
-export { sessionBlocksApi } from './sessionBlocks';
+export { sessionBlocksApi } from './sessionBlocks'
+export { sendEmail } from './email';
 
 export type { ListPlayersFilters }       from './players';
 export type { ListWellnessFilters }      from './wellness';

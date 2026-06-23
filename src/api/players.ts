@@ -88,6 +88,7 @@ function toPlayer(row: Record<string, unknown>): Player {
     weight:            row.weight_kg          as number | undefined,
     hand:              row.hand               as Player['hand'],
     contractEnd:       row.contract_end       as string | undefined,
+    email:             row.email              as string | undefined,
   };
 }
 
@@ -106,5 +107,6 @@ function toRow(p: Partial<Omit<Player, 'id'>>): Record<string, unknown> {
   if (p.weight            !== undefined) row.weight_kg          = p.weight;
   if (p.hand              !== undefined) row.hand               = p.hand;
   if (p.contractEnd       !== undefined) row.contract_end       = p.contractEnd;
+  if (p.email             !== undefined) row.email              = p.email;
   return row;
 }

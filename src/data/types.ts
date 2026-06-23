@@ -80,6 +80,7 @@ export interface Player {
   weight?: number;
   hand: 'right' | 'left' | 'both';
   contractEnd?: string;
+  email?: string;
 }
 
 export interface Team {

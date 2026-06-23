@@ -137,7 +137,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
     status:    'active' as Player['status'],
     birthDate: '', nationality: 'FR',
     hand:      'right' as Player['hand'],
-    height: '', weight: '', contractEnd: '',
+    height: '', weight: '', contractEnd: '', email: '',
   });
 
   useEffect(() => {
@@ -198,6 +198,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
       height:      player.height  ? String(player.height)  : '',
       weight:      player.weight  ? String(player.weight)  : '',
       contractEnd: player.contractEnd ?? '',
+      email:       player.email ?? '',
     });
     setEditError('');
     setShowEdit(true);
@@ -220,6 +221,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
         height:      editForm.height      ? parseInt(editForm.height)      : undefined,
         weight:      editForm.weight      ? parseInt(editForm.weight)      : undefined,
         contractEnd: editForm.contractEnd || undefined,
+        email:       editForm.email       || undefined,
       });
       const updated = await playersApi.getById(playerId);
       setPlayer(updated);
@@ -680,6 +682,11 @@ function PlayerProfile({ playerId }: { playerId: string }) {
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
                   <input type="date" value={editForm.contractEnd} onChange={e => setEditForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
                 </div>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
+                <input type="email" placeholder="joueur@example.com" value={editForm.email}
+                  onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={() => setShowEdit(false)}
