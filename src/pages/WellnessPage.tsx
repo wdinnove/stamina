@@ -188,6 +188,7 @@ export default function WellnessPage() {
         const url = `${window.location.origin}/player/${player.id}/wellness`;
         await sendEmail({
           to: [{ email: player.email, name }],
+          subject: 'Formulaire bien-être',
           template_id: 'jpzkmgq5vqng059v',
           personalization: [{ email: player.email, data: { name: player.firstName, url } }],
         });

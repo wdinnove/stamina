@@ -17,13 +17,14 @@ export default async function handler(req, res) {
     to: payload.to,
   }
 
+  if (payload.subject) body.subject = payload.subject
+
   if (payload.template_id) {
-    body.template_id   = payload.template_id
+    body.template_id = payload.template_id
     if (payload.personalization) body.personalization = payload.personalization
   } else {
-    if (payload.subject) body.subject = payload.subject
-    if (payload.html)    body.html    = payload.html
-    if (payload.text)    body.text    = payload.text
+    if (payload.html) body.html = payload.html
+    if (payload.text) body.text = payload.text
   }
 
   const response = await fetch('https://api.mailersend.com/v1/email', {
