@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowRight, Clock, Users, Activity, Trophy, Zap, Heart } from 'lucide-react';
+import { ArrowRight, Clock, Users, Activity, Trophy, Zap, Heart, Dumbbell } from 'lucide-react';
 import { BarChart, Bar, Cell, XAxis, YAxis, ResponsiveContainer, Tooltip, LineChart, Line } from 'recharts';
 import { PlayerAvatar, Card, CardTitle, ChargeRpeComboChart } from '../components';
 import { categoryConfig } from '../data/config';
@@ -476,12 +476,14 @@ export default function DashboardPage() {
             value: <span style={{ color: activeColor, fontFamily: 'JetBrains Mono, monospace' }}>{active}</span>,
             sub: <>{injured > 0 && <span style={{ color: '#EF4444' }}>{injured} blessé{injured > 1 ? 's' : ''}</span>}{injured > 0 && limited > 0 && ' · '}{limited > 0 && <span style={{ color: '#F59E0B' }}>{limited} limité{limited > 1 ? 's' : ''}</span>}{injured === 0 && limited === 0 && <span style={{ color: '#00E5A0' }}>Tous disponibles</span>}</>,
             accent: activeColor,
+            href: '/roster',
           },
           {
             label: 'Bilan matchs',
             value: <span style={{ fontFamily: 'JetBrains Mono, monospace' }}><span style={{ color: '#00E5A0' }}>{wins}V</span><span style={{ color: '#475569', margin: '0 4px' }}>·</span><span style={{ color: '#EF4444' }}>{losses}D</span></span>,
             sub: <span style={{ color: '#475569' }}>{wins + losses} match{wins + losses > 1 ? 's' : ''}</span>,
             accent: wins > losses ? '#00E5A0' : wins < losses ? '#EF4444' : '#475569',
+            href: '/matches',
           },
           {
             label: 'Charge moy / semaine',
@@ -491,18 +493,23 @@ export default function DashboardPage() {
             </span>,
             sub: <span style={{ color: '#475569' }}>UA · saison</span>,
             accent: loadColor,
+            href: '/rpe',
           },
           {
             label: 'RPE moyen',
             value: <span style={{ color: avgRpe !== null ? rpeColor(avgRpe) : '#475569', fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe !== null ? avgRpe : '—'}</span>,
             sub: <span style={{ color: '#475569' }}>/ 10 · saison</span>,
             accent: avgRpe !== null ? rpeColor(avgRpe) : '#475569',
+            href: '/rpe',
           },
         ];
         return (
           <div className="grid grid-cols-2 sm:grid-cols-4" style={{ gap: 8, marginBottom: 12 }}>
-            {kpis.map(({ label, value, sub, accent }) => (
-              <div key={label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 14px' }}>
+            {kpis.map(({ label, value, sub, accent, href }) => (
+              <div key={label} onClick={() => navigate(href)} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 14px', cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1A1E26'}
+                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#161920'}
+              >
                 <p style={{ color: '#475569', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>{label}</p>
                 <p style={{ color: '#F1F5F9', fontSize: '1.5rem', fontWeight: 800, margin: '0 0 4px', lineHeight: 1 }}>{value}</p>
                 <p style={{ margin: 0, fontSize: '0.68rem' }}>{sub}</p>
@@ -575,9 +582,9 @@ export default function DashboardPage() {
           {/* 3 dernières séances */}
           <Card>
             <CardTitle
-              icon={<Activity size={12} color="#00E5A0" />}
+              icon={<Dumbbell size={12} color="#00E5A0" />}
               mb={12}
-              right={<button onClick={() => navigate('/rpe/new')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>Voir tout <ArrowRight size={10} /></button>}
+              right={<button onClick={() => navigate('/sessions')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>Voir tout <ArrowRight size={10} /></button>}
             >Séances récentes</CardTitle>
             {last3Sessions.length === 0 ? (
               <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune séance récente.</p>
