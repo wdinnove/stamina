@@ -478,12 +478,6 @@ export default function DashboardPage() {
             accent: activeColor,
           },
           {
-            label: 'Présences entraînements',
-            value: <span style={{ color: attColor, fontFamily: 'JetBrains Mono, monospace' }}>{attendanceRate !== null ? `${attendanceRate}%` : '—'}</span>,
-            sub: <span style={{ color: '#475569' }}>saison</span>,
-            accent: attColor,
-          },
-          {
             label: 'Bilan matchs',
             value: <span style={{ fontFamily: 'JetBrains Mono, monospace' }}><span style={{ color: '#00E5A0' }}>{wins}V</span><span style={{ color: '#475569', margin: '0 4px' }}>·</span><span style={{ color: '#EF4444' }}>{losses}D</span></span>,
             sub: <span style={{ color: '#475569' }}>{wins + losses} match{wins + losses > 1 ? 's' : ''}</span>,
@@ -506,7 +500,7 @@ export default function DashboardPage() {
           },
         ];
         return (
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5" style={{ gap: 8, marginBottom: 12 }}>
+          <div className="grid grid-cols-2 sm:grid-cols-4" style={{ gap: 8, marginBottom: 12 }}>
             {kpis.map(({ label, value, sub, accent }) => (
               <div key={label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 14px' }}>
                 <p style={{ color: '#475569', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>{label}</p>
@@ -539,7 +533,7 @@ export default function DashboardPage() {
                 </div>
               }
             >Effectif</CardTitle>
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4" style={{ gap: 4 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4" style={{ gap: 4 }}>
               {playerInfos.map(({ player, level, label, detail }) => {
                 const col      = LEVEL_COLOR[level];
                 const isOk     = level === 'ok';
@@ -557,12 +551,12 @@ export default function DashboardPage() {
                     <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: col, flexShrink: 0, opacity: isOk ? 0.25 : 1 }} />
                     <PlayerAvatar player={player} size={24} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {player.lastName} {player.firstName?.[0] ?? '?'}.
+                      <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+                        {player.firstName ?? '?'} {player.lastName?.[0] ?? '?'}.
                       </p>
                     </div>
                     {!isOk && (
-                      <span style={{ color: col, fontSize: '0.62rem', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      <span style={{ color: col, fontSize: '0.62rem', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '45%' }}>
                         {label}{detail ? ` · ${detail}` : ''}
                       </span>
                     )}

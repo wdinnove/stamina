@@ -972,7 +972,7 @@ export default function RPEPage() {
                     </span>;
 
                   return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 20 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 20 }}>
                       <RpeKpiCard
                         accent={tier ? tier.color : '#334155'}
                         label="Charge moyenne par semaine"
@@ -1122,7 +1122,7 @@ export default function RPEPage() {
                       </div>
                       <div style={{ overflowX: 'auto' }}>
                         {indivTableView === 'session' ? (
-                          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                          <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                             <colgroup>
                               <col style={{ width: '20%' }} />
                               <col /><col /><col /><col /><col /><col />
@@ -1160,7 +1160,7 @@ export default function RPEPage() {
                             </tbody>
                           </table>
                         ) : (
-                          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                          <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                             <colgroup>
                               <col style={{ width: '20%' }} />
                               <col /><col /><col /><col /><col /><col />
@@ -1274,7 +1274,7 @@ export default function RPEPage() {
                 }).length;
 
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
                     <RpeKpiCard
                       accent={tierSaison.color}
                       label="Charge moyenne par semaine"
@@ -1410,7 +1410,7 @@ export default function RPEPage() {
                 const nbSeances30j = rows30jTeam.length;
 
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
                     <RpeKpiCard
                       accent={tier30jKpi.color}
                       label="Charge moyenne par semaine"

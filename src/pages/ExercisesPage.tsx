@@ -379,7 +379,7 @@ export default function ExercisesPage() {
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 150 }}>Catégorie</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
               </tr>
             </thead>
             <tbody>
@@ -398,7 +398,7 @@ export default function ExercisesPage() {
                     <td style={{ padding: '12px 20px' }}>
                       <CategoryBadge category={ex.category} />
                     </td>
-                    <td style={{ padding: '12px 20px' }}>
+                    <td className="hidden sm:table-cell" style={{ padding: '12px 20px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span style={{ color: '#475569', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
                           {desc || '—'}

@@ -255,10 +255,10 @@ export default function TrainingSessionsPage() {
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
-                <th style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présents</th>
-                <th style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absents</th>
-                <th style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Retards</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Durée</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présents</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absents</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Retards</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Durée</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>RPE estimé / réel</th>
               </tr>
             </thead>
@@ -305,22 +305,22 @@ export default function TrainingSessionsPage() {
                             {typeCfg.label}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', textAlign: 'center' }}>
                           <span style={{ color: counts?.present ? '#00E5A0' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                             {counts?.present ?? '—'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', textAlign: 'center' }}>
                           <span style={{ color: counts?.absent ? '#EF4444' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                             {counts?.absent ?? '—'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', textAlign: 'center' }}>
                           <span style={{ color: counts?.late ? '#F59E0B' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                             {counts?.late ?? '—'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px', color: '#94A3B8', fontSize: '0.82rem' }}>
+                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', color: '#94A3B8', fontSize: '0.82rem' }}>
                           {session.plannedDuration} min
                         </td>
                         <td style={{ padding: '12px 16px 12px 20px' }}>

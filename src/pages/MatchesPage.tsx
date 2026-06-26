@@ -196,9 +196,9 @@ export default function MatchesPage() {
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>J</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>J</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Adversaire</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</th>
+                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Résultat</th>
               </tr>
@@ -228,13 +228,13 @@ export default function MatchesPage() {
                           <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
                           <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
                         </td>
-                        <td style={{ padding: '12px 20px', color: '#475569', fontSize: '0.82rem' }}>
+                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', color: '#475569', fontSize: '0.82rem' }}>
                           {match.gameNumber ? `J${match.gameNumber}` : '—'}
                         </td>
                         <td style={{ padding: '12px 20px', color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>
                           {match.opponent}
                         </td>
-                        <td style={{ padding: '12px 20px' }}>
+                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px' }}>
                           <span style={{
                             fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4,
                             color:           match.homeAway === 'home' ? '#3B82F6' : '#A855F7',

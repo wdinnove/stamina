@@ -100,7 +100,7 @@ export function TeamSessionHistoryTable({
       </div>
       <div style={{ overflowX: 'auto' }}>
         {view === 'session' ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+          <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             {colgroup}
             <thead>{thRow}</thead>
             <tbody>
@@ -126,7 +126,7 @@ export function TeamSessionHistoryTable({
             </tbody>
           </table>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+          <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             {colgroup}
             <thead>{thRow}</thead>
             <tbody>
