@@ -12,6 +12,7 @@ export { staffApi }    from './staff';
 export { meetingsApi }    from './meetings';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
+export { matchesApi }   from './matches';
 export { documentsApi }     from './documents';
 export { sessionBlocksApi } from './sessionBlocks'
 export { sendEmail } from './email';
@@ -21,4 +22,4 @@ export type { ListWellnessFilters }      from './wellness';
 export type { ListRpeFilters }           from './rpe';
 export type { ListMedicalFilters }       from './medical';
 export type { ListActionsFilters }       from './actions';
-export type { ListMatchStatsFilters, ListTeamMatchStatsFilters } from './stats';
+export type { ListMatchStatsFilters, ListTeamMatchStatsFilters, BulkStatRow, CollectiveStatInput } from './stats';

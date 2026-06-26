@@ -3,6 +3,7 @@ import type { Action, ActionStatus, ActionPriority, ActionCategory } from '../da
 
 export interface ListActionsFilters {
   playerId?: string;
+  teamId?: string;
   status?: ActionStatus;
   priority?: ActionPriority;
   category?: ActionCategory;
@@ -11,6 +12,7 @@ export interface ListActionsFilters {
 export const actionsApi = {
   async list(filters: ListActionsFilters = {}): Promise<Action[]> {
     let query = supabase.from('player_actions').select('*');
+    if (filters.teamId)   query = query.eq('team_id', filters.teamId);
     if (filters.playerId) query = query.eq('player_id', filters.playerId);
     if (filters.status)   query = query.eq('status', filters.status);
     if (filters.priority) query = query.eq('priority', filters.priority);
@@ -72,6 +74,7 @@ function toAction(row: Record<string, unknown>): Action {
   return {
     id:          row.id          as string,
     playerId:    row.player_id   as string,
+    teamId:      row.team_id     as string | undefined,
     title:       row.title       as string,
     description: row.description as string | undefined,
     category:    row.category    as Action['category'],
@@ -85,6 +88,7 @@ function toAction(row: Record<string, unknown>): Action {
 function toRow(a: Partial<Omit<Action, 'id'>>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if (a.playerId    !== undefined) row.player_id   = a.playerId;
+  if (a.teamId      !== undefined) row.team_id     = a.teamId;
   if (a.title       !== undefined) row.title        = a.title;
   if (a.description !== undefined) row.description  = a.description;
   if (a.category    !== undefined) row.category     = a.category;

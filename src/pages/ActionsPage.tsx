@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search } from 'lucide-react';
+import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search, Trash2 } from 'lucide-react';
 import RichTextEditor from '../components/RichTextEditor';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
@@ -48,17 +48,26 @@ export default function ActionsPage() {
   const [saving,       setSaving]       = useState(false);
   const [formError,    setFormError]    = useState('');
   const [staffError,   setStaffError]   = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<Action | null>(null);
+  const [deleting,      setDeleting]      = useState(false);
   const [playerFilter,   setPlayerFilter]   = useState<string>(locState?.playerId ?? '');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [search,         setSearch]         = useState('');
 
   useEffect(() => {
-    Promise.all([actionsApi.list(), playersApi.list()])
+    if (!selected) return;
+    setActs([]);
+    setPlayers([]);
+    setLoading(true);
+    Promise.all([
+      actionsApi.list({ teamId: selected.team.id }),
+      playersApi.listBySeason(selected.season.id),
+    ])
       .then(([actions, ps]) => { setActs(actions); setPlayers(ps); })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selected?.team.id, selected?.season.id]);
 
   useEffect(() => {
     if (!selected) return;
@@ -71,7 +80,7 @@ export default function ActionsPage() {
   const getPlayer    = (id: string) => players.find(p => p.id === id);
   const getStaffName = (id: string) => {
     const s = staff.find(m => m.id === id);
-    return s ? `${s.firstName} ${s.lastName}` : id;
+    return s ? `${s.firstName} ${s.lastName}` : 'Inconnu';
   };
 
   const visibleActs = acts.filter(a => {
@@ -113,6 +122,7 @@ export default function ActionsPage() {
     try {
       const created = await actionsApi.create({
         playerId:    form.playerId,
+        teamId:      selected?.team.id,
         title:       form.title,
         description: form.description || undefined,
         category:    form.category,
@@ -131,6 +141,23 @@ export default function ActionsPage() {
       setFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await actionsApi.delete(confirmDelete.id);
+      const p = players.find(pl => pl.id === confirmDelete.playerId);
+      const playerName = p ? `${p.firstName} ${p.lastName}` : undefined;
+      notifyOrg('action_deleted', confirmDelete.title, playerName, 'action', confirmDelete.id);
+      setActs(prev => prev.filter(a => a.id !== confirmDelete.id));
+      setConfirmDelete(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -161,7 +188,7 @@ export default function ActionsPage() {
               {player && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <PlayerAvatar player={player} size={20} />
-                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName[0]}.</span>
+                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName?.[0] ?? ''}.</span>
                 </div>
               )}
               {showDate && (
@@ -191,6 +218,15 @@ export default function ActionsPage() {
               <span style={{ color: '#475569', fontSize: '0.72rem' }}>Assigné : {getStaffName(action.assignedTo)}</span>
             </div>
           </div>
+          <button
+            onClick={() => setConfirmDelete(action)}
+            title="Supprimer"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: '2px', flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 1 }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#334155')}
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
       </div>
     );
@@ -227,7 +263,7 @@ export default function ActionsPage() {
           <select value={playerFilter} onChange={e => setPlayerFilter(e.target.value)}
             style={{ width: '100%', padding: playerFilter ? '8px 52px 8px 10px' : '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: playerFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
             <option value="">Tous les joueurs</option>
-            {players.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName[0]}.</option>)}
+            {players.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName?.[0] ?? ''}.</option>)}
           </select>
           {playerFilter && <button onClick={() => setPlayerFilter('')} style={{ position: 'absolute', right: 28, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
         </div>
@@ -303,6 +339,26 @@ export default function ActionsPage() {
               ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action terminée.</p>
               : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{done.map(a => <ActionCard key={a.id} action={a} />)}</div>
             }
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24 }}>
+            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cette action ?</h2>
+            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
+              <strong style={{ color: '#F1F5F9' }}>{confirmDelete.title}</strong>
+            </p>
+            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cette action sera définitivement supprimée.</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
+                Annuler
+              </button>
+              <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
           </div>
         </div>
       )}

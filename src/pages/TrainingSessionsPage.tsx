@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ChevronRight, Plus, X, AlertCircle } from 'lucide-react';
+import { Plus, X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
+import { sessionBlocksApi } from '../api/sessionBlocks';
 import { playersApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
@@ -38,8 +39,11 @@ function fmtDate(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
   return {
     dow:        DAYS_FR[d.getDay()],
+    dowFull:    DAYS_FULL[d.getDay()],
     day:        d.getDate(),
+    dayPad:     String(d.getDate()).padStart(2, '0'),
     month:      MONTHS_FR[d.getMonth()].slice(0, 3),
+    monthFull:  MONTHS_FR[d.getMonth()],
     monthKey:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
     monthLabel: `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`,
   };
@@ -52,6 +56,7 @@ export default function TrainingSessionsPage() {
   const [sessions,         setSessions]         = useState<TrainingSession[]>([]);
   const [attendanceCounts, setAttendanceCounts] = useState<Record<string, { present: number; absent: number; late: number }>>({});
   const [rpeAvg,           setRpeAvg]           = useState<Record<string, number>>({});
+  const [rpeEst,           setRpeEst]           = useState<Record<string, number>>({});
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState('');
 
@@ -70,6 +75,9 @@ export default function TrainingSessionsPage() {
     if (!selected) return;
     setLoading(true);
     setError('');
+    setSessions([]);
+    setAttendanceCounts({});
+    setRpeAvg({});
 
     attendanceApi.listSessions(selected.team.id, selected.season.id)
       .then(async (sess) => {
@@ -78,9 +86,10 @@ export default function TrainingSessionsPage() {
         if (!sorted.length) { setLoading(false); return; }
 
         const ids = sorted.map(s => s.id);
-        const [attendance, rpeEntries] = await Promise.all([
+        const [attendance, rpeEntries, blocks] = await Promise.all([
           attendanceApi.listAttendance(ids),
           rpeApi.listBySessions(ids),
+          sessionBlocksApi.listBySessions(ids),
         ]);
 
         const counts: Record<string, { present: number; absent: number; late: number }> = {};
@@ -100,6 +109,19 @@ export default function TrainingSessionsPage() {
           avgs[sid] = vals.reduce((a, b) => a + b, 0) / vals.length;
         }
         setRpeAvg(avgs);
+
+        const blocksBySession: Record<string, typeof blocks> = {};
+        for (const b of blocks) {
+          if (!blocksBySession[b.sessionId]) blocksBySession[b.sessionId] = [];
+          blocksBySession[b.sessionId].push(b);
+        }
+        const ests: Record<string, number> = {};
+        for (const [sid, blks] of Object.entries(blocksBySession)) {
+          const totalDuration = blks.reduce((s, b) => s + b.duration, 0);
+          const totalLoad     = blks.reduce((s, b) => s + (b.loadUa ?? 0), 0);
+          if (totalDuration > 0) ests[sid] = totalLoad / totalDuration;
+        }
+        setRpeEst(ests);
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
@@ -227,66 +249,105 @@ export default function TrainingSessionsPage() {
       ) : sessions.length === 0 ? (
         <p style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune séance enregistrée pour cette saison.</p>
       ) : (
-        grouped.map(group => (
-          <div key={group.monthLabel} style={{ marginBottom: 28 }}>
-            <div style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-              {group.monthLabel}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {group.sessions.map(session => {
-                const { dow, day, month } = fmtDate(session.date);
-                const typeCfg = SESSION_TYPES[session.sessionType] ?? SESSION_TYPES.training;
-                const counts  = attendanceCounts[session.id];
-                const avg     = rpeAvg[session.id];
+        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
+                <th style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présents</th>
+                <th style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absents</th>
+                <th style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Retards</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Durée</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>RPE estimé / réel</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map(group => (
+                <React.Fragment key={group.monthLabel}>
+                  <tr>
+                    <td colSpan={7} style={{ padding: '8px 20px', backgroundColor: '#0D0F14', borderBottom: '1px solid #1E2229', borderTop: '1px solid #2A2F3A', verticalAlign: 'middle' }}>
+                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.monthLabel}</span>
+                    </td>
+                  </tr>
+                  {group.sessions.map((session, idx) => {
+                    const { dow, dayPad, monthFull } = fmtDate(session.date);
+                    const typeCfg  = SESSION_TYPES[session.sessionType] ?? SESSION_TYPES.training;
+                    const counts   = attendanceCounts[session.id];
+                    const avg      = rpeAvg[session.id];
+                    const est      = rpeEst[session.id];
+                    const isLast   = idx === group.sessions.length - 1;
 
-                return (
-                  <div
-                    key={session.id}
-                    onClick={() => navigate(`/sessions/${session.id}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 14, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '11px 14px', cursor: 'pointer', transition: 'border-color 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#3B3F4A')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}
-                  >
-                    <div style={{ minWidth: 46, textAlign: 'center', flexShrink: 0 }}>
-                      <div style={{ color: '#475569', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>{dow}</div>
-                      <div style={{ color: '#F1F5F9', fontSize: '1.05rem', fontWeight: 700, lineHeight: 1.1 }}>{day}</div>
-                      <div style={{ color: '#94A3B8', fontSize: '0.65rem' }}>{month}</div>
-                    </div>
+                    let rpeColor = '#94A3B8';
+                    if (avg !== undefined && est !== undefined && est > 0) {
+                      const delta = (avg - est) / est;
+                      if (delta > 0.25)       rpeColor = '#EF4444';
+                      else if (delta > 0.10)  rpeColor = '#F59E0B';
+                      else if (delta < -0.10) rpeColor = '#3B82F6';
+                      else                    rpeColor = '#00E5A0';
+                    }
 
-                    <div style={{ width: 1, height: 32, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
-
-                    <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, flexShrink: 0 }}>
-                      {typeCfg.label}
-                    </span>
-
-                    <span style={{ color: '#94A3B8', fontSize: '0.8rem', flexShrink: 0 }}>
-                      {session.plannedDuration} min
-                    </span>
-
-                    <div style={{ flex: 1 }} />
-
-                    {counts && (
-                      <div className="hidden sm:flex" style={{ gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                        {counts.present > 0 && <span style={{ color: '#00E5A0', fontSize: '0.76rem' }}>{counts.present} prés.</span>}
-                        {counts.absent  > 0 && <span style={{ color: '#EF4444',  fontSize: '0.76rem' }}>{counts.absent} abs.</span>}
-                        {counts.late    > 0 && <span style={{ color: '#F59E0B',  fontSize: '0.76rem' }}>{counts.late} retard</span>}
-                      </div>
-                    )}
-
-                    {avg !== undefined && (
-                      <div className="hidden sm:block" style={{ textAlign: 'right', flexShrink: 0, minWidth: 54 }}>
-                        <div style={{ color: '#475569', fontSize: '0.62rem', textTransform: 'uppercase' }}>RPE moy.</div>
-                        <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{avg.toFixed(1)}</div>
-                      </div>
-                    )}
-
-                    <ChevronRight size={14} color="#2A2F3A" style={{ flexShrink: 0 }} />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))
+                    return (
+                      <tr
+                        key={session.id}
+                        onClick={() => navigate(`/sessions/${session.id}`)}
+                        style={{ borderBottom: isLast ? 'none' : '1px solid #1E2229', cursor: 'pointer' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                      >
+                        <td style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}>
+                          <span style={{ color: '#475569', fontSize: '0.78rem', fontWeight: 600 }}>{dow} </span>
+                          <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
+                          <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
+                        </td>
+                        <td style={{ padding: '12px 20px' }}>
+                          <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                            {typeCfg.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                          <span style={{ color: counts?.present ? '#00E5A0' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
+                            {counts?.present ?? '—'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                          <span style={{ color: counts?.absent ? '#EF4444' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
+                            {counts?.absent ?? '—'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                          <span style={{ color: counts?.late ? '#F59E0B' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
+                            {counts?.late ?? '—'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 20px', color: '#94A3B8', fontSize: '0.82rem' }}>
+                          {session.plannedDuration} min
+                        </td>
+                        <td style={{ padding: '12px 16px 12px 20px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ color: '#475569', fontSize: '0.82rem' }}>
+                                {est !== undefined ? est.toFixed(1) : '—'}
+                              </span>
+                              <span style={{ color: '#334155', fontSize: '0.75rem' }}>→</span>
+                              <span style={{ color: avg !== undefined ? rpeColor : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
+                                {avg !== undefined ? avg.toFixed(1) : '—'}
+                              </span>
+                              {avg !== undefined && est !== undefined && est > 0 && (
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: rpeColor, flexShrink: 0, display: 'inline-block' }} />
+                              )}
+                            </div>
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Modal nouvelle séance */}

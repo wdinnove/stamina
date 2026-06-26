@@ -345,7 +345,7 @@ export default function WellnessPage() {
           <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement…</div>
         ) : history.length === 0 ? (
           <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-            Aucune donnée bien-être pour {selectedPlayer?.firstName} {selectedPlayer?.lastName}.
+            Aucune donnée bien-être{selectedPlayer ? ` pour ${selectedPlayer.firstName} ${selectedPlayer.lastName}` : ''}.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

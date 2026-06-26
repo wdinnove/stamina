@@ -397,7 +397,7 @@ function PlayersTab() {
 
 // ── Onglet Configuration club ──────────────────────────────────────────────────
 const labelStyle: React.CSSProperties = {
-  color: '#94A3B8', fontSize: '0.75rem', fontWeight: 600,
+  color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5, display: 'block',
 };
 

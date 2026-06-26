@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ChartTooltip } from '../../../components';
 
 interface DayData {
@@ -23,8 +23,6 @@ export function TeamRPEChart({ data }: TeamRPEChartProps) {
         />
         <YAxis domain={[0, 10]} tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={false} tickLine={false} width={24} />
         <Tooltip content={<ChartTooltip />} />
-        <ReferenceLine y={8} stroke="#EF4444" strokeDasharray="4 4"
-          label={{ value: 'Seuil', fill: '#EF4444', fontSize: 11, position: 'insideTopRight' }} />
         <Bar dataKey="avgRpe" fill="#00E5A0" radius={[4, 4, 0, 0]} fillOpacity={0.85} name="RPE moy." />
       </BarChart>
     </ResponsiveContainer>

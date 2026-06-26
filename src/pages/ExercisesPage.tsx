@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router';
+import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered, Upload } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
+import { notifyOrg } from '../api/notifications';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Exercise } from '../data/types';
 
 export const EXERCISE_CATEGORIES = [
@@ -115,18 +118,73 @@ function CategoryBadge({ category }: { category?: string }) {
   );
 }
 
+/* ── Image picker (upload fichier) ───────────────────────────────────────── */
+function ImagePicker({ currentUrl, onSelect }: { currentUrl: string; onSelect: (file: File | null, remove: boolean) => void }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [cleared, setCleared] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+
+  function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setPreview(URL.createObjectURL(f));
+    setCleared(false);
+    onSelect(f, false);
+  }
+
+  function clear() {
+    setPreview(null);
+    setCleared(true);
+    if (ref.current) ref.current.value = '';
+    onSelect(null, true);
+  }
+
+  const shown = cleared ? null : (preview ?? (currentUrl || null));
+
+  return (
+    <div>
+      <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
+      {shown ? (
+        <div style={{ position: 'relative' }}>
+          <img src={shown} alt="" style={{ width: '100%', borderRadius: 8, border: '1px solid #2A2F3A', display: 'block', maxHeight: 180, objectFit: 'contain', background: '#0D0F14' }} />
+          <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => ref.current?.click()}
+              style={{ padding: '3px 9px', background: 'rgba(13,15,20,0.88)', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem' }}>
+              Changer
+            </button>
+            <button type="button" onClick={clear}
+              style={{ padding: '3px 7px', background: 'rgba(13,15,20,0.88)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 5, color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <X size={11} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => ref.current?.click()}
+          style={{ width: '100%', padding: '20px', background: '#1E2229', border: '2px dashed #2A2F3A', borderRadius: 8, color: '#475569', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A4049'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; }}>
+          <Upload size={20} />
+          <span style={{ fontSize: '0.78rem' }}>Cliquer pour choisir une image</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* ── Modal form (avec éditeur) ───────────────────────────────────────────── */
 function ExerciseModal({
-  editing, onClose, onSaved,
+  editing, onClose, onSaved, teamId,
 }: {
   editing: Exercise | null;
   onClose: () => void;
   onSaved: (ex: Exercise, isNew: boolean) => void;
+  teamId?: string;
 }) {
   const [name,        setName]        = useState(editing?.name ?? '');
   const [category,    setCategory]    = useState(editing?.category ?? '');
-  const [imageUrl,    setImageUrl]    = useState(editing?.imageUrl ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
+  const [imageFile,   setImageFile]   = useState<File | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [saving,      setSaving]      = useState(false);
   const [formError,   setFormError]   = useState('');
 
@@ -136,19 +194,33 @@ function ExerciseModal({
     setSaving(true);
     setFormError('');
     const plain = description.replace(/<[^>]+>/g, '').trim();
-    const payload = {
-      name:        name.trim(),
-      description: plain ? description : undefined,
-      imageUrl:    imageUrl.trim() || undefined,
-      category:    category || undefined,
-    };
     try {
       if (editing) {
-        const updated = await exercisesApi.update(editing.id, payload);
+        let imageUrlPatch: string | undefined;
+        if (imageFile) {
+          imageUrlPatch = await exercisesApi.uploadImage(editing.id, imageFile);
+          if (editing.imageUrl) exercisesApi.deleteImageByUrl(editing.imageUrl).catch(() => {});
+        } else if (removeImage) {
+          imageUrlPatch = '';
+          if (editing.imageUrl) exercisesApi.deleteImageByUrl(editing.imageUrl).catch(() => {});
+        }
+        const updated = await exercisesApi.update(editing.id, {
+          name: name.trim(), description: plain ? description : undefined,
+          imageUrl: imageUrlPatch, category: category || undefined,
+        });
         onSaved(updated, false);
       } else {
-        const created = await exercisesApi.create(payload);
-        onSaved(created, true);
+        const created = await exercisesApi.create({
+          name: name.trim(), description: plain ? description : undefined,
+          category: category || undefined, teamId,
+        });
+        if (imageFile) {
+          const imageUrl = await exercisesApi.uploadImage(created.id, imageFile);
+          const withImg = await exercisesApi.update(created.id, { imageUrl });
+          onSaved(withImg, true);
+        } else {
+          onSaved(created, true);
+        }
       }
       onClose();
     } catch (err: unknown) {
@@ -197,9 +269,11 @@ function ExerciseModal({
           </div>
 
           <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>URL image</label>
-            <input type="url" placeholder="https://…" value={imageUrl}
-              onChange={e => setImageUrl(e.target.value)} style={inputStyle} />
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Image</label>
+            <ImagePicker
+              currentUrl={editing?.imageUrl ?? ''}
+              onSelect={(f, rm) => { setImageFile(f); setRemoveImage(rm); }}
+            />
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
@@ -220,43 +294,30 @@ function ExerciseModal({
 
 /* ── Page principale ─────────────────────────────────────────────────────── */
 export default function ExercisesPage() {
+  const { selected } = useTeamSeason();
+  const navigate = useNavigate();
   const [exercises,  setExercises]  = useState<Exercise[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
   const [search,     setSearch]     = useState('');
   const [showModal,  setShowModal]  = useState(false);
-  const [editing,    setEditing]    = useState<Exercise | null>(null);
-  const [confirmDel, setConfirmDel] = useState<Exercise | null>(null);
-  const [deleting,   setDeleting]   = useState(false);
-  const [delError,   setDelError]   = useState('');
 
   useEffect(() => {
-    exercisesApi.list()
+    if (!selected) return;
+    setLoading(true);
+    setExercises([]);
+    exercisesApi.list({ teamId: selected.team.id })
       .then(setExercises)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selected?.team.id]);
 
   function handleSaved(ex: Exercise, isNew: boolean) {
     setExercises(prev =>
       (isNew ? [...prev, ex] : prev.map(e => e.id === ex.id ? ex : e))
         .sort((a, b) => a.name.localeCompare(b.name))
     );
-  }
-
-  async function handleDelete() {
-    if (!confirmDel) return;
-    setDeleting(true);
-    setDelError('');
-    try {
-      await exercisesApi.remove(confirmDel.id);
-      setExercises(prev => prev.filter(e => e.id !== confirmDel.id));
-      setConfirmDel(null);
-    } catch (err: unknown) {
-      setDelError(err instanceof Error ? err.message : 'Erreur');
-    } finally {
-      setDeleting(false);
-    }
+    notifyOrg(isNew ? 'exercise_added' : 'exercise_updated', ex.name, ex.category ?? undefined, 'exercise', ex.id);
   }
 
   const filtered = exercises.filter(ex =>
@@ -278,7 +339,7 @@ export default function ExercisesPage() {
             </span>
           )}
         </div>
-        <button onClick={() => { setEditing(null); setShowModal(true); }}
+        <button onClick={() => setShowModal(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 7, color: '#0D0F14', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
           <Plus size={15} /> Ajouter
         </button>
@@ -310,72 +371,57 @@ export default function ExercisesPage() {
         </div>
       )}
 
-      {/* List */}
+      {/* Table */}
       {filtered.length > 0 && (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
-          {filtered.map((ex, i) => (
-            <div key={ex.id}
-              style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', borderBottom: i < filtered.length - 1 ? '1px solid #1E2229' : 'none' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: ex.description ? 4 : 0, flexWrap: 'wrap' }}>
-                  <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.9rem' }}>{ex.name}</span>
-                  <CategoryBadge category={ex.category} />
-                </div>
-                <RichText html={ex.description} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                <button onClick={() => { setEditing(ex); setShowModal(true); }}
-                  style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 6, borderRadius: 5 }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                  <Edit size={15} />
-                </button>
-                <button onClick={() => { setConfirmDel(ex); setDelError(''); }}
-                  style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 6, borderRadius: 5 }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-                  onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </div>
-          ))}
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 150 }}>Catégorie</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((ex, i) => {
+                const desc = ex.description ? ex.description.replace(/<[^>]+>/g, '').trim() : '';
+                return (
+                  <tr key={ex.id}
+                    onClick={() => navigate(`/exercises/${ex.id}`)}
+                    style={{ borderBottom: i < filtered.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                  >
+                    <td style={{ padding: '12px 20px' }}>
+                      <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>{ex.name}</span>
+                    </td>
+                    <td style={{ padding: '12px 20px' }}>
+                      <CategoryBadge category={ex.category} />
+                    </td>
+                    <td style={{ padding: '12px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ color: '#475569', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
+                          {desc || '—'}
+                        </span>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Modal create / edit */}
+      {/* Modal create */}
       {showModal && (
         <ExerciseModal
-          editing={editing}
-          onClose={() => { setShowModal(false); setEditing(null); }}
-          onSaved={handleSaved}
+          editing={null}
+          onClose={() => setShowModal(false)}
+          onSaved={(ex, isNew) => { handleSaved(ex, isNew); if (isNew) navigate(`/exercises/${ex.id}`); }}
+          teamId={selected?.team.id}
         />
-      )}
-
-      {/* Modal confirmation suppression */}
-      {confirmDel && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setConfirmDel(null); }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 380, padding: '24px' }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 10px', fontSize: '1rem', fontWeight: 700 }}>Supprimer l'exercice ?</h2>
-            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-              <strong style={{ color: '#F1F5F9' }}>{confirmDel.name}</strong> sera supprimé.
-            </p>
-            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 16px' }}>
-              Les blocs de séances liés conserveront leur libellé mais perdront le lien vers la bibliothèque.
-            </p>
-            {delError && <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: 12 }}>{delError}</div>}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmDel(null)}
-                style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
-                Annuler
-              </button>
-              <button onClick={handleDelete} disabled={deleting}
-                style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
-                {deleting ? 'Suppression…' : 'Supprimer'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

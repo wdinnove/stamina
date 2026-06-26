@@ -27,6 +27,16 @@ export const sessionBlocksApi = {
     return (data ?? []).map(toBlock);
   },
 
+  async listBySessions(sessionIds: string[]): Promise<SessionBlock[]> {
+    if (!sessionIds.length) return [];
+    const { data, error } = await supabase
+      .from('session_blocks')
+      .select('*')
+      .in('session_id', sessionIds);
+    if (error) throw error;
+    return (data ?? []).map(toBlock);
+  },
+
   async create(sessionId: string, block: {
     position: number;
     duration: number;

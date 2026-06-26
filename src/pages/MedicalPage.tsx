@@ -184,7 +184,7 @@ export default function MedicalPage() {
     if (t === 'infirmary' && selected) navigate(`/medical/infirmary/${selected.team.id}`, { replace: true });
     else if (t === 'team'      && selected) navigate(`/medical/team/${selected.team.id}`,      { replace: true });
     else if (t === 'record') {
-      const pid = allPlayers[0]?.id ?? '';
+      const pid = teamPlayers[0]?.id ?? '';
       navigate(pid ? `/medical/record/${pid}` : '/medical/record', { replace: true });
     }
   };
@@ -192,7 +192,6 @@ export default function MedicalPage() {
   const setSelectedPlayerId = (id: string) => navigate(`/medical/record/${id}`, { replace: true });
 
   const [teamPlayers, setTeamPlayers]         = useState<Player[]>([]);
-  const [allPlayers, setAllPlayers]           = useState<Player[]>([]);
   const [activeInjuries, setActiveInjuries]   = useState<MedicalRecord[]>([]);
   const [seasonInjuries, setSeasonInjuries]   = useState<MedicalRecord[]>([]);
   const [seasonAllRecords, setSeasonAllRecords] = useState<MedicalRecord[]>([]);
@@ -227,36 +226,38 @@ export default function MedicalPage() {
   const [saving, setSaving]           = useState(false);
   const [saveError, setSaveError]     = useState<string | null>(null);
 
-  // Team players (for infirmary filtering)
+  // Team players
   useEffect(() => {
     if (!selected) return;
-    playersApi.listBySeason(selected.season.id).then(setTeamPlayers);
-  }, [selected?.season.id, version]);
-
-  // All players across all teams/seasons (for record tab selector)
-  useEffect(() => {
-    playersApi.list().then(list => {
-      setAllPlayers(list);
+    setTeamPlayers([]);
+    playersApi.listBySeason(selected.season.id).then(list => {
+      setTeamPlayers(list);
       if (activeTab === 'record' && !urlId && list[0]?.id) {
         navigate(`/medical/record/${list[0].id}`, { replace: true });
       }
     });
-  }, [version]);
+  }, [selected?.season.id, version]);
 
   // Load active injuries
   useEffect(() => {
+    if (!selected) return;
+    setActiveInjuries([]);
     medicalApi.getActiveInjuries().then(setActiveInjuries);
-  }, [version]);
+  }, [version, selected?.season.id]);
 
   // Load all injuries for season stats
   useEffect(() => {
+    if (!selected) return;
+    setSeasonInjuries([]);
     medicalApi.list({ type: 'injury' }).then(setSeasonInjuries);
-  }, [version]);
+  }, [version, selected?.season.id]);
 
   // Load all records (all types) for team recap
   useEffect(() => {
+    if (!selected) return;
+    setSeasonAllRecords([]);
     medicalApi.list().then(setSeasonAllRecords);
-  }, [version]);
+  }, [version, selected?.season.id]);
 
   // Load records for selected player
   useEffect(() => {
@@ -273,7 +274,7 @@ export default function MedicalPage() {
   const recInjuries   = playerRecords.filter(r => r.type === 'injury');
   const recTreatments = playerRecords.filter(r => r.type === 'treatment');
   const allCheckups   = playerRecords.filter(r => r.type === 'checkup');
-  const selectedPlayer     = allPlayers.find(p => p.id === selectedPlayerId);
+  const selectedPlayer     = teamPlayers.find(p => p.id === selectedPlayerId);
   const playerById         = (id: string) => teamPlayers.find(p => p.id === id);
 
   const daysBetween = (from: string, to: string): number => {
@@ -308,7 +309,7 @@ export default function MedicalPage() {
 
   const openForm = (prePlayerId?: string) => {
     setEditingRecord(null);
-    setFPlayerId(prePlayerId || selectedPlayerId || allPlayers[0]?.id || '');
+    setFPlayerId(prePlayerId || selectedPlayerId || teamPlayers[0]?.id || '');
     setFDate(TODAY); setFDesc(''); setFSeverity('mild');
     setFLocation(''); setFDays(''); setFTreatment(''); setFRtpDate('');
     setFormType('injury');
@@ -328,7 +329,7 @@ export default function MedicalPage() {
     setFDays('');
     setFTreatment(record.treatment ?? '');
     setFRtpDate(record.rtpDate ?? '');
-    const currentPlayer = allPlayers.find(p => p.id === record.playerId);
+    const currentPlayer = teamPlayers.find(p => p.id === record.playerId);
     setFPlayerStatus(currentPlayer?.status ?? (record.type === 'injury' ? 'injured' : 'active'));
     setSaveError(null);
     setShowForm(true);
@@ -336,7 +337,7 @@ export default function MedicalPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fPlayerId || !fDesc) return;
+    if (!fPlayerId || !fDesc) { setSaveError('Le joueur et la description sont requis.'); return; }
     setSaving(true);
     setSaveError(null);
     try {
@@ -353,10 +354,14 @@ export default function MedicalPage() {
       };
       if (editingRecord) {
         await medicalApi.update(editingRecord.id, payload);
+        const typeLabel = typeLabels[formType] ?? formType;
+        const updPlayer = teamPlayers.find(p => p.id === fPlayerId);
+        const updName = updPlayer ? `${updPlayer.firstName} ${updPlayer.lastName}` : undefined;
+        notifyOrg('medical_updated', `${typeLabel} modifié${updName ? ` — ${updName}` : ''}`, undefined, 'player', fPlayerId);
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
         const typeLabel = typeLabels[formType] ?? formType;
-        const player = allPlayers.find(p => p.id === fPlayerId);
+        const player = teamPlayers.find(p => p.id === fPlayerId);
         const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
         let notifBody: string | undefined;
         if (formType === 'injury') {
@@ -388,7 +393,7 @@ export default function MedicalPage() {
       const { recordId, playerId } = closeModal;
       await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
       await playersApi.update(playerId, { status: closeModal.playerStatus });
-      const player = allPlayers.find(p => p.id === playerId);
+      const player = teamPlayers.find(p => p.id === playerId);
       const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
       notifyOrg('medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, undefined, 'player', playerId);
       setCloseModal(null);
@@ -513,7 +518,7 @@ export default function MedicalPage() {
 
               {/* Blessés actifs */}
               <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
-                <h3 style={{ color: '#F1F5F9', margin: '0 0 12px', fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Blessés actifs <span style={{ color: '#EF4444', fontWeight: 800 }}>{teamInjuries.length > 0 ? `(${teamInjuries.length})` : ''}</span>
                 </h3>
                 {teamInjuries.length === 0
@@ -549,7 +554,7 @@ export default function MedicalPage() {
 
                 {/* Par gravité */}
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
-                  <h3 style={{ color: '#F1F5F9', margin: '0 0 12px', fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Répartition par gravité</h3>
+                  <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Répartition par gravité</h3>
                   {seasonCount === 0
                     ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune blessure cette saison.</p>
                     : (
@@ -580,7 +585,7 @@ export default function MedicalPage() {
 
                 {/* Joueurs les plus touchés */}
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px', flex: 1 }}>
-                  <h3 style={{ color: '#F1F5F9', margin: '0 0 12px', fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joueurs les plus touchés</h3>
+                  <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joueurs les plus touchés</h3>
                   {topInjuredPlayers.length === 0
                     ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune donnée.</p>
                     : (
@@ -627,7 +632,7 @@ export default function MedicalPage() {
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
                   {/* Header */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <h3 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <h3 style={{ color: '#94A3B8', margin: 0, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Récap saison
                     </h3>
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -745,7 +750,7 @@ export default function MedicalPage() {
               onChange={e => setSelectedPlayerId(e.target.value)}
               style={{ flex: 1, minWidth: 180, padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}
             >
-              {allPlayers.map(p => (
+              {teamPlayers.map(p => (
                 <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
               ))}
             </select>
@@ -786,7 +791,7 @@ export default function MedicalPage() {
               <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
                 {/* En-tête section */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: allSorted.length > 0 ? 14 : 0 }}>
-                  <h4 style={{ color: '#F1F5F9', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 700 }}>
+                  <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>
                     Tous les dossiers
                   </h4>
                   {allSorted.length > 0 && (
@@ -840,7 +845,7 @@ export default function MedicalPage() {
             <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: si < 2 ? 12 : 0 }}>
               {/* En-tête de section */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: section.records.length > 0 ? 14 : 0 }}>
-                <h4 style={{ color: '#F1F5F9', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 700, flex: 1 }}>
+                <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
                   {section.title}
                 </h4>
                 {section.records.length > 0 && (
@@ -895,7 +900,7 @@ export default function MedicalPage() {
 
       {/* ── DETAIL RECORD MODAL ── */}
       {detailRecord && (() => {
-        const p   = allPlayers.find(pl => pl.id === detailRecord.playerId);
+        const p   = teamPlayers.find(pl => pl.id === detailRecord.playerId);
         const sev = detailRecord.severity ? severityConfig[detailRecord.severity] : null;
         const col = typeColors[detailRecord.type] ?? '#94A3B8';
         const totalDays = detailRecord.rtpDate ? daysBetween(detailRecord.date, detailRecord.rtpDate) : null;
@@ -929,7 +934,7 @@ export default function MedicalPage() {
                   ...(detailRecord.resolvedDate ? [{ label: 'Clôturé le', value: `${fmtDate(detailRecord.resolvedDate)} ${detailRecord.resolvedDate.slice(0,4)}`, color: '#00E5A0' }] : []),
                 ] as { label: string; value: string; color?: string }[]).map(({ label, value, color }) => (
                   <div key={label} style={{ padding: '10px 12px', backgroundColor: '#1E2229', borderRadius: 6 }}>
-                    <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 3px', fontWeight: 600 }}>{label}</p>
+                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 3px', fontWeight: 600 }}>{label}</p>
                     <p style={{ color: color ?? '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>{value}</p>
                   </div>
                 ))}
@@ -938,7 +943,7 @@ export default function MedicalPage() {
               {/* Traitement / Notes */}
               {detailRecord.treatment && (
                 <div style={{ padding: '12px 14px', backgroundColor: '#1E2229', borderRadius: 6, marginBottom: 14 }}>
-                  <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 5px', fontWeight: 600 }}>
+                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 5px', fontWeight: 600 }}>
                     {detailRecord.type === 'injury' ? 'Traitement & protocole' : 'Notes'}
                   </p>
                   <div className="rich-display" style={{ color: '#CBD5E1', fontSize: '0.84rem' }} dangerouslySetInnerHTML={{ __html: detailRecord.treatment }} />
@@ -1061,7 +1066,7 @@ export default function MedicalPage() {
                 <div>
                   <label style={labelStyle}>Joueur</label>
                   <select value={fPlayerId} onChange={e => setFPlayerId(e.target.value)} style={inputStyle}>
-                    {allPlayers.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+                    {teamPlayers.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
                   </select>
                 </div>
                 <div>

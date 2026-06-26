@@ -52,10 +52,10 @@ function fmtDateFull(dateStr: string) {
 }
 
 function rpeColor(rpe: number): string {
-  if (rpe <= 3) return '#00E5A0';
-  if (rpe <= 5) return '#3B82F6';
-  if (rpe <= 7) return '#F59E0B';
-  return '#EF4444';
+  if (rpe >= 8) return '#EF4444';
+  if (rpe >= 7) return '#F97316';
+  if (rpe >= 5) return '#EAB308';
+  return '#00E5A0';
 }
 
 function fmtSize(bytes?: number): string {
@@ -318,7 +318,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Contenu de la séance
           </span>
           {blocks.length > 0 && (
@@ -697,7 +697,7 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
   return (
     <div style={{ marginTop: 28 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <div style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Documents
         </div>
         <button

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, Legend } from 'recharts';
 import { Download, Share2, Save } from 'lucide-react';
+import { rpeColor as rpeColorHex } from '../utils/rpe';
 import RichTextEditor from '../components/RichTextEditor';
 import { players, rpeEntries, medicalRecords, teamMatchStats, playerSeasonAvg, formatDate } from '../data';
 import { KPICard, PlayerAvatar, StatusBadge } from '../components';
@@ -22,10 +23,8 @@ function makeHeatmap() {
 const heatmapDays = makeHeatmap();
 const rpeColor = (v: number) => {
   if (!v) return { bg: '#1E2229', border: '#2A2F3A', text: '#475569' };
-  if (v <= 4) return { bg: '#00E5A033', border: '#00E5A0', text: '#00E5A0' };
-  if (v <= 6) return { bg: '#F59E0B33', border: '#F59E0B', text: '#F59E0B' };
-  if (v <= 8) return { bg: '#fb923c33', border: '#fb923c', text: '#fb923c' };
-  return { bg: '#EF444433', border: '#EF4444', text: '#EF4444' };
+  const c = rpeColorHex(v);
+  return { bg: c + '33', border: c, text: c };
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -203,7 +202,7 @@ export default function TeamReportPage() {
           })}
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
-          {[['#00E5A0', '≤4 Léger'], ['#F59E0B', '5-6 Modéré'], ['#fb923c', '7-8 Intense'], ['#EF4444', '≥9 Maximal']].map(([c, l]) => (
+          {[['#00E5A0', '0–4 Facile'], ['#EAB308', '5–6 Soutenu'], ['#F97316', '7 Difficile'], ['#EF4444', '8–10 Extrême']].map(([c, l]) => (
             <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: c + '44', border: `1px solid ${c}` }} />
               <span style={{ color: '#94A3B8', fontSize: '0.68rem' }}>{l}</span>

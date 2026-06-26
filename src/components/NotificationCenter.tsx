@@ -67,12 +67,15 @@ function getNotifUrl(n: AppNotification): string | null {
   if (type === 'player_added')     return '/roster';
   if (type === 'medical_added')    return entity_id ? `/medical/record/${entity_id}` : '/medical';
   if (type === 'medical_resolved') return entity_id ? `/medical/record/${entity_id}` : '/medical';
+  if (type === 'medical_updated')  return entity_id ? `/medical/record/${entity_id}` : '/medical';
   if (type === 'action_added')     return '/actions';
+  if (type === 'action_deleted')   return '/actions';
   if (type === 'rpe_added')        return entity_id ? `/sessions/${entity_id}` : '/rpe';
   if (type === 'wellness_added')   return entity_id ? `/wellness/new/${entity_id}` : '/wellness';
   if (type === 'session_added')    return entity_id ? `/sessions/${entity_id}` : '/sessions';
   if (type === 'meeting_added')    return entity_id ? `/staff/meeting/${entity_id}` : '/staff';
   if (type === 'meeting_deleted')  return '/staff';
+  if (type === 'match_deleted')    return '/matches';
   return null;
 }
 
@@ -218,25 +221,25 @@ export function NotificationCenter() {
   return (
     <>
       {/* Mobile FAB */}
-      <button
-        className="md:hidden"
-        onClick={openCenter}
-        title="Notifications"
-        style={{
-          position: 'fixed', bottom: 24, right: 24,
-          width: 52, height: 52, borderRadius: '50%',
-          backgroundColor: '#1E2229',
-          border: '1px solid #2A2F3A',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
-          color: unreadCount > 0 ? '#00E5A0' : '#94A3B8',
-          cursor: 'pointer', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          zIndex: 40, transition: 'all 0.15s',
-        }}
-      >
-        <Bell size={22} />
-        <UnreadBadge count={unreadCount} large />
-      </button>
+      <div className="md:hidden" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 40 }}>
+        <button
+          onClick={openCenter}
+          title="Notifications"
+          style={{
+            width: 52, height: 52, borderRadius: '50%',
+            backgroundColor: '#1E2229',
+            border: '1px solid #2A2F3A',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
+            color: unreadCount > 0 ? '#00E5A0' : '#94A3B8',
+            cursor: 'pointer', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.15s',
+          }}
+        >
+          <Bell size={22} />
+          <UnreadBadge count={unreadCount} large />
+        </button>
+      </div>
 
       {/* Modale */}
       {isOpen && (

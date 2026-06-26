@@ -5,16 +5,17 @@ import {
   Stethoscope, CheckSquare, BarChart2, X, AlertCircle, Edit, ArrowRight,
 } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
 } from 'recharts';
 import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi, statsApi } from '../api';
 import { attendanceApi } from '../api/attendance';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
-import { StatusBadge, PlayerAvatar, Breadcrumb } from '../components';
+import { StatusBadge, PlayerAvatar, Breadcrumb, Card, CardTitle } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { formatDate, getAge } from '../data';
 import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action, MatchStat } from '../data/types';
+import { calcPlayerAdvanced } from '../data/playerAdvanced';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtShortDate(iso: string) {
@@ -127,6 +128,8 @@ function PlayerProfile({ playerId }: { playerId: string }) {
   const [presenceRate, setPresenceRate] = useState<number | null>(null);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
+  const [teamStatsMap, setTeamStatsMap] = useState<Map<string, import('../data/types').TeamMatchStat>>(new Map());
+  const [statsView, setStatsView] = useState<'basic' | 'advanced'>('basic');
 
   const [showEdit,      setShowEdit]      = useState(false);
   const [editSaving,    setEditSaving]    = useState(false);
@@ -160,7 +163,13 @@ function PlayerProfile({ playerId }: { playerId: string }) {
       setMedical(medicalData);
       setActions(actionsData);
     }).finally(() => setLoading(false));
-    statsApi.getPlayerStats(playerId).then(setMatchStats);
+    statsApi.getPlayerStats(playerId).then(stats => {
+      setMatchStats(stats);
+      const ids = stats.map(s => s.matchId).filter((id): id is string => !!id);
+      statsApi.listTeamStatsByMatchIds(ids).then(teamStats => {
+        setTeamStatsMap(new Map(teamStats.map(t => [t.matchId!, t])));
+      });
+    });
   }, [playerId]);
 
   useEffect(() => {
@@ -346,7 +355,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
           >
             {[...allPlayers].sort((a, b) => a.lastName.localeCompare(b.lastName)).map(p => (
               <option key={p.id} value={p.id}>
-                {p.lastName} {p.firstName[0]}. #{p.number}
+                {p.lastName} {p.firstName?.[0] ?? ''}. #{p.number}
               </option>
             ))}
           </select>
@@ -376,7 +385,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
         {kpis.map(k => (
           <div key={k.label} onClick={k.onClick}
             style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${k.col}`, borderRadius: 8, padding: '12px 14px', cursor: 'pointer' }}>
-            <p style={{ color: '#475569', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 8px' }}>{k.label}</p>
+            <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }}>{k.label}</p>
             <p style={{ color: k.col, fontSize: '1.7rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
               {k.bigVal}{k.unit && <span style={{ color: '#475569', fontSize: '0.75rem', fontWeight: 400 }}>{k.unit}</span>}
             </p>
@@ -395,37 +404,36 @@ function PlayerProfile({ playerId }: { playerId: string }) {
             rpe:  r.rpe,
           }));
           return (
-            <div onClick={() => navigate(`/rpe/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
-              style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${borderCol}`, borderRadius: 8, padding: '16px 18px', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingTop: 2 }}>
-                  <Activity size={14} style={{ color: borderCol }} />
-                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Charge & RPE</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                    <span style={{ color: '#475569', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Charge sem.</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ color: weeklyUa > 0 ? '#F1F5F9' : '#475569', fontSize: '1.15rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>
-                        {weeklyUa > 0 ? weeklyUa : '—'}
-                      </span>
-                      {weeklyUa > 0 && <span style={{ color: '#475569', fontSize: '0.75rem' }}>UA</span>}
-                      {weekTier && <span style={{ color: weekTier.color, backgroundColor: weekTier.bg, fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3 }}>{weekTier.label}</span>}
-                    </div>
-                  </div>
-                  <div style={{ width: 1, height: 22, backgroundColor: '#2A2F3A' }} />
-                  {rpeVal !== null && (
+            <Card accentColor={borderCol} onClick={() => navigate(`/rpe/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}>
+              <CardTitle
+                icon={<Activity size={12} style={{ color: borderCol }} />}
+                mb={14}
+                right={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                      <span style={{ color: '#475569', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dernier RPE</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <span style={{ color: rpeCol, fontSize: '1.15rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{rpeVal}</span>
-                        <span style={{ color: '#475569', fontSize: '0.75rem' }}>/10</span>
+                      <span style={{ color: '#475569', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Charge sem.</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ color: weeklyUa > 0 ? '#F1F5F9' : '#475569', fontSize: '1.15rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>
+                          {weeklyUa > 0 ? weeklyUa : '—'}
+                        </span>
+                        {weeklyUa > 0 && <span style={{ color: '#475569', fontSize: '0.75rem' }}>UA</span>}
+                        {weekTier && <span style={{ color: weekTier.color, backgroundColor: weekTier.bg, fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3 }}>{weekTier.label}</span>}
                       </div>
                     </div>
-                  )}
-                  <ArrowRight size={13} style={{ color: '#475569' }} />
-                </div>
-              </div>
+                    <div style={{ width: 1, height: 22, backgroundColor: '#2A2F3A' }} />
+                    {rpeVal !== null && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                        <span style={{ color: '#475569', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dernier RPE</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <span style={{ color: rpeCol, fontSize: '1.15rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{rpeVal}</span>
+                          <span style={{ color: '#475569', fontSize: '0.75rem' }}>/10</span>
+                        </div>
+                      </div>
+                    )}
+                    <ArrowRight size={13} style={{ color: '#475569' }} />
+                  </div>
+                }
+              >Charge &amp; RPE</CardTitle>
 
               {rpe.length > 0 ? (
                 <ResponsiveContainer width="100%" height={180}>
@@ -434,28 +442,19 @@ function PlayerProfile({ playerId }: { playerId: string }) {
                     <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} />
                     <YAxis domain={[0, 10]} tick={{ fill: '#475569', fontSize: 10 }} />
                     <Tooltip content={<RPETooltip />} />
-                    <ReferenceLine y={7} stroke="#EF444440" strokeDasharray="4 4" />
-                    <ReferenceLine y={5} stroke="#F59E0B40" strokeDasharray="4 4" />
                     <Line type="monotone" dataKey="rpe" name="RPE" stroke="#00E5A0" dot={{ fill: '#00E5A0', r: 3 }} strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
                 <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune session enregistrée</p>
               )}
-            </div>
+            </Card>
           );
         })()}
 
         {/* Bien-être — 1/3 */}
-        <div onClick={() => navigate(`/wellness/history/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}
-          style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 18px', cursor: 'pointer' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Heart size={14} style={{ color: '#F472B6' }} />
-              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Bien-être</span>
-            </div>
-            <ArrowRight size={13} style={{ color: '#475569' }} />
-          </div>
+        <Card onClick={() => navigate(`/wellness/history/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } })}>
+          <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={12} right={<ArrowRight size={13} style={{ color: '#475569' }} />}>Bien-être</CardTitle>
           {wellness.length > 0 ? (
             <>
               <p style={{ color: '#475569', fontSize: '0.74rem', margin: '0 0 0' }}>
@@ -480,22 +479,18 @@ function PlayerProfile({ playerId }: { playerId: string }) {
           ) : (
             <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune saisie</p>
           )}
-        </div>
+        </Card>
       </div>
 
       {/* ── Ligne 4 : Médical 1/2 · Actions 1/2 ── */}
       <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12, marginBottom: 14 }}>
 
         {/* Médical */}
-        <div onClick={() => navigate(`/medical/record/${playerId}`)}
-          style={{ backgroundColor: '#161920', border: `1px solid ${activeMedical.length > 0 ? 'rgba(239,68,68,0.25)' : '#2A2F3A'}`, borderRadius: 8, padding: '16px 18px', cursor: 'pointer' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Stethoscope size={14} style={{ color: activeMedical.length > 0 ? '#EF4444' : '#3B82F6' }} />
-              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Médical</span>
-            </div>
-            <ArrowRight size={13} style={{ color: '#475569' }} />
-          </div>
+        <Card
+          onClick={() => navigate(`/medical/record/${playerId}`)}
+          style={{ border: `1px solid ${activeMedical.length > 0 ? 'rgba(239,68,68,0.25)' : '#2A2F3A'}` }}
+        >
+          <CardTitle icon={<Stethoscope size={12} style={{ color: activeMedical.length > 0 ? '#EF4444' : '#3B82F6' }} />} mb={12} right={<ArrowRight size={13} style={{ color: '#475569' }} />}>Médical</CardTitle>
           {medical.length === 0 ? (
             <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune entrée</p>
           ) : (
@@ -516,21 +511,23 @@ function PlayerProfile({ playerId }: { playerId: string }) {
               )}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Actions */}
-        <div onClick={() => navigate('/actions', { state: { playerId } })}
-          style={{ backgroundColor: '#161920', border: `1px solid ${pendingActions > 0 ? 'rgba(245,158,11,0.25)' : '#2A2F3A'}`, borderRadius: 8, padding: '16px 18px', cursor: 'pointer' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <CheckSquare size={14} style={{ color: pendingActions > 0 ? '#F59E0B' : '#00E5A0' }} />
-              <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Actions</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {actions.length > 0 && <span style={{ color: '#475569', fontSize: '0.72rem' }}>{actions.filter(a => a.status === 'done').length}/{actions.length} faites</span>}
-              <ArrowRight size={13} style={{ color: '#475569' }} />
-            </div>
-          </div>
+        <Card
+          onClick={() => navigate('/actions', { state: { playerId } })}
+          style={{ border: `1px solid ${pendingActions > 0 ? 'rgba(245,158,11,0.25)' : '#2A2F3A'}` }}
+        >
+          <CardTitle
+            icon={<CheckSquare size={12} style={{ color: pendingActions > 0 ? '#F59E0B' : '#00E5A0' }} />}
+            mb={12}
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {actions.length > 0 && <span style={{ color: '#475569', fontSize: '0.72rem' }}>{actions.filter(a => a.status === 'done').length}/{actions.length} faites</span>}
+                <ArrowRight size={13} style={{ color: '#475569' }} />
+              </div>
+            }
+          >Actions</CardTitle>
           {actions.length === 0 ? (
             <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action</p>
           ) : pendingActions === 0 ? (
@@ -550,79 +547,122 @@ function PlayerProfile({ playerId }: { playerId: string }) {
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
       </div>
 
       {/* ── Ligne 5 : Statistiques par match ── */}
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 18px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <BarChart2 size={14} style={{ color: '#3B82F6' }} />
-            <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem' }}>Statistiques saison</span>
-          </div>
-          {(() => { const n = matchStats.length > 0 ? matchStats.length : MOCK_MATCH_STATS.length; return <span style={{ color: '#475569', fontSize: '0.72rem' }}>{n} match{n > 1 ? 's' : ''}</span>; })()}
-        </div>
+      <Card style={{ marginBottom: 14 }}>
+        <CardTitle
+          icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
+          mb={14}
+          right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {(() => { const n = matchStats.length > 0 ? matchStats.length : MOCK_MATCH_STATS.length; return <span style={{ color: '#475569', fontSize: '0.72rem' }}>{n} match{n > 1 ? 's' : ''}</span>; })()}
+              <div style={{ display: 'flex', backgroundColor: '#0D0F14', borderRadius: 6, padding: 2, gap: 2 }}>
+                {(['basic', 'advanced'] as const).map(v => (
+                  <button key={v} type="button" onClick={e => { e.stopPropagation(); setStatsView(v); }}
+                    style={{ padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: statsView === v ? 700 : 400, backgroundColor: statsView === v ? '#1E2229' : 'transparent', color: statsView === v ? '#00E5A0' : '#475569' }}>
+                    {v === 'basic' ? 'Brutes' : 'Avancées'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          }
+        >Statistiques saison</CardTitle>
 
         {(() => {
           const rows = matchStats.length > 0 ? matchStats : MOCK_MATCH_STATS;
+          const thS: React.CSSProperties = { color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '4px 8px', textAlign: 'center', fontSize: '0.62rem' };
+          const tdS: React.CSSProperties = { color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' };
+          const fmt = (v: number | null, suffix = '') => v !== null ? `${v}${suffix}` : '—';
           return (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                  {['Date','Adv','L/E','Res','Score','Tit','Min','Pts','2pts','3pts','LF','Reb O','Reb D','Pd','Ct','Int','Bp','Fte','Fp','Eval','±'].map(h => (
-                    <th key={h} style={{ color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '4px 8px', textAlign: 'center', fontSize: '0.62rem' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((m, i) => {
-                  const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
-                  const fg2Pct = m.fg2a > 0 ? Math.round((m.fg2m / m.fg2a) * 100) : null;
-                  const fg3Pct = m.fg3a > 0 ? Math.round((m.fg3m / m.fg3a) * 100) : null;
-                  const ftPct  = m.fta  > 0 ? Math.round((m.ftm  / m.fta)  * 100) : null;
-                  const pmCol  = m.plusMinus > 0 ? '#00E5A0' : m.plusMinus < 0 ? '#EF4444' : '#475569';
-                  return (
-                    <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : '#161920' }}>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center' }}>{fmtShortDate(m.date)}</td>
-                      <td style={{ color: '#F1F5F9', padding: '6px 8px', textAlign: 'left', fontWeight: 600 }}>{m.opponent}</td>
-                      <td style={{ color: '#475569', padding: '6px 8px', textAlign: 'center' }}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
-                      <td style={{ color: resCol, padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>{m.result === 'win' ? 'V' : 'D'}</td>
-                      <td style={{ color: '#475569', padding: '6px 8px', textAlign: 'center' }}>{m.scoreUs}-{m.scoreThem}</td>
-                      <td style={{ color: '#475569', padding: '6px 8px', textAlign: 'center' }}>{m.starter ? '✓' : '–'}</td>
-                      <td style={{ color: '#F1F5F9', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.min ?? '—'}</td>
-                      <td style={{ color: '#F1F5F9', padding: '6px 8px', textAlign: 'center', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{m.pts}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>
-                        {m.fg2m}/{m.fg2a}{fg2Pct !== null ? <span style={{ color: '#475569', fontSize: '0.6rem' }}> {fg2Pct}%</span> : ''}
-                      </td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>
-                        {m.fg3m}/{m.fg3a}{fg3Pct !== null ? <span style={{ color: '#475569', fontSize: '0.6rem' }}> {fg3Pct}%</span> : ''}
-                      </td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>
-                        {m.ftm}/{m.fta}{ftPct !== null ? <span style={{ color: '#475569', fontSize: '0.6rem' }}> {ftPct}%</span> : ''}
-                      </td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.ro}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.rd}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.pd}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.ct}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.intercepts}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.bp}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.fte}</td>
-                      <td style={{ color: '#94A3B8', padding: '6px 8px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{m.fpr}</td>
-                      <td style={{ color: '#F1F5F9', padding: '6px 8px', textAlign: 'center', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{m.eval}</td>
-                      <td style={{ color: pmCol, padding: '6px 8px', textAlign: 'center', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                        {m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {statsView === 'basic' ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                    {['Date','Adv','L/E','Res','Score','Tit','Min','Pts','2pts','3pts','LF','Reb O','Reb D','Pd','Ct','Int','Bp','Fte','Fp','Eval','±'].map(h => (
+                      <th key={h} style={thS}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((m, i) => {
+                    const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
+                    const fg2Pct = m.fg2a > 0 ? Math.round((m.fg2m / m.fg2a) * 100) : null;
+                    const fg3Pct = m.fg3a > 0 ? Math.round((m.fg3m / m.fg3a) * 100) : null;
+                    const ftPct  = m.fta  > 0 ? Math.round((m.ftm  / m.fta)  * 100) : null;
+                    const pmCol  = (m.plusMinus ?? 0) > 0 ? '#00E5A0' : (m.plusMinus ?? 0) < 0 ? '#EF4444' : '#475569';
+                    return (
+                      <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : '#161920' }}>
+                        <td style={tdS}>{fmtShortDate(m.date)}</td>
+                        <td style={{ ...tdS, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{m.opponent}</td>
+                        <td style={tdS}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
+                        <td style={{ ...tdS, color: resCol, fontWeight: 700 }}>{m.result === 'win' ? 'V' : 'D'}</td>
+                        <td style={tdS}>{m.scoreUs}-{m.scoreThem}</td>
+                        <td style={tdS}>{m.starter ? '✓' : '–'}</td>
+                        <td style={{ ...tdS, color: '#F1F5F9' }}>{m.min ?? '—'}</td>
+                        <td style={{ ...tdS, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
+                        <td style={tdS}>{m.fg2m}/{m.fg2a}{fg2Pct !== null ? <span style={{ color: '#475569', fontSize: '0.6rem' }}> {fg2Pct}%</span> : ''}</td>
+                        <td style={tdS}>{m.fg3m}/{m.fg3a}{fg3Pct !== null ? <span style={{ color: '#475569', fontSize: '0.6rem' }}> {fg3Pct}%</span> : ''}</td>
+                        <td style={tdS}>{m.ftm}/{m.fta}{ftPct !== null ? <span style={{ color: '#475569', fontSize: '0.6rem' }}> {ftPct}%</span> : ''}</td>
+                        <td style={tdS}>{m.ro}</td>
+                        <td style={tdS}>{m.rd}</td>
+                        <td style={tdS}>{m.pd}</td>
+                        <td style={tdS}>{m.ct}</td>
+                        <td style={tdS}>{m.intercepts}</td>
+                        <td style={tdS}>{m.bp}</td>
+                        <td style={tdS}>{m.fte}</td>
+                        <td style={tdS}>{m.fpr}</td>
+                        <td style={{ ...tdS, color: '#F1F5F9', fontWeight: 700 }}>{m.eval ?? '—'}</td>
+                        <td style={{ ...tdS, color: pmCol, fontWeight: 700 }}>{m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                    {['Date','Adv','Res','Pts','USG%','ORtg','eFG%','FT Rate','BP/poss','%PD','%BP','%OREB','%DREB','%TREB','Pts générés'].map(h => (
+                      <th key={h} style={{ ...thS, ...(h === 'Pts générés' ? { color: '#00E5A080' } : {}) }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((m, i) => {
+                    const team = m.matchId ? teamStatsMap.get(m.matchId) : undefined;
+                    const adv = calcPlayerAdvanced(m, team);
+                    const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
+                    return (
+                      <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : '#161920' }}>
+                        <td style={tdS}>{fmtShortDate(m.date)}</td>
+                        <td style={{ ...tdS, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{m.opponent}</td>
+                        <td style={{ ...tdS, color: resCol, fontWeight: 700 }}>{m.result === 'win' ? 'V' : 'D'}</td>
+                        <td style={{ ...tdS, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
+                        <td style={tdS}>{fmt(adv.usagePct, '%')}</td>
+                        <td style={{ ...tdS, color: adv.offRating !== null ? (adv.offRating >= 110 ? '#00E5A0' : adv.offRating < 90 ? '#EF4444' : '#94A3B8') : '#475569' }}>{fmt(adv.offRating)}</td>
+                        <td style={tdS}>{fmt(adv.efgPct, '%')}</td>
+                        <td style={tdS}>{fmt(adv.ftRate)}</td>
+                        <td style={tdS}>{fmt(adv.bpPerPoss)}</td>
+                        <td style={tdS}>{fmt(adv.astPct, '%')}</td>
+                        <td style={tdS}>{fmt(adv.tovPct, '%')}</td>
+                        <td style={tdS}>{fmt(adv.orebPct, '%')}</td>
+                        <td style={tdS}>{fmt(adv.drebPct, '%')}</td>
+                        <td style={tdS}>{fmt(adv.trebPct, '%')}</td>
+                        <td style={{ ...tdS, color: '#00E5A0', fontWeight: 700 }}>{fmt(adv.ptsProd)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
           );
         })()}
-      </div>
+      </Card>
 
       {/* ── Modal édition joueur ── */}
       {showEdit && (
@@ -874,7 +914,7 @@ export default function PlayersPage() {
               onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
               <PlayerAvatar player={player} size={48} />
               <div style={{ textAlign: 'center' }}>
-                <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>{player.lastName}</p>
+                <p style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: 0 }}>{player.lastName}</p>
                 <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '2px 0' }}>{player.firstName}</p>
                 <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>#{player.number} · {player.position.split(' ')[0]}</p>
               </div>

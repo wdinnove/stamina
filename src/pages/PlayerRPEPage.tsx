@@ -1,50 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router';
 import {
-  LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  LineChart, Line, BarChart, Bar, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { Activity, Heart, Stethoscope, CheckSquare, BarChart2 } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi }     from '../api/rpe';
 import { Breadcrumb, PlayerAvatar } from '../components';
+import { rpeColor, rpeLabel } from '../utils/rpe';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, RPEEntry, SessionType } from '../data/types';
 
-const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+const DAY_ABBR = ['Di', 'Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa'];
 function fmtDate(iso: string) {
-  const [, m, d] = iso.split('-').map(Number);
-  return `${d} ${MONTHS[m - 1]}`;
+  const d = new Date(iso + 'T12:00:00');
+  const [, mm, dd] = iso.split('-');
+  return `${DAY_ABBR[d.getDay()]} ${Number(dd)}/${Number(mm)}`;
 }
 
-const SESSION_LABELS: Record<SessionType, string> = {
-  training: 'Entraînement',
-  match:    'Match',
-  gym:      'Gym',
-  rest:     'Repos',
+const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
+  training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
+  match:    { label: 'Match',        color: '#F59E0B', bg: '#F59E0B22' },
+  gym:      { label: 'Salle',        color: '#A855F7', bg: '#A855F722' },
+  rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
 };
 
-const SESSION_COLORS: Record<SessionType, string> = {
-  training: '#00E5A0',
-  match:    '#3B82F6',
-  gym:      '#F59E0B',
-  rest:     '#475569',
-};
-
-function rpeColor(v: number) {
-  if (v <= 3) return '#00E5A0';
-  if (v <= 5) return '#22d3ee';
-  if (v <= 6) return '#F59E0B';
-  if (v <= 8) return '#fb923c';
-  return '#EF4444';
-}
-
-const RPE_LABELS: Record<number, string> = {
-  1: 'Très facile', 2: 'Facile', 3: 'Modéré', 4: 'Assez difficile',
-  5: 'Difficile', 6: 'Difficile+', 7: 'Très difficile',
-  8: 'Intense', 9: 'Très intense', 10: 'Maximal',
-};
 
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { color: string; name: string; value: number }[]; label?: string }) => {
   if (!active || !payload?.length) return null;
@@ -60,8 +42,6 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   );
 };
 
-type Filter = 'all' | SessionType;
-
 export default function PlayerRPEPage() {
   const { id }         = useParams<{ id: string }>();
   const location       = useLocation();
@@ -72,7 +52,6 @@ export default function PlayerRPEPage() {
   const [player,  setPlayer]  = useState<Player | null>(null);
   const [entries, setEntries] = useState<RPEEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter,  setFilter]  = useState<Filter>('all');
 
   useEffect(() => {
     if (!id) return;
@@ -94,24 +73,24 @@ export default function PlayerRPEPage() {
   const fromPath  = locState?.from ?? `/players/${id}`;
   const fromLabel = locState?.playerName ?? `${player.firstName} ${player.lastName}`;
 
-  const filtered = filter === 'all' ? entries : entries.filter(e => e.sessionType === filter);
-
   // Oldest → newest for charts
-  const chartData = [...filtered]
+  const chartData = [...entries]
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(e => ({
       date:  fmtDate(e.date),
       rpe:   e.rpe,
       load:  Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
-      color: rpeColor(e.rpe),
     }));
 
-  const lastRPE      = filtered[0];
-  const avgRPE       = filtered.length ? Math.round(filtered.reduce((s, e) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
-  const totalLoad    = filtered.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
-  const sessionTypes = [...new Set(entries.map(e => e.sessionType))] as SessionType[];
-  const weeklyUa     = computeWeeklyUa(entries);
-  const weekTier     = weeklyUa > 0 ? getWeekTier(weeklyUa, thresholds.lightMax, thresholds.normalMax) : null;
+  const lastRPE   = entries[0];
+  const avgRPE    = entries.length ? Math.round(entries.reduce((s, e) => s + e.rpe, 0) / entries.length * 10) / 10 : null;
+  const totalLoad = entries.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+  const weeklyUa  = computeWeeklyUa(entries);
+  const weekTier  = weeklyUa > 0 ? getWeekTier(weeklyUa, thresholds.lightMax, thresholds.normalMax) : null;
+
+  const sessionLoadNormal = Math.round(thresholds.normalMax / 3);
+  const sessionLoadT1     = Math.round(sessionLoadNormal / 3);
+  const sessionLoadT2     = Math.round(sessionLoadNormal * 2 / 3);
 
   return (
     <div className="p-4 md:p-6">
@@ -153,54 +132,36 @@ export default function PlayerRPEPage() {
         ))}
       </div>
 
-      {/* Filtres par type de séance */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-        {(['all', ...sessionTypes] as Filter[]).map(f => {
-          const active = filter === f;
-          const label  = f === 'all' ? 'Tout' : SESSION_LABELS[f];
-          const color  = f === 'all' ? '#94A3B8' : SESSION_COLORS[f];
-          return (
-            <button key={f} onClick={() => setFilter(f)}
-              style={{
-                padding: '5px 12px', borderRadius: 5, fontSize: '0.78rem', cursor: 'pointer',
-                backgroundColor: active ? color + '18' : '#1E2229',
-                border: `1px solid ${active ? color : '#2A2F3A'}`,
-                color: active ? color : '#94A3B8', fontWeight: active ? 600 : 400,
-              }}>
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {filtered.length === 0 ? (
+      {entries.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 0', color: '#475569' }}>Aucune donnée RPE pour ce joueur.</div>
       ) : (
         <>
-          {/* KPIs */}
+          {/* KPIs — ordre : Charge semaine, Dernier RPE, RPE moyen, Séances, Charge totale */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
-            {[
-              { label: 'Nb séances',    value: String(filtered.length),                                         sub: 'enregistrées',                                        color: '#F1F5F9'                                      },
-              { label: 'Charge totale', value: totalLoad > 0 ? String(totalLoad) : '—',                         sub: 'UA (RPE × min)',                                      color: '#F1F5F9'                                      },
-              { label: 'RPE moyen',     value: avgRPE !== null ? String(avgRPE) : '—',                          sub: `sur ${filtered.length} séance${filtered.length > 1 ? 's' : ''}`, color: avgRPE !== null ? rpeColor(avgRPE) : '#F1F5F9' },
-              { label: 'Dernier RPE',   value: lastRPE ? String(lastRPE.rpe) : '—',                             sub: lastRPE ? RPE_LABELS[lastRPE.rpe] : '',                color: lastRPE ? rpeColor(lastRPE.rpe) : '#F1F5F9'   },
-            ].map(kpi => (
-              <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
-                <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{kpi.label}</p>
-                <p style={{ color: kpi.color, fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{kpi.value}</p>
-                <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>{kpi.sub}</p>
-              </div>
-            ))}
-            {/* Charge semaine — 7 jours glissants, hors filtre type */}
-            <div style={{ backgroundColor: '#161920', border: `1px solid ${weekTier ? weekTier.color + '55' : '#2A2F3A'}`, borderRadius: 8, padding: '14px 16px' }}>
+            {/* Charge semaine */}
+            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${weekTier ? weekTier.color : '#334155'}`, borderRadius: 8, padding: '14px 16px' }}>
               <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>Charge semaine</p>
               <p style={{ color: weekTier ? weekTier.color : '#475569', fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>
                 {weeklyUa > 0 ? weeklyUa : '—'}
               </p>
-              {weekTier && (
+              {weekTier ? (
                 <span style={{ color: weekTier.color, backgroundColor: weekTier.bg, fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: 3, display: 'inline-block', marginTop: 4 }}>{weekTier.label}</span>
+              ) : (
+                <p style={{ color: '#2A2F3A', fontSize: '0.72rem', margin: '3px 0 0' }}>7j glissants</p>
               )}
             </div>
+            {[
+              { label: 'Dernier RPE',   value: lastRPE ? String(lastRPE.rpe) : '—', sub: lastRPE ? rpeLabel(lastRPE.rpe) : '',                            accent: lastRPE ? rpeColor(lastRPE.rpe) : '#334155' },
+              { label: 'RPE moyen',     value: avgRPE !== null ? String(avgRPE) : '—', sub: `sur ${entries.length} séance${entries.length > 1 ? 's' : ''}`, accent: avgRPE !== null ? rpeColor(avgRPE) : '#334155' },
+              { label: 'Séances',       value: String(entries.length),                 sub: 'enregistrées',                                                  accent: '#3B82F6'                                    },
+              { label: 'Charge totale', value: totalLoad > 0 ? String(totalLoad) : '—', sub: 'UA (RPE × min)',                                              accent: '#F59E0B'                                    },
+            ].map(kpi => (
+              <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${kpi.accent}`, borderRadius: 8, padding: '14px 16px' }}>
+                <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{kpi.label}</p>
+                <p style={{ color: '#F1F5F9', fontSize: '1.5rem', fontWeight: 800, margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{kpi.value}</p>
+                <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>{kpi.sub}</p>
+              </div>
+            ))}
           </div>
 
           {/* Charts */}
@@ -213,8 +174,6 @@ export default function PlayerRPEPage() {
                   <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} />
                   <YAxis domain={[0, 10]} tick={{ fill: '#475569', fontSize: 10 }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <ReferenceLine y={7} stroke="#EF444440" strokeDasharray="4 4" />
-                  <ReferenceLine y={5} stroke="#F59E0B40" strokeDasharray="4 4" />
                   <Line type="monotone" dataKey="rpe" name="RPE" stroke="#00E5A0" dot={{ fill: '#00E5A0', r: 3 }} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
@@ -228,7 +187,12 @@ export default function PlayerRPEPage() {
                   <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} />
                   <YAxis tick={{ fill: '#475569', fontSize: 10 }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="load" name="Charge" fill="#3B82F6" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="load" name="Charge" radius={[3, 3, 0, 0]}>
+                    {chartData.map((d, i) => {
+                      const c = d.load >= sessionLoadNormal ? '#EF4444' : d.load >= sessionLoadT2 ? '#F97316' : d.load >= sessionLoadT1 ? '#EAB308' : '#00E5A0';
+                      return <Cell key={i} fill={c} fillOpacity={0.8} />;
+                    })}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -243,33 +207,41 @@ export default function PlayerRPEPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Date', 'Type', 'RPE', 'Ressenti', 'Durée', 'Charge', 'Équipe'].map(h => (
+                    {['Date', 'Type', 'Équipe', 'Durée', 'RPE', 'UA', 'Charge'].map(h => (
                       <th key={h} style={{ padding: '8px 14px', textAlign: 'left', color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, borderBottom: '1px solid #2A2F3A', backgroundColor: '#1E2229', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(e => {
-                    const dur   = e.actualDuration ?? e.plannedDuration;
-                    const load  = e.rpe * dur;
-                    const color = rpeColor(e.rpe);
+                  {entries.map(e => {
+                    const dur      = e.actualDuration ?? e.plannedDuration;
+                    const load     = e.rpe * dur;
+                    const rpeC     = rpeColor(e.rpe);
+                    const typeCfg  = SESSION_TYPES[e.sessionType] ?? SESSION_TYPES.training;
+                    const uaT1     = Math.round(sessionLoadNormal / 3);
+                    const uaT2     = Math.round(sessionLoadNormal * 2 / 3);
+                    const uaCfg    = load >= sessionLoadNormal
+                      ? { color: '#EF4444', label: 'Surcharge' }
+                      : load >= uaT2 ? { color: '#F97316', label: 'Élevée' }
+                      : load >= uaT1 ? { color: '#EAB308', label: 'Soutenu' }
+                      : { color: '#00E5A0', label: 'Normal' };
                     return (
                       <tr key={e.id} style={{ borderBottom: '1px solid #2A2F3A22' }}
                         onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                         onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
-                        <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fmtDate(e.date)}</td>
+                        <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: '0.78rem', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</td>
                         <td style={{ padding: '9px 14px' }}>
-                          <span style={{ color: SESSION_COLORS[e.sessionType], fontSize: '0.75rem', fontWeight: 600 }}>
-                            {SESSION_LABELS[e.sessionType]}
-                          </span>
+                          <span style={{ backgroundColor: typeCfg.bg, color: typeCfg.color, fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{typeCfg.label}</span>
                         </td>
-                        <td style={{ padding: '9px 14px' }}>
-                          <span style={{ color: color, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{e.rpe}</span>
-                        </td>
-                        <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: '0.78rem' }}>{RPE_LABELS[e.rpe] ?? '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#F1F5F9', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{dur} min</td>
-                        <td style={{ padding: '9px 14px', color: '#F1F5F9', fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}>{load} UA</td>
                         <td style={{ padding: '9px 14px', color: '#475569', fontSize: '0.78rem' }}>{e.teamName ?? '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{dur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <span style={{ color: rpeC, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{e.rpe}</span>
+                        </td>
+                        <td style={{ padding: '9px 14px', color: uaCfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{load.toLocaleString('fr')}</td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <span style={{ backgroundColor: uaCfg.color + '20', color: uaCfg.color, fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{uaCfg.label}</span>
+                        </td>
                       </tr>
                     );
                   })}

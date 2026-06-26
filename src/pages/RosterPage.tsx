@@ -160,7 +160,7 @@ function AddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, onSaved
             <input
               autoFocus
               type="text"
-              placeholder="Rechercher une joueur…"
+              placeholder="Rechercher un joueur…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -295,6 +295,7 @@ export default function RosterPage() {
 
   function loadRoster(seasonId: string) {
     setLoading(true);
+    setPlayers([]);
     setError('');
     fetchRosterPlayers(seasonId)
       .then(setPlayers)

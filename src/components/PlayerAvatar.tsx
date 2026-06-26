@@ -10,7 +10,7 @@ interface PlayerAvatarProps {
 export function PlayerAvatar({ player, size = 40 }: PlayerAvatarProps) {
   const [imgError, setImgError] = useState(false);
   const bg       = positionColors[player.position] ?? '#475569';
-  const initials = `${player.firstName[0]}${player.lastName[0]}`;
+  const initials = `${player.firstName?.[0] ?? ''}${player.lastName?.[0] ?? ''}` || '?';
 
   if (player.photoUrl && !imgError) {
     return (

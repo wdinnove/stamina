@@ -64,6 +64,7 @@ export default function StaffPage() {
   useEffect(() => {
     if (!selected) return;
     setLoading(true);
+    setStaff([]);
     setError('');
     staffApi.listByTeam(selected.team.id)
       .then(setStaff)
@@ -73,6 +74,7 @@ export default function StaffPage() {
 
   useEffect(() => {
     if (!selected) return;
+    setMeetings([]);
     setMeetingsError('');
     meetingsApi.listByTeam(selected.team.id)
       .then(setMeetings)
@@ -241,73 +243,62 @@ export default function StaffPage() {
 
       {selected && !loading && (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
-          {/* Header — desktop only */}
-          <div className="hidden md:flex" style={{ alignItems: 'center', padding: '10px 20px', borderBottom: '1px solid #2A2F3A' }}>
-            <span style={{ width: '40%', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</span>
-            <span style={{ width: '40%', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rôle</span>
-            <span style={{ width: '20%', color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compte</span>
-          </div>
-
-          {staff.length === 0 && (
-            <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0, fontSize: '0.88rem' }}>
-              Aucun membre du staff. Ajoutez-en un avec le bouton ci-dessus.
-            </p>
-          )}
-
-          {staff.map((member, idx) => {
-            const color = roleColor(member.role);
-            return (
-              <div
-                key={member.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '14px 20px',
-                  borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none',
-                }}
-              >
-                {/* Col 1 : avatar + prénom nom */}
-                <div className="flex-1 md:flex-none md:w-2/5" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '50%',
-                    backgroundColor: color + '22', border: `2px solid ${color}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: color, fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
-                  }}>
-                    {member.firstName[0]}{member.lastName[0]}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {member.firstName} {member.lastName}
-                    </p>
-                    <p className="md:hidden" style={{ color: '#94A3B8', fontSize: '0.75rem', margin: '2px 0 0' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: '40%' }}>Nom</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: '40%' }}>Rôle</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: '20%' }}>Compte</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staff.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ color: '#475569', textAlign: 'center', padding: '40px 0', fontSize: '0.88rem' }}>
+                    Aucun membre du staff. Ajoutez-en un avec le bouton ci-dessus.
+                  </td>
+                </tr>
+              ) : staff.map((member, idx) => {
+                const color = roleColor(member.role);
+                return (
+                  <tr key={member.id} style={{ borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none' }}>
+                    <td style={{ padding: '12px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: '50%',
+                          backgroundColor: color + '22', border: `2px solid ${color}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: color, fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
+                        }}>
+                          {member.firstName[0]}{member.lastName[0]}
+                        </div>
+                        <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: 0 }}>
+                          {member.firstName} {member.lastName}
+                        </p>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 20px', color: '#94A3B8', fontSize: '0.82rem' }}>
                       {roleLabel(member.role)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Col 2 : rôle — desktop only */}
-                <span className="hidden md:block md:w-2/5" style={{ color: '#94A3B8', fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {roleLabel(member.role)}
-                </span>
-
-                {/* Bouton compte app */}
-                <div className="flex-shrink-0 md:w-1/5" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  {member.profileId ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                      <UserCheck size={14} /> Lié
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => setInviting(member)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.75rem', background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}
-                    >
-                      <UserPlus size={13} /> Créer
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                    <td style={{ padding: '12px 20px' }}>
+                      {member.profileId ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
+                          <UserCheck size={14} /> Lié
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setInviting(member)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.75rem', background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}
+                        >
+                          <UserPlus size={13} /> Créer
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

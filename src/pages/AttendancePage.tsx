@@ -231,12 +231,21 @@ export default function AttendancePage() {
   async function updatePartners(sessionId: string, delta: number) {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
-    const newCount = Math.max(0, session.partnerCount + delta);
+    const newCount = Math.max(0, (session.partnerCount ?? 0) + delta);
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, partnerCount: newCount } : s));
     try {
       await attendanceApi.updatePartnerCount(sessionId, newCount);
     } catch {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, partnerCount: session.partnerCount } : s));
+    }
+  }
+
+  async function updatePartnerNames(sessionId: string, names: string) {
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, partnerNames: names } : s));
+    try {
+      await attendanceApi.updatePartnerNames(sessionId, names);
+    } catch {
+      // silently ignore — value stays in local state
     }
   }
 
@@ -368,9 +377,9 @@ export default function AttendancePage() {
 
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
       {selected && !loading && sessions.length > 0 && (
-        <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
+        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 160px)', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
           <style>{`@media (max-width: 767px) { .att-name-col { width: 110px !important; } }`}</style>
-          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: NAME_W + sessions.length * CELL_W }}>
+          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: NAME_W + sessions.length * CELL_W }}>
             <colgroup>
               <col className="att-name-col" style={{ width: NAME_W }} />
               {sessions.map(s => <col key={s.id} style={{ width: CELL_W }} />)}
@@ -402,23 +411,6 @@ export default function AttendancePage() {
                         <span style={{ color: isToday ? '#F59E0B' : '#F1F5F9', fontSize: '1.05rem', fontWeight: 800, lineHeight: 1 }}>{fd.day}</span>
                         <span style={{ color: '#94A3B8', fontSize: '0.65rem', fontWeight: 600 }}>{fd.month}</span>
                         {s.notes && <span style={{ color: '#475569', fontSize: '0.58rem', marginTop: 1, maxWidth: CELL_W - 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.notes}</span>}
-                        {rpeMap[s.id] !== undefined && (
-                          <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, marginTop: 1,
-                            color: rpeMap[s.id] <= 5 ? '#00E5A0' : rpeMap[s.id] <= 7 ? '#F59E0B' : '#EF4444',
-                          }}>
-                            RPE {rpeMap[s.id]}
-                          </span>
-                        )}
-                        {/* Supprimer séance */}
-                        <button
-                          onClick={() => setConfirmDeleteSession(s)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: '2px', marginTop: 2, display: 'flex', alignItems: 'center' }}
-                          onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-                          onMouseLeave={e => (e.currentTarget.style.color = '#334155')}
-                        >
-                          <Trash2 size={11} />
-                        </button>
                       </div>
                     </th>
                   );
@@ -435,7 +427,7 @@ export default function AttendancePage() {
                   backgroundColor: '#0D0F14', borderBottom: '1px solid #2A2F3A', borderRight: '1px solid #2A2F3A',
                   padding: '7px 16px', whiteSpace: 'nowrap',
                 }}>
-                  <span style={{ color: '#475569', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</span>
+                  <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</span>
                 </td>
                 {sessions.map(s => {
                   const total = sessionTotal(s.id);
@@ -537,7 +529,7 @@ export default function AttendancePage() {
                   backgroundColor: '#0D0F14', borderTop: '1px solid #2A2F3A', borderRight: '1px solid #2A2F3A',
                   padding: '8px 16px',
                 }}>
-                  <span style={{ color: '#475569', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présence</span>
+                  <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présence</span>
                 </td>
                 {sessions.map(s => {
                   const pct = sessionPct(s.id);
@@ -609,22 +601,42 @@ export default function AttendancePage() {
             style={{
               position: 'fixed', left: partnerPopover.x, top: partnerPopover.y, zIndex: 1000,
               backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 10,
-              padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 12,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+              padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6)', minWidth: 200,
             }}
           >
-            <button
-              onClick={() => updatePartners(partnerPopover.sessionId, -1)}
-              disabled={count === 0}
-              style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: count === 0 ? '#334155' : '#94A3B8', cursor: count === 0 ? 'not-allowed' : 'pointer', width: 28, height: 28, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >−</button>
-            <span style={{ color: '#F1F5F9', fontSize: '1.1rem', fontWeight: 800, minWidth: 24, textAlign: 'center' }}>{count}</span>
-            <button
-              onClick={() => updatePartners(partnerPopover.sessionId, +1)}
-              style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', width: 28, height: 28, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; (e.currentTarget as HTMLElement).style.color = '#F59E0B'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; (e.currentTarget as HTMLElement).style.color = '#94A3B8'; }}
-            >+</button>
+            {/* Compteur */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
+              <button
+                onClick={() => updatePartners(partnerPopover.sessionId, -1)}
+                disabled={count === 0}
+                style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: count === 0 ? '#334155' : '#94A3B8', cursor: count === 0 ? 'not-allowed' : 'pointer', width: 28, height: 28, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >−</button>
+              <span style={{ color: '#F1F5F9', fontSize: '1.1rem', fontWeight: 800, minWidth: 24, textAlign: 'center' }}>{count}</span>
+              <button
+                onClick={() => updatePartners(partnerPopover.sessionId, +1)}
+                style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', width: 28, height: 28, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; (e.currentTarget as HTMLElement).style.color = '#F59E0B'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; (e.currentTarget as HTMLElement).style.color = '#94A3B8'; }}
+              >+</button>
+            </div>
+            {/* Noms */}
+            <div>
+              <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 4px', fontWeight: 600 }}>Noms</p>
+              <textarea
+                rows={2}
+                placeholder="Marie D., Léa T., …"
+                value={session?.partnerNames ?? ''}
+                onChange={e => setSessions(prev => prev.map(s => s.id === partnerPopover.sessionId ? { ...s, partnerNames: e.target.value } : s))}
+                onBlur={e => updatePartnerNames(partnerPopover.sessionId, e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); updatePartnerNames(partnerPopover.sessionId, (session?.partnerNames ?? '')); (e.target as HTMLTextAreaElement).blur(); } }}
+                style={{
+                  width: '100%', resize: 'none', backgroundColor: '#13171E', border: '1px solid #2A2F3A',
+                  borderRadius: 6, color: '#F1F5F9', fontSize: '0.78rem', padding: '6px 8px',
+                  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+                }}
+              />
+            </div>
           </div>
         );
       })()}

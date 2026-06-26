@@ -1,17 +1,21 @@
 export interface WeekTier {
   max: number;
-  label: 'Légère' | 'Normale' | 'Surcharge';
+  label: 'Normal' | 'Soutenu' | 'Élevée' | 'Surcharge';
   color: string;
   bg: string;
 }
 
 export const DEFAULT_THRESHOLDS = { lightMax: 2750, normalMax: 4250 };
 
-export function buildWeekTiers(lightMax = DEFAULT_THRESHOLDS.lightMax, normalMax = DEFAULT_THRESHOLDS.normalMax): WeekTier[] {
+/** 4 zones en tiers égaux : Normal (vert) / Soutenu (jaune) / Élevée (orange) / Surcharge (rouge) */
+export function buildWeekTiers(_lightMax = DEFAULT_THRESHOLDS.lightMax, normalMax = DEFAULT_THRESHOLDS.normalMax): WeekTier[] {
+  const t1 = Math.round(normalMax / 3);
+  const t2 = Math.round(normalMax * 2 / 3);
   return [
-    { max: lightMax,   label: 'Légère',    color: '#00E5A0', bg: 'rgba(0,229,160,0.12)' },
-    { max: normalMax,  label: 'Normale',   color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' },
-    { max: Infinity,   label: 'Surcharge', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
+    { max: t1,       label: 'Normal',    color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'  },
+    { max: t2,       label: 'Soutenu',   color: '#EAB308', bg: 'rgba(234,179,8,0.12)'  },
+    { max: normalMax,label: 'Élevée',    color: '#F97316', bg: 'rgba(249,115,22,0.12)' },
+    { max: Infinity, label: 'Surcharge', color: '#EF4444', bg: 'rgba(239,68,68,0.12)'  },
   ];
 }
 

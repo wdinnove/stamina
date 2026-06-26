@@ -106,7 +106,7 @@ export default function PlayerReportPage() {
                 <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '3px 0 5px' }}>
                   #{player.number} · {player.position} · {getAge(player.birthDate)} ans · {player.height} cm / {player.weight} kg
                 </p>
-                <StatusBadge status={player.status} />
+                <StatusBadge status={player.status} size="sm" />
               </div>
               {/* Snapshot moyennes */}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -175,7 +175,7 @@ export default function PlayerReportPage() {
           {/* Stats performance */}
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 10 }}>
             <h3 style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, borderBottom: '1px solid #2A2F3A', paddingBottom: 7 }}>── Performances — Moyennes / match</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 240px', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
               <div>
                 {/* Shooting */}
                 <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', marginBottom: 6 }}>Tirs</p>
@@ -250,9 +250,9 @@ export default function PlayerReportPage() {
                     <Td highlight={m.pd >= 6 ? '#3B82F6' : undefined}>{m.pd}</Td>
                     <Td>{m.ct}</Td><Td>{m.intercepts}</Td>
                     <Td highlight={m.bp >= 6 ? '#EF4444' : undefined}>{m.bp}</Td>
-                    <Td highlight={m.eval >= 15 ? '#00E5A0' : m.eval < 5 ? '#EF4444' : undefined}>{m.eval}</Td>
-                    <Td highlight={m.plusMinus > 0 ? '#00E5A0' : '#EF4444'}>
-                      {m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus}
+                    <Td highlight={(m.eval ?? 0) >= 15 ? '#00E5A0' : (m.eval ?? 0) < 5 ? '#EF4444' : undefined}>{m.eval ?? '—'}</Td>
+                    <Td highlight={(m.plusMinus ?? 0) > 0 ? '#00E5A0' : '#EF4444'}>
+                      {m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}
                     </Td>
                   </tr>
                 ))}

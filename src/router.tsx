@@ -23,9 +23,12 @@ import TrainingSessionsPage        from './pages/TrainingSessionsPage';
 import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
 import MeetingDetailPage           from './pages/MeetingDetailPage';
 import ExercisesPage               from './pages/ExercisesPage';
+import ExerciseDetailPage          from './pages/ExerciseDetailPage';
 import ConfigPage                  from './pages/ConfigPage';
 import ClubPage                    from './pages/ClubPage';
 import PlayerWellnessPublicPage    from './pages/PlayerWellnessPublicPage';
+import MatchesPage                 from './pages/MatchesPage';
+import MatchDetailPage             from './pages/MatchDetailPage';
 
 export const router = createBrowserRouter([
   {
@@ -69,9 +72,12 @@ export const router = createBrowserRouter([
           { path: 'sessions',        Component: TrainingSessionsPage      },
           { path: 'sessions/:id',    Component: TrainingSessionDetailPage },
           { path: 'exercises',       Component: ExercisesPage             },
+          { path: 'exercises/:id',   Component: ExerciseDetailPage        },
           { path: 'profile',         Component: ProfilePage      },
           { path: 'team/:id',        Component: ConfigPage       },
 { path: 'organization/:id', Component: ClubPage        },
+          { path: 'matches',        Component: MatchesPage      },
+          { path: 'matches/:id',   Component: MatchDetailPage  },
           { path: 'reports/player', Component: PlayerReportPage },
           { path: 'reports/team',   Component: TeamReportPage   },
           { path: '*', element: <Navigate to="/dashboard" replace /> },

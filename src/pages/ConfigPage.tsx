@@ -3,6 +3,7 @@ import { Save, Sliders, Shield } from 'lucide-react';
 import { teamsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
+import { Card, CardTitle } from '../components';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -11,21 +12,9 @@ const inputStyle: React.CSSProperties = {
 };
 
 const labelStyle: React.CSSProperties = {
-  color: '#94A3B8', fontSize: '0.75rem', fontWeight: 600,
+  color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5, display: 'block',
 };
-
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '20px 24px', marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, paddingBottom: 14, borderBottom: '1px solid #2A2F3A' }}>
-        <span style={{ color: '#00E5A0' }}>{icon}</span>
-        <h3 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -39,7 +28,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function SaveBtn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} disabled={loading}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', color: '#0A0C10', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, marginTop: 16 }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', color: '#0A0C10', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
       <Save size={14} />
       {loading ? 'Enregistrement…' : 'Enregistrer'}
     </button>
@@ -65,8 +54,8 @@ function ThresholdPreview({ lightMax, normalMax }: { lightMax: number; normalMax
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
         <span style={{ color: '#475569', fontSize: '0.65rem' }}>0 UA</span>
-        <span style={{ color: '#00E5A080', fontSize: '0.65rem' }}>≤{lightMax} UA</span>
-        <span style={{ color: '#3B82F680', fontSize: '0.65rem' }}>≤{normalMax} UA</span>
+        <span style={{ color: '#F9731680', fontSize: '0.65rem' }}>≤{Math.round(normalMax / 2)} UA</span>
+        <span style={{ color: '#EF444480', fontSize: '0.65rem' }}>≤{normalMax} UA</span>
         <span style={{ color: '#EF444480', fontSize: '0.65rem' }}>{'>'} {normalMax} UA</span>
       </div>
     </div>
@@ -76,30 +65,25 @@ function ThresholdPreview({ lightMax, normalMax }: { lightMax: number; normalMax
 export default function ConfigPage() {
   const { selected, reload, thresholds } = useTeamSeason();
 
-  // ── Team info state ──────────────────────────────────────────────────────
   const [teamForm, setTeamForm] = useState({ name: '', category: '', color: '#3B82F6', description: '' });
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamMsg, setTeamMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // ── Thresholds state ─────────────────────────────────────────────────────
   const [lightMax,  setLightMax]  = useState(DEFAULT_THRESHOLDS.lightMax);
   const [normalMax, setNormalMax] = useState(DEFAULT_THRESHOLDS.normalMax);
   const [thrSaving, setThrSaving] = useState(false);
   const [thrMsg,    setThrMsg]    = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Sync form when selected team changes
   useEffect(() => {
     if (!selected) return;
     const t = selected.team;
     setTeamForm({ name: t.name, category: t.category, color: t.color, description: '' });
     setTeamMsg(null);
-    // Load full team to get description
     teamsApi.getById(t.id).then(full => {
       if (full) setTeamForm(f => ({ ...f, description: (full as unknown as { description?: string }).description ?? '' }));
     });
   }, [selected?.team.id]);
 
-  // Sync thresholds from context
   useEffect(() => {
     setLightMax(thresholds.lightMax);
     setNormalMax(thresholds.normalMax);
@@ -107,40 +91,32 @@ export default function ConfigPage() {
 
   async function saveTeam() {
     if (!selected) return;
-    setTeamSaving(true);
-    setTeamMsg(null);
+    setTeamSaving(true); setTeamMsg(null);
     try {
       await teamsApi.update(selected.team.id, teamForm);
       setTeamMsg({ ok: true, text: 'Équipe mise à jour.' });
       reload();
     } catch (e) {
       setTeamMsg({ ok: false, text: String(e) });
-    } finally {
-      setTeamSaving(false);
-    }
+    } finally { setTeamSaving(false); }
   }
 
   async function saveThresholds() {
     if (!selected) return;
     if (!Number.isInteger(lightMax) || !Number.isInteger(normalMax)) {
-      setThrMsg({ ok: false, text: 'Les seuils doivent être des nombres entiers.' });
-      return;
+      setThrMsg({ ok: false, text: 'Les seuils doivent être des nombres entiers.' }); return;
     }
     if (lightMax >= normalMax) {
-      setThrMsg({ ok: false, text: 'Le seuil "légère" doit être strictement inférieur au seuil "normale".' });
-      return;
+      setThrMsg({ ok: false, text: 'Le seuil "légère" doit être strictement inférieur au seuil "normale".' }); return;
     }
-    setThrSaving(true);
-    setThrMsg(null);
+    setThrSaving(true); setThrMsg(null);
     try {
       await teamsApi.updateThresholds(selected.team.id, lightMax, normalMax);
       setThrMsg({ ok: true, text: 'Seuils enregistrés.' });
       reload();
     } catch (e) {
       setThrMsg({ ok: false, text: String(e) });
-    } finally {
-      setThrSaving(false);
-    }
+    } finally { setThrSaving(false); }
   }
 
   if (!selected) {
@@ -158,7 +134,10 @@ export default function ConfigPage() {
       </div>
 
       {/* Infos équipe */}
-      <Section title="Informations de l'équipe" icon={<Shield size={16} />}>
+      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+          <CardTitle icon={<Shield size={14} color="#00E5A0" />}>Informations de l'équipe</CardTitle>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
           <Field label="Nom de l'équipe">
             <input style={inputStyle} value={teamForm.name}
@@ -189,34 +168,41 @@ export default function ConfigPage() {
         {teamMsg && (
           <p style={{ color: teamMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{teamMsg.text}</p>
         )}
-        <SaveBtn loading={teamSaving} onClick={saveTeam} />
-      </Section>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <SaveBtn loading={teamSaving} onClick={saveTeam} />
+        </div>
+      </Card>
 
       {/* Seuils de charge */}
-      <Section title="Seuils de charge physique" icon={<Sliders size={16} />}>
+      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+          <CardTitle icon={<Sliders size={14} color="#F59E0B" />}>Seuils de charge physique</CardTitle>
+        </div>
         <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
           Les seuils définissent les zones de charge hebdomadaire (RPE × minutes). Ils s'appliquent à toutes les vues de charge de cette équipe.
         </p>
         <ThresholdPreview lightMax={lightMax} normalMax={normalMax} />
 
-        <div style={{ display: 'flex', gap: 24, marginTop: 20, flexWrap: 'wrap' }}>
+        <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16, marginTop: 20 }}>
           <div>
             <label style={{ ...labelStyle, color: '#00E5A0' }}>Légère — max (UA)</label>
             <input type="number" min={0} max={99999} step={50} value={lightMax}
               onChange={e => setLightMax(Math.max(0, Math.trunc(Number(e.target.value))))}
-              style={{ ...inputStyle, width: 140, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
+              style={{ ...inputStyle, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
             <p style={{ color: '#475569', fontSize: '0.68rem', marginTop: 3 }}>En-dessous : zone verte</p>
           </div>
           <div>
             <label style={{ ...labelStyle, color: '#3B82F6' }}>Normale — max (UA)</label>
             <input type="number" min={0} max={99999} step={50} value={normalMax}
               onChange={e => setNormalMax(Math.max(0, Math.trunc(Number(e.target.value))))}
-              style={{ ...inputStyle, width: 140, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
+              style={{ ...inputStyle, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
             <p style={{ color: '#475569', fontSize: '0.68rem', marginTop: 3 }}>En-dessous : zone bleue</p>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: 22 }}>
-            <span style={{ color: '#EF444480', fontSize: '0.75rem', fontWeight: 700 }}>Surcharge</span>
-            <span style={{ color: '#EF4444', fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', fontWeight: 800 }}>{'>'} {normalMax} UA</span>
+          <div>
+            <label style={{ ...labelStyle, color: '#EF4444' }}>Surcharge</label>
+            <div style={{ ...inputStyle, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: '#EF4444' }}>
+              {'>'} {normalMax} UA
+            </div>
             <p style={{ color: '#475569', fontSize: '0.68rem', marginTop: 3 }}>Au-dessus : zone rouge</p>
           </div>
         </div>
@@ -224,8 +210,10 @@ export default function ConfigPage() {
         {thrMsg && (
           <p style={{ color: thrMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{thrMsg.text}</p>
         )}
-        <SaveBtn loading={thrSaving} onClick={saveThresholds} />
-      </Section>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <SaveBtn loading={thrSaving} onClick={saveThresholds} />
+        </div>
+      </Card>
     </div>
   );
 }

@@ -11,6 +11,7 @@ function toSession(row: Record<string, unknown>): TrainingSession {
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
     partnerCount:    (row.partner_count   as number) ?? 0,
+    partnerNames:    (row.partner_names   as string) ?? '',
     createdAt:       row.created_at       as string,
   };
 }
@@ -110,6 +111,14 @@ export const attendanceApi = {
     const { error } = await supabase
       .from('training_sessions')
       .update({ partner_count: count })
+      .eq('id', sessionId);
+    if (error) throw error;
+  },
+
+  async updatePartnerNames(sessionId: string, names: string): Promise<void> {
+    const { error } = await supabase
+      .from('training_sessions')
+      .update({ partner_names: names || null })
       .eq('id', sessionId);
     if (error) throw error;
   },

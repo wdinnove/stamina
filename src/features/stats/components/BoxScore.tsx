@@ -52,9 +52,9 @@ export function BoxScore({ matchStats }: BoxScoreProps) {
                 <Td>{m.ct}</Td><Td>{m.intercepts}</Td>
                 <Td highlight={m.bp >= 6 ? '#EF4444' : undefined}>{m.bp}</Td>
                 <Td>{m.fte}</Td><Td>{m.fpr}</Td>
-                <Td highlight={m.eval >= 15 ? '#00E5A0' : m.eval < 5 ? '#EF4444' : undefined}>{m.eval}</Td>
-                <Td highlight={m.plusMinus > 0 ? '#00E5A0' : m.plusMinus < 0 ? '#EF4444' : undefined}>
-                  {m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus}
+                <Td highlight={(m.eval ?? 0) >= 15 ? '#00E5A0' : (m.eval ?? 0) < 5 ? '#EF4444' : undefined}>{m.eval ?? '—'}</Td>
+                <Td highlight={(m.plusMinus ?? 0) > 0 ? '#00E5A0' : (m.plusMinus ?? 0) < 0 ? '#EF4444' : undefined}>
+                  {m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}
                 </Td>
               </tr>
             );

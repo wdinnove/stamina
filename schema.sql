@@ -20,11 +20,15 @@
 --   15. Player Actions
 --   16. Matches
 --   17. Match Stats
+--   17b. Opponent Match Stats
 --   18. Team Match Stats  (+ vue team_match_stats_full)
 --   19. Staff Meetings
 --   20. Training Attendance
+--   20b. Session Documents
 --   21. Notifications
+--   21b. Exercises
 --   22. Row Level Security
+--   22b. Storage — Buckets (player-photos, session-documents, exercises)
 --   23. Fonctions SECURITY DEFINER
 --   MIGRATION — commandes pour bases existantes
 --
@@ -267,6 +271,8 @@ CREATE TABLE training_sessions (
   session_type     session_type NOT NULL,
   planned_duration SMALLINT     NOT NULL CHECK (planned_duration BETWEEN 1 AND 300),
   notes            TEXT,
+  partner_count    SMALLINT     NOT NULL DEFAULT 0,
+  partner_names    TEXT,
   created_by       UUID         REFERENCES profiles(id) ON DELETE SET NULL,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
@@ -552,6 +558,48 @@ CREATE TRIGGER trg_match_stats_updated_at
 
 
 -- ────────────────────────────────────────────────────────────────
+-- 17b. OPPONENT MATCH STATS (statistiques adverses individuelles)
+--      Saisie manuelle des stats des joueuses adverses par match
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE opponent_match_stats (
+  id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id    UUID         NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  player_name TEXT         NOT NULL,
+  min         NUMERIC(4,1) NOT NULL DEFAULT 0,
+
+  fg2m       SMALLINT NOT NULL DEFAULT 0,
+  fg2a       SMALLINT NOT NULL DEFAULT 0,
+  fg3m       SMALLINT NOT NULL DEFAULT 0,
+  fg3a       SMALLINT NOT NULL DEFAULT 0,
+  ftm        SMALLINT NOT NULL DEFAULT 0,
+  fta        SMALLINT NOT NULL DEFAULT 0,
+
+  pts        SMALLINT GENERATED ALWAYS AS (fg2m * 2 + fg3m * 3 + ftm) STORED,
+
+  ro         SMALLINT NOT NULL DEFAULT 0,
+  rd         SMALLINT NOT NULL DEFAULT 0,
+  pd         SMALLINT NOT NULL DEFAULT 0,
+  ct         SMALLINT NOT NULL DEFAULT 0,
+  intercepts SMALLINT NOT NULL DEFAULT 0,
+  bp         SMALLINT NOT NULL DEFAULT 0,
+  fte        SMALLINT NOT NULL DEFAULT 0,
+  fpr        SMALLINT NOT NULL DEFAULT 0,
+
+  eval       SMALLINT,
+  plus_minus SMALLINT,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT opp_fg2_coherent CHECK (fg2m <= fg2a),
+  CONSTRAINT opp_fg3_coherent CHECK (fg3m <= fg3a),
+  CONSTRAINT opp_ft_coherent  CHECK (ftm  <= fta)
+);
+
+CREATE INDEX ON opponent_match_stats (match_id);
+
+
+-- ────────────────────────────────────────────────────────────────
 -- 18. TEAM MATCH STATS (statistiques collectives)
 --     1:1 avec matches (UNIQUE match_id)
 --     Métriques avancées : toutes GENERATED depuis stats brutes
@@ -577,6 +625,7 @@ CREATE TABLE team_match_stats (
   intercepts SMALLINT NOT NULL DEFAULT 0,
   bp         SMALLINT NOT NULL DEFAULT 0,
   fte        SMALLINT NOT NULL DEFAULT 0,
+  fpr        SMALLINT NOT NULL DEFAULT 0,
 
   possessions     NUMERIC(5,1) NOT NULL DEFAULT 0,
   opp_possessions NUMERIC(5,1),
@@ -594,6 +643,8 @@ CREATE TABLE team_match_stats (
   opp_ct         SMALLINT NOT NULL DEFAULT 0,
   opp_intercepts SMALLINT NOT NULL DEFAULT 0,
   opp_bp         SMALLINT NOT NULL DEFAULT 0,
+  opp_fte        SMALLINT NOT NULL DEFAULT 0,
+  opp_fpr        SMALLINT NOT NULL DEFAULT 0,
 
   efg_pct      NUMERIC(4,1) GENERATED ALWAYS AS (
     CASE WHEN (fg2a + fg3a) > 0
@@ -706,6 +757,25 @@ CREATE TABLE training_attendance (
 
 
 -- ────────────────────────────────────────────────────────────────
+-- 20b. SESSION DOCUMENTS
+--      Fichiers attachés à une séance (vidéo, PDF, image…)
+--      Stockés dans le bucket Supabase Storage 'session-documents'
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE session_documents (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  storage_path TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  mime_type    TEXT,
+  size         INTEGER,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON session_documents (session_id);
+
+
+-- ────────────────────────────────────────────────────────────────
 -- 21. NOTIFICATIONS
 --     Centre de notifications par user ; temps réel via Supabase Realtime
 -- ────────────────────────────────────────────────────────────────
@@ -731,29 +801,51 @@ ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
 
 -- ────────────────────────────────────────────────────────────────
+-- 21b. EXERCISES
+--      Bibliothèque d'exercices de l'équipe
+--      Images stockées dans le bucket Supabase Storage 'exercises'
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE exercises (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID REFERENCES teams(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  description TEXT,
+  image_url   TEXT,
+  category    TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON exercises (team_id);
+
+
+-- ────────────────────────────────────────────────────────────────
 -- 22. ROW LEVEL SECURITY
 --     Cloisonnement par équipe / organisation (données de santé RGPD)
 -- ────────────────────────────────────────────────────────────────
 
-ALTER TABLE organizations      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE teams              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE seasons            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE staff              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE players            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE player_season      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE training_sessions  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE session_blocks     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rpe_entries        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE wellness_entries   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE medical_records    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE player_actions     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE matches            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE match_stats        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE team_match_stats   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE staff_meetings     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE training_attendance ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizations         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE seasons               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE players               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_season         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_sessions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_blocks        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_documents     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rpe_entries           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wellness_entries      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical_records       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_actions        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE matches               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE match_stats           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE opponent_match_stats  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_match_stats      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_meetings        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_attendance   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercises             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications         ENABLE ROW LEVEL SECURITY;
 
 -- ── Policies ─────────────────────────────────────────────────────
 
@@ -937,33 +1029,99 @@ CREATE POLICY "training_attendance_access" ON training_attendance
 CREATE POLICY "notifications_user_own" ON notifications
   FOR ALL USING (user_id = auth.uid());
 
+-- Stats adverses
+CREATE POLICY "opponent_match_stats_access" ON opponent_match_stats
+  FOR ALL TO authenticated
+  USING (
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+-- Documents de séance
+CREATE POLICY "session_documents_access" ON session_documents
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+-- Exercices
+CREATE POLICY "exercises_access" ON exercises
+  FOR ALL TO authenticated
+  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
 
 -- ────────────────────────────────────────────────────────────────
--- 22b. STORAGE — Bucket player-photos
+-- 22b. STORAGE — Buckets
+--      3 buckets : player-photos (public), session-documents (privé),
+--                  exercises (public)
+--      Créer chaque bucket via Dashboard Storage avant les policies
 -- ────────────────────────────────────────────────────────────────
 
--- Créer le bucket (à faire une seule fois dans le Dashboard Storage,
--- ou via l'API admin ; cette section documente les policies associées)
+-- ── player-photos (public) ───────────────────────────────────────
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('player-photos', 'player-photos', true)
+ON CONFLICT (id) DO NOTHING;
 
 CREATE POLICY "player_photos_select"
-  ON storage.objects FOR SELECT
-  TO public
+  ON storage.objects FOR SELECT TO public
   USING (bucket_id = 'player-photos');
 
 CREATE POLICY "player_photos_insert"
-  ON storage.objects FOR INSERT
-  TO authenticated
+  ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'player-photos');
 
 CREATE POLICY "player_photos_update"
-  ON storage.objects FOR UPDATE
-  TO authenticated
+  ON storage.objects FOR UPDATE TO authenticated
   USING (bucket_id = 'player-photos');
 
 CREATE POLICY "player_photos_delete"
-  ON storage.objects FOR DELETE
-  TO authenticated
+  ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'player-photos');
+
+-- ── session-documents (privé — accès via URL signée) ─────────────
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('session-documents', 'session-documents', false)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "session_documents_storage_select"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'session-documents');
+
+CREATE POLICY "session_documents_storage_insert"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'session-documents');
+
+CREATE POLICY "session_documents_storage_delete"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'session-documents');
+
+-- ── exercises (public) ───────────────────────────────────────────
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('exercises', 'exercises', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "exercises_storage_select"
+  ON storage.objects FOR SELECT TO public
+  USING (bucket_id = 'exercises');
+
+CREATE POLICY "exercises_storage_insert"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'exercises');
+
+CREATE POLICY "exercises_storage_update"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'exercises');
+
+CREATE POLICY "exercises_storage_delete"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'exercises');
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -1155,3 +1313,11 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 --
 -- Promouvoir un utilisateur existant en admin :
 -- UPDATE profiles SET org_role = 'admin' WHERE id = '<uuid>';
+
+-- Colonnes séance : partenaires d'entraînement
+-- ALTER TABLE training_sessions
+--   ADD COLUMN IF NOT EXISTS partner_count SMALLINT NOT NULL DEFAULT 0,
+--   ADD COLUMN IF NOT EXISTS partner_names TEXT;
+
+-- Nouvelles tables (créer depuis le schéma principal ci-dessus) :
+--   opponent_match_stats, session_documents, exercises

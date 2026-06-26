@@ -3,6 +3,7 @@ import type { MedicalRecord } from '../data/types';
 
 export interface ListMedicalFilters {
   playerId?: string;
+  playerIds?: string[];
   status?: 'active' | 'resolved';
   type?: MedicalRecord['type'];
 }
@@ -10,6 +11,7 @@ export interface ListMedicalFilters {
 export const medicalApi = {
   async list(filters: ListMedicalFilters = {}): Promise<MedicalRecord[]> {
     let query = supabase.from('medical_records').select('*');
+    if (filters.playerIds?.length) query = query.in('player_id', filters.playerIds);
     if (filters.playerId) query = query.eq('player_id', filters.playerId);
     if (filters.status)   query = query.eq('status', filters.status);
     if (filters.type)     query = query.eq('type', filters.type);

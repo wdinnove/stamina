@@ -144,6 +144,7 @@ export interface MedicalRecord {
 export interface Action {
   id: string;
   playerId: string;
+  teamId?: string;
   title: string;
   description?: string;
   category: ActionCategory;
@@ -156,6 +157,7 @@ export interface Action {
 /** Stats individuelles par match — nomenclature NF2 */
 export interface MatchStat {
   id: string;
+  matchId?: string;
   playerId: string;
   date: string;
   opponent: string;
@@ -173,13 +175,14 @@ export interface MatchStat {
   ro: number; rd: number;
   pd: number; ct: number; intercepts: number; bp: number;
   fte: number; fpr: number;
-  eval: number;
-  plusMinus: number;
+  eval: number | null;
+  plusMinus: number | null;
 }
 
 /** Stats avancées équipe par match */
 export interface TeamMatchStat {
   id: string;
+  matchId?: string;
   date: string;
   opponent: string;
   homeAway: 'home' | 'away';
@@ -190,7 +193,7 @@ export interface TeamMatchStat {
   fg3m: number; fg3a: number;
   ftm: number;  fta: number;
   ro: number; rd: number; rt: number;
-  pd: number; ct: number; intercepts: number; bp: number; fte: number;
+  pd: number; ct: number; intercepts: number; bp: number; fte: number; fpr: number;
   possessions: number;
   offRating: number;
   defRating: number;
@@ -203,11 +206,27 @@ export interface TeamMatchStat {
   opp_fg3m: number; opp_fg3a: number;
   opp_ftm: number;  opp_fta: number;
   opp_ro: number; opp_rd: number; opp_rt: number;
-  opp_pd: number; opp_ct: number; opp_intercepts: number; opp_bp: number;
+  opp_pd: number; opp_ct: number; opp_intercepts: number; opp_bp: number; opp_fte: number; opp_fpr: number;
   opp_possessions: number;
   opp_efgPct: number;
   opp_toPct: number;
   opp_orebPct: number;
+}
+
+export interface OpponentMatchStat {
+  id: string;
+  matchId: string;
+  playerName: string;
+  min: number;
+  pts: number;
+  fg2m: number; fg2a: number;
+  fg3m: number; fg3a: number;
+  ftm: number; fta: number;
+  ro: number; rd: number;
+  pd: number; ct: number; intercepts: number; bp: number;
+  fte: number; fpr: number;
+  eval: number | null;
+  plusMinus: number | null;
 }
 
 export interface TrainingSession {
@@ -219,6 +238,7 @@ export interface TrainingSession {
   plannedDuration: number;
   notes?: string;
   partnerCount?: number;
+  partnerNames?: string;
   createdAt?: string;
 }
 
@@ -235,6 +255,7 @@ export interface SessionDocument {
 export interface Exercise {
   id: string;
   name: string;
+  teamId?: string;
   description?: string;
   imageUrl?: string;
   category?: string;
@@ -262,6 +283,30 @@ export interface TrainingAttendance {
   playerId: string;
   status: 'present' | 'absent' | 'late';
   createdAt: string;
+}
+
+export interface TeamSessionRow {
+  id: string;
+  date: string;
+  type: SessionType;
+  duration: number;
+  nbPlayers: number;
+  avg: number;
+  max: number;
+  min: number;
+  totalLoad: number;
+}
+
+export interface PlayerRank {
+  playerId: string;
+  name: string;
+  nbSessions: number;
+  avgRpe: number;
+  maxRpe: number;
+  totalLoad: number;
+  rpe3w:     number | null;
+  load3w:    number | null;
+  weekLoads: number[];
 }
 
 /** Moyennes calculées d'une joueur sur la saison */
