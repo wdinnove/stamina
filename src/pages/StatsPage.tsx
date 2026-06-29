@@ -71,7 +71,7 @@ function MatchDetail({ tm }: { tm: TeamMatchStat }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
         {/* Stats collectives */}
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px', gap: 8, marginBottom: 8 }}>
@@ -208,18 +208,18 @@ function PlayerStatsView() {
       {player && (
         <>
           {/* Player header + moyennes */}
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 18px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <PlayerAvatar player={player} size={42} />
             <div>
               <h3 style={{ color: '#F1F5F9', margin: 0 }}>{player.firstName} {player.lastName}</h3>
               <p style={{ color: '#94A3B8', fontSize: '0.8rem', margin: 0 }}>{player.position} · #{player.number} · {avg.gp} matchs</p>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 20 }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, overflowX: 'auto', flexShrink: 0 }}>
               {[
                 ['MIN', avg.min], ['PTS', avg.pts], ['REB', avg.rt], ['PD', avg.pd], ['ÉVAL', avg.eval],
                 ['2%', `${avg.fg2pct}%`], ['3%', `${avg.fg3pct}%`], ['L%', `${avg.ftpct}%`],
               ].map(([l, v]) => (
-                <div key={l as string} style={{ textAlign: 'center' }}>
+                <div key={l as string} style={{ textAlign: 'center', flexShrink: 0 }}>
                   <p style={{ color: '#475569', fontSize: '0.62rem', textTransform: 'uppercase', margin: 0 }}>{l}</p>
                   <p style={{ color: '#F1F5F9', fontWeight: 800, fontSize: '1rem', margin: '2px 0 0', fontFamily: 'JetBrains Mono, monospace' }}>{v}</p>
                 </div>
@@ -228,7 +228,7 @@ function PlayerStatsView() {
           </div>
 
           {/* Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 240px', gap: 14, marginBottom: 14 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 14, marginBottom: 14 }}>
             <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px' }}>
               <h4 style={{ color: '#F1F5F9', marginBottom: 12 }}>Évolution match par match</h4>
               <ResponsiveContainer width="100%" height={160}>

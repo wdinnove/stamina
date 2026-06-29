@@ -282,34 +282,42 @@ export default function MatchDetailPage() {
 
   return (
     <div className="p-4 md:p-6">
+      <style>{`
+        @media (max-width: 639px) {
+          .stat-table th { padding: 6px 7px !important; font-size: 0.62rem !important; }
+          .stat-table td { padding: 6px 7px !important; font-size: 0.73rem !important; }
+        }
+      `}</style>
       {/* Back + Modifier */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 8, flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/matches')}
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>
-          <ArrowLeft size={15} /> Tous les matchs
+          <ArrowLeft size={15} />
+          <span className="sm:hidden">Retour</span>
+          <span className="hidden sm:inline">Tous les matchs</span>
         </button>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
           <button onClick={() => setShowImport(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.78rem' }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00E5A0'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#00E5A040'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#475569'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#2A2F3A'; }}>
-            <Upload size={12} /> {teamStats || individualStats.length > 0 ? 'Modifier les stats' : 'Importer les stats'}
+            <Upload size={12} /><span className="hidden sm:inline"> {teamStats || individualStats.length > 0 ? 'Modifier les stats' : 'Importer les stats'}</span>
           </button>
           <button onClick={() => { setShowEdit(true); setFormError(''); }}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.78rem' }}>
-            <Pencil size={12} /> Modifier les informations du match
+            <Pencil size={12} /><span className="hidden sm:inline"> Modifier</span>
           </button>
         </div>
       </div>
 
       {/* Hero card */}
-      <div style={{ backgroundColor: '#161920', border: `1px solid ${isWin ? '#00E5A040' : '#EF444440'}`, borderRadius: 12, padding: '21px 24px 18px', marginBottom: 20, backgroundImage: isWin ? 'linear-gradient(135deg, #00E5A00A 0%, transparent 55%)' : 'linear-gradient(135deg, #EF44440A 0%, transparent 55%)', position: 'relative', overflow: 'hidden' }}>
+      <div className="p-4 sm:p-6" style={{ backgroundColor: '#161920', border: `1px solid ${isWin ? '#00E5A040' : '#EF444440'}`, borderRadius: 12, marginBottom: 20, backgroundImage: isWin ? 'linear-gradient(135deg, #00E5A00A 0%, transparent 55%)' : 'linear-gradient(135deg, #EF44440A 0%, transparent 55%)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: isWin ? 'linear-gradient(90deg, #00E5A0, #00E5A050)' : 'linear-gradient(90deg, #EF4444, #EF444450)', borderRadius: '12px 12px 0 0' }} />
 
         {/* Ligne 1 : nom adversaire + score */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 14 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.6rem', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.5px' }}>
+            <h1 className="text-xl sm:text-2xl" style={{ color: '#F1F5F9', margin: '0 0 8px', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.5px' }}>
               vs {match.opponent}
             </h1>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.68rem', fontWeight: 800, padding: '3px 10px', borderRadius: 20, color: isWin ? '#00E5A0' : '#EF4444', backgroundColor: isWin ? '#00E5A015' : '#EF444415', border: `1px solid ${isWin ? '#00E5A030' : '#EF444430'}`, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -318,8 +326,8 @@ export default function MatchDetailPage() {
             </span>
           </div>
           <div style={{ flexShrink: 0, textAlign: 'right' }}>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '2.4rem', fontWeight: 800, lineHeight: 1, letterSpacing: '-1px', color: isWin ? '#00E5A0' : '#EF4444', textShadow: isWin ? '0 0 32px #00E5A045' : '0 0 32px #EF444445' }}>
-              {match.scoreUs}<span style={{ color: '#334155', margin: '0 8px', fontWeight: 400 }}>–</span>{match.scoreThem}
+            <div className="text-2xl sm:text-4xl" style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 800, lineHeight: 1, letterSpacing: '-1px', color: isWin ? '#00E5A0' : '#EF4444', textShadow: isWin ? '0 0 32px #00E5A045' : '0 0 32px #EF444445' }}>
+              {match.scoreUs}<span style={{ color: '#334155', margin: '0 6px', fontWeight: 400 }}>–</span>{match.scoreThem}
             </div>
           </div>
         </div>
@@ -351,23 +359,25 @@ export default function MatchDetailPage() {
           <style>{`.tabs-scroll::-webkit-scrollbar{display:none}`}</style>
           <div className="tabs-scroll" style={{ flex: 1, minWidth: 0, display: 'flex', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
             {([
-              { id: 'boxscore',      label: 'Boxscore' },
-              { id: 'advanced',      label: 'Stats avancées' },
-              { id: 'four_factors',  label: 'Four Factors' },
-              { id: 'comp_players',  label: 'Compar. joueurs' },
-              { id: 'comp_teams',    label: 'Compar. équipes' },
-              { id: 'comp_matches',  label: 'Compar. saison' },
+              { id: 'boxscore',      label: 'Boxscore',        short: 'Box'       },
+              { id: 'advanced',      label: 'Stats avancées',  short: 'Avancées'  },
+              { id: 'four_factors',  label: 'Four Factors',    short: '4 Factors' },
+              { id: 'comp_players',  label: 'Compar. joueurs', short: 'Joueurs'   },
+              { id: 'comp_teams',    label: 'Compar. équipes', short: 'Équipes'   },
+              { id: 'comp_matches',  label: 'Compar. saison',  short: 'Saison'    },
             ] as const).map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                style={{ padding: '12px 18px', background: 'none', border: 'none', borderBottom: `2px solid ${activeTab === tab.id ? '#00E5A0' : 'transparent'}`, cursor: 'pointer', fontSize: '0.82rem', fontWeight: activeTab === tab.id ? 700 : 400, color: activeTab === tab.id ? '#F1F5F9' : '#475569', whiteSpace: 'nowrap', marginBottom: -1, transition: 'color 0.15s' }}>
-                {tab.label}
+                className="px-3 sm:px-[18px] py-2.5 sm:py-3"
+                style={{ background: 'none', border: 'none', borderBottom: `2px solid ${activeTab === tab.id ? '#00E5A0' : 'transparent'}`, cursor: 'pointer', fontSize: '0.78rem', fontWeight: activeTab === tab.id ? 700 : 400, color: activeTab === tab.id ? '#F1F5F9' : '#475569', whiteSpace: 'nowrap', marginBottom: -1, transition: 'color 0.15s' }}>
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.short}</span>
               </button>
             ))}
           </div>
         </div>
 
         {/* Tab content */}
-        <div style={{ padding: 20 }}>
+        <div className="p-3 sm:p-5">
 
           {/* ── BOXSCORE ── */}
           {activeTab === 'boxscore' && (
@@ -378,14 +388,14 @@ export default function MatchDetailPage() {
                 <p style={{ margin: '4px 0 0', fontSize: '0.78rem' }}>Cliquez sur "Importer" pour ajouter les données du match.</p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div className="flex flex-col gap-4 sm:gap-6">
                 {individualStats.length > 0 && (
                   <div>
-                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
+                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
                       Stats individuelles · {individualStats.length} joueur{individualStats.length > 1 ? 's' : ''}
                     </p>
                     <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+                      <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                         <thead>
                           <tr>
                             {THsort('#', 'number', { width: 32, textAlign: 'center' })}
@@ -469,7 +479,7 @@ export default function MatchDetailPage() {
                       Stats individuelles {match.opponent} · {opponentStats.length} joueur{opponentStats.length > 1 ? 's' : ''}
                     </p>
                     <div style={{ overflowX: 'auto', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+                      <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                         <thead>
                           <tr>
                             <th style={{ ...TH, width: 32, textAlign: 'center' }}>#</th>
@@ -552,14 +562,14 @@ export default function MatchDetailPage() {
             !individualStats.length && !opponentStats.length ? (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}><p style={{ margin: 0 }}>Aucune statistique individuelle importée.</p></div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div className="flex flex-col gap-4 sm:gap-6">
                 {individualStats.length > 0 && (
                   <div>
-                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
+                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
                       Stats avancées · {individualStats.length} joueur{individualStats.length > 1 ? 's' : ''}
                     </p>
                     <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+                      <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
                         <thead>
                           <tr>
                             <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
@@ -620,7 +630,7 @@ export default function MatchDetailPage() {
                         Stats avancées {match.opponent} · {opponentStats.length} joueur{opponentStats.length > 1 ? 's' : ''}
                       </p>
                       <div style={{ overflowX: 'auto', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+                        <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
                           <thead>
                             <tr>
                               <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
@@ -684,7 +694,7 @@ export default function MatchDetailPage() {
             ];
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
                   {factors.map(f => {
                     const ownBetter = f.own !== null && f.opp !== null && (f.higherIsBetter ? f.own > f.opp : f.own < f.opp);
                     const oppBetter = f.own !== null && f.opp !== null && (f.higherIsBetter ? f.opp > f.own : f.opp < f.own);
@@ -692,7 +702,7 @@ export default function MatchDetailPage() {
                     const ownPct = f.own !== null ? Math.min((f.own / maxVal) * 100, 100) : 0;
                     const oppPct = f.opp !== null ? Math.min((f.opp / maxVal) * 100, 100) : 0;
                     return (
-                      <div key={f.label} style={{ backgroundColor: '#1E2229', border: `1px solid ${ownBetter ? '#00E5A020' : oppBetter ? '#EF444420' : '#2A2F3A'}`, borderRadius: 10, padding: '16px 18px' }}>
+                      <div key={f.label} className="p-3 sm:p-4" style={{ backgroundColor: '#1E2229', border: `1px solid ${ownBetter ? '#00E5A020' : oppBetter ? '#EF444420' : '#2A2F3A'}`, borderRadius: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 14 }}>
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -839,7 +849,7 @@ export default function MatchDetailPage() {
                 {/* Tableau de comparaison par section */}
                 {sA && sB && (
                   <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 360 }}>
+                    <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 360 }}>
                       <thead>
                         <tr>
                           <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>{pA ? `${pA.lastName} ${pA.firstName[0]}.` : '—'}</th>
@@ -922,7 +932,7 @@ export default function MatchDetailPage() {
             ];
             return (
               <div style={{ maxWidth: 540, margin: '0 auto', width: '100%', overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
+                <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
                   <thead>
                     <tr>
                       <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>Mon équipe</th>
@@ -1011,7 +1021,7 @@ export default function MatchDetailPage() {
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 540, margin: '0 auto', width: '100%' }}>
                 <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+                  <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
                     <thead>
                       <tr>
                         <th style={{ ...TH, textAlign: 'right', minWidth: 100, color: '#F1F5F9' }}>CE MATCH</th>

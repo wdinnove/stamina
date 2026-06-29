@@ -159,6 +159,12 @@ export default function MatchesPage() {
 
   return (
     <div className="p-4 md:p-6">
+      <style>{`
+        @media (max-width: 639px) {
+          .matches-table th { padding: 8px 10px !important; }
+          .matches-table td { padding: 10px 10px !important; }
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Matchs</h1>
@@ -191,8 +197,8 @@ export default function MatchesPage() {
           <p style={{ margin: 0, fontSize: '0.9rem' }}>Aucun match enregistré pour cette saison.</p>
         </div>
       ) : (
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflowX: 'auto' }}>
+          <table className="matches-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
