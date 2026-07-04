@@ -8,7 +8,9 @@ import { documentsApi } from '../api/documents';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { exercisesApi } from '../api/exercises';
 import { PlayerAvatar } from '../components';
-import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise } from '../data/types';
+import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
+import { detectSocialPlatform } from '../utils/socialVideo';
+import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage } from '../data/types';
 
 function loadDelta(real: number, estimated: number): { Icon: React.ElementType; color: string } | null {
   if (estimated === 0) return null;
@@ -200,12 +202,18 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   const [editDrillId,    setEditDrillId]    = useState<string | null>(null);
   const [draggingIndex,  setDraggingIndex]  = useState<number | null>(null);
   const [overIndex,      setOverIndex]      = useState<number | null>(null);
-  const [exercises,      setExercises]      = useState<Exercise[]>([]);
-  const [viewExercise,   setViewExercise]   = useState<Exercise | null>(null);
+  const [exercises,       setExercises]       = useState<Exercise[]>([]);
+  const [viewExercise,    setViewExercise]    = useState<Exercise | null>(null);
+  const [viewExerciseImages, setViewExerciseImages] = useState<ExerciseImage[]>([]);
 
   useEffect(() => {
     exercisesApi.list().then(setExercises).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!viewExercise) { setViewExerciseImages([]); return; }
+    exercisesApi.listImages(viewExercise.id).then(setViewExerciseImages).catch(() => {});
+  }, [viewExercise?.id]);
 
   function startDrag(e: React.PointerEvent<HTMLElement>, fromIndex: number) {
     e.preventDefault();
@@ -628,10 +636,11 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                 <X size={18} />
               </button>
             </div>
-            {/* Image */}
-            {viewExercise.imageUrl && (
-              <img src={viewExercise.imageUrl} alt={viewExercise.name}
-                style={{ width: '100%', borderRadius: 8, marginBottom: 16, objectFit: 'cover', maxHeight: 220, display: 'block' }} />
+            {/* Images */}
+            {viewExerciseImages.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <ExerciseImageGallery images={viewExerciseImages} alt={viewExercise.name} />
+              </div>
             )}
             {/* Description */}
             {viewExercise.description ? (
@@ -639,6 +648,21 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                 style={{ color: '#94A3B8', fontSize: '0.84rem', lineHeight: 1.65 }} />
             ) : (
               <p style={{ color: '#475569', fontSize: '0.84rem', fontStyle: 'italic', margin: 0 }}>Aucune description disponible.</p>
+            )}
+            {/* Document */}
+            {viewExercise.documentUrl && (
+              <div style={{ marginTop: 14 }}>
+                <a href={viewExercise.documentUrl} target="_blank" rel="noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#94A3B8', fontSize: '0.82rem' }}>
+                  {viewExercise.documentName || 'Document PDF'}
+                </a>
+              </div>
+            )}
+            {/* Vidéo */}
+            {viewExercise.videoUrl && detectSocialPlatform(viewExercise.videoUrl) && (
+              <div style={{ marginTop: 14 }}>
+                <SocialVideoEmbed url={viewExercise.videoUrl} />
+              </div>
             )}
           </div>
         </div>

@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Pencil, Trash2, AlertCircle, Bold, Italic, List, ListOrdered, X, Upload } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, AlertCircle, Bold, Italic, List, ListOrdered, X, FileText, ExternalLink } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
-import type { Exercise } from '../data/types';
+import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem } from '../components';
+import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
+import type { Exercise, ExerciseImage } from '../data/types';
 
 const CAT_COLORS: Record<string, string> = {
   'Échauffement':    '#F59E0B',
@@ -89,63 +91,12 @@ function RichContent({ html }: { html?: string }) {
   );
 }
 
-function ImagePicker({ currentUrl, onSelect }: { currentUrl: string; onSelect: (file: File | null, remove: boolean) => void }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const [cleared, setCleared] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
-
-  function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setPreview(URL.createObjectURL(f));
-    setCleared(false);
-    onSelect(f, false);
-  }
-
-  function clear() {
-    setPreview(null);
-    setCleared(true);
-    if (ref.current) ref.current.value = '';
-    onSelect(null, true);
-  }
-
-  const shown = cleared ? null : (preview ?? (currentUrl || null));
-
-  return (
-    <div>
-      <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
-      {shown ? (
-        <div style={{ position: 'relative' }}>
-          <img src={shown} alt="" style={{ width: '100%', borderRadius: 8, border: '1px solid #2A2F3A', display: 'block', maxHeight: 200, objectFit: 'contain', background: '#0D0F14' }} />
-          <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6 }}>
-            <button type="button" onClick={() => ref.current?.click()}
-              style={{ padding: '3px 9px', background: 'rgba(13,15,20,0.88)', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem' }}>
-              Changer
-            </button>
-            <button type="button" onClick={clear}
-              style={{ padding: '3px 7px', background: 'rgba(13,15,20,0.88)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 5, color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <X size={11} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button type="button" onClick={() => ref.current?.click()}
-          style={{ width: '100%', padding: '20px', background: '#1E2229', border: '2px dashed #2A2F3A', borderRadius: 8, color: '#475569', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A4049'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; }}>
-          <Upload size={20} />
-          <span style={{ fontSize: '0.78rem' }}>Cliquer pour choisir une image</span>
-        </button>
-      )}
-    </div>
-  );
-}
-
 export default function ExerciseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
+  const [images,     setImages]     = useState<ExerciseImage[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
   const [showEdit,   setShowEdit]   = useState(false);
@@ -157,54 +108,113 @@ export default function ExerciseDetailPage() {
   const [name,        setName]        = useState('');
   const [category,    setCategory]    = useState('');
   const [description, setDescription] = useState('');
-  const [imageFile,   setImageFile]   = useState<File | null>(null);
-  const [removeImage, setRemoveImage] = useState(false);
+  const [videoUrl,    setVideoUrl]    = useState('');
   const [saving,      setSaving]      = useState(false);
   const [formError,   setFormError]   = useState('');
+  const [imageBusy,   setImageBusy]   = useState(false);
+  const [docBusy,     setDocBusy]     = useState(false);
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    exercisesApi.getById(id)
-      .then(ex => {
+    Promise.all([exercisesApi.getById(id), exercisesApi.listImages(id)])
+      .then(([ex, imgs]) => {
         if (!ex) { setError('Exercice introuvable.'); return; }
         setExercise(ex);
+        setImages(imgs);
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const videoPlatform = videoUrl.trim() ? detectSocialPlatform(videoUrl) : null;
+  const videoInvalid = videoUrl.trim() !== '' && !videoPlatform;
 
   function openEdit() {
     if (!exercise) return;
     setName(exercise.name);
     setCategory(exercise.category ?? '');
     setDescription(exercise.description ?? '');
-    setImageFile(null);
-    setRemoveImage(false);
+    setVideoUrl(exercise.videoUrl ?? '');
     setFormError('');
     setShowEdit(true);
   }
 
+  async function handleAddImages(files: File[]) {
+    if (!exercise) return;
+    setImageBusy(true);
+    setFormError('');
+    try {
+      for (const file of files) {
+        const url = await exercisesApi.uploadImage(exercise.id, file);
+        const img = await exercisesApi.addImage(exercise.id, url, images.length);
+        setImages(prev => [...prev, img]);
+      }
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur upload image');
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  async function handleRemoveImage(key: string) {
+    const img = images.find(i => i.id === key);
+    if (!img) return;
+    setImageBusy(true);
+    setFormError('');
+    try {
+      await exercisesApi.removeImage(img);
+      setImages(prev => prev.filter(i => i.id !== key));
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur suppression image');
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  async function handleDocumentSelect(file: File) {
+    if (!exercise) return;
+    setDocBusy(true);
+    setFormError('');
+    try {
+      const { url, name: docName } = await exercisesApi.uploadDocument(exercise.id, file);
+      if (exercise.documentUrl) exercisesApi.deleteDocumentByUrl(exercise.documentUrl).catch(() => {});
+      const updated = await exercisesApi.update(exercise.id, { documentUrl: url, documentName: docName });
+      setExercise(updated);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur upload document');
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
+  async function handleDocumentRemove() {
+    if (!exercise) return;
+    setDocBusy(true);
+    setFormError('');
+    try {
+      if (exercise.documentUrl) await exercisesApi.deleteDocumentByUrl(exercise.documentUrl);
+      const updated = await exercisesApi.update(exercise.id, { documentUrl: '', documentName: '' });
+      setExercise(updated);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur suppression document');
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!exercise || !name.trim()) return;
+    if (!exercise || !name.trim() || videoInvalid) return;
     setSaving(true);
     setFormError('');
     const plain = description.replace(/<[^>]+>/g, '').trim();
     try {
-      let imageUrlPatch: string | undefined;
-      if (imageFile) {
-        imageUrlPatch = await exercisesApi.uploadImage(exercise.id, imageFile);
-        if (exercise.imageUrl) exercisesApi.deleteImageByUrl(exercise.imageUrl).catch(() => {});
-      } else if (removeImage) {
-        imageUrlPatch = '';
-        if (exercise.imageUrl) exercisesApi.deleteImageByUrl(exercise.imageUrl).catch(() => {});
-      }
       const updated = await exercisesApi.update(exercise.id, {
         name:        name.trim(),
         description: plain ? description : undefined,
-        imageUrl:    imageUrlPatch,
         category:    category || undefined,
+        videoUrl:    videoUrl.trim(),
       });
       setExercise(updated);
       setShowEdit(false);
@@ -284,10 +294,29 @@ export default function ExerciseDetailPage() {
           <RichContent html={exercise.description} />
         </div>
 
-        {exercise.imageUrl && (
-          <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16, textAlign: 'center' }}>
-            <img src={exercise.imageUrl} alt={exercise.name}
-              style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 8, border: '1px solid #2A2F3A', display: 'inline-block', objectFit: 'contain' }} />
+        {images.length > 0 && (
+          <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+            <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Images</p>
+            <ExerciseImageGallery images={images} alt={exercise.name} />
+          </div>
+        )}
+
+        {exercise.documentUrl && (
+          <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+            <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Document</p>
+            <a href={exercise.documentUrl} target="_blank" rel="noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#F1F5F9', fontSize: '0.85rem', textDecoration: 'none' }}>
+              <FileText size={15} color="#00E5A0" />
+              {exercise.documentName || 'Document PDF'}
+              <ExternalLink size={13} color="#475569" />
+            </a>
+          </div>
+        )}
+
+        {exercise.videoUrl && detectSocialPlatform(exercise.videoUrl) && (
+          <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+            <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Vidéo</p>
+            <SocialVideoEmbed url={exercise.videoUrl} />
           </div>
         )}
       </div>
@@ -326,20 +355,40 @@ export default function ExerciseDetailPage() {
                 <RichEditor value={description} onChange={setDescription} />
               </div>
               <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Image</label>
-                <ImagePicker
-                  key={showEdit ? exercise.id : 'closed'}
-                  currentUrl={exercise.imageUrl ?? ''}
-                  onSelect={(f, rm) => { setImageFile(f); setRemoveImage(rm); }}
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
+                <ExerciseImagePicker
+                  items={images.map((img): ExerciseImagePickerItem => ({ key: img.id, url: img.url }))}
+                  onAdd={handleAddImages}
+                  onRemove={handleRemoveImage}
+                  disabled={imageBusy}
                 />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Document PDF</label>
+                <ExerciseDocumentPicker
+                  fileName={exercise.documentName || undefined}
+                  fileUrl={exercise.documentUrl || undefined}
+                  onSelect={handleDocumentSelect}
+                  onRemove={handleDocumentRemove}
+                  disabled={docBusy}
+                />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Lien vidéo (Twitter/X, Facebook, Instagram, TikTok)</label>
+                <input type="url" placeholder="https://…" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={inputStyle} />
+                {videoUrl.trim() && (
+                  videoPlatform
+                    ? <div style={{ color: '#00E5A0', fontSize: '0.72rem', marginTop: 5 }}>Aperçu {SOCIAL_PLATFORM_LABELS[videoPlatform]} détecté</div>
+                    : <div style={{ color: '#EF4444', fontSize: '0.72rem', marginTop: 5 }}>Lien non reconnu — utilisez un lien public Twitter/X, Facebook, Instagram ou TikTok</div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={() => setShowEdit(false)}
                   style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
                   Annuler
                 </button>
-                <button type="submit" disabled={saving}
-                  style={{ flex: 1, padding: '10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                <button type="submit" disabled={saving || videoInvalid}
+                  style={{ flex: 1, padding: '10px', backgroundColor: (saving || videoInvalid) ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: (saving || videoInvalid) ? '#475569' : '#0D0F14', cursor: (saving || videoInvalid) ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                   {saving ? 'Enregistrement…' : 'Enregistrer'}
                 </button>
               </div>

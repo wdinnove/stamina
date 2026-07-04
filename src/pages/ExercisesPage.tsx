@@ -1,12 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered, Upload } from 'lucide-react';
+import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
 import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { Exercise } from '../data/types';
+import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem } from '../components';
+import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
+import type { Exercise, ExerciseImage } from '../data/types';
 
 export const EXERCISE_CATEGORIES = [
   'Échauffement', 'Jeu réduit', 'Jeu rapide', 'Tirs', 'Technique',
@@ -118,59 +120,6 @@ function CategoryBadge({ category }: { category?: string }) {
   );
 }
 
-/* ── Image picker (upload fichier) ───────────────────────────────────────── */
-function ImagePicker({ currentUrl, onSelect }: { currentUrl: string; onSelect: (file: File | null, remove: boolean) => void }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const [cleared, setCleared] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
-
-  function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setPreview(URL.createObjectURL(f));
-    setCleared(false);
-    onSelect(f, false);
-  }
-
-  function clear() {
-    setPreview(null);
-    setCleared(true);
-    if (ref.current) ref.current.value = '';
-    onSelect(null, true);
-  }
-
-  const shown = cleared ? null : (preview ?? (currentUrl || null));
-
-  return (
-    <div>
-      <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
-      {shown ? (
-        <div style={{ position: 'relative' }}>
-          <img src={shown} alt="" style={{ width: '100%', borderRadius: 8, border: '1px solid #2A2F3A', display: 'block', maxHeight: 180, objectFit: 'contain', background: '#0D0F14' }} />
-          <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6 }}>
-            <button type="button" onClick={() => ref.current?.click()}
-              style={{ padding: '3px 9px', background: 'rgba(13,15,20,0.88)', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem' }}>
-              Changer
-            </button>
-            <button type="button" onClick={clear}
-              style={{ padding: '3px 7px', background: 'rgba(13,15,20,0.88)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 5, color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <X size={11} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button type="button" onClick={() => ref.current?.click()}
-          style={{ width: '100%', padding: '20px', background: '#1E2229', border: '2px dashed #2A2F3A', borderRadius: 8, color: '#475569', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A4049'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; }}>
-          <Upload size={20} />
-          <span style={{ fontSize: '0.78rem' }}>Cliquer pour choisir une image</span>
-        </button>
-      )}
-    </div>
-  );
-}
-
 /* ── Modal form (avec éditeur) ───────────────────────────────────────────── */
 function ExerciseModal({
   editing, onClose, onSaved, teamId,
@@ -183,41 +132,139 @@ function ExerciseModal({
   const [name,        setName]        = useState(editing?.name ?? '');
   const [category,    setCategory]    = useState(editing?.category ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
-  const [imageFile,   setImageFile]   = useState<File | null>(null);
-  const [removeImage, setRemoveImage] = useState(false);
+  const [videoUrl,    setVideoUrl]    = useState(editing?.videoUrl ?? '');
   const [saving,      setSaving]      = useState(false);
   const [formError,   setFormError]   = useState('');
 
+  // Images : persistées immédiatement en édition, en attente jusqu'à la création
+  const [images,        setImages]        = useState<ExerciseImage[]>([]);
+  const [pendingImages, setPendingImages]  = useState<{ file: File; previewUrl: string }[]>([]);
+  const [imageBusy,     setImageBusy]     = useState(false);
+
+  // Document PDF : même logique que les images
+  const [documentUrl,  setDocumentUrl]  = useState(editing?.documentUrl ?? '');
+  const [documentName, setDocumentName] = useState(editing?.documentName ?? '');
+  const [pendingDocumentFile, setPendingDocumentFile] = useState<File | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
+
+  useEffect(() => {
+    if (!editing) return;
+    exercisesApi.listImages(editing.id).then(setImages).catch(() => {});
+  }, [editing?.id]);
+
+  const videoPlatform = videoUrl.trim() ? detectSocialPlatform(videoUrl) : null;
+  const videoInvalid = videoUrl.trim() !== '' && !videoPlatform;
+
+  const imageItems: ExerciseImagePickerItem[] = editing
+    ? images.map(img => ({ key: img.id, url: img.url }))
+    : pendingImages.map((p, i) => ({ key: String(i), url: p.previewUrl }));
+
+  async function handleAddImages(files: File[]) {
+    if (!editing) {
+      setPendingImages(prev => [...prev, ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+      return;
+    }
+    setImageBusy(true);
+    setFormError('');
+    try {
+      for (const file of files) {
+        const url = await exercisesApi.uploadImage(editing.id, file);
+        const img = await exercisesApi.addImage(editing.id, url, images.length);
+        setImages(prev => [...prev, img]);
+      }
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur upload image');
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  async function handleRemoveImage(key: string) {
+    if (!editing) {
+      setPendingImages(prev => prev.filter((_, i) => String(i) !== key));
+      return;
+    }
+    const img = images.find(i => i.id === key);
+    if (!img) return;
+    setImageBusy(true);
+    setFormError('');
+    try {
+      await exercisesApi.removeImage(img);
+      setImages(prev => prev.filter(i => i.id !== key));
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur suppression image');
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
+  async function handleDocumentSelect(file: File) {
+    if (!editing) {
+      setPendingDocumentFile(file);
+      setDocumentName(file.name);
+      return;
+    }
+    setDocBusy(true);
+    setFormError('');
+    try {
+      const { url, name: docName } = await exercisesApi.uploadDocument(editing.id, file);
+      if (documentUrl) exercisesApi.deleteDocumentByUrl(documentUrl).catch(() => {});
+      const updated = await exercisesApi.update(editing.id, { documentUrl: url, documentName: docName });
+      setDocumentUrl(updated.documentUrl ?? '');
+      setDocumentName(updated.documentName ?? '');
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur upload document');
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
+  async function handleDocumentRemove() {
+    if (!editing) {
+      setPendingDocumentFile(null);
+      setDocumentName('');
+      return;
+    }
+    setDocBusy(true);
+    setFormError('');
+    try {
+      if (documentUrl) await exercisesApi.deleteDocumentByUrl(documentUrl);
+      await exercisesApi.update(editing.id, { documentUrl: '', documentName: '' });
+      setDocumentUrl('');
+      setDocumentName('');
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erreur suppression document');
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || videoInvalid) return;
     setSaving(true);
     setFormError('');
     const plain = description.replace(/<[^>]+>/g, '').trim();
     try {
       if (editing) {
-        let imageUrlPatch: string | undefined;
-        if (imageFile) {
-          imageUrlPatch = await exercisesApi.uploadImage(editing.id, imageFile);
-          if (editing.imageUrl) exercisesApi.deleteImageByUrl(editing.imageUrl).catch(() => {});
-        } else if (removeImage) {
-          imageUrlPatch = '';
-          if (editing.imageUrl) exercisesApi.deleteImageByUrl(editing.imageUrl).catch(() => {});
-        }
         const updated = await exercisesApi.update(editing.id, {
           name: name.trim(), description: plain ? description : undefined,
-          imageUrl: imageUrlPatch, category: category || undefined,
+          category: category || undefined, videoUrl: videoUrl.trim(),
         });
         onSaved(updated, false);
       } else {
         const created = await exercisesApi.create({
           name: name.trim(), description: plain ? description : undefined,
-          category: category || undefined, teamId,
+          category: category || undefined, teamId, videoUrl: videoUrl.trim() || undefined,
         });
-        if (imageFile) {
-          const imageUrl = await exercisesApi.uploadImage(created.id, imageFile);
-          const withImg = await exercisesApi.update(created.id, { imageUrl });
-          onSaved(withImg, true);
+        for (let i = 0; i < pendingImages.length; i++) {
+          const url = await exercisesApi.uploadImage(created.id, pendingImages[i].file);
+          await exercisesApi.addImage(created.id, url, i);
+        }
+        if (pendingDocumentFile) {
+          const { url, name: docName } = await exercisesApi.uploadDocument(created.id, pendingDocumentFile);
+          const withDoc = await exercisesApi.update(created.id, { documentUrl: url, documentName: docName });
+          onSaved(withDoc, true);
         } else {
           onSaved(created, true);
         }
@@ -269,11 +316,29 @@ function ExerciseModal({
           </div>
 
           <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Image</label>
-            <ImagePicker
-              currentUrl={editing?.imageUrl ?? ''}
-              onSelect={(f, rm) => { setImageFile(f); setRemoveImage(rm); }}
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
+            <ExerciseImagePicker items={imageItems} onAdd={handleAddImages} onRemove={handleRemoveImage} disabled={imageBusy} />
+          </div>
+
+          <div>
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Document PDF</label>
+            <ExerciseDocumentPicker
+              fileName={documentName || undefined}
+              fileUrl={documentUrl || undefined}
+              onSelect={handleDocumentSelect}
+              onRemove={handleDocumentRemove}
+              disabled={docBusy}
             />
+          </div>
+
+          <div>
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Lien vidéo (Twitter/X, Facebook, Instagram, TikTok)</label>
+            <input type="url" placeholder="https://…" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={inputStyle} />
+            {videoUrl.trim() && (
+              videoPlatform
+                ? <div style={{ color: '#00E5A0', fontSize: '0.72rem', marginTop: 5 }}>Aperçu {SOCIAL_PLATFORM_LABELS[videoPlatform]} détecté</div>
+                : <div style={{ color: '#EF4444', fontSize: '0.72rem', marginTop: 5 }}>Lien non reconnu — utilisez un lien public Twitter/X, Facebook, Instagram ou TikTok</div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
@@ -281,8 +346,8 @@ function ExerciseModal({
               style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
               Annuler
             </button>
-            <button type="submit" disabled={saving}
-              style={{ flex: 1, padding: '10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+            <button type="submit" disabled={saving || videoInvalid}
+              style={{ flex: 1, padding: '10px', backgroundColor: (saving || videoInvalid) ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: (saving || videoInvalid) ? '#475569' : '#0D0F14', cursor: (saving || videoInvalid) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
               {saving ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer'}
             </button>
           </div>

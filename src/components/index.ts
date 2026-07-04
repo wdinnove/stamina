@@ -25,3 +25,8 @@ export type { DatePreset } from './DateRangeCard';
 export { PCABiplot } from './PCABiplot';
 export { WinFactorsList } from './WinFactorsList';
 export { PlayerImpactList } from './PlayerImpactList';
+export { ExerciseImageGallery } from './ExerciseImageGallery';
+export { ExerciseImagePicker } from './ExerciseImagePicker';
+export type { ExerciseImagePickerItem } from './ExerciseImagePicker';
+export { ExerciseDocumentPicker } from './ExerciseDocumentPicker';
+export { SocialVideoEmbed } from './SocialVideoEmbed';

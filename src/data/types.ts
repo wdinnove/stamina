@@ -265,8 +265,18 @@ export interface Exercise {
   name: string;
   teamId?: string;
   description?: string;
-  imageUrl?: string;
   category?: string;
+  documentUrl?: string;
+  documentName?: string;
+  videoUrl?: string;
+  createdAt: string;
+}
+
+export interface ExerciseImage {
+  id: string;
+  exerciseId: string;
+  url: string;
+  position: number;
   createdAt: string;
 }
 

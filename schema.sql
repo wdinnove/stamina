@@ -815,16 +815,28 @@ ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE exercises (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id     UUID REFERENCES teams(id) ON DELETE CASCADE,
-  name        TEXT NOT NULL,
-  description TEXT,
-  image_url   TEXT,
-  category    TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id       UUID REFERENCES teams(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  category      TEXT,
+  document_url  TEXT,
+  document_name TEXT,
+  video_url     TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX ON exercises (team_id);
+
+CREATE TABLE exercise_images (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+  url         TEXT NOT NULL,
+  position    SMALLINT NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON exercise_images (exercise_id);
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -853,6 +865,7 @@ ALTER TABLE team_match_stats      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff_meetings        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_attendance   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercises             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercise_images       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications         ENABLE ROW LEVEL SECURITY;
 
 -- ── Policies ─────────────────────────────────────────────────────
@@ -1063,6 +1076,16 @@ CREATE POLICY "exercises_access" ON exercises
   FOR ALL TO authenticated
   USING    (team_id IN (SELECT * FROM accessible_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Images d'exercices : suivent l'exercice parent
+CREATE POLICY "exercise_images_access" ON exercise_images
+  FOR ALL TO authenticated
+  USING (
+    exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+  )
+  WITH CHECK (
+    exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+  );
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -1339,3 +1362,36 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 --   ADD COLUMN IF NOT EXISTS ortg_t_green  NUMERIC NOT NULL DEFAULT 90,
 --   ADD COLUMN IF NOT EXISTS drtg_t_amber  NUMERIC NOT NULL DEFAULT 100,
 --   ADD COLUMN IF NOT EXISTS drtg_t_red    NUMERIC NOT NULL DEFAULT 115;
+
+-- Exercices : galerie d'images multiples, document PDF, lien vidéo réseaux sociaux
+-- CREATE TABLE IF NOT EXISTS exercise_images (
+--   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+--   url         TEXT NOT NULL,
+--   position    SMALLINT NOT NULL DEFAULT 0,
+--   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS exercise_images_exercise_id_idx ON exercise_images (exercise_id);
+--
+-- ALTER TABLE exercise_images ENABLE ROW LEVEL SECURITY;
+--
+-- CREATE POLICY "exercise_images_access" ON exercise_images
+--   FOR ALL TO authenticated
+--   USING (
+--     exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+--   )
+--   WITH CHECK (
+--     exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+--   );
+--
+-- ALTER TABLE exercises
+--   ADD COLUMN IF NOT EXISTS document_url  TEXT,
+--   ADD COLUMN IF NOT EXISTS document_name TEXT,
+--   ADD COLUMN IF NOT EXISTS video_url     TEXT;
+--
+-- -- Backfill : reprendre les images existantes dans la nouvelle table galerie
+-- INSERT INTO exercise_images (exercise_id, url, position)
+-- SELECT id, image_url, 0 FROM exercises WHERE image_url IS NOT NULL;
+--
+-- -- Une fois le backfill vérifié en prod, supprimer l'ancienne colonne :
+-- ALTER TABLE exercises DROP COLUMN IF EXISTS image_url;
