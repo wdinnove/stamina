@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { EmptyState } from '../components';
 import { supabase } from '../api/client';
 import { attendanceApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -350,7 +351,7 @@ export default function AttendancePage() {
         )}
       </div>
 
-      {!selected && <p style={{ color: '#475569', textAlign: 'center', padding: '48px 0' }}>Sélectionnez une équipe.</p>}
+      {!selected && <EmptyState message="Sélectionnez une équipe et une saison dans la barre du haut." size="lg" />}
 
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16, flexShrink: 0 }}>
@@ -367,12 +368,7 @@ export default function AttendancePage() {
       )}
 
       {selected && !loading && sessions.length === 0 && (
-        <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 10, padding: '48px', textAlign: 'center' }}>
-          <p style={{ color: '#475569', fontSize: '0.88rem', margin: '0 0 14px' }}>Aucune séance enregistrée.</p>
-          <button onClick={() => setShowAddForm(true)} style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem' }}>
-            Ajouter la première séance
-          </button>
-        </div>
+        <EmptyState message="Aucune séance enregistrée." size="lg" />
       )}
 
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
@@ -659,6 +655,7 @@ export default function AttendancePage() {
               </button>
               <button
                 onClick={() => { deleteSession(confirmDeleteSession.id); setConfirmDeleteSession(null); }}
+                className="btn-danger"
                 style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}
               >
                 Supprimer

@@ -1,0 +1,9 @@
+/* ── Global hover behaviors ────────────────────────────────────────────────── */
+
+/* Table names (first column) → bright white on hover */
+table tbody tr td:first-child {
+  transition: color 0.15s ease;
+}
+table tbody tr:hover td:first-child {
+  color: #ffffff !important;
+}

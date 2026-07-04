@@ -1,4 +1,5 @@
 export { Card, CardTitle } from './Card';
+export { EmptyState }    from './EmptyState';
 export { RequireAuth }   from './RequireAuth';
 export { KPICard }       from './KPICard';
 export { StatusBadge }   from './StatusBadge';
@@ -15,3 +16,12 @@ export { TeamDisplayToggle }    from './TeamDisplayToggle';
 export type { TeamDisplayMode } from './TeamDisplayToggle';
 export { TeamSessionHistoryTable } from './TeamSessionHistoryTable';
 export { PlayerRankingTable }   from './PlayerRankingTable';
+export { PlayerMedicalView }   from './PlayerMedicalView';
+export { PlayerDynamiqueTab }  from './PlayerDynamiqueTab';
+export { PlayerBilanTab }      from './PlayerBilanTab';
+export { PlayerDynStatTab }    from './PlayerDynStatTab';
+export { DateRangeCard, useDateRange } from './DateRangeCard';
+export type { DatePreset } from './DateRangeCard';
+export { PCABiplot } from './PCABiplot';
+export { WinFactorsList } from './WinFactorsList';
+export { PlayerImpactList } from './PlayerImpactList';

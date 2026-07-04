@@ -13,7 +13,7 @@ import { notifyOrg } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
 import { supabase } from '../api/client';
-import { StatusBadge, PlayerAvatar, RpeBarChart, ChargeBarChart, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, PlayerRankingTable } from '../components';
+import { StatusBadge, PlayerAvatar, RpeBarChart, ChargeBarChart, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, PlayerRankingTable, EmptyState } from '../components';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, RPEEntry, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
@@ -162,13 +162,13 @@ export default function RPEPage() {
   const [loadingHistory, setLoadingHistory]     = useState(false);
   const [historyVersion, setHistoryVersion]     = useState(0);
   const [chargeView, setChargeView]             = useState<'session' | 'week'>('week');
-  const [rpeView, setRpeView]                   = useState<'session' | 'week'>('session');
+  const [rpeView, setRpeView]                   = useState<'session' | 'week'>('week');
   const [teamChargeView, setTeamChargeView]     = useState<'session' | 'week'>('week');
-  const [teamRpeView, setTeamRpeView]           = useState<'session' | 'week'>('session');
+  const [teamRpeView, setTeamRpeView]           = useState<'session' | 'week'>('week');
   const [teamComboView, setTeamComboView]       = useState<'session' | 'week'>('week');
-  const [indivComboView, setIndivComboView]     = useState<'session' | 'week'>('session');
+  const [indivComboView, setIndivComboView]     = useState<'session' | 'week'>('week');
   const [indivDisplay, setIndivDisplay]         = useState<'chart' | 'table'>('chart');
-  const [indivTableView, setIndivTableView]     = useState<'session' | 'week'>('session');
+  const [indivTableView, setIndivTableView]     = useState<'session' | 'week'>('week');
   const [teamSaisonDisplay, setTeamSaisonDisplay] = useState<TeamDisplayMode>('chart');
   const [team30jDisplay, setTeam30jDisplay]       = useState<TeamDisplayMode>('chart');
   const [teamComboView30j, setTeamComboView30j]   = useState<'session' | 'week'>('week');
@@ -622,9 +622,7 @@ export default function RPEPage() {
     return (
       <div className="p-4 md:p-6">
         <h1 style={{ color: '#F1F5F9', margin: '0 0 24px' }}>Perception de l'Effort (RPE)</h1>
-        <div style={{ textAlign: 'center', padding: '80px 20px', color: '#475569' }}>
-          Sélectionnez une équipe et une saison dans la barre du haut.
-        </div>
+        <EmptyState message="Sélectionnez une équipe et une saison dans la barre du haut." size="lg" />
       </div>
     );
   }
@@ -693,10 +691,7 @@ export default function RPEPage() {
                       ))}
                     </div>
                   ) : linkedSessions.length === 0 ? (
-                    <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-                      <p style={{ color: '#475569', fontSize: '0.82rem', margin: '0 0 6px' }}>Aucune séance plannifiée.</p>
-                      <p style={{ color: '#334155', fontSize: '0.75rem', margin: 0 }}>Ajoutez des séances depuis la page Présences.</p>
-                    </div>
+                    <EmptyState message="Aucune séance planifiée." />
                   ) : (
                     linkedSessions.map((s, idx) => {
                       const d = new Date(s.date + 'T12:00:00');
@@ -835,26 +830,16 @@ export default function RPEPage() {
 
             {/* Placeholder quand rien n'est sélectionné et pas en mode manuel */}
             {!existingSessionId && !manualMode && (
-              <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '48px', textAlign: 'center', marginBottom: 16 }}>
-                <p style={{ color: '#475569', fontSize: '0.85rem', margin: '0 0 16px' }}>Aucune séance sélectionnée</p>
-                <button
-                  onClick={() => setShowSessionPicker(true)}
-                  style={{ padding: '9px 22px', backgroundColor: 'rgba(0,229,160,0.06)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 6, color: '#00E5A0', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(0,229,160,0.12)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(0,229,160,0.06)'; }}
-                >
-                  Choisir une séance
-                </button>
+              <div style={{ marginBottom: 16 }}>
+                <EmptyState message="Aucune séance sélectionnée." size="lg" />
               </div>
             )}
 
             {(existingSessionId || manualMode) && (
               loadingRoster ? (
-                <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement du roster…</div>
+                <EmptyState message="Chargement du roster…" />
               ) : roster.length === 0 ? (
-                <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-                  Aucun joueur dans le roster pour cette saison. Ajoutez des joueurs depuis <em>Mon Roster</em>.
-                </div>
+                <EmptyState message="Aucun joueur dans le roster pour cette saison." />
               ) : (
                 <>
                   <style>{`
@@ -934,11 +919,9 @@ export default function RPEPage() {
 
 
           {loadingHistory ? (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement…</div>
+            <EmptyState message="Chargement…" />
           ) : history.length === 0 && selectedPlayerId ? (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-              Aucune donnée RPE pour {selectedPlayer?.firstName} {selectedPlayer?.lastName}.
-            </div>
+            <EmptyState message={`Aucune donnée RPE pour ${selectedPlayer?.firstName} ${selectedPlayer?.lastName}.`} />
           ) : history.length > 0 ? (
             <>
                 {/* KPIs joueur — même format que équipe */}
@@ -972,7 +955,7 @@ export default function RPEPage() {
                     </span>;
 
                   return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 20 }}>
+                    <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10, marginBottom: 20 }}>
                       <RpeKpiCard
                         accent={tier ? tier.color : '#334155'}
                         label="Charge moyenne par semaine"
@@ -1222,16 +1205,13 @@ export default function RPEPage() {
           </div>
 
           {loadingTeamHistory ? (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '60px 0', textAlign: 'center' }}>Chargement…</div>
+            <EmptyState message="Chargement…" size="lg" />
           ) : teamHistoryError ? (
             <div style={{ backgroundColor: '#1E1215', border: '1px solid #EF444440', borderRadius: 8, padding: '20px 24px', color: '#EF4444', fontSize: '0.85rem' }}>
               Erreur lors du chargement : {teamHistoryError}
             </div>
           ) : !teamKpis || teamKpis.sessions === 0 ? (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '60px 0', textAlign: 'center' }}>
-              Aucune séance RPE enregistrée sur cette période.
-              {teamPeriod !== 'saison' && <><br /><button onClick={() => setTeamPeriod('saison')} style={{ marginTop: 10, background: 'none', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', padding: '5px 12px', fontSize: '0.78rem' }}>Voir toute la saison</button></>}
-            </div>
+            <EmptyState message="Aucune séance RPE enregistrée sur cette période." size="lg" />
           ) : teamPeriod === 'saison' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
@@ -1274,7 +1254,7 @@ export default function RPEPage() {
                 }).length;
 
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                  <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
                     <RpeKpiCard
                       accent={tierSaison.color}
                       label="Charge moyenne par semaine"
@@ -1410,7 +1390,7 @@ export default function RPEPage() {
                 const nbSeances30j = rows30jTeam.length;
 
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                  <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
                     <RpeKpiCard
                       accent={tier30jKpi.color}
                       label="Charge moyenne par semaine"

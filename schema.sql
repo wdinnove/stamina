@@ -101,6 +101,13 @@ CREATE TABLE teams (
   description     TEXT,
   load_light_max  INTEGER NOT NULL DEFAULT 2750,
   load_normal_max INTEGER NOT NULL DEFAULT 4250,
+  eval_t_orange   NUMERIC NOT NULL DEFAULT 0,
+  eval_t_blue     NUMERIC NOT NULL DEFAULT 5,
+  eval_t_green    NUMERIC NOT NULL DEFAULT 10,
+  ortg_t_amber    NUMERIC NOT NULL DEFAULT 60,
+  ortg_t_green    NUMERIC NOT NULL DEFAULT 90,
+  drtg_t_amber    NUMERIC NOT NULL DEFAULT 100,
+  drtg_t_red      NUMERIC NOT NULL DEFAULT 115,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -482,9 +489,10 @@ CREATE TABLE matches (
   home_away   home_away    NOT NULL DEFAULT 'home',
   competition TEXT         NOT NULL DEFAULT 'NF2',
   result      match_result NOT NULL,
-  score_us    SMALLINT     NOT NULL CHECK (score_us   >= 0),
-  score_them  SMALLINT     NOT NULL CHECK (score_them >= 0),
-  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  score_us       SMALLINT     NOT NULL CHECK (score_us   >= 0),
+  score_them     SMALLINT     NOT NULL CHECK (score_them >= 0),
+  quarter_scores JSONB,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
   UNIQUE (team_id, date, opponent)
@@ -1321,3 +1329,13 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 
 -- Nouvelles tables (créer depuis le schéma principal ci-dessus) :
 --   opponent_match_stats, session_documents, exercises
+
+-- Seuils statistiques (éval, ORtg, DRtg) sur les équipes
+-- ALTER TABLE teams
+--   ADD COLUMN IF NOT EXISTS eval_t_orange NUMERIC NOT NULL DEFAULT 0,
+--   ADD COLUMN IF NOT EXISTS eval_t_blue   NUMERIC NOT NULL DEFAULT 5,
+--   ADD COLUMN IF NOT EXISTS eval_t_green  NUMERIC NOT NULL DEFAULT 10,
+--   ADD COLUMN IF NOT EXISTS ortg_t_amber  NUMERIC NOT NULL DEFAULT 60,
+--   ADD COLUMN IF NOT EXISTS ortg_t_green  NUMERIC NOT NULL DEFAULT 90,
+--   ADD COLUMN IF NOT EXISTS drtg_t_amber  NUMERIC NOT NULL DEFAULT 100,
+--   ADD COLUMN IF NOT EXISTS drtg_t_red    NUMERIC NOT NULL DEFAULT 115;

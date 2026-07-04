@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { Download, Share2, Save } from 'lucide-react';
 import { rpeColor as rpeColorHex } from '../utils/rpe';
 import RichTextEditor from '../components/RichTextEditor';
-import { players, rpeEntries, medicalRecords, teamMatchStats, playerSeasonAvg, formatDate } from '../data';
+import { players, rpeEntries, medicalRecords, teamMatchStats, playerSeasonAvg, formatDate, evalColor } from '../data';
 import { KPICard, PlayerAvatar, StatusBadge } from '../components';
 
 const t1Players = players.filter(p => p.teamId === 't1');
@@ -174,7 +174,7 @@ export default function TeamReportPage() {
                 <Td highlight={tm.result === 'win' ? '#00E5A0' : '#EF4444'}>{tm.scoreUs}-{tm.scoreThem}</Td>
                 <Td>{tm.possessions}</Td>
                 <Td highlight={tm.efgPct >= 48 ? '#00E5A0' : '#EF4444'}>{tm.efgPct}%</Td>
-                <Td highlight={tm.offRating >= 110 ? '#00E5A0' : '#EF4444'}>{tm.offRating.toFixed(1)}</Td>
+                <Td highlight={tm.offRating > 90 ? '#00E5A0' : tm.offRating >= 60 ? '#F59E0B' : '#EF4444'}>{tm.offRating.toFixed(1)}</Td>
                 <Td highlight={tm.defRating <= 100 ? '#00E5A0' : '#EF4444'}>{tm.defRating.toFixed(1)}</Td>
                 <Td highlight={tm.toPct <= 15 ? '#00E5A0' : '#EF4444'}>{tm.toPct}%</Td>
                 <Td highlight={tm.orebPct >= 35 ? '#00E5A0' : '#94A3B8'}>{tm.orebPct}%</Td>
@@ -245,7 +245,7 @@ export default function TeamReportPage() {
                 <Td highlight={Number(avg.pd) >= 5 ? '#3B82F6' : undefined}>{avg.pd}</Td>
                 <Td>{avg.ct}</Td><Td>{avg.intercepts}</Td>
                 <Td highlight={Number(avg.bp) >= 6 ? '#EF4444' : undefined}>{avg.bp}</Td>
-                <Td highlight={Number(avg.eval) >= 15 ? '#00E5A0' : undefined}>{avg.eval}</Td>
+                <Td highlight={evalColor(Number(avg.eval))}>{avg.eval}</Td>
                 <Td highlight={Number(avg.plusMinus) > 0 ? '#00E5A0' : '#EF4444'}>
                   {Number(avg.plusMinus) > 0 ? `+${avg.plusMinus}` : avg.plusMinus}
                 </Td>

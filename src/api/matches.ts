@@ -35,8 +35,9 @@ export const matchesApi = {
         home_away:   input.homeAway,
         competition: input.competition,
         result:      input.result,
-        score_us:    input.scoreUs,
-        score_them:  input.scoreThem,
+        score_us:       input.scoreUs,
+        score_them:     input.scoreThem,
+        quarter_scores: input.quarterScores ?? null,
       })
       .select()
       .single();
@@ -52,8 +53,9 @@ export const matchesApi = {
     if (input.homeAway    !== undefined) row.home_away   = input.homeAway;
     if (input.competition !== undefined) row.competition = input.competition;
     if (input.result      !== undefined) row.result      = input.result;
-    if (input.scoreUs     !== undefined) row.score_us    = input.scoreUs;
-    if (input.scoreThem   !== undefined) row.score_them  = input.scoreThem;
+    if (input.scoreUs       !== undefined) row.score_us       = input.scoreUs;
+    if (input.scoreThem     !== undefined) row.score_them     = input.scoreThem;
+    if (input.quarterScores !== undefined) row.quarter_scores = input.quarterScores ?? null;
     const { error } = await supabase.from('matches').update(row).eq('id', id);
     if (error) throw error;
   },
@@ -75,7 +77,8 @@ function toMatch(row: Record<string, unknown>): Match {
     homeAway:    row.home_away   as Match['homeAway'],
     competition: row.competition as string,
     result:      row.result      as Match['result'],
-    scoreUs:     row.score_us    as number,
-    scoreThem:   row.score_them  as number,
+    scoreUs:       row.score_us       as number,
+    scoreThem:     row.score_them     as number,
+    quarterScores: row.quarter_scores as { us: number; them: number }[] | undefined,
   };
 }

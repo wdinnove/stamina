@@ -365,7 +365,7 @@ export default function ExerciseDetailPage() {
                 style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
                 Annuler
               </button>
-              <button onClick={handleDelete} disabled={deleting}
+              <button onClick={handleDelete} disabled={deleting} className="btn-danger"
                 style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                 {deleting ? 'Suppression…' : 'Supprimer'}
               </button>

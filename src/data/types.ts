@@ -43,6 +43,7 @@ export interface Match {
   result: 'win' | 'loss';
   scoreUs: number;
   scoreThem: number;
+  quarterScores?: { us: number; them: number }[];
 }
 
 export interface StaffMember {
@@ -96,6 +97,13 @@ export interface Team {
   currentSeason?: string;
   loadLightMax?: number;
   loadNormalMax?: number;
+  evalTOrange?: number;
+  evalTBlue?:   number;
+  evalTGreen?:  number;
+  ortgTAmber?:  number;
+  ortgTGreen?:  number;
+  drtgTAmber?:  number;
+  drtgTRed?:    number;
 }
 
 export interface RPEEntry {

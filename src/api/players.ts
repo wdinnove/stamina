@@ -70,6 +70,15 @@ export const playersApi = {
     if (error) throw error;
   },
 
+  async unlinkFromSeason(playerId: string, seasonId: string): Promise<void> {
+    const { error } = await supabase
+      .from('player_season')
+      .delete()
+      .eq('player_id', playerId)
+      .eq('season_id', seasonId);
+    if (error) throw error;
+  },
+
   async listBySeason(seasonId: string): Promise<Player[]> {
     const { data, error } = await supabase
       .from('player_season')
@@ -121,8 +130,8 @@ function toRow(p: Partial<Omit<Player, 'id'>>): Record<string, unknown> {
   if (p.height            !== undefined) row.height_cm          = p.height;
   if (p.weight            !== undefined) row.weight_kg          = p.weight;
   if (p.hand              !== undefined) row.hand               = p.hand;
-  if (p.contractEnd       !== undefined) row.contract_end       = p.contractEnd;
-  if (p.email             !== undefined) row.email              = p.email;
+  if (p.contractEnd !== undefined) row.contract_end = p.contractEnd || null;
+  if (p.email       !== undefined) row.email        = p.email       || null;
   if (p.photoUrl          !== undefined) row.photo_url          = p.photoUrl;
   return row;
 }

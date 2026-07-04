@@ -7,7 +7,7 @@ import {
 import { Activity, Heart, Stethoscope, CheckSquare, BarChart2 } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi }     from '../api/rpe';
-import { Breadcrumb, PlayerAvatar } from '../components';
+import { Breadcrumb, PlayerAvatar, EmptyState } from '../components';
 import { rpeColor, rpeLabel } from '../utils/rpe';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -133,7 +133,7 @@ export default function PlayerRPEPage() {
       </div>
 
       {entries.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#475569' }}>Aucune donnée RPE pour ce joueur.</div>
+        <EmptyState message="Aucune donnée RPE pour ce joueur." size="lg" />
       ) : (
         <>
           {/* KPIs — ordre : Charge semaine, Dernier RPE, RPE moyen, Séances, Charge totale */}

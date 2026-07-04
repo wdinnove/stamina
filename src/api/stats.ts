@@ -80,6 +80,35 @@ export const statsApi = {
     return (data ?? []).map(toMatchStat);
   },
 
+  async getPlayerStatsBySeason(playerId: string, seasonId: string): Promise<MatchStat[]> {
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id, score_us, score_them, result')
+      .eq('season_id', seasonId);
+    if (matchErr) throw matchErr;
+    const matchScoreMap = new Map(
+      (matchRows ?? []).map((m: { id: string; score_us: number; score_them: number; result: string }) =>
+        [m.id, { score_us: m.score_us, score_them: m.score_them, result: m.result }]
+      )
+    );
+    const matchIds = [...matchScoreMap.keys()];
+    if (matchIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('match_stats')
+      .select('*')
+      .eq('player_id', playerId)
+      .in('match_id', matchIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(row => {
+      const matchData = row.match_id ? matchScoreMap.get(row.match_id) : undefined;
+      if (matchData) {
+        return toMatchStat({ ...row, score_us: matchData.score_us, score_them: matchData.score_them, result: matchData.result });
+      }
+      return toMatchStat(row);
+    });
+  },
+
   // Calculé côté client depuis les match_stats — identique à helpers.ts
   async getPlayerSeasonAvg(playerId: string): Promise<PlayerSeasonAvg> {
     return computePlayerSeasonAvg(playerId);
@@ -252,6 +281,73 @@ export const statsApi = {
         plus_minus: r.plusMinus,
       })));
     if (error) throw error;
+  },
+
+  async getPlayerStatsGroupedBySeason(playerId: string): Promise<{ seasonId: string; seasonLabel: string; stats: MatchStat[] }[]> {
+    const { data: statsData, error: statsErr } = await supabase
+      .from('match_stats')
+      .select('*')
+      .eq('player_id', playerId)
+      .not('match_id', 'is', null);
+    if (statsErr) throw statsErr;
+    const stats = (statsData ?? []).map(toMatchStat);
+    const matchIds = [...new Set(stats.map(s => s.matchId).filter(Boolean) as string[])];
+    if (matchIds.length === 0) return [];
+    const { data: matchData, error: matchErr } = await supabase
+      .from('matches')
+      .select('id, season_id, seasons(label)')
+      .in('id', matchIds);
+    if (matchErr) throw matchErr;
+    const matchSeasonMap = new Map<string, { seasonId: string; seasonLabel: string }>();
+    for (const m of matchData ?? []) {
+      const row = m as { id: string; season_id: string; seasons: { label: string } | null };
+      matchSeasonMap.set(row.id, { seasonId: row.season_id, seasonLabel: row.seasons?.label ?? row.season_id });
+    }
+    const grouped = new Map<string, { seasonId: string; seasonLabel: string; stats: MatchStat[] }>();
+    for (const stat of stats) {
+      if (!stat.matchId) continue;
+      const season = matchSeasonMap.get(stat.matchId);
+      if (!season) continue;
+      if (!grouped.has(season.seasonId)) grouped.set(season.seasonId, { ...season, stats: [] });
+      grouped.get(season.seasonId)!.stats.push(stat);
+    }
+    return [...grouped.values()].sort((a, b) => b.seasonLabel.localeCompare(a.seasonLabel));
+  },
+
+  async listAllStatsBySeason(teamId: string, seasonId: string): Promise<MatchStat[]> {
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('season_id', seasonId);
+    if (matchErr) throw matchErr;
+    const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
+    if (matchIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('match_stats')
+      .select('*')
+      .in('match_id', matchIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(toMatchStat);
+  },
+
+  async listTeamStatsBySeason(teamId: string, seasonId: string): Promise<TeamMatchStat[]> {
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('season_id', seasonId);
+    if (matchErr) throw matchErr;
+    const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
+    if (matchIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('team_match_stats_full')
+      .select('*')
+      .in('match_id', matchIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(toTeamMatchStat);
   },
 
   async upsertTeamStats(matchId: string, own?: CollectiveStatInput, opp?: CollectiveStatInput): Promise<void> {

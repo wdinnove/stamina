@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, X, AlertCircle, Trophy, Trash2 } from 'lucide-react';
+import { Plus, X, AlertCircle, Trash2 } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { EmptyState } from '../components';
 import type { Match } from '../data/types';
 
 const MONTHS_FR  = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -28,15 +29,23 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
+const DEFAULT_QUARTERS = [
+  { us: '0', them: '0' },
+  { us: '0', them: '0' },
+  { us: '0', them: '0' },
+  { us: '0', them: '0' },
+];
+
 const emptyForm = {
-  date:        new Date().toLocaleDateString('sv'),
-  opponent:    '',
-  homeAway:    'home' as 'home' | 'away',
-  competition: 'NF2',
-  result:      'win' as 'win' | 'loss',
-  scoreUs:     '',
-  scoreThem:   '',
-  gameNumber:  '',
+  date:          new Date().toLocaleDateString('sv'),
+  opponent:      '',
+  homeAway:      'home' as 'home' | 'away',
+  competition:   'NF2',
+  result:        'win' as 'win' | 'loss',
+  scoreUs:       '0',
+  scoreThem:     '0',
+  gameNumber:    '',
+  quarterScores: DEFAULT_QUARTERS as { us: string; them: string }[],
 };
 
 export default function MatchesPage() {
@@ -95,9 +104,10 @@ export default function MatchesPage() {
       homeAway:    m.homeAway,
       competition: m.competition,
       result:      m.result,
-      scoreUs:     String(m.scoreUs),
-      scoreThem:   String(m.scoreThem),
-      gameNumber:  m.gameNumber ? String(m.gameNumber) : '',
+      scoreUs:       String(m.scoreUs),
+      scoreThem:     String(m.scoreThem),
+      gameNumber:    m.gameNumber ? String(m.gameNumber) : '',
+      quarterScores: (m.quarterScores?.length ? m.quarterScores : DEFAULT_QUARTERS).map(q => ({ us: String(q.us), them: String(q.them) })),
     });
     setFormError('');
     setShowModal(true);
@@ -117,9 +127,10 @@ export default function MatchesPage() {
         homeAway:    form.homeAway,
         competition: form.competition.trim() || 'NF2',
         result:      form.result,
-        scoreUs:     parseInt(form.scoreUs),
-        scoreThem:   parseInt(form.scoreThem),
-        gameNumber:  form.gameNumber ? parseInt(form.gameNumber) : undefined,
+        scoreUs:       parseInt(form.scoreUs),
+        scoreThem:     parseInt(form.scoreThem),
+        gameNumber:    form.gameNumber ? parseInt(form.gameNumber) : undefined,
+        quarterScores: form.quarterScores.map(q => ({ us: parseInt(q.us) || 0, them: parseInt(q.them) || 0 })),
       };
       if (editMatch) {
         await matchesApi.update(editMatch.id, payload);
@@ -192,10 +203,7 @@ export default function MatchesPage() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : matches.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#475569' }}>
-          <Trophy size={36} style={{ marginBottom: 12, opacity: 0.3 }} />
-          <p style={{ margin: 0, fontSize: '0.9rem' }}>Aucun match enregistré pour cette saison.</p>
-        </div>
+        <EmptyState message="Aucun match enregistré pour cette saison." size="lg" />
       ) : (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflowX: 'auto' }}>
           <table className="matches-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
@@ -358,6 +366,44 @@ export default function MatchesPage() {
                 </div>
               </div>
 
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem' }}>Scores par QT</label>
+                  <div style={{ display: 'flex', gap: 20, paddingRight: 24 }}>
+                    <span style={{ color: '#475569', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nous</span>
+                    <span style={{ color: '#475569', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Eux</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {form.quarterScores.map((qt, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: '#475569', fontSize: '0.75rem', width: 28, flexShrink: 0 }}>
+                        {i < 4 ? `Q${i + 1}` : `P${i - 3}`}
+                      </span>
+                      <input type="number" min={0} value={qt.us}
+                        onChange={e => setForm(f => { const qs = [...f.quarterScores]; qs[i] = { ...qs[i], us: e.target.value }; return { ...f, quarterScores: qs }; })}
+                        style={{ ...inputStyle, textAlign: 'center', padding: '6px 4px' }} />
+                      <span style={{ color: '#475569', flexShrink: 0 }}>–</span>
+                      <input type="number" min={0} value={qt.them}
+                        onChange={e => setForm(f => { const qs = [...f.quarterScores]; qs[i] = { ...qs[i], them: e.target.value }; return { ...f, quarterScores: qs }; })}
+                        style={{ ...inputStyle, textAlign: 'center', padding: '6px 4px' }} />
+                      {i >= 4 && (
+                        <button type="button"
+                          onClick={() => setForm(f => ({ ...f, quarterScores: f.quarterScores.filter((_, j) => j !== i) }))}
+                          style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button"
+                    onClick={() => setForm(f => ({ ...f, quarterScores: [...f.quarterScores, { us: '0', them: '0' }] }))}
+                    style={{ padding: '5px', backgroundColor: '#1E2229', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.75rem', marginTop: 2 }}>
+                    + Prolongation
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 {editMatch && (
                   <button type="button" onClick={() => { setConfirmDelete(editMatch); }}
@@ -392,7 +438,7 @@ export default function MatchesPage() {
               <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
                 Annuler
               </button>
-              <button onClick={handleDelete} disabled={deleting}
+              <button onClick={handleDelete} disabled={deleting} className="btn-danger"
                 style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                 {deleting ? 'Suppression…' : 'Supprimer'}
               </button>

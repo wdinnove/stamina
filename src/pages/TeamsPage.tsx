@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Plus, Search, Users, Edit, X, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
 import { teamsApi, seasonsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { Breadcrumb } from '../components';
+import { Breadcrumb, EmptyState } from '../components';
 import type { Team, Season } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -215,9 +215,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         ) : seasons.length === 0 ? (
-          <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0, textAlign: 'center', padding: '16px 0' }}>
-            Aucune saison créée.
-          </p>
+          <EmptyState message="Aucune saison créée." size="sm" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {seasons.map(season => (
@@ -371,9 +369,7 @@ function TeamsList() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {filtered.length === 0 && !fetchError && (
-            <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0 }}>
-              {search ? 'Aucun résultat.' : "Aucune équipe pour l'instant."}
-            </p>
+            <EmptyState message={search ? 'Aucun résultat.' : "Aucune équipe pour l'instant."} size="lg" />
           )}
           {filtered.map(team => (
             <div key={team.id}

@@ -6,7 +6,7 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { StatusBadge, PlayerAvatar } from '../components';
+import { StatusBadge, PlayerAvatar, EmptyState, PlayerMedicalView } from '../components';
 import type { MedicalRecord, Player } from '../data/types';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
@@ -420,8 +420,8 @@ export default function MedicalPage() {
         <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {([
             { id: 'infirmary', label: 'Infirmerie', short: 'Infirmerie' },
-            { id: 'team',      label: 'Vue équipe', short: 'Équipe'     },
-            { id: 'record',    label: 'Dossier joueur', short: 'Dossier' },
+            { id: 'team',      label: 'Vue équipe',  short: 'Équipe' },
+            { id: 'record',    label: 'Vue joueur',  short: 'Joueur'  },
           ] as const).map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '6px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab.id ? '#1E2229' : 'transparent', color: activeTab === tab.id ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
               <span className="hidden sm:inline">{tab.label}</span>
@@ -443,7 +443,7 @@ export default function MedicalPage() {
             </div>
 
             {teamActiveAll.length === 0 && (
-              <p style={{ color: '#475569', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>Aucune blessure ni traitement actif</p>
+              <EmptyState message="Aucune blessure ni traitement actif." size="sm" />
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -556,7 +556,7 @@ export default function MedicalPage() {
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
                   <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Répartition par gravité</h3>
                   {seasonCount === 0
-                    ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune blessure cette saison.</p>
+                    ? <EmptyState message="Aucune blessure cette saison." size="sm" />
                     : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {([
@@ -587,7 +587,7 @@ export default function MedicalPage() {
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px', flex: 1 }}>
                   <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joueurs les plus touchés</h3>
                   {topInjuredPlayers.length === 0
-                    ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune donnée.</p>
+                    ? <EmptyState message="Aucune donnée." size="sm" />
                     : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {topInjuredPlayers.map(({ player: p, count }) => {
@@ -682,7 +682,7 @@ export default function MedicalPage() {
                   </div>
 
                   {filtered.length === 0
-                    ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>{hasFilter ? 'Aucun résultat.' : 'Aucune entrée médicale cette saison.'}</p>
+                    ? <EmptyState message={hasFilter ? 'Aucun résultat.' : 'Aucune entrée médicale cette saison.'} size="sm" />
                     : (
                       <div style={{ overflowX: 'auto' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 480 }}>
@@ -754,9 +754,6 @@ export default function MedicalPage() {
                 <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
               ))}
             </select>
-            <button onClick={() => openForm(selectedPlayerId)} style={{ flexShrink: 0, padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={13} /><span className="hidden sm:inline">Nouvelle entrée</span>
-            </button>
           </div>
 
           {selectedPlayer && (
@@ -771,130 +768,13 @@ export default function MedicalPage() {
             </div>
           )}
 
-          {/* ── Sous-onglets vue ── */}
-          <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, marginBottom: 14 }}>
-            {([
-              { id: 'date'    as const, label: 'Par date' },
-              { id: 'section' as const, label: 'Par type'  },
-            ]).map(v => (
-              <button key={v.id} onClick={() => setRecordView(v.id)}
-                style={{ flex: 1, padding: '5px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.8rem', backgroundColor: recordView === v.id ? '#1E2229' : 'transparent', color: recordView === v.id ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
-                {v.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Vue par date ── */}
-          {recordView === 'date' && (() => {
-            const allSorted = [...playerRecords].sort((a, b) => b.date.localeCompare(a.date));
-            return (
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
-                {/* En-tête section */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: allSorted.length > 0 ? 14 : 0 }}>
-                  <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>
-                    Tous les dossiers
-                  </h4>
-                  {allSorted.length > 0 && (
-                    <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.78rem', backgroundColor: '#2A2F3A', padding: '2px 8px', borderRadius: 3 }}>
-                      {allSorted.length}
-                    </span>
-                  )}
-                </div>
-
-                {allSorted.length === 0
-                  ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune entrée médicale.</p>
-                  : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {allSorted.map(record => {
-                        const isActive = record.status === 'active';
-                        const days = record.rtpDate
-                          ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
-                          : null;
-                        const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                        const daysLabel = days !== null && days > 0
-                          ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
-                          : null;
-                        return (
-                          <MedCard
-                            key={record.id}
-                            record={record}
-                            daysLabel={daysLabel}
-                            daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
-                            onEdit={() => openEdit(record)}
-                            onDetail={() => setDetailRecord(record)}
-                            onClose={isActive && record.type !== 'checkup'
-                              ? () => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })
-                              : undefined}
-                            hideType
-                            showTypeBadge
-                            navigate={navigate}
-                          />
-                        );
-                      })}
-                    </div>
-                }
-              </div>
-            );
-          })()}
-
-          {/* ── 3 sections uniformes : Blessures / Traitements / Bilans ── */}
-          {recordView === 'section' && ([
-            { key: 'injury',    title: 'Blessures',    icon: '🔴', color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée.'  },
-            { key: 'treatment', title: 'Traitements',  icon: '💊', color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré.' },
-            { key: 'checkup',   title: 'Bilans santé', icon: '🩺', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré.'     },
-          ]).map((section, si) => (
-            <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: si < 2 ? 12 : 0 }}>
-              {/* En-tête de section */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: section.records.length > 0 ? 14 : 0 }}>
-                <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
-                  {section.title}
-                </h4>
-                {section.records.length > 0 && (
-                  <span style={{ color: section.color, fontWeight: 700, fontSize: '0.78rem', backgroundColor: section.color + '18', padding: '2px 8px', borderRadius: 3 }}>
-                    {section.records.length}
-                  </span>
-                )}
-              </div>
-
-              {section.records.length === 0
-                ? <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>{section.emptyMsg}</p>
-                : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {[...section.records]
-                      .sort((a, b) => {
-                        if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
-                        return b.date.localeCompare(a.date);
-                      })
-                      .map(record => {
-                        const isActive = record.status === 'active';
-                        const days = record.rtpDate
-                          ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
-                          : null;
-                        const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                        const daysLabel = days !== null && days > 0
-                          ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
-                          : null;
-                        return (
-                          <MedCard
-                            key={record.id}
-                            record={record}
-                            daysLabel={daysLabel}
-                            daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
-                            onEdit={() => openEdit(record)}
-                            onDetail={() => setDetailRecord(record)}
-                            onClose={isActive && record.type !== 'checkup'
-                              ? () => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })
-                              : undefined}
-                            hideType
-                            navigate={navigate}
-                          />
-                        );
-                      })
-                    }
-                  </div>
-                )
-              }
-            </div>
-          ))}
+          {selectedPlayerId && (
+            <PlayerMedicalView
+              key={selectedPlayerId}
+              playerId={selectedPlayerId}
+              onUpdated={() => setVersion(v => v + 1)}
+            />
+          )}
         </div>
       )}
 

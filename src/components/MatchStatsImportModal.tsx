@@ -3,6 +3,7 @@ import { X, Upload, AlertCircle, ChevronDown } from 'lucide-react';
 import { statsApi } from '../api/stats';
 import { matchesApi } from '../api/matches';
 import type { Match, Player, TeamMatchStat } from '../data/types';
+import { evalColor } from '../data';
 import type { BulkStatRow, CollectiveStatInput, OpponentStatInput } from '../api/stats';
 
 // ─── Types internes ───────────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ const TH: React.CSSProperties = {
   padding: '6px 8px', color: '#475569', fontSize: '0.68rem', fontWeight: 700,
   textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center',
   whiteSpace: 'nowrap', borderBottom: '1px solid #2A2F3A', backgroundColor: '#161920',
-  position: 'sticky', top: 0,
+  position: 'sticky', top: 0, zIndex: 1,
 };
 const TD: React.CSSProperties = {
   padding: '5px 8px', color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center',
@@ -251,7 +252,7 @@ function CsvTable({ rows, showMatch, players, playerMap, onPlayerChange }: {
   onPlayerChange: (idx: number, pid: string) => void;
 }) {
   return (
-    <div style={{ overflowX: 'auto', maxHeight: 300, overflowY: 'auto', border: '1px solid #2A2F3A', borderRadius: 6, marginTop: 10 }}>
+    <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 6, marginTop: 10 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
         <thead>
           <tr>
@@ -275,7 +276,7 @@ function CsvTable({ rows, showMatch, players, playerMap, onPlayerChange }: {
             <th style={TH}>FPR</th>
             <th style={TH}>ÉVAL</th>
             <th style={TH}>+/-</th>
-            {showMatch && <th style={{ ...TH, minWidth: 180, textAlign: 'left' }}>Joueur</th>}
+            {showMatch && <th style={{ ...TH, minWidth: 80, textAlign: 'left' }}>Joueur</th>}
           </tr>
         </thead>
         <tbody>
@@ -305,7 +306,7 @@ function CsvTable({ rows, showMatch, players, playerMap, onPlayerChange }: {
                 <td style={TD}>{r.bp}</td>
                 <td style={TD}>{r.fte}</td>
                 <td style={TD}>{r.fpr}</td>
-                <td style={{ ...TD, color: r.eval !== null ? (r.eval > 0 ? '#00E5A0' : '#EF4444') : '#475569' }}>
+                <td style={{ ...TD, color: evalColor(r.eval) }}>
                   {r.eval !== null ? r.eval : '—'}
                 </td>
                 <td style={{ ...TD, color: r.plusMinus !== null ? (r.plusMinus > 0 ? '#00E5A0' : r.plusMinus < 0 ? '#EF4444' : '#94A3B8') : '#475569' }}>
@@ -538,6 +539,12 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
 
     setSaving(true);
     try {
+      // Calcul du score final avant l'enregistrement des stats individuelles
+      const preScoreUs   = finalOwn && calcPts(finalOwn)   > 0 ? calcPts(finalOwn)   : match.scoreUs;
+      const preScoreThem = finalOpp && calcPts(finalOpp) > 0 ? calcPts(finalOpp) : match.scoreThem;
+      const preResult: 'win' | 'loss' = preScoreUs > preScoreThem ? 'win' : 'loss';
+      const matchWithScore = { ...match, scoreUs: preScoreUs, scoreThem: preScoreThem, result: preResult };
+
       // Statistiques individuelles
       if (hasIndividual) {
         const bulk: BulkStatRow[] = ownRows
@@ -557,7 +564,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
             eval:      r.eval,
             plusMinus: r.plusMinus,
           }));
-        if (bulk.length > 0) await statsApi.bulkUpsertForMatch(match.id, bulk, match);
+        if (bulk.length > 0) await statsApi.bulkUpsertForMatch(match.id, bulk, matchWithScore);
       }
 
       // Statistiques individuelles adverses
@@ -628,7 +635,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
       style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 960, flexShrink: 0 }}>
+      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 1400, flexShrink: 0 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #2A2F3A' }}>

@@ -13,22 +13,39 @@ export interface LoadThresholds {
   normalMax: number;
 }
 
+export interface StatThresholds {
+  evalTOrange: number;
+  evalTBlue:   number;
+  evalTGreen:  number;
+  ortgTAmber:  number;
+  ortgTGreen:  number;
+  drtgTAmber:  number;
+  drtgTRed:    number;
+}
+
 interface Ctx {
-  options:     TeamSeasonOption[];
-  selected:    TeamSeasonOption | null;
-  setSelected: (opt: TeamSeasonOption) => void;
-  loading:     boolean;
-  reload:      () => void;
-  thresholds:  LoadThresholds;
-  orgId:       string | null;
-  orgRole:     OrgRole | null;
+  options:        TeamSeasonOption[];
+  selected:       TeamSeasonOption | null;
+  setSelected:    (opt: TeamSeasonOption) => void;
+  loading:        boolean;
+  reload:         () => void;
+  thresholds:     LoadThresholds;
+  statThresholds: StatThresholds;
+  orgId:          string | null;
+  orgRole:        OrgRole | null;
 }
 
 const DEFAULT_THRESHOLDS: LoadThresholds = { lightMax: 2750, normalMax: 4250 };
 
+const DEFAULT_STAT_THRESHOLDS: StatThresholds = {
+  evalTOrange: 0, evalTBlue: 5, evalTGreen: 10,
+  ortgTAmber: 60, ortgTGreen: 90,
+  drtgTAmber: 100, drtgTRed: 115,
+};
+
 const TeamSeasonContext = createContext<Ctx>({
   options: [], selected: null, setSelected: () => {}, loading: true, reload: () => {},
-  thresholds: DEFAULT_THRESHOLDS, orgId: null, orgRole: null,
+  thresholds: DEFAULT_THRESHOLDS, statThresholds: DEFAULT_STAT_THRESHOLDS, orgId: null, orgRole: null,
 });
 
 function storageKey(userId: string) {
@@ -126,10 +143,20 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
     normalMax: selected?.team.loadNormalMax ?? DEFAULT_THRESHOLDS.normalMax,
   };
 
+  const statThresholds: StatThresholds = {
+    evalTOrange: selected?.team.evalTOrange ?? DEFAULT_STAT_THRESHOLDS.evalTOrange,
+    evalTBlue:   selected?.team.evalTBlue   ?? DEFAULT_STAT_THRESHOLDS.evalTBlue,
+    evalTGreen:  selected?.team.evalTGreen  ?? DEFAULT_STAT_THRESHOLDS.evalTGreen,
+    ortgTAmber:  selected?.team.ortgTAmber  ?? DEFAULT_STAT_THRESHOLDS.ortgTAmber,
+    ortgTGreen:  selected?.team.ortgTGreen  ?? DEFAULT_STAT_THRESHOLDS.ortgTGreen,
+    drtgTAmber:  selected?.team.drtgTAmber  ?? DEFAULT_STAT_THRESHOLDS.drtgTAmber,
+    drtgTRed:    selected?.team.drtgTRed    ?? DEFAULT_STAT_THRESHOLDS.drtgTRed,
+  };
+
   const orgId = selected?.team.organizationId ?? options[0]?.team.organizationId ?? null;
 
   return (
-    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload, thresholds, orgId, orgRole }}>
+    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload, thresholds, statThresholds, orgId, orgRole }}>
       {children}
     </TeamSeasonContext.Provider>
   );

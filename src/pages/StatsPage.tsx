@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, Legend } from 'recharts';
 import { ArrowLeft, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { players, matchStats, teamMatchStats, getPlayerById, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, TeamMatchStat, MatchStat } from '../data';
+import { players, matchStats, teamMatchStats, getPlayerById, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, evalColor, TeamMatchStat, MatchStat } from '../data';
 import { PlayerAvatar, Breadcrumb } from '../components';
 
 type Tab = 'player' | 'team' | 'match';
@@ -151,7 +151,7 @@ function MatchDetail({ tm }: { tm: TeamMatchStat }) {
                   <Td>{m.ct}</Td><Td>{m.intercepts}</Td>
                   <Td highlight={m.bp >= 6 ? '#EF4444' : undefined}>{m.bp}</Td>
                   <Td>{m.fte}</Td><Td>{m.fpr}</Td>
-                  <Td highlight={(m.eval ?? 0) >= 15 ? '#00E5A0' : (m.eval ?? 0) < 5 ? '#EF4444' : undefined}>{m.eval ?? '—'}</Td>
+                  <Td highlight={evalColor(m.eval ?? null)}>{m.eval ?? '—'}</Td>
                   <Td highlight={(m.plusMinus ?? 0) > 0 ? '#00E5A0' : (m.plusMinus ?? 0) < 0 ? '#EF4444' : undefined}>
                     {m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}
                   </Td>
@@ -294,7 +294,7 @@ function PlayerStatsView() {
                     <Td highlight={m.pd >= 6 ? '#3B82F6' : undefined}>{m.pd}</Td>
                     <Td>{m.ct}</Td><Td>{m.intercepts}</Td>
                     <Td highlight={m.bp >= 6 ? '#EF4444' : undefined}>{m.bp}</Td>
-                    <Td highlight={(m.eval ?? 0) >= 15 ? '#00E5A0' : (m.eval ?? 0) < 5 ? '#EF4444' : undefined}>{m.eval ?? '—'}</Td>
+                    <Td highlight={evalColor(m.eval ?? null)}>{m.eval ?? '—'}</Td>
                     <Td highlight={(m.plusMinus ?? 0) > 0 ? '#00E5A0' : (m.plusMinus ?? 0) < 0 ? '#EF4444' : undefined}>
                       {m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}
                     </Td>
@@ -312,7 +312,7 @@ function PlayerStatsView() {
                   <Td>{avg.ro}</Td><Td>{avg.rd}</Td><Td>{avg.rt}</Td>
                   <Td highlight="#3B82F6">{avg.pd}</Td>
                   <Td>{avg.ct}</Td><Td>{avg.intercepts}</Td><Td>{avg.bp}</Td>
-                  <Td highlight="#00E5A0">{avg.eval}</Td>
+                  <Td highlight={evalColor(Number(avg.eval))}>{avg.eval}</Td>
                   <Td highlight={Number(avg.plusMinus) > 0 ? '#00E5A0' : '#EF4444'}>
                     {Number(avg.plusMinus) > 0 ? `+${avg.plusMinus}` : avg.plusMinus}
                   </Td>
@@ -390,7 +390,7 @@ function TeamStatsView() {
                   <Td highlight={Number(avg.rt) >= 6 ? '#F59E0B' : undefined}>{avg.rt}</Td>
                   <Td highlight={Number(avg.pd) >= 5 ? '#3B82F6' : undefined}>{avg.pd}</Td>
                   <Td>{avg.ct}</Td><Td>{avg.intercepts}</Td><Td>{avg.bp}</Td>
-                  <Td highlight={Number(avg.eval) >= 15 ? '#00E5A0' : undefined}>{avg.eval}</Td>
+                  <Td highlight={evalColor(Number(avg.eval))}>{avg.eval}</Td>
                   <Td highlight={Number(avg.plusMinus) > 0 ? '#00E5A0' : '#EF4444'}>
                     {Number(avg.plusMinus) > 0 ? `+${avg.plusMinus}` : avg.plusMinus}
                   </Td>

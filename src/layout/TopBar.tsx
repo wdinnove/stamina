@@ -96,7 +96,7 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
                       onClick={() => {
                         setSelected(opt);
                         setDropOpen(false);
-                        if (location.pathname.startsWith('/team/')) navigate(`/team/${opt.team.id}`);
+                        window.location.reload();
                       }}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -242,7 +242,7 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
               const opt = options.find(o => o.team.id === teamId && o.season.id === seasonId);
               if (opt) {
                 setSelected(opt);
-                if (location.pathname.startsWith('/team/')) navigate(`/team/${opt.team.id}`);
+                window.location.reload();
               }
             }}
             style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0F1117', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}

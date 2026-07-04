@@ -261,7 +261,7 @@ export default function MeetingDetailPage() {
             <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>"{meeting.title}" sera définitivement supprimée.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setConfirmDel(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-              <button onClick={confirmDelete} disabled={deleting} style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+              <button onClick={confirmDelete} disabled={deleting} className="btn-danger" style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                 {deleting ? 'Suppression…' : 'Supprimer'}
               </button>
             </div>

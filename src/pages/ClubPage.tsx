@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Plus, Search, Users, X, AlertCircle, CheckCircle, Calendar, Save, Building2, Settings } from 'lucide-react';
 import { teamsApi, playersApi, configApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { PlayerAvatar, StatusBadge } from '../components';
+import { PlayerAvatar, StatusBadge, EmptyState } from '../components';
 import type { Team, Player, Organization } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -93,9 +93,7 @@ function TeamsTab() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {filtered.length === 0 && (
-            <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0 }}>
-              {search ? 'Aucun résultat.' : 'Aucune équipe.'}
-            </p>
+            <EmptyState message={search ? 'Aucun résultat.' : 'Aucune équipe.'} size="lg" />
           )}
           {filtered.map(team => (
             <div key={team.id}
@@ -274,9 +272,10 @@ function PlayersTab() {
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}><Spinner /></div>
       ) : filtered.length === 0 ? (
-        <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0 }}>
-          {search || statusFilter !== 'all' ? 'Aucun résultat.' : 'Aucun joueur.'}
-        </p>
+        <EmptyState
+          message={search || statusFilter !== 'all' ? 'Aucun résultat.' : 'Aucun joueur.'}
+          size="lg"
+        />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
           {filtered.map(player => (

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, Legend } from 'recharts';
 import { Download, Printer, Save, ArrowLeft } from 'lucide-react';
 import RichTextEditor from '../components/RichTextEditor';
-import { players, getPlayerById, getPlayerRPE, getPlayerWellness, getPlayerMedical, getPlayerActions, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, getAge } from '../data';
+import { players, getPlayerById, getPlayerRPE, getPlayerWellness, getPlayerMedical, getPlayerActions, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, getAge, evalColor } from '../data';
 import { PlayerAvatar, StatusBadge } from '../components';
 
 const Th = ({ children }: { children: React.ReactNode }) => (
@@ -250,7 +250,7 @@ export default function PlayerReportPage() {
                     <Td highlight={m.pd >= 6 ? '#3B82F6' : undefined}>{m.pd}</Td>
                     <Td>{m.ct}</Td><Td>{m.intercepts}</Td>
                     <Td highlight={m.bp >= 6 ? '#EF4444' : undefined}>{m.bp}</Td>
-                    <Td highlight={(m.eval ?? 0) >= 15 ? '#00E5A0' : (m.eval ?? 0) < 5 ? '#EF4444' : undefined}>{m.eval ?? '—'}</Td>
+                    <Td highlight={evalColor(m.eval ?? null)}>{m.eval ?? '—'}</Td>
                     <Td highlight={(m.plusMinus ?? 0) > 0 ? '#00E5A0' : '#EF4444'}>
                       {m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}
                     </Td>

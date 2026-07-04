@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Plus, X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
+import { EmptyState } from '../components';
 import { rpeApi } from '../api/rpe';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { playersApi } from '../api';
@@ -247,7 +248,7 @@ export default function TrainingSessionsPage() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : sessions.length === 0 ? (
-        <p style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune séance enregistrée pour cette saison.</p>
+        <EmptyState message="Aucune séance enregistrée pour cette saison." size="lg" />
       ) : (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

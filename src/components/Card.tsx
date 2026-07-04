@@ -9,7 +9,7 @@ export function Card({ children, style, onClick, accentColor }: {
   return (
     <div onClick={onClick} style={{
       backgroundColor: '#161920',
-      border: '1px solid #2A2F3A',
+      border: accentColor ? `1px solid ${accentColor}35` : '1px solid #2A2F3A',
       borderLeft: accentColor ? `3px solid ${accentColor}` : '1px solid #2A2F3A',
       borderRadius: 8,
       padding: '14px 16px',

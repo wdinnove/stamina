@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Shield, Settings, Trophy,
+  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Shield, Settings, Trophy, BarChart2, UserSearch,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
@@ -19,6 +19,8 @@ export const navItems = [
   { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'    },
   { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'      },
   { path: '/actions',           icon: CheckSquare,     label: 'Actions'      },
+  { path: '/collective-analyze',  icon: BarChart2,  label: 'Analyse collective'   },
+  { path: '/individual-analyze', icon: UserSearch, label: 'Analyse individuelle' },
 ];
 
 interface SidebarProps {
@@ -137,9 +139,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         <div style={{ padding: collapsed ? '4px 0' : '4px 16px' }}>
         <button
           onClick={async () => { await authApi.signOut(); navigate('/login', { replace: true }); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: collapsed ? 'center' : 'flex-start', width: '100%', padding: '8px 0', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.82rem', transition: 'color 0.15s' }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+          style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: collapsed ? 'center' : 'flex-start', width: '100%', padding: '8px 0', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.82rem' }}>
           <LogOut size={16} />
           {!collapsed && 'Déconnexion'}
         </button>

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, UserPlus, X, Check } from 'lucide-react';
+import { Search, UserPlus, UserMinus, X, Check } from 'lucide-react';
 import { supabase } from '../api/client';
 import { playersApi } from '../api/players';
-import { StatusBadge, PlayerAvatar } from '../components';
+import { StatusBadge, PlayerAvatar, EmptyState } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
 import type { Player } from '../data/types';
@@ -285,13 +285,17 @@ function AddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, onSaved
 
 export default function RosterPage() {
   const navigate = useNavigate();
-  const { selected, loading: ctxLoading } = useTeamSeason();
+  const { selected, loading: ctxLoading, orgRole } = useTeamSeason();
   const [players, setPlayers]     = useState<Player[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [showUnlinkModal, setShowUnlinkModal] = useState(false);
+  const [unlinkSelected, setUnlinkSelected]   = useState<Set<string>>(new Set());
+  const [unlinking, setUnlinking]             = useState(false);
+  const [unlinkError, setUnlinkError]         = useState('');
 
   function loadRoster(seasonId: string) {
     setLoading(true);
@@ -322,26 +326,52 @@ export default function RosterPage() {
 
   const rosterIds = new Set(players.map(p => p.id));
 
+  const handleUnlinkConfirm = async () => {
+    if (!selected || unlinkSelected.size === 0) return;
+    setUnlinking(true);
+    setUnlinkError('');
+    try {
+      await Promise.all(
+        Array.from(unlinkSelected).map(pid => playersApi.unlinkFromSeason(pid, selected.season.id))
+      );
+      setShowUnlinkModal(false);
+      setUnlinkSelected(new Set());
+      loadRoster(selected.season.id);
+    } catch (err: unknown) {
+      setUnlinkError(err instanceof Error ? err.message : 'Erreur lors de la déliaison.');
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Effectif</h1>
         {selected && (
-          <button
-            onClick={() => setShowModal(true)}
-            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <UserPlus size={16} /><span className="hidden md:inline">Ajouter au roster</span>
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {orgRole === 'admin' && players.length > 0 && (
+              <button
+                onClick={() => { setUnlinkSelected(new Set()); setUnlinkError(''); setShowUnlinkModal(true); }}
+                style={{ padding: '8px 14px', backgroundColor: '#1E2229', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', cursor: 'pointer', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <UserMinus size={16} /><span className="hidden md:inline">Délier du roster</span>
+              </button>
+            )}
+            <button
+              onClick={() => setShowModal(true)}
+              style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <UserPlus size={16} /><span className="hidden md:inline">Ajouter au roster</span>
+            </button>
+          </div>
         )}
       </div>
 
       {/* No team selected */}
       {!ctxLoading && !selected && (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#475569', fontSize: '0.9rem' }}>
-          Sélectionnez une équipe et une saison dans la barre du haut.
-        </div>
+        <EmptyState message="Sélectionnez une équipe et une saison dans la barre du haut." size="lg" />
       )}
 
       {selected && (
@@ -382,16 +412,17 @@ export default function RosterPage() {
 
           {/* Empty */}
           {!loading && !error && filtered.length === 0 && (
-            <p style={{ color: '#475569', textAlign: 'center', padding: '40px 0', margin: 0 }}>
-              {search || statusFilter !== 'all' ? 'Aucun résultat.' : 'Aucun joueur dans le roster pour cette saison.'}
-            </p>
+            <EmptyState
+              message={search || statusFilter !== 'all' ? 'Aucun résultat.' : 'Aucun joueur dans le roster pour cette saison.'}
+              size="lg"
+            />
           )}
 
           {/* Cards */}
           {!loading && filtered.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
               {filtered.map(player => (
-                <div key={player.id} onClick={() => navigate(`/players/${player.id}`, { state: { from: '/roster' } })}
+                <div key={player.id} onClick={() => navigate(`/individual-analyze/${player.id}`)}
                   style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
@@ -409,7 +440,7 @@ export default function RosterPage() {
         </>
       )}
 
-      {/* Modal */}
+      {/* Add modal */}
       {showModal && selected && (
         <AddModal
           seasonId={selected.season.id}
@@ -422,6 +453,77 @@ export default function RosterPage() {
             loadRoster(selected.season.id);
           }}
         />
+      )}
+
+      {/* Unlink modal */}
+      {showUnlinkModal && selected && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
+              <div>
+                <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>Délier du roster</div>
+                <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 2 }}>{selected.team.name} · {selected.season.label}</div>
+              </div>
+              <button onClick={() => setShowUnlinkModal(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4 }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Player list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+              {players.map(p => {
+                const checked = unlinkSelected.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setUnlinkSelected(prev => {
+                      const next = new Set(prev);
+                      next.has(p.id) ? next.delete(p.id) : next.add(p.id);
+                      return next;
+                    })}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderRadius: 7, border: 'none', backgroundColor: checked ? 'rgba(239,68,68,0.1)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'background-color 0.12s' }}
+                  >
+                    <div style={{ width: 18, height: 18, borderRadius: 4, border: `1.5px solid ${checked ? '#EF4444' : '#2A2F3A'}`, backgroundColor: checked ? '#EF4444' : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.12s' }}>
+                      {checked && <Check size={11} color="#fff" />}
+                    </div>
+                    <PlayerAvatar player={p} size={28} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>{p.firstName} {p.lastName}</span>
+                      <span style={{ color: '#475569', fontSize: '0.78rem', marginLeft: 8 }}>#{p.number} · {p.position}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid #1E2229' }}>
+              {unlinkError && (
+                <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 10px' }}>{unlinkError}</p>
+              )}
+              {unlinkSelected.size > 0 && (
+                <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 10px' }}>
+                  {unlinkSelected.size} joueur{unlinkSelected.size > 1 ? 's' : ''} sélectionné{unlinkSelected.size > 1 ? 's' : ''} — son profil et ses stats ne sont pas supprimés.
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowUnlinkModal(false)} style={{ flex: 1, padding: '9px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Annuler
+                </button>
+                <button
+                  onClick={handleUnlinkConfirm}
+                  disabled={unlinkSelected.size === 0 || unlinking}
+                  style={{ flex: 1, padding: '9px', backgroundColor: unlinkSelected.size === 0 || unlinking ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: unlinkSelected.size === 0 || unlinking ? '#475569' : '#fff', cursor: unlinkSelected.size === 0 || unlinking ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}
+                >
+                  {unlinking ? 'Déliaison…' : `Délier${unlinkSelected.size > 0 ? ` (${unlinkSelected.size})` : ''}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,9 @@
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, useParams } from 'react-router';
+
+function RedirectToAnalyse() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/individual-analyze/${id}`} replace />;
+}
 
 import { Layout }      from './layout/Layout';
 import { RequireAuth } from './components';
@@ -29,6 +34,8 @@ import ClubPage                    from './pages/ClubPage';
 import PlayerWellnessPublicPage    from './pages/PlayerWellnessPublicPage';
 import MatchesPage                 from './pages/MatchesPage';
 import MatchDetailPage             from './pages/MatchDetailPage';
+import AnalyseCollectivePage       from './pages/AnalyseCollectivePage';
+import AnalyseIndividuellePage     from './pages/AnalyseIndividuellePage';
 
 export const router = createBrowserRouter([
   {
@@ -51,7 +58,7 @@ export const router = createBrowserRouter([
           { path: 'teams',           Component: TeamsPage        },
           { path: 'teams/:id',      Component: TeamsPage        },
           { path: 'players',           Component: PlayersPage      },
-          { path: 'players/:id',     Component: PlayersPage      },
+          { path: 'players/:id',     element: <RedirectToAnalyse /> },
           { path: 'players/:id/rpe', Component: PlayerRPEPage    },
           { path: 'rpe',             Component: RPEPage          },
           { path: 'rpe/:tab',        Component: RPEPage          },
@@ -80,6 +87,9 @@ export const router = createBrowserRouter([
           { path: 'matches/:id',   Component: MatchDetailPage  },
           { path: 'reports/player', Component: PlayerReportPage },
           { path: 'reports/team',   Component: TeamReportPage   },
+          { path: 'collective-analyze',      Component: AnalyseCollectivePage   },
+          { path: 'individual-analyze',    Component: AnalyseIndividuellePage },
+          { path: 'individual-analyze/:id', Component: AnalyseIndividuellePage },
           { path: '*', element: <Navigate to="/dashboard" replace /> },
         ],
       },

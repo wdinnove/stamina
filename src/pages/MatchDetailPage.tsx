@@ -6,8 +6,10 @@ import { statsApi } from '../api/stats';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
+import { EmptyState } from '../components';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
+import { evalColor } from '../data';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const DAYS_FR   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -382,11 +384,7 @@ export default function MatchDetailPage() {
           {/* ── BOXSCORE ── */}
           {activeTab === 'boxscore' && (
             !teamStats && individualStats.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}>
-                <BarChart3 size={32} style={{ marginBottom: 10, opacity: 0.2 }} />
-                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>Aucune statistique importée</p>
-                <p style={{ margin: '4px 0 0', fontSize: '0.78rem' }}>Cliquez sur "Importer" pour ajouter les données du match.</p>
-              </div>
+              <EmptyState message="Aucune statistique importée." />
             ) : (
               <div className="flex flex-col gap-4 sm:gap-6">
                 {individualStats.length > 0 && (
@@ -429,7 +427,7 @@ export default function MatchDetailPage() {
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{s.ro + s.rd}</td>
                                 <td style={TD}>{s.pd}</td><td style={TD}>{s.ct}</td><td style={TD}>{s.intercepts}</td>
                                 <td style={TD}>{s.bp}</td><td style={TD}>{s.fte}</td><td style={TD}>{s.fpr}</td>
-                                <td style={{ ...TD, color: (s.eval ?? 0) > 0 ? '#00E5A0' : (s.eval ?? 0) < 0 ? '#EF4444' : '#94A3B8' }}>{s.eval ?? '—'}</td>
+                                <td style={{ ...TD, color: evalColor(s.eval ?? null) }}>{s.eval ?? '—'}</td>
                                 <td style={{ ...TD, color: (s.plusMinus ?? 0) > 0 ? '#00E5A0' : (s.plusMinus ?? 0) < 0 ? '#EF4444' : '#94A3B8' }}>{s.plusMinus != null ? (s.plusMinus > 0 ? `+${s.plusMinus}` : s.plusMinus) : '—'}</td>
                               </tr>
                             );
@@ -511,7 +509,7 @@ export default function MatchDetailPage() {
                               <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{s.ro + s.rd}</td>
                               <td style={TD}>{s.pd}</td><td style={TD}>{s.ct}</td><td style={TD}>{s.intercepts}</td>
                               <td style={TD}>{s.bp}</td><td style={TD}>{s.fte}</td><td style={TD}>{s.fpr}</td>
-                              <td style={{ ...TD, color: s.eval != null ? (s.eval > 0 ? '#00E5A0' : s.eval < 0 ? '#EF4444' : '#94A3B8') : '#475569' }}>{s.eval ?? '—'}</td>
+                              <td style={{ ...TD, color: evalColor(s.eval ?? null) }}>{s.eval ?? '—'}</td>
                               <td style={{ ...TD, color: s.plusMinus != null ? (s.plusMinus > 0 ? '#00E5A0' : s.plusMinus < 0 ? '#EF4444' : '#94A3B8') : '#475569' }}>{s.plusMinus != null ? (s.plusMinus > 0 ? `+${s.plusMinus}` : s.plusMinus) : '—'}</td>
                             </tr>
                           ))}
@@ -560,7 +558,7 @@ export default function MatchDetailPage() {
           {/* ── STATS AVANCÉES ── */}
           {activeTab === 'advanced' && (
             !individualStats.length && !opponentStats.length ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}><p style={{ margin: 0 }}>Aucune statistique individuelle importée.</p></div>
+              <EmptyState message="Aucune statistique individuelle importée." />
             ) : (
               <div className="flex flex-col gap-4 sm:gap-6">
                 {individualStats.length > 0 && (
@@ -598,7 +596,7 @@ export default function MatchDetailPage() {
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
-                                <td style={{ ...TD, color: adv.offRating !== null ? (adv.offRating >= 110 ? '#00E5A0' : adv.offRating < 90 ? '#EF4444' : '#94A3B8') : '#475569' }}>{fmt(adv.offRating)}</td>
+                                <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
                                 <td style={TD}>{fmt(adv.efgPct, '%')}</td>
                                 <td style={TD}>{fmt(adv.ftRate)}</td>
                                 <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(adv.ptsProd)}</td>
@@ -658,7 +656,7 @@ export default function MatchDetailPage() {
                                   <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>—</td>
                                   <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
                                   <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
-                                  <td style={{ ...TD, color: adv.offRating !== null ? (adv.offRating >= 110 ? '#00E5A0' : adv.offRating < 90 ? '#EF4444' : '#94A3B8') : '#475569' }}>{fmt(adv.offRating)}</td>
+                                  <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
                                   <td style={TD}>{fmt(adv.efgPct, '%')}</td>
                                   <td style={TD}>{fmt(adv.ftRate)}</td>
                                   <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(adv.ptsProd)}</td>
@@ -683,7 +681,7 @@ export default function MatchDetailPage() {
 
           {/* ── FOUR FACTORS ── */}
           {activeTab === 'four_factors' && (() => {
-            if (!teamStats) return <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}><p style={{ margin: 0 }}>Stats collectives requises.</p></div>;
+            if (!teamStats) return <EmptyState message="Stats collectives requises." />;
             const oppFga = teamStats.opp_fg2a + teamStats.opp_fg3a;
             const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : null;
             const factors: { label: string; desc: string; weight: string; own: number | null; opp: number | null; higherIsBetter: boolean; fmt: (v: number) => string }[] = [
@@ -751,11 +749,7 @@ export default function MatchDetailPage() {
 
           {/* ── COMPARAISON JOUEURS ── */}
           {activeTab === 'comp_players' && (() => {
-            if (individualStats.length < 2) return (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}>
-                <p style={{ margin: 0 }}>Au moins 2 joueurs importés requis.</p>
-              </div>
-            );
+            if (individualStats.length < 2) return <EmptyState message="Au moins 2 joueurs importés requis." />;
             const sA = individualStats.find(s => s.playerId === playerA);
             const sB = individualStats.find(s => s.playerId === playerB);
             const pA = playerById.get(playerA);
@@ -886,9 +880,7 @@ export default function MatchDetailPage() {
 
           {/* ── COMPARAISONS ÉQUIPES ── */}
           {activeTab === 'comp_teams' && (() => {
-            if (!teamStats) return (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}><p style={{ margin: 0 }}>Statistiques collectives requises.</p></div>
-            );
+            if (!teamStats) return <EmptyState message="Statistiques collectives requises." />;
             const hasOpp = teamStats.opp_fg2a > 0 || teamStats.opp_fg3a > 0 || teamStats.opp_fta > 0;
             const f1 = (v: number) => `${v}%`;
             const f2 = (v: number) => v.toFixed(2);
@@ -976,10 +968,10 @@ export default function MatchDetailPage() {
                 <div style={{ width: 20, height: 20, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
               </div>
             );
-            if (!teamStats) return <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}><p style={{ margin: 0 }}>Statistiques collectives requises.</p></div>;
+            if (!teamStats) return <EmptyState message="Statistiques collectives requises." />;
             const others = seasonTeamStats.filter(ts => ts.matchId !== match.id);
             const n = others.length;
-            if (n === 0) return <div style={{ textAlign: 'center', padding: '40px 0', color: '#475569' }}><p style={{ margin: 0 }}>Aucun autre match cette saison.</p></div>;
+            if (n === 0) return <EmptyState message="Aucun autre match cette saison." />;
             const avg = (fn: (ts: TeamMatchStat) => number) => {
               const vals = others.map(fn);
               return Math.round(vals.reduce((a, b) => a + b, 0) / n * 10) / 10;
@@ -1154,7 +1146,7 @@ export default function MatchDetailPage() {
             <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 20px' }}>Les statistiques associées seront aussi supprimées.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setConfirmDelete(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-              <button onClick={handleDelete} disabled={deleting}
+              <button onClick={handleDelete} disabled={deleting} className="btn-danger"
                 style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
                 {deleting ? 'Suppression…' : 'Supprimer'}
               </button>
