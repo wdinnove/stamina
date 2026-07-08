@@ -1,19 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered } from 'lucide-react';
+import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered, Image as ImageIcon, FileText, Video } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
+import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
-import type { Exercise, ExerciseImage } from '../data/types';
-
-export const EXERCISE_CATEGORIES = [
-  'Échauffement', 'Jeu réduit', 'Jeu rapide', 'Tirs', 'Technique',
-  'Physique', 'Tactique', 'Retour au calme', 'Autre',
-];
+import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -98,39 +94,40 @@ function RichText({ html }: { html?: string }) {
 }
 
 /* ── Catégorie badge ──────────────────────────────────────────────────────── */
-const CAT_COLORS: Record<string, string> = {
-  'Échauffement':    '#F59E0B',
-  'Jeu réduit':      '#3B82F6',
-  'Jeu rapide':      '#06B6D4',
-  'Tirs':            '#8B5CF6',
-  'Technique':       '#00E5A0',
-  'Physique':        '#EF4444',
-  'Tactique':        '#F97316',
-  'Retour au calme': '#94A3B8',
-  'Autre':           '#475569',
-};
-
-function CategoryBadge({ category }: { category?: string }) {
-  if (!category) return null;
-  const color = CAT_COLORS[category] ?? '#475569';
+function CategoryBadge({ name, color }: { name?: string; color?: string }) {
+  if (!name) return null;
+  const c = color ?? '#475569';
   return (
-    <span style={{ color, backgroundColor: color + '18', fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 4, flexShrink: 0 }}>
-      {category}
+    <span style={{ color: c, backgroundColor: c + '18', fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 4, flexShrink: 0 }}>
+      {name}
     </span>
+  );
+}
+
+/* ── En-tête de section (modale) ──────────────────────────────────────────── */
+function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {icon}
+      <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {children}
+      </span>
+    </div>
   );
 }
 
 /* ── Modal form (avec éditeur) ───────────────────────────────────────────── */
 function ExerciseModal({
-  editing, onClose, onSaved, teamId,
+  editing, onClose, onSaved, teamId, categories,
 }: {
   editing: Exercise | null;
   onClose: () => void;
   onSaved: (ex: Exercise, isNew: boolean) => void;
   teamId?: string;
+  categories: ExerciseCategory[];
 }) {
   const [name,        setName]        = useState(editing?.name ?? '');
-  const [category,    setCategory]    = useState(editing?.category ?? '');
+  const [categoryId,  setCategoryId]  = useState(editing?.categoryId ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [videoUrl,    setVideoUrl]    = useState(editing?.videoUrl ?? '');
   const [saving,      setSaving]      = useState(false);
@@ -249,13 +246,13 @@ function ExerciseModal({
       if (editing) {
         const updated = await exercisesApi.update(editing.id, {
           name: name.trim(), description: plain ? description : undefined,
-          category: category || undefined, videoUrl: videoUrl.trim(),
+          categoryId: categoryId || undefined, videoUrl: videoUrl.trim(),
         });
         onSaved(updated, false);
       } else {
         const created = await exercisesApi.create({
           name: name.trim(), description: plain ? description : undefined,
-          category: category || undefined, teamId, videoUrl: videoUrl.trim() || undefined,
+          categoryId: categoryId || undefined, teamId, videoUrl: videoUrl.trim() || undefined,
         });
         for (let i = 0; i < pendingImages.length; i++) {
           const url = await exercisesApi.uploadImage(created.id, pendingImages[i].file);
@@ -280,7 +277,7 @@ function ExerciseModal({
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 500, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 640, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
             {editing ? "Modifier l'exercice" : 'Nouvel exercice'}
@@ -295,53 +292,65 @@ function ExerciseModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Nom *</label>
-            <input required type="text" placeholder="Nom de l'exercice…" value={name}
-              onChange={e => setName(e.target.value)} style={inputStyle} autoFocus />
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {/* Informations générales */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="exercise-form-row">
+              <div style={{ flex: 2 }}>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Nom *</label>
+                <input required type="text" placeholder="Nom de l'exercice…" value={name}
+                  onChange={e => setName(e.target.value)} style={inputStyle} autoFocus />
+              </div>
+              <div style={{ flex: 1, minWidth: 150 }}>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Catégorie</label>
+                <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={inputStyle}>
+                  <option value="">— Aucune —</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Description</label>
+              <RichEditor value={description} onChange={setDescription} />
+            </div>
           </div>
 
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Catégorie</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
-              <option value="">— Aucune —</option>
-              {EXERCISE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+          {/* Médias */}
+          <div style={{ borderTop: '1px solid #2A2F3A', paddingTop: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <SectionLabel icon={<ImageIcon size={13} color="#00E5A0" />}>Médias</SectionLabel>
+
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
+              <ExerciseImagePicker items={imageItems} onAdd={handleAddImages} onRemove={handleRemoveImage} disabled={imageBusy} />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Document PDF</label>
+                <ExerciseDocumentPicker
+                  fileName={documentName || undefined}
+                  fileUrl={documentUrl || undefined}
+                  onSelect={handleDocumentSelect}
+                  onRemove={handleDocumentRemove}
+                  disabled={docBusy}
+                />
+              </div>
+
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Lien vidéo</label>
+                <div style={{ color: '#475569', fontSize: '0.68rem', marginBottom: 5 }}>Twitter/X, Facebook, Instagram, TikTok</div>
+                <input type="url" placeholder="https://…" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={inputStyle} />
+                {videoUrl.trim() && (
+                  videoPlatform
+                    ? <div style={{ color: '#00E5A0', fontSize: '0.72rem', marginTop: 5 }}>Aperçu {SOCIAL_PLATFORM_LABELS[videoPlatform]} détecté</div>
+                    : <div style={{ color: '#EF4444', fontSize: '0.72rem', marginTop: 5 }}>Lien non reconnu</div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Description</label>
-            <RichEditor value={description} onChange={setDescription} />
-          </div>
-
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
-            <ExerciseImagePicker items={imageItems} onAdd={handleAddImages} onRemove={handleRemoveImage} disabled={imageBusy} />
-          </div>
-
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Document PDF</label>
-            <ExerciseDocumentPicker
-              fileName={documentName || undefined}
-              fileUrl={documentUrl || undefined}
-              onSelect={handleDocumentSelect}
-              onRemove={handleDocumentRemove}
-              disabled={docBusy}
-            />
-          </div>
-
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Lien vidéo (Twitter/X, Facebook, Instagram, TikTok)</label>
-            <input type="url" placeholder="https://…" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={inputStyle} />
-            {videoUrl.trim() && (
-              videoPlatform
-                ? <div style={{ color: '#00E5A0', fontSize: '0.72rem', marginTop: 5 }}>Aperçu {SOCIAL_PLATFORM_LABELS[videoPlatform]} détecté</div>
-                : <div style={{ color: '#EF4444', fontSize: '0.72rem', marginTop: 5 }}>Lien non reconnu — utilisez un lien public Twitter/X, Facebook, Instagram ou TikTok</div>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <div style={{ display: 'flex', gap: 10 }}>
             <button type="button" onClick={onClose}
               style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
               Annuler
@@ -352,6 +361,13 @@ function ExerciseModal({
             </button>
           </div>
         </form>
+
+        <style>{`
+          .exercise-form-row { display: flex; gap: 12px; }
+          @media (max-width: 520px) {
+            .exercise-form-row { flex-direction: column; }
+          }
+        `}</style>
       </div>
     </div>
   );
@@ -361,11 +377,13 @@ function ExerciseModal({
 export default function ExercisesPage() {
   const { selected } = useTeamSeason();
   const navigate = useNavigate();
-  const [exercises,  setExercises]  = useState<Exercise[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState('');
-  const [search,     setSearch]     = useState('');
-  const [showModal,  setShowModal]  = useState(false);
+  const [exercises,      setExercises]      = useState<Exercise[]>([]);
+  const [categories,     setCategories]     = useState<ExerciseCategory[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState('');
+  const [search,         setSearch]         = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [showModal,      setShowModal]      = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -377,18 +395,26 @@ export default function ExercisesPage() {
       .finally(() => setLoading(false));
   }, [selected?.team.id]);
 
+  useEffect(() => {
+    if (!selected) return;
+    exerciseCategoriesApi.list(selected.team.id).then(setCategories).catch(() => {});
+  }, [selected?.team.id]);
+
   function handleSaved(ex: Exercise, isNew: boolean) {
     setExercises(prev =>
       (isNew ? [...prev, ex] : prev.map(e => e.id === ex.id ? ex : e))
         .sort((a, b) => a.name.localeCompare(b.name))
     );
-    notifyOrg(isNew ? 'exercise_added' : 'exercise_updated', ex.name, ex.category ?? undefined, 'exercise', ex.id);
+    notifyOrg(isNew ? 'exercise_added' : 'exercise_updated', ex.name, ex.categoryName ?? undefined, 'exercise', ex.id);
   }
 
   const filtered = exercises.filter(ex =>
-    ex.name.toLowerCase().includes(search.toLowerCase()) ||
-    (ex.category ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (ex.description ?? '').replace(/<[^>]+>/g, '').toLowerCase().includes(search.toLowerCase())
+    (categoryFilter === '' || ex.categoryId === categoryFilter) &&
+    (
+      ex.name.toLowerCase().includes(search.toLowerCase()) ||
+      (ex.categoryName ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (ex.description ?? '').replace(/<[^>]+>/g, '').toLowerCase().includes(search.toLowerCase())
+    )
   );
 
   return (
@@ -396,13 +422,7 @@ export default function ExercisesPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <BookOpen size={20} color="#00E5A0" />
-          <h1 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Exercices</h1>
-          {exercises.length > 0 && (
-            <span style={{ color: '#475569', fontSize: '0.78rem', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 20, padding: '2px 10px' }}>
-              {exercises.length}
-            </span>
-          )}
+          <h1 style={{ color: '#F1F5F9', margin: 0 }}>Exercices</h1>
         </div>
         <button onClick={() => setShowModal(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 7, color: '#0D0F14', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
@@ -410,12 +430,19 @@ export default function ExercisesPage() {
         </button>
       </div>
 
-      {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 20, maxWidth: 360, width: '100%' }}>
-        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-        <input type="text" placeholder="Rechercher…" value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ ...inputStyle, paddingLeft: 32 }} />
+      {/* Filtres */}
+      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 20, width: '100%' }}>
+        <div className="w-full sm:flex-[2_1_240px]" style={{ position: 'relative' }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+          <input type="text" placeholder="Rechercher…" value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: 32, width: '100%' }} />
+        </div>
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+          className="w-full sm:flex-[1_1_180px]" style={inputStyle}>
+          <option value="">Toutes les catégories</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
 
       {loading && (
@@ -439,12 +466,14 @@ export default function ExercisesPage() {
       {/* Table */}
       {filtered.length > 0 && (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 150 }}>Catégorie</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 280 }}>Nom</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 140 }}>Catégorie</th>
+                <th className="hidden lg:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 110 }}>Médias</th>
+                <th style={{ padding: '10px 20px', width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -457,19 +486,32 @@ export default function ExercisesPage() {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                   >
-                    <td style={{ padding: '12px 20px' }}>
+                    <td style={{ padding: '12px 20px', textAlign: 'left' }}>
                       <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>{ex.name}</span>
                     </td>
-                    <td style={{ padding: '12px 20px' }}>
-                      <CategoryBadge category={ex.category} />
+                    <td style={{ padding: '12px 20px', textAlign: 'left' }}>
+                      <CategoryBadge name={ex.categoryName} color={ex.categoryColor} />
                     </td>
-                    <td className="hidden sm:table-cell" style={{ padding: '12px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ color: '#475569', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
-                          {desc || '—'}
+                    <td className="hidden lg:table-cell" style={{ padding: '12px 20px', textAlign: 'left' }}>
+                      <span style={{ color: '#475569', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                        {desc || '—'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 20px', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <span title="Images" style={{ display: 'flex' }}>
+                          <ImageIcon size={14} color={(ex.imageCount ?? 0) > 0 ? '#00E5A0' : '#2A2F3A'} />
                         </span>
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span title="Document PDF" style={{ display: 'flex' }}>
+                          <FileText size={14} color={ex.documentUrl ? '#00E5A0' : '#2A2F3A'} />
+                        </span>
+                        <span title="Lien vidéo" style={{ display: 'flex' }}>
+                          <Video size={14} color={ex.videoUrl ? '#00E5A0' : '#2A2F3A'} />
+                        </span>
                       </div>
+                    </td>
+                    <td style={{ padding: '12px 20px' }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </td>
                   </tr>
                 );
@@ -486,6 +528,7 @@ export default function ExercisesPage() {
           onClose={() => setShowModal(false)}
           onSaved={(ex, isNew) => { handleSaved(ex, isNew); if (isNew) navigate(`/exercises/${ex.id}`); }}
           teamId={selected?.team.id}
+          categories={categories}
         />
       )}
     </div>

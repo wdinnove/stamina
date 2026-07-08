@@ -1,27 +1,55 @@
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Users, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Shield, Settings, Trophy, BarChart2, UserSearch,
+  CheckSquare, LogOut, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Settings, Trophy, BarChart2, UserSearch, GitCompare,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
-export const navItems = [
-  { path: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard'    },
-  { path: '/roster',            icon: ClipboardList,   label: 'Effectif'     },
-  { path: '/staff',             icon: Users,           label: 'Staff'        },
-  { path: '/attendance',        icon: CalendarCheck,   label: 'Présences'    },
-  { path: '/sessions',          icon: Dumbbell,        label: 'Séances'      },
-  { path: '/matches',           icon: Trophy,          label: 'Matchs'       },
-  { path: '/exercises',         icon: BookOpen,        label: 'Exercices'    },
-  { path: '/rpe/new',           icon: Activity,        label: 'RPE Effort'   },
-  { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'    },
-  { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'      },
-  { path: '/actions',           icon: CheckSquare,     label: 'Actions'      },
-  { path: '/collective-analyze',  icon: BarChart2,  label: 'Analyse collective'   },
-  { path: '/individual-analyze', icon: UserSearch, label: 'Analyse individuelle' },
+export const navGroups = [
+  {
+    title: undefined,
+    items: [
+      { path: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard'    },
+    ],
+  },
+  {
+    title: 'Entraînement',
+    items: [
+      { path: '/sessions',          icon: Dumbbell,        label: 'Séances'      },
+      { path: '/attendance',        icon: CalendarCheck,   label: 'Présences'    },
+      { path: '/exercises',         icon: BookOpen,        label: 'Exercices'    },
+    ],
+  },
+  {
+    title: 'Compétition',
+    items: [
+      { path: '/matches',             icon: Trophy,     label: 'Matchs'             },
+      { path: '/collective-analyze',  icon: BarChart2,  label: 'Statistiques collectives' },
+    ],
+  },
+  {
+    title: 'Joueurs',
+    items: [
+      { path: '/roster',            icon: ClipboardList,   label: 'Effectif'            },
+      { path: '/individual-analyze', icon: UserSearch, label: 'Statistiques individuelles' },
+      { path: '/rpe/new',           icon: Activity,        label: 'RPE'                 },
+      { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'           },
+      { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'             },
+      { path: '/cross-analyze',     icon: GitCompare,      label: 'Analyse croisée'     },
+    ],
+  },
+  {
+    title: 'Organisation',
+    items: [
+      { path: '/meetings',          icon: Calendar,        label: 'Réunions'     },
+      { path: '/actions',           icon: CheckSquare,     label: 'Tâches'       },
+    ],
+  },
 ];
+
+export const navItems = navGroups.flatMap(g => g.items);
 
 interface SidebarProps {
   collapsed: boolean;
@@ -38,7 +66,7 @@ export function isNavActive(itemPath: string, currentPath: string): boolean {
 export function Sidebar({ collapsed }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { orgId, orgRole, selected } = useTeamSeason();
+  const { orgRole } = useTeamSeason();
 
   return (
     <aside style={{
@@ -66,8 +94,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {(() => {
-          const teamPath = selected ? `/team/${selected.team.id}` : '#';
-          const teamActive = location.pathname.startsWith('/team/');
           const navStyle = (active: boolean): React.CSSProperties => ({
             display: 'flex', alignItems: 'center', gap: 10,
             padding: collapsed ? '10px 0' : '10px 16px',
@@ -81,43 +107,35 @@ export function Sidebar({ collapsed }: SidebarProps) {
           });
           return (
             <>
-              {/* Dashboard */}
-              {navItems.slice(0, 1).map(item => {
-                const active = isNavActive(item.path, location.pathname);
-                return (
-                  <Link key={item.path} to={item.path} title={collapsed ? item.label : undefined} style={navStyle(active)}>
-                    <item.icon size={18} style={{ flexShrink: 0 }} />
-                    {!collapsed && item.label}
-                  </Link>
-                );
-              })}
-              {/* Équipe — dynamique /team/:id */}
-              <Link to={teamPath} title={collapsed ? 'Équipe' : undefined} style={navStyle(teamActive)}>
-                <Shield size={18} style={{ flexShrink: 0 }} />
-                {!collapsed && 'Équipe'}
-              </Link>
-              {/* Reste des items */}
-              {navItems.slice(1).map(item => {
-                const active = isNavActive(item.path, location.pathname);
-                return (
-                  <Link key={item.path} to={item.path} title={collapsed ? item.label : undefined} style={navStyle(active)}>
-                    <item.icon size={18} style={{ flexShrink: 0 }} />
-                    {!collapsed && item.label}
-                  </Link>
-                );
-              })}
+              {navGroups.map((group, gi) => (
+                <div key={gi}>
+                  {group.title && !collapsed && (
+                    <div style={{ padding: '10px 16px 4px', color: '#475569', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {group.title}
+                    </div>
+                  )}
+                  {group.items.map(item => {
+                    const active = isNavActive(item.path, location.pathname);
+                    return (
+                      <Link key={item.path} to={item.path} title={collapsed ? item.label : undefined} style={navStyle(active)}>
+                        <item.icon size={18} style={{ flexShrink: 0 }} />
+                        {!collapsed && item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
             </>
           );
         })()}
       </nav>
 
-      {/* Club + Config + Logout */}
+      {/* Configuration + Logout */}
       <div style={{ padding: collapsed ? '8px 0' : '8px 0' }}>
         {orgRole === 'admin' && (() => {
-          const clubPath = orgId ? `/organization/${orgId}` : '#';
-          const active = location.pathname.startsWith('/organization');
+          const active = location.pathname.startsWith('/configuration');
           return (
-            <Link to={clubPath} title={collapsed ? 'Configuration club' : undefined}
+            <Link to="/configuration" title={collapsed ? 'Configuration' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: collapsed ? '10px 0' : '10px 16px',
@@ -130,7 +148,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 whiteSpace: 'nowrap', overflow: 'hidden',
               }}>
               <Settings size={18} style={{ flexShrink: 0 }} />
-              {!collapsed && 'Configuration club'}
+              {!collapsed && 'Configuration'}
             </Link>
           );
         })()}

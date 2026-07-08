@@ -235,16 +235,16 @@ export default function ActionsPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>
-          <span className="hidden sm:inline">Actions  </span>
-          <span className="sm:hidden">Actions</span>
+          <span className="hidden sm:inline">Tâches  </span>
+          <span className="sm:hidden">Tâches</span>
         </h1>
         <button
           onClick={() => setShowForm(true)}
           style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
         >
-          <Plus size={16} /><span className="hidden sm:inline">Nouvelle action</span>
+          <Plus size={16} /><span className="hidden sm:inline">Nouvelle tâche</span>
         </button>
       </div>
 
@@ -314,7 +314,7 @@ export default function ActionsPage() {
               <span style={{ backgroundColor: '#F59E0B22', color: '#F59E0B', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{thisWeek.length}</span>
             </div>
             {thisWeek.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action cette semaine.</p>
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune tâche cette semaine.</p>
               : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{thisWeek.map(a => <ActionCard key={a.id} action={a} />)}</div>
             }
           </div>
@@ -325,7 +325,7 @@ export default function ActionsPage() {
               <span style={{ backgroundColor: '#3B82F622', color: '#3B82F6', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{later.length}</span>
             </div>
             {later.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action à venir.</p>
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune tâche à venir.</p>
               : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{later.map(a => <ActionCard key={a.id} action={a} />)}</div>
             }
           </div>
@@ -336,7 +336,7 @@ export default function ActionsPage() {
               <span style={{ backgroundColor: '#47556922', color: '#475569', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{done.length}</span>
             </div>
             {done.length === 0
-              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune action terminée.</p>
+              ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune tâche terminée.</p>
               : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{done.map(a => <ActionCard key={a.id} action={a} />)}</div>
             }
           </div>
@@ -346,11 +346,11 @@ export default function ActionsPage() {
       {confirmDelete && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24 }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cette action ?</h2>
+            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cette tâche ?</h2>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
               <strong style={{ color: '#F1F5F9' }}>{confirmDelete.title}</strong>
             </p>
-            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cette action sera définitivement supprimée.</p>
+            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cette tâche sera définitivement supprimée.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
                 Annuler
@@ -372,7 +372,7 @@ export default function ActionsPage() {
           `}</style>
           <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="px-4 sm:px-7" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 20, paddingBottom: 16, borderBottom: '1px solid #2A2F3A' }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Nouvelle action</h2>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Nouvelle tâche</h2>
               <button onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
             </div>
 
@@ -393,7 +393,7 @@ export default function ActionsPage() {
                 </select>
               </div>
               <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre de l'action *</label>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre de la tâche *</label>
                 <input type="text" required placeholder="Ex : Séance kiné matin" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
               </div>
               <div className="act-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -427,7 +427,7 @@ export default function ActionsPage() {
               </div>
               <div>
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Description / Consigne</label>
-                <RichTextEditor value={form.description} onChange={html => setForm(f => ({ ...f, description: html }))} placeholder="Description détaillée de l'action..." minHeight={72} />
+                <RichTextEditor value={form.description} onChange={html => setForm(f => ({ ...f, description: html }))} placeholder="Description détaillée de la tâche..." minHeight={72} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.88rem' }}>Annuler</button>

@@ -3,6 +3,7 @@ import { useParams } from 'react-router';
 import { Send, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../api/client';
 import { StaminaLogo } from '../components/StaminaLogo';
+import { wellnessScoreColor, wellnessDimColor, wellnessGlobalScore } from '../utils/wellness';
 
 const DIMS = [
   { key: 'fatigue',    label: 'Fatigue',              emoji: '😴', desc: 'Très reposé → Épuisé',           inverted: true  },
@@ -13,14 +14,13 @@ const DIMS = [
   { key: 'soreness',   label: 'Douleurs musculaires', emoji: '🦵', desc: 'Aucune → Très intenses',         inverted: true  },
 ];
 
+// Même formule que la colonne générée wellness_entries.score (schema.sql) et wellnessGlobalScore
 function calcScore(v: Record<string, number>) {
-  return Math.round(
-    ((10 - v.fatigue) + v.mood + (10 - v.stress) + v.motivation + v.sleep + (10 - v.soreness)) / 6 * 10
-  ) / 10;
+  return wellnessGlobalScore(v as { fatigue: number; mood: number; stress: number; motivation: number; sleep: number; soreness: number });
 }
 
-const scoreColor = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
-const dimColor   = (v: number, inv: boolean) => scoreColor(inv ? 11 - v : v);
+const scoreColor = wellnessScoreColor;
+const dimColor   = wellnessDimColor;
 
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function minDateStr() {

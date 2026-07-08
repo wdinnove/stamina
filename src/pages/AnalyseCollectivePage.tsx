@@ -308,6 +308,10 @@ export default function AnalyseCollectivePage() {
   return (
     <div className="p-4 md:p-6">
 
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Statistiques collectives</h1>
+      </div>
+
       {/* ── Hero équipe ── */}
       <div style={{ backgroundColor: `${heroAccent}10`, border: `1px solid ${heroAccent}40`, borderLeft: `4px solid ${heroAccent}`, borderRadius: 8, padding: '14px 4px 14px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         {/* Logo initiales */}

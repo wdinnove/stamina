@@ -4,15 +4,20 @@ import type { Exercise, ExerciseImage } from '../data/types';
 const BUCKET = 'exercises';
 
 function toExercise(row: Record<string, unknown>): Exercise {
+  const cat = row.exercise_categories as { id: string; name: string; color: string } | null | undefined;
+  const imagesRel = row.exercise_images as { count: number }[] | undefined;
   return {
     id:            row.id as string,
     name:          row.name as string,
     teamId:        (row.team_id as string | null) ?? undefined,
     description:   (row.description as string | null) ?? undefined,
-    category:      (row.category as string | null) ?? undefined,
+    categoryId:    cat?.id,
+    categoryName:  cat?.name,
+    categoryColor: cat?.color,
     documentUrl:   (row.document_url as string | null) ?? undefined,
     documentName:  (row.document_name as string | null) ?? undefined,
     videoUrl:      (row.video_url as string | null) ?? undefined,
+    imageCount:    imagesRel?.[0]?.count ?? 0,
     createdAt:     row.created_at as string,
   };
 }
@@ -33,13 +38,13 @@ export interface ListExercisesFilters {
 
 export const exercisesApi = {
   async getById(id: string): Promise<Exercise | null> {
-    const { data, error } = await supabase.from('exercises').select('*').eq('id', id).maybeSingle();
+    const { data, error } = await supabase.from('exercises').select('*, exercise_categories(id, name, color), exercise_images(count)').eq('id', id).maybeSingle();
     if (error) throw error;
     return data ? toExercise(data as Record<string, unknown>) : null;
   },
 
   async list(filters: ListExercisesFilters = {}): Promise<Exercise[]> {
-    let query = supabase.from('exercises').select('*');
+    let query = supabase.from('exercises').select('*, exercise_categories(id, name, color), exercise_images(count)');
     if (filters.teamId) query = query.eq('team_id', filters.teamId);
     const { data, error } = await query.order('name');
     if (error) throw error;
@@ -47,7 +52,7 @@ export const exercisesApi = {
   },
 
   async create(input: {
-    name: string; description?: string; category?: string; teamId?: string;
+    name: string; description?: string; categoryId?: string; teamId?: string;
     documentUrl?: string; documentName?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const { data, error } = await supabase
@@ -55,26 +60,26 @@ export const exercisesApi = {
       .insert({
         name:          input.name,
         description:   input.description || null,
-        category:      input.category || null,
+        category_id:   input.categoryId || null,
         team_id:       input.teamId || null,
         document_url:  input.documentUrl || null,
         document_name: input.documentName || null,
         video_url:     input.videoUrl || null,
       })
-      .select()
+      .select('*, exercise_categories(id, name, color), exercise_images(count)')
       .single();
     if (error) throw error;
     return toExercise(data as Record<string, unknown>);
   },
 
   async update(id: string, patch: {
-    name?: string; description?: string; category?: string;
+    name?: string; description?: string; categoryId?: string;
     documentUrl?: string; documentName?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const payload: Record<string, unknown> = {};
     if (patch.name         !== undefined) payload.name          = patch.name;
     if (patch.description  !== undefined) payload.description   = patch.description || null;
-    if (patch.category     !== undefined) payload.category      = patch.category || null;
+    if (patch.categoryId   !== undefined) payload.category_id   = patch.categoryId || null;
     if (patch.documentUrl  !== undefined) payload.document_url  = patch.documentUrl || null;
     if (patch.documentName !== undefined) payload.document_name = patch.documentName || null;
     if (patch.videoUrl     !== undefined) payload.video_url     = patch.videoUrl || null;
@@ -82,7 +87,7 @@ export const exercisesApi = {
       .from('exercises')
       .update(payload)
       .eq('id', id)
-      .select()
+      .select('*, exercise_categories(id, name, color), exercise_images(count)')
       .single();
     if (error) throw error;
     return toExercise(data as Record<string, unknown>);

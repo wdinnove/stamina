@@ -6,7 +6,7 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { StatusBadge, PlayerAvatar, EmptyState, PlayerMedicalView } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView } from '../components';
 import type { MedicalRecord, Player } from '../data/types';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
@@ -415,7 +415,7 @@ export default function MedicalPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Médical</h1>
         <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {([
@@ -745,15 +745,7 @@ export default function MedicalPage() {
       {activeTab === 'record' && (
         <div>
           <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <select
-              value={selectedPlayerId}
-              onChange={e => setSelectedPlayerId(e.target.value)}
-              style={{ flex: 1, minWidth: 180, padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}
-            >
-              {teamPlayers.map(p => (
-                <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
-              ))}
-            </select>
+            <PlayerSelect players={teamPlayers} value={selectedPlayerId} onChange={setSelectedPlayerId} />
           </div>
 
           {selectedPlayer && (
@@ -945,9 +937,7 @@ export default function MedicalPage() {
               <div className="med-form-player-date" style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Joueur</label>
-                  <select value={fPlayerId} onChange={e => setFPlayerId(e.target.value)} style={inputStyle}>
-                    {teamPlayers.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
-                  </select>
+                  <PlayerSelect players={teamPlayers} value={fPlayerId} onChange={setFPlayerId} style={{ minWidth: 0 }} />
                 </div>
                 <div>
                   <label style={labelStyle}>Date</label>

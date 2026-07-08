@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ChevronDown, Menu, Check, X, ArrowLeft, Shield, Settings } from 'lucide-react';
+import { ChevronDown, Menu, Check, X, ArrowLeft, Settings } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
-import { navItems, isNavActive } from './Sidebar';
+import { navGroups, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonContext';
 import { supabase } from '../api/client';
@@ -166,7 +166,7 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
 export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { options, selected, setSelected, loading, orgId, orgRole } = useTeamSeason();
+  const { options, selected, setSelected, loading, orgRole } = useTeamSeason();
   const [initials, setInitials] = useState('');
   const [fullName, setFullName] = useState('');
 
@@ -201,8 +201,7 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
     textDecoration: 'none', fontSize: '0.85rem', fontWeight: active ? 600 : 400,
   });
 
-  const teamPath = selected ? `/team/${selected.team.id}` : '#';
-  const teamActive = location.pathname.startsWith('/team/');
+  const configActive = location.pathname.startsWith('/configuration');
 
   return (
     <>
@@ -262,45 +261,32 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {/* Dashboard */}
-          {navItems.slice(0, 1).map(item => {
-            const active = isNavActive(item.path, location.pathname);
-            return (
-              <Link key={item.path} to={item.path} onClick={onClose} style={navLinkStyle(active)}>
-                <item.icon size={18} style={{ flexShrink: 0 }} />
-                {item.label}
-              </Link>
-            );
-          })}
-          {/* Équipe — dynamique /team/:id */}
-          <Link to={teamPath} onClick={onClose} style={navLinkStyle(teamActive)}>
-            <Shield size={18} style={{ flexShrink: 0 }} />
-            Équipe
-          </Link>
-          {/* Reste des items */}
-          {navItems.slice(1).map(item => {
-            const active = isNavActive(item.path, location.pathname);
-            return (
-              <Link key={item.path} to={item.path} onClick={onClose} style={navLinkStyle(active)}>
-                <item.icon size={18} style={{ flexShrink: 0 }} />
-                {item.label}
-              </Link>
-            );
-          })}
-          {/* Configuration club — admins uniquement */}
-          {orgRole === 'admin' && (() => {
-            const clubPath = orgId ? `/organization/${orgId}` : '#';
-            const active = location.pathname.startsWith('/organization');
-            return (
-              <>
-                <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
-                <Link to={clubPath} onClick={onClose} style={navLinkStyle(active)}>
-                  <Settings size={18} style={{ flexShrink: 0 }} />
-                  Configuration club
-                </Link>
-              </>
-            );
-          })()}
+          {navGroups.map((group, gi) => (
+            <div key={gi}>
+              {group.title && (
+                <div style={{ padding: '10px 16px 4px', color: '#475569', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {group.title}
+                </div>
+              )}
+              {group.items.map(item => {
+                const active = isNavActive(item.path, location.pathname);
+                return (
+                  <Link key={item.path} to={item.path} onClick={onClose} style={navLinkStyle(active)}>
+                    <item.icon size={18} style={{ flexShrink: 0 }} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+          {/* Configuration */}
+          {(orgRole === 'admin') && <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />}
+          {orgRole === 'admin' && (
+            <Link to="/configuration" onClick={onClose} style={navLinkStyle(configActive)}>
+              <Settings size={18} style={{ flexShrink: 0 }} />
+              Configuration
+            </Link>
+          )}
         </nav>
 
         {/* Profile section */}

@@ -265,11 +265,22 @@ export interface Exercise {
   name: string;
   teamId?: string;
   description?: string;
-  category?: string;
+  categoryId?: string;
+  categoryName?: string;
+  categoryColor?: string;
   documentUrl?: string;
   documentName?: string;
   videoUrl?: string;
+  imageCount?: number;
   createdAt: string;
+}
+
+export interface ExerciseCategory {
+  id: string;
+  teamId: string;
+  name: string;
+  color: string;
+  position: number;
 }
 
 export interface ExerciseImage {

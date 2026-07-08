@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Plus, Search, Users, X, AlertCircle, CheckCircle, Calendar, Save, Building2, Settings } from 'lucide-react';
 import { teamsApi, playersApi, configApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { PlayerAvatar, StatusBadge, EmptyState } from '../components';
+import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle } from '../components';
 import type { Team, Player, Organization } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -69,14 +69,14 @@ function TeamsTab() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: 360 }}>
+      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input placeholder="Rechercher une équipe…" value={search} onChange={e => setSearch(e.target.value)}
             style={{ ...inputStyle, paddingLeft: 32 }} />
         </div>
         <button onClick={() => setShowForm(true)}
-          style={{ marginLeft: 12, padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
           <Plus size={14} /> Nouvelle équipe
         </button>
       </div>
@@ -102,11 +102,11 @@ function TeamsTab() {
                 <Users size={16} style={{ color: team.color }} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>{team.name}</div>
-                <div style={{ color: '#475569', fontSize: '0.75rem' }}>{team.category}</div>
+                <div style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team.name}</div>
+                <div style={{ color: '#475569', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team.category}</div>
               </div>
               {team.currentSeason && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 4, color: '#00E5A0', fontSize: '0.72rem', fontWeight: 600, flexShrink: 0 }}>
+                <span className="hidden sm:flex" style={{ alignItems: 'center', gap: 4, padding: '2px 8px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 4, color: '#00E5A0', fontSize: '0.72rem', fontWeight: 600, flexShrink: 0 }}>
                   <CheckCircle size={10} /> {team.currentSeason}
                 </span>
               )}
@@ -241,14 +241,14 @@ function PlayersTab() {
 
   return (
     <>
-      <div className="flex flex-col md:flex-row" style={{ gap: 10, marginBottom: 16, alignItems: 'flex-start' }}>
+      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16 }}>
         <div style={{ position: 'relative', flex: 1 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input placeholder="Rechercher un joueur…" value={search} onChange={e => setSearch(e.target.value)}
             style={{ ...inputStyle, paddingLeft: 32 }} />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          style={{ ...inputStyle, width: 'auto', minWidth: 140 }}>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full sm:w-auto"
+          style={{ padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', minWidth: 140 }}>
           <option value="all">Tous statuts</option>
           <option value="active">Actif</option>
           <option value="injured">Blessé</option>
@@ -257,7 +257,7 @@ function PlayersTab() {
           <option value="unavailable">Indisponible</option>
         </select>
         <button onClick={() => setShowForm(true)}
-          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
           <Plus size={14} /> Nouveau joueur
         </button>
       </div>
@@ -443,8 +443,10 @@ function OrgConfigTab() {
   );
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '20px 24px' }}>
+    <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
+      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+        <CardTitle icon={<Building2 size={14} color="#00E5A0" />}>Informations du club</CardTitle>
+      </div>
         <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
           <div style={{ marginBottom: 14, gridColumn: '1 / -1' }}>
             <label style={labelStyle}>Nom du club</label>
@@ -471,13 +473,14 @@ function OrgConfigTab() {
             <input style={inputStyle} value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://monclub.fr" />
           </div>
         </div>
-        {msg && <p style={{ color: msg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '4px 0 0' }}>{msg.text}</p>}
-        <button onClick={save} disabled={saving}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', color: '#0A0C10', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, marginTop: 16 }}>
-          <Save size={14} />{saving ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </div>
-    </div>
+        {msg && <p style={{ color: msg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{msg.text}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={save} disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', color: '#0A0C10', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+            <Save size={14} />{saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+    </Card>
   );
 }
 
@@ -489,14 +492,14 @@ const TABS = [
 ] as const;
 type Tab = typeof TABS[number]['key'];
 
-export default function ClubPage() {
+export function ClubConfigTab() {
   const { orgId, orgRole } = useTeamSeason();
   const [tab, setTab] = useState<Tab>('Informations');
 
   // null = rôle en cours de chargement → on bloque aussi (évite le flash de l'UI admin)
   if (orgRole !== 'admin') {
     return (
-      <div className="p-4 md:p-6" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
         {orgRole === null ? (
           <Spinner />
         ) : (
@@ -513,31 +516,25 @@ export default function ClubPage() {
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Club</h1>
+        <div style={{ display: 'flex', width: '100%', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 3, overflowX: 'auto' }}>
+          {TABS.map(({ key, icon: Icon }) => (
+            <button key={key} onClick={() => setTab(key)}
+              style={{ flex: '1 1 0', minWidth: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '7px 14px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, lineHeight: 1, backgroundColor: tab === key ? '#1E2229' : 'transparent', color: tab === key ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
+              <Icon size={13} color={tab === key ? '#00E5A0' : 'currentColor'} style={{ flexShrink: 0, display: 'block' }} />
+              <span>{key}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Onglets */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #2A2F3A' }}>
-        {TABS.map(({ key, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            style={{
-              padding: '8px 20px', background: 'none', border: 'none', cursor: 'pointer',
-              color: tab === key ? '#00E5A0' : '#64748B',
-              fontWeight: tab === key ? 700 : 400, fontSize: '0.88rem',
-              borderBottom: tab === key ? '2px solid #00E5A0' : '2px solid transparent',
-              marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-            <Icon size={13} />{key}
-          </button>
-        ))}
+      <div style={{ width: '100%' }}>
+        {tab === 'Informations' && <OrgConfigTab />}
+        {tab === 'Équipes'      && <TeamsTab />}
+        {tab === 'Joueurs'      && <PlayersTab />}
       </div>
-
-      {tab === 'Informations' && <OrgConfigTab />}
-      {tab === 'Équipes'      && <TeamsTab />}
-      {tab === 'Joueurs'      && <PlayersTab />}
     </div>
   );
 }

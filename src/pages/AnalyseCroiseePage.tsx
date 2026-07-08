@@ -6,7 +6,7 @@ import { PlayerSelect } from '../components';
 import { PlayerProfile } from './PlayersPage';
 import type { Player } from '../data/types';
 
-export default function AnalyseIndividuellePage() {
+export default function AnalyseCroiseePage() {
   const { id }       = useParams<{ id?: string }>();
   const navigate     = useNavigate();
   const { selected } = useTeamSeason();
@@ -19,16 +19,16 @@ export default function AnalyseIndividuellePage() {
       const sorted = [...list].sort((a, b) => a.lastName.localeCompare(b.lastName));
       setPlayers(sorted);
       if (!id && sorted.length > 0) {
-        navigate(`/individual-analyze/${sorted[0].id}`, { replace: true });
+        navigate(`/cross-analyze/${sorted[0].id}`, { replace: true });
       }
     });
   }, [selected?.season.id]);
 
   const playerSelect = (
-    <PlayerSelect players={players} value={id ?? ''} onChange={pid => navigate(`/individual-analyze/${pid}`)} />
+    <PlayerSelect players={players} value={id ?? ''} onChange={pid => navigate(`/cross-analyze/${pid}`)} />
   );
 
   if (!id) return null;
 
-  return <PlayerProfile playerId={id} hideBackButton view="stats" playerSelect={playerSelect} />;
+  return <PlayerProfile playerId={id} hideBackButton view="cross" playerSelect={playerSelect} />;
 }

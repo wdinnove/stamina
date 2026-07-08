@@ -50,7 +50,7 @@ function typeLabel(type: string): string {
   if (type.startsWith('player'))   return 'Joueur';
   if (type.startsWith('match'))    return 'Match';
   if (type.startsWith('medical'))  return 'Médical';
-  if (type.startsWith('action'))   return 'Action';
+  if (type.startsWith('action'))   return 'Tâche';
   if (type.startsWith('rpe'))      return 'RPE';
   if (type.startsWith('wellness')) return 'Bien-être';
   if (type.startsWith('session'))  return 'Séance';
@@ -73,8 +73,8 @@ function getNotifUrl(n: AppNotification): string | null {
   if (type === 'rpe_added')        return entity_id ? `/sessions/${entity_id}` : '/rpe';
   if (type === 'wellness_added')   return entity_id ? `/wellness/new/${entity_id}` : '/wellness';
   if (type === 'session_added')    return entity_id ? `/sessions/${entity_id}` : '/sessions';
-  if (type === 'meeting_added')    return entity_id ? `/staff/meeting/${entity_id}` : '/staff';
-  if (type === 'meeting_deleted')  return '/staff';
+  if (type === 'meeting_added')    return entity_id ? `/meetings/${entity_id}` : '/meetings';
+  if (type === 'meeting_deleted')  return '/meetings';
   if (type === 'match_deleted')    return '/matches';
   return null;
 }

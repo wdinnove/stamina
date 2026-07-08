@@ -9,11 +9,11 @@ export function ExerciseImageGallery({ images, alt }: { images: ExerciseImage[];
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {images.map(img => (
           <button key={img.id} type="button" onClick={() => setLightbox(img.url)}
-            style={{ padding: 0, border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#0D0F14', aspectRatio: '1 / 1' }}>
-            <img src={img.url} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            style={{ padding: 0, border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden', cursor: 'zoom-in', background: '#0D0F14', width: '100%', display: 'block' }}>
+            <img src={img.url} alt={alt} style={{ width: '100%', maxWidth: '100%', maxHeight: 300, height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           </button>
         ))}
       </div>

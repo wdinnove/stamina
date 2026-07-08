@@ -79,6 +79,12 @@ export const playersApi = {
     if (error) throw error;
   },
 
+  async linkToSeason(playerIds: string[], seasonId: string): Promise<void> {
+    const rows = playerIds.map(playerId => ({ player_id: playerId, season_id: seasonId }));
+    const { error } = await supabase.from('player_season').insert(rows);
+    if (error) throw error;
+  },
+
   async listBySeason(seasonId: string): Promise<Player[]> {
     const { data, error } = await supabase
       .from('player_season')

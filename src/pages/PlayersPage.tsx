@@ -12,6 +12,7 @@ import {
 import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi, statsApi } from '../api';
 import { attendanceApi } from '../api/attendance';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor } from '../utils/wellness';
 import { StatusBadge, PlayerAvatar, Card, CardTitle, EmptyState, PlayerDynamiqueTab, PlayerBilanTab, PlayerDynStatTab, DateRangeCard, useDateRange } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { formatDate, getAge, evalColor } from '../data';
@@ -38,16 +39,9 @@ const RPETooltip = ({ active, payload, label }: { active?: boolean; payload?: { 
   );
 };
 
-const wellDimensions = [
-  { key: 'fatigue',    label: 'Fatigue',    inverted: true  },
-  { key: 'mood',       label: 'Humeur',     inverted: false },
-  { key: 'stress',     label: 'Stress',     inverted: true  },
-  { key: 'motivation', label: 'Motivation', inverted: false },
-  { key: 'sleep',      label: 'Sommeil',    inverted: false },
-  { key: 'soreness',   label: 'Douleurs',   inverted: true  },
-];
-const wellScoreColor = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
-const wellDimColor   = (v: number, inv: boolean) => wellScoreColor(inv ? 11 - v : v);
+const wellDimensions = WELLNESS_DIMENSIONS;
+const wellScoreColor = wellnessScoreColor;
+const wellDimColor   = wellnessDimColor;
 
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
 
@@ -89,7 +83,7 @@ function Sparkline({ values, color, h = 36 }: { values: number[]; color: string;
 }
 
 // ─── Profil joueur ────────────────────────────────────────────────────────────
-export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { playerId: string; hideBackButton?: boolean; playerSelect?: React.ReactNode }) {
+export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = 'stats' }: { playerId: string; hideBackButton?: boolean; playerSelect?: React.ReactNode; view?: 'stats' | 'cross' }) {
   const navigate  = useNavigate();
   const { thresholds, selected } = useTeamSeason();
 
@@ -102,7 +96,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
   const [presenceRate, setPresenceRate] = useState<number | null>(null);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, import('../data/types').TeamMatchStat>>(new Map());
-  const [playerTab, setPlayerTab] = useState<'resume' | 'dynamique' | 'performance' | 'bilan' | 'dynstat'>('resume');
+  const [playerTab, setPlayerTab] = useState<'resume' | 'dynamique' | 'performance' | 'bilan' | 'dynstat'>(view === 'cross' ? 'resume' : 'performance');
   const [statsView, setStatsView] = useState<'basic' | 'advanced' | 'season'>('basic');
   const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; stats: MatchStat[] }[]>([]);
   const [basicSort, setBasicSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
@@ -276,7 +270,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
   const last3w      = [...wellness].sort((a, b) => a.date.localeCompare(b.date)).slice(-3);
   const radarData   = last3w.length > 0
     ? wellDimensions.map(d => ({
-        dim:      d.label,
+        dim:      d.shortLabel,
         value:    parseFloat((last3w.reduce((s, e) => s + (e[d.key as keyof typeof e] as number), 0) / last3w.length).toFixed(1)),
         fullMark: 10,
       }))
@@ -325,23 +319,27 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
       bigVal: wellnessAvg ?? '—',
       unit: wellnessAvg !== null ? '/10' : undefined,
       col: wellnessAvgCol,
-      onClick: () => navigate(`/wellness/history/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } }),
+      onClick: () => navigate(`/wellness/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } }),
     },
   ];
 
   return (
     <div className="p-4 md:p-6">
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
         {!hideBackButton ? (
           <button onClick={() => navigate('/roster')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
             ← Retour à l'effectif
           </button>
-        ) : (playerSelect ?? <div />)}
+        ) : (
+          <h1 style={{ color: '#F1F5F9', margin: 0 }}>{view === 'cross' ? 'Analyse croisée' : 'Statistiques individuelles'}</h1>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={openEdit} style={{ padding: '6px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Edit size={13} /> Modifier
-          </button>
+          {!hideBackButton ? (
+            <button onClick={openEdit} style={{ padding: '6px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Edit size={13} /> Modifier
+            </button>
+          ) : (playerSelect ?? <div />)}
         </div>
       </div>
 
@@ -378,12 +376,13 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
       {/* ── Tabs ── */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, marginBottom: 14, overflowX: 'auto' }}>
         <div style={{ display: 'flex', gap: 4, minWidth: 'max-content', width: '100%' }}>
-          {([
+          {(view === 'cross' ? [
             { key: 'resume',      label: "Vue d'ensemble"  },
-            { key: 'dynstat',     label: 'Dynamique'      },
-            { key: 'performance', label: 'Statistiques'   },
             { key: 'bilan',       label: 'Bilan physique' },
             { key: 'dynamique',   label: 'Analyse croisée'},
+          ] as const : [
+            { key: 'performance', label: 'Statistiques'   },
+            { key: 'dynstat',     label: 'Dynamique'      },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setPlayerTab(t.key)}
               className="hover:!text-[#F1F5F9]"
@@ -424,7 +423,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
           { label: 'Éval', value: evalAvg,        col: evalAvg !== null ? evalColor(evalAvg) : undefined },
         ];
         return (
-          <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => setPlayerTab('performance')}>
+          <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => navigate(`/individual-analyze/${playerId}`)}>
             <CardTitle icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />} mb={12}
               right={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1241,7 +1240,7 @@ export default function PlayersPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Joueurs</h1>
         <button onClick={() => setShowForm(true)}
           style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>

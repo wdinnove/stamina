@@ -1,3 +1,12 @@
+/* ── Scrollbars invisibles (scroll conservé) ──────────────────────────────── */
+html, body, * {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* Edge/IE legacy */
+}
+*::-webkit-scrollbar {
+  display: none;               /* Chrome, Safari, Edge (Chromium) */
+}
+
 /* ── Global hover behaviors ────────────────────────────────────────────────── */
 
 /* Table names (first column) → bright white on hover */

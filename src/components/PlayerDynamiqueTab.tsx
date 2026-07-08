@@ -4,6 +4,7 @@ import {
 } from 'recharts';
 import type { RPEEntry, WellnessEntry, MatchStat } from '../data/types';
 import { DateRangeCard, useDateRange } from './DateRangeCard';
+import { wellnessScoreColor } from '../utils/wellness';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 
@@ -37,7 +38,7 @@ function acwrZone(v: number): { label: string; color: string } {
   return           { label: 'Surcharge',          color: '#EF4444' };
 }
 
-const wellColor = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
+const wellColor = wellnessScoreColor;
 const n = (v: unknown): number => Number(v);
 
 function trendOf(curr: number | null, base: number | null) {
@@ -198,9 +199,12 @@ export function PlayerDynamiqueTab({ rpe, wellness, matchStats, seasonStart }: P
   const wellDisplay = wellAvgP ?? wellAvgAll;
   const evalDisplay = evalAvgP ?? evalAvgAll;
 
-  const subLabel = dateRange.preset === 21 ? '3 dernières semaines'
-    : dateRange.preset === 42 ? '6 dernières semaines'
-    : dateRange.preset === 91 ? '3 derniers mois'
+  const subLabel = dateRange.preset === 7 ? '7 derniers jours'
+    : dateRange.preset === 21 ? '21 derniers jours'
+    : dateRange.preset === 45 ? '45 derniers jours'
+    : dateRange.preset === 90 ? '90 derniers jours'
+    : dateRange.preset === 'phase1' ? 'Phase 1'
+    : dateRange.preset === 'phase2' ? 'Phase 2'
     : dateRange.preset === 'saison' ? 'Saison complète'
     : `${dateRange.from} → ${dateRange.to}`;
 

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, User, Lock, Save } from 'lucide-react';
 import { supabase } from '../api/client';
+import { Card, CardTitle } from '../components';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -15,6 +17,7 @@ const readonlyStyle: React.CSSProperties = {
 };
 
 export default function ProfilePage() {
+  const { orgRole } = useTeamSeason();
   const [email,     setEmail]     = useState('');
   const [orgName,   setOrgName]   = useState('');
   const [firstName, setFirstName] = useState('');
@@ -104,11 +107,11 @@ export default function ProfilePage() {
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
 
   return (
-    <div className="p-4 md:p-6" style={{ maxWidth: 560 }}>
+    <div className="p-4 md:p-6">
       <h1 style={{ color: '#F1F5F9', margin: '0 0 28px' }}>Mon profil</h1>
 
       {/* Avatar + email */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
         <div style={{
           width: 56, height: 56, borderRadius: '50%',
           backgroundColor: '#1E2229', border: '2px solid #2A2F3A',
@@ -118,17 +121,34 @@ export default function ProfilePage() {
           {initials || '?'}
         </div>
         <div>
-          <p style={{ color: '#F1F5F9', fontWeight: 600, margin: '0 0 2px', fontSize: '1rem' }}>
-            {firstName} {lastName}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <p style={{ color: '#F1F5F9', fontWeight: 600, margin: '0 0 2px', fontSize: '1rem' }}>
+              {firstName} {lastName}
+            </p>
+            {orgRole && (
+              <span style={{
+                color: orgRole === 'admin' ? '#00E5A0' : '#94A3B8',
+                backgroundColor: orgRole === 'admin' ? 'rgba(0,229,160,0.1)' : 'rgba(148,163,184,0.1)',
+                border: `1px solid ${orgRole === 'admin' ? 'rgba(0,229,160,0.3)' : 'rgba(148,163,184,0.25)'}`,
+                fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                padding: '2px 8px', borderRadius: 4, marginBottom: 2,
+              }}>
+                {orgRole === 'admin' ? 'Admin' : 'Éditeur'}
+              </span>
+            )}
+          </div>
           <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>{email}</p>
           {orgName && <p style={{ color: '#3B82F6', fontSize: '0.75rem', margin: '2px 0 0' }}>{orgName}</p>}
         </div>
       </div>
 
-      {/* Section : informations */}
-      <section style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '22px', marginBottom: 20 }}>
-        <h2 style={{ color: '#F1F5F9', fontSize: '0.95rem', fontWeight: 700, margin: '0 0 18px' }}>Mes informations</h2>
+      {/* Sections : informations + mot de passe */}
+      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 20, alignItems: 'start' }}>
+
+      <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+          <CardTitle icon={<User size={14} color="#00E5A0" />}>Mes informations</CardTitle>
+        </div>
 
         {infoMsg && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
@@ -144,7 +164,7 @@ export default function ProfilePage() {
         )}
 
         <form onSubmit={handleInfoSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
             <div>
               <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom</label>
               <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} />
@@ -164,18 +184,22 @@ export default function ProfilePage() {
               <input type="text" value={orgName} readOnly style={readonlyStyle} />
             </div>
           )}
-          <button
-            type="submit" disabled={infoSaving}
-            style={{ alignSelf: 'flex-end', padding: '8px 20px', backgroundColor: infoSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: infoSaving ? '#475569' : '#0D0F14', cursor: infoSaving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
-          >
-            {infoSaving ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
+            <button
+              type="submit" disabled={infoSaving}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', backgroundColor: infoSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: infoSaving ? '#475569' : '#0D0F14', cursor: infoSaving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
+            >
+              <Save size={14} />
+              {infoSaving ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
         </form>
-      </section>
+      </Card>
 
-      {/* Section : mot de passe */}
-      <section style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '22px' }}>
-        <h2 style={{ color: '#F1F5F9', fontSize: '0.95rem', fontWeight: 700, margin: '0 0 18px' }}>Changer le mot de passe</h2>
+      <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+          <CardTitle icon={<Lock size={14} color="#00E5A0" />}>Changer le mot de passe</CardTitle>
+        </div>
 
         {pwdMsg && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
@@ -195,24 +219,27 @@ export default function ProfilePage() {
             <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Mot de passe actuel</label>
             <input type="password" required value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} style={inputStyle} autoComplete="current-password" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nouveau mot de passe</label>
-              <input type="password" required value={newPwd} onChange={e => setNewPwd(e.target.value)} style={inputStyle} autoComplete="new-password" minLength={8} />
-            </div>
-            <div>
-              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Confirmer</label>
-              <input type="password" required value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} style={inputStyle} autoComplete="new-password" minLength={8} />
-            </div>
+          <div>
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nouveau mot de passe</label>
+            <input type="password" required value={newPwd} onChange={e => setNewPwd(e.target.value)} style={inputStyle} autoComplete="new-password" minLength={8} />
           </div>
-          <button
-            type="submit" disabled={pwdSaving}
-            style={{ alignSelf: 'flex-end', padding: '8px 20px', backgroundColor: pwdSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: pwdSaving ? '#475569' : '#0D0F14', cursor: pwdSaving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
-          >
-            {pwdSaving ? 'Mise à jour…' : 'Mettre à jour'}
-          </button>
+          <div>
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Confirmer</label>
+            <input type="password" required value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} style={inputStyle} autoComplete="new-password" minLength={8} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
+            <button
+              type="submit" disabled={pwdSaving}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', backgroundColor: pwdSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: pwdSaving ? '#475569' : '#0D0F14', cursor: pwdSaving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
+            >
+              <Save size={14} />
+              {pwdSaving ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
         </form>
-      </section>
+      </Card>
+
+      </div>{/* fin grille 2 cards */}
     </div>
   );
 }

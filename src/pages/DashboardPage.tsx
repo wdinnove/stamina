@@ -674,9 +674,9 @@ export default function DashboardPage() {
               icon={<Clock size={12} color="#fb923c" />}
               mb={12}
               right={<button onClick={() => navigate('/actions')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>Voir tout <ArrowRight size={10} /></button>}
-            >Actions</CardTitle>
+            >Tâches</CardTitle>
             {topActions.length === 0 ? (
-              <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune action en cours.</p>
+              <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune tâche en cours.</p>
             ) : (
               topActions.map((action, idx) => {
                 const player  = players.find(p => p.id === action.playerId);

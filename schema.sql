@@ -359,10 +359,10 @@ CREATE TABLE wellness_entries (
   sleep      SMALLINT NOT NULL CHECK (sleep      BETWEEN 1 AND 10),
   soreness   SMALLINT NOT NULL CHECK (soreness   BETWEEN 1 AND 10),
 
-  -- Score 0–10 : métriques inversées contribuent moins quand elles sont élevées
+  -- Score 0–10 : métriques inversées (11 - v) pour rester cohérent avec la coloration client (wellnessDimColor)
   score      NUMERIC(3,1) GENERATED ALWAYS AS (
     ROUND(
-      ((10 - fatigue) + mood + (10 - stress) + motivation + sleep + (10 - soreness))::NUMERIC / 6,
+      ((11 - fatigue) + mood + (11 - stress) + motivation + sleep + (11 - soreness))::NUMERIC / 6,
       1
     )
   ) STORED,
@@ -814,12 +814,24 @@ ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 --      Images stockées dans le bucket Supabase Storage 'exercises'
 -- ────────────────────────────────────────────────────────────────
 
+CREATE TABLE exercise_categories (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  color      TEXT NOT NULL,
+  position   SMALLINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (team_id, name)
+);
+
+CREATE INDEX ON exercise_categories (team_id);
+
 CREATE TABLE exercises (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id       UUID REFERENCES teams(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   description   TEXT,
-  category      TEXT,
+  category_id   UUID REFERENCES exercise_categories(id) ON DELETE SET NULL,
   document_url  TEXT,
   document_name TEXT,
   video_url     TEXT,
@@ -866,6 +878,7 @@ ALTER TABLE staff_meetings        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_attendance   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercises             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercise_images       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercise_categories   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications         ENABLE ROW LEVEL SECURITY;
 
 -- ── Policies ─────────────────────────────────────────────────────
@@ -1073,6 +1086,12 @@ CREATE POLICY "session_documents_access" ON session_documents
 
 -- Exercices
 CREATE POLICY "exercises_access" ON exercises
+  FOR ALL TO authenticated
+  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Catégories d'exercices : par équipe
+CREATE POLICY "exercise_categories_access" ON exercise_categories
   FOR ALL TO authenticated
   USING    (team_id IN (SELECT * FROM accessible_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
@@ -1395,3 +1414,57 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 --
 -- -- Une fois le backfill vérifié en prod, supprimer l'ancienne colonne :
 -- ALTER TABLE exercises DROP COLUMN IF EXISTS image_url;
+
+-- Exercices : catégories personnalisables par équipe
+-- CREATE TABLE IF NOT EXISTS exercise_categories (
+--   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+--   name       TEXT NOT NULL,
+--   color      TEXT NOT NULL,
+--   position   SMALLINT NOT NULL DEFAULT 0,
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--   UNIQUE (team_id, name)
+-- );
+-- CREATE INDEX IF NOT EXISTS exercise_categories_team_id_idx ON exercise_categories (team_id);
+--
+-- ALTER TABLE exercise_categories ENABLE ROW LEVEL SECURITY;
+--
+-- CREATE POLICY "exercise_categories_access" ON exercise_categories
+--   FOR ALL TO authenticated
+--   USING    (team_id IN (SELECT * FROM accessible_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+--
+-- ALTER TABLE exercises
+--   ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES exercise_categories(id) ON DELETE SET NULL;
+--
+-- -- Seed des 8 catégories par défaut pour chaque équipe existante
+-- INSERT INTO exercise_categories (team_id, name, color, position)
+-- SELECT t.id, c.name, c.color, c.position
+-- FROM teams t
+-- CROSS JOIN (VALUES
+--   ('Warmup', '#F59E0B', 0), ('Jeu réduit', '#3B82F6', 1), ('Jeu rapide', '#06B6D4', 2),
+--   ('Collectif', '#8B5CF6', 3), ('Shooting', '#EC4899', 4), ('Technique', '#00E5A0', 5),
+--   ('Physique', '#EF4444', 6), ('Fun', '#F97316', 7)
+-- ) AS c(name, color, position)
+-- ON CONFLICT (team_id, name) DO NOTHING;
+--
+-- -- Backfill : relier chaque exercice existant à la catégorie de son équipe portant le même nom
+-- UPDATE exercises e SET category_id = ec.id
+-- FROM exercise_categories ec
+-- WHERE ec.team_id = e.team_id AND ec.name = e.category;
+--
+-- -- Une fois vérifié, supprimer l'ancienne colonne texte :
+-- ALTER TABLE exercises DROP COLUMN IF EXISTS category;
+
+-- Wellness : formule du score corrigée pour utiliser (11 - v) au lieu de (10 - v) sur les
+-- métriques inversées (fatigue/stress/soreness), pour rester cohérent avec la coloration
+-- client (wellnessDimColor, src/utils/wellness.ts) qui inverse déjà avec 11 - v.
+-- Un GENERATED ALWAYS AS ne peut pas être modifié en place : on le supprime et on le recrée
+-- (Postgres recalcule automatiquement la colonne pour toutes les lignes existantes).
+-- ALTER TABLE wellness_entries DROP COLUMN score;
+-- ALTER TABLE wellness_entries ADD COLUMN score NUMERIC(3,1) GENERATED ALWAYS AS (
+--   ROUND(
+--     ((11 - fatigue) + mood + (11 - stress) + motivation + sleep + (11 - soreness))::NUMERIC / 6,
+--     1
+--   )
+-- ) STORED;

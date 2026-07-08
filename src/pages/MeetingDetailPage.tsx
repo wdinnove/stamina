@@ -72,8 +72,8 @@ export default function MeetingDetailPage() {
 
   if (fetchErr || !meeting) return (
     <div className="p-4 md:p-6">
-      <button onClick={() => navigate('/staff')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
-        <ArrowLeft size={14} /> Retour au staff
+      <button onClick={() => navigate('/meetings')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
+        <ArrowLeft size={14} /> Retour aux réunions
       </button>
       <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{fetchErr || 'Réunion introuvable.'}</div>
     </div>
@@ -119,7 +119,7 @@ export default function MeetingDetailPage() {
       const id    = meeting!.id;
       await meetingsApi.delete(id);
       notifyOrg('meeting_deleted', `Réunion supprimée : ${title}`, undefined, 'meeting', id);
-      navigate('/staff');
+      navigate('/meetings');
     } catch {
       setDeleting(false);
       setConfirmDel(false);
@@ -127,20 +127,22 @@ export default function MeetingDetailPage() {
   }
 
   return (
-    <div className="p-4 md:p-6" style={{ maxWidth: 760 }}>
-      <button onClick={() => navigate('/staff')}
+    <div className="p-4 md:p-6">
+      <button onClick={() => navigate('/meetings')}
         style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 24, padding: 0 }}
         onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
         onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
-        <ArrowLeft size={14} /> Planning de réunions
+        <ArrowLeft size={14} /> Réunions
       </button>
+
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>
 
       {/* Header info */}
       {!editing ? (
         <div style={{ backgroundColor: '#161920', border: `1px solid ${meeting.date === TODAY ? 'rgba(245,158,11,0.3)' : '#2A2F3A'}`, borderLeft: `4px solid ${accent}`, borderRadius: 10, padding: '20px 24px', marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              <h1 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.3rem', fontWeight: 700 }}>{meeting.title}</h1>
+              <h1 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>{meeting.title}</h1>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.85rem' }}>
                   <Calendar size={14} /> {fmtDateFull(meeting.date)}
@@ -153,10 +155,16 @@ export default function MeetingDetailPage() {
                 )}
               </div>
             </div>
-            <button onClick={() => { setMetaForm({ title: meeting.title, date: meeting.date, time: meeting.time }); setMetaError(''); setEditing(true); }}
-              style={{ padding: '7px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              <Edit size={13} /> Modifier
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <button onClick={() => { setMetaForm({ title: meeting.title, date: meeting.date, time: meeting.time }); setMetaError(''); setEditing(true); }}
+                style={{ padding: '7px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Edit size={13} /> Modifier
+              </button>
+              <button onClick={() => setConfirmDel(true)}
+                style={{ padding: '7px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Trash2 size={13} /> Supprimer
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -239,19 +247,7 @@ export default function MeetingDetailPage() {
         )}
       </div>
 
-      {/* Zone danger — suppression */}
-      <div style={{ backgroundColor: '#161920', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '16px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', margin: '0 0 2px' }}>Supprimer cette réunion</p>
-            <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Cette action est irréversible.</p>
-          </div>
-          <button onClick={() => setConfirmDel(true)}
-            style={{ padding: '7px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Trash2 size={13} /> Supprimer
-          </button>
-        </div>
-      </div>
+      </div>{/* fin container centré */}
 
       {/* Confirm delete modal */}
       {confirmDel && (

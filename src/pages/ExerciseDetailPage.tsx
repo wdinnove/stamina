@@ -1,29 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Pencil, Trash2, AlertCircle, Bold, Italic, List, ListOrdered, X, FileText, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, AlertCircle, Bold, Italic, List, ListOrdered, X, FileText, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
+import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
-import type { Exercise, ExerciseImage } from '../data/types';
-
-const CAT_COLORS: Record<string, string> = {
-  'Échauffement':    '#F59E0B',
-  'Jeu réduit':      '#3B82F6',
-  'Jeu rapide':      '#06B6D4',
-  'Tirs':            '#8B5CF6',
-  'Technique':       '#00E5A0',
-  'Physique':        '#EF4444',
-  'Tactique':        '#F97316',
-  'Retour au calme': '#94A3B8',
-  'Autre':           '#475569',
-};
-
-const EXERCISE_CATEGORIES = [
-  'Échauffement', 'Jeu réduit', 'Jeu rapide', 'Tirs', 'Technique',
-  'Physique', 'Tactique', 'Retour au calme', 'Autre',
-];
+import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -91,12 +75,24 @@ function RichContent({ html }: { html?: string }) {
   );
 }
 
+function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {icon}
+      <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {children}
+      </span>
+    </div>
+  );
+}
+
 export default function ExerciseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
   const [images,     setImages]     = useState<ExerciseImage[]>([]);
+  const [categories, setCategories] = useState<ExerciseCategory[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
   const [showEdit,   setShowEdit]   = useState(false);
@@ -106,7 +102,7 @@ export default function ExerciseDetailPage() {
 
   // Edit form state
   const [name,        setName]        = useState('');
-  const [category,    setCategory]    = useState('');
+  const [categoryId,  setCategoryId]  = useState('');
   const [description, setDescription] = useState('');
   const [videoUrl,    setVideoUrl]    = useState('');
   const [saving,      setSaving]      = useState(false);
@@ -127,13 +123,18 @@ export default function ExerciseDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    if (!exercise?.teamId) return;
+    exerciseCategoriesApi.list(exercise.teamId).then(setCategories).catch(() => {});
+  }, [exercise?.teamId]);
+
   const videoPlatform = videoUrl.trim() ? detectSocialPlatform(videoUrl) : null;
   const videoInvalid = videoUrl.trim() !== '' && !videoPlatform;
 
   function openEdit() {
     if (!exercise) return;
     setName(exercise.name);
-    setCategory(exercise.category ?? '');
+    setCategoryId(exercise.categoryId ?? '');
     setDescription(exercise.description ?? '');
     setVideoUrl(exercise.videoUrl ?? '');
     setFormError('');
@@ -213,7 +214,7 @@ export default function ExerciseDetailPage() {
       const updated = await exercisesApi.update(exercise.id, {
         name:        name.trim(),
         description: plain ? description : undefined,
-        category:    category || undefined,
+        categoryId:  categoryId || undefined,
         videoUrl:    videoUrl.trim(),
       });
       setExercise(updated);
@@ -251,8 +252,6 @@ export default function ExerciseDetailPage() {
     </div>
   );
 
-  const catColor = exercise.category ? (CAT_COLORS[exercise.category] ?? '#475569') : null;
-
   return (
     <div className="p-4 md:p-6">
       {/* Header — pleine largeur */}
@@ -281,10 +280,10 @@ export default function ExerciseDetailPage() {
       {/* Card détail */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-          <h1 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>{exercise.name}</h1>
-          {catColor && (
-            <span style={{ color: catColor, backgroundColor: catColor + '18', fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: 4, flexShrink: 0 }}>
-              {exercise.category}
+          <h1 style={{ color: '#F1F5F9', margin: 0 }}>{exercise.name}</h1>
+          {exercise.categoryName && (
+            <span style={{ color: exercise.categoryColor, backgroundColor: exercise.categoryColor + '18', fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: 4, flexShrink: 0 }}>
+              {exercise.categoryName}
             </span>
           )}
         </div>
@@ -327,7 +326,7 @@ export default function ExerciseDetailPage() {
       {showEdit && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 500, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 640, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>Modifier l'exercice</h2>
               <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
@@ -338,51 +337,69 @@ export default function ExerciseDetailPage() {
                 <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formError}</span>
               </div>
             )}
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Nom *</label>
-                <input required type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} autoFocus />
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+              {/* Informations générales */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="exercise-form-row">
+                  <div style={{ flex: 2 }}>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Nom *</label>
+                    <input required type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} autoFocus />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 150 }}>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Catégorie</label>
+                    <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={inputStyle}>
+                      <option value="">— Aucune —</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Description</label>
+                  <RichEditor value={description} onChange={setDescription} />
+                </div>
               </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Catégorie</label>
-                <select value={category} onChange={e => setCategory(e.target.value)} style={inputStyle}>
-                  <option value="">— Aucune —</option>
-                  {EXERCISE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+
+              {/* Médias */}
+              <div style={{ borderTop: '1px solid #2A2F3A', paddingTop: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <SectionLabel icon={<ImageIcon size={13} color="#00E5A0" />}>Médias</SectionLabel>
+
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
+                  <ExerciseImagePicker
+                    items={images.map((img): ExerciseImagePickerItem => ({ key: img.id, url: img.url }))}
+                    onAdd={handleAddImages}
+                    onRemove={handleRemoveImage}
+                    disabled={imageBusy}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Document PDF</label>
+                    <ExerciseDocumentPicker
+                      fileName={exercise.documentName || undefined}
+                      fileUrl={exercise.documentUrl || undefined}
+                      onSelect={handleDocumentSelect}
+                      onRemove={handleDocumentRemove}
+                      disabled={docBusy}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Lien vidéo</label>
+                    <div style={{ color: '#475569', fontSize: '0.68rem', marginBottom: 5 }}>Twitter/X, Facebook, Instagram, TikTok</div>
+                    <input type="url" placeholder="https://…" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={inputStyle} />
+                    {videoUrl.trim() && (
+                      videoPlatform
+                        ? <div style={{ color: '#00E5A0', fontSize: '0.72rem', marginTop: 5 }}>Aperçu {SOCIAL_PLATFORM_LABELS[videoPlatform]} détecté</div>
+                        : <div style={{ color: '#EF4444', fontSize: '0.72rem', marginTop: 5 }}>Lien non reconnu</div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Description</label>
-                <RichEditor value={description} onChange={setDescription} />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
-                <ExerciseImagePicker
-                  items={images.map((img): ExerciseImagePickerItem => ({ key: img.id, url: img.url }))}
-                  onAdd={handleAddImages}
-                  onRemove={handleRemoveImage}
-                  disabled={imageBusy}
-                />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Document PDF</label>
-                <ExerciseDocumentPicker
-                  fileName={exercise.documentName || undefined}
-                  fileUrl={exercise.documentUrl || undefined}
-                  onSelect={handleDocumentSelect}
-                  onRemove={handleDocumentRemove}
-                  disabled={docBusy}
-                />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Lien vidéo (Twitter/X, Facebook, Instagram, TikTok)</label>
-                <input type="url" placeholder="https://…" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} style={inputStyle} />
-                {videoUrl.trim() && (
-                  videoPlatform
-                    ? <div style={{ color: '#00E5A0', fontSize: '0.72rem', marginTop: 5 }}>Aperçu {SOCIAL_PLATFORM_LABELS[videoPlatform]} détecté</div>
-                    : <div style={{ color: '#EF4444', fontSize: '0.72rem', marginTop: 5 }}>Lien non reconnu — utilisez un lien public Twitter/X, Facebook, Instagram ou TikTok</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+
+              <div style={{ display: 'flex', gap: 10 }}>
                 <button type="button" onClick={() => setShowEdit(false)}
                   style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
                   Annuler
@@ -393,6 +410,13 @@ export default function ExerciseDetailPage() {
                 </button>
               </div>
             </form>
+
+            <style>{`
+              .exercise-form-row { display: flex; gap: 12px; }
+              @media (max-width: 520px) {
+                .exercise-form-row { flex-direction: column; }
+              }
+            `}</style>
           </div>
         </div>
       )}

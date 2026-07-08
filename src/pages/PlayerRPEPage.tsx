@@ -113,7 +113,7 @@ export default function PlayerRPEPage() {
           { label: 'Effort RPE', icon: Activity,   active: true,  path: `/players/${id}/rpe`, state: { from: `/players/${id}`, playerName: `${player.firstName} ${player.lastName}` } },
           { label: 'Émotions',   icon: Heart,       active: false, path: '/wellness',          state: { from: `/players/${id}`, playerName: `${player.firstName} ${player.lastName}`, playerId: id } },
           { label: 'Médical',    icon: Stethoscope, active: false, path: '/medical',           state: { from: `/players/${id}`, playerName: `${player.firstName} ${player.lastName}`, playerId: id } },
-          { label: 'Actions',    icon: CheckSquare, active: false, path: '/actions',           state: { from: `/players/${id}`, playerName: `${player.firstName} ${player.lastName}`, playerId: id } },
+          { label: 'Tâches',     icon: CheckSquare, active: false, path: '/actions',           state: { from: `/players/${id}`, playerName: `${player.firstName} ${player.lastName}`, playerId: id } },
           { label: 'Stats',      icon: BarChart2,   active: false, path: `/stats/${id}`,       state: { from: `/players/${id}`, playerName: `${player.firstName} ${player.lastName}` } },
         ].map(({ label, icon: Icon, active, path, state }) => (
           <button key={label} onClick={() => navigate(path, { state })}

@@ -1,4 +1,5 @@
 import { supabase } from './client';
+import { exerciseCategoriesApi } from './exerciseCategories';
 import type { Team } from '../data/types';
 
 export const teamsApi = {
@@ -74,6 +75,8 @@ export const teamsApi = {
         color:           input.color,
       });
     if (error) throw error;
+
+    await exerciseCategoriesApi.seedDefaults(id);
 
     return {
       id,

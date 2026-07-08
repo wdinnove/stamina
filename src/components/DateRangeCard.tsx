@@ -5,36 +5,53 @@ import { Card } from './Card';
 export const isoToday  = () => new Date().toISOString().split('T')[0];
 export const isoOffset = (days: number) => new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
-export type DatePreset = 21 | 42 | 91 | 'saison';
+export type DatePreset = 7 | 21 | 45 | 90 | 'phase1' | 'phase2' | 'saison';
 export const DATE_PRESETS: { value: DatePreset; label: string }[] = [
-  { value: 21,      label: '3 sem.'  },
-  { value: 42,      label: '6 sem.'  },
-  { value: 91,      label: '3 mois'  },
-  { value: 'saison',label: 'Saison'  },
+  { value: 7,        label: '7j'      },
+  { value: 21,       label: '21j'     },
+  { value: 45,       label: '45j'     },
+  { value: 90,       label: '90j'     },
+  { value: 'phase1', label: 'Phase 1' },
+  { value: 'phase2', label: 'Phase 2' },
+  { value: 'saison', label: 'Saison'  },
 ];
 
+function computeRange(p: DatePreset, seasonStart?: string): [string, string] {
+  const start = seasonStart ?? isoOffset(365);
+  const startYear = new Date(start + 'T12:00:00').getFullYear();
+  if (p === 'saison') return [start, isoToday()];
+  if (p === 'phase1') return [start, `${startYear}-12-31`];               // Phase 1 : août à décembre
+  if (p === 'phase2') return [`${startYear + 1}-01-01`, `${startYear + 1}-06-30`]; // Phase 2 : janvier à juin
+  return [isoOffset(p), isoToday()];
+}
+
+// Phase de saison en cours, utilisée comme preset par défaut si aucun n'est précisé
+function currentPhase(seasonStart?: string): 'phase1' | 'phase2' {
+  const start = seasonStart ?? isoOffset(365);
+  const startYear = new Date(start + 'T12:00:00').getFullYear();
+  return isoToday() <= `${startYear}-12-31` ? 'phase1' : 'phase2';
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
-export function useDateRange(seasonStart?: string) {
+export function useDateRange(seasonStart?: string, defaultPreset?: DatePreset) {
   const [from,   setFrom]   = useState('');
   const [to,     setTo]     = useState(isoToday());
-  const [preset, setPreset] = useState<DatePreset | null>('saison');
+  const [preset, setPreset] = useState<DatePreset | null>(defaultPreset ?? 'phase1');
 
   useEffect(() => {
     if (!seasonStart) return;
-    setFrom(seasonStart);
-    setTo(isoToday());
-    setPreset('saison');
+    const dp = defaultPreset ?? currentPhase(seasonStart);
+    const [f, t] = computeRange(dp, seasonStart);
+    setFrom(f);
+    setTo(t);
+    setPreset(dp);
   }, [seasonStart]);
 
   const applyPreset = (p: DatePreset, seasonStartDate?: string) => {
     setPreset(p);
-    const today = isoToday();
-    setTo(today);
-    if (p === 'saison') {
-      setFrom(seasonStartDate ?? seasonStart ?? isoOffset(365));
-    } else {
-      setFrom(isoOffset(p));
-    }
+    const [f, t] = computeRange(p, seasonStartDate ?? seasonStart);
+    setFrom(f);
+    setTo(t);
   };
 
   const handleFrom = (v: string) => { setFrom(v); setPreset(null); };

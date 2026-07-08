@@ -177,7 +177,7 @@ export default function MatchesPage() {
         }
       `}</style>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Matchs</h1>
         {selected && (
           <button

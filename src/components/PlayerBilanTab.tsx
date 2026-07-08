@@ -6,22 +6,15 @@ import { EmptyState } from './EmptyState';
 import { DateRangeCard, useDateRange } from './DateRangeCard';
 import { MedCard, daysBetween, rtpDaysLeft } from './MedicalCard';
 import { ChargeFreshnessChart } from './ChargeFreshnessChart';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor } from '../utils/wellness';
 import type { RPEEntry, WellnessEntry, MedicalRecord } from '../data/types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const wellColor = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
+const wellColor = wellnessScoreColor;
 const rpeColor  = (v: number) => v >= 8 ? '#EF4444' : v >= 6 ? '#F97316' : v >= 4 ? '#F59E0B' : '#00E5A0';
 
-const WELL_DIMS = [
-  { key: 'fatigue',    label: 'Fatigue',    inverted: true  },
-  { key: 'mood',       label: 'Humeur',     inverted: false },
-  { key: 'stress',     label: 'Stress',     inverted: true  },
-  { key: 'motivation', label: 'Motivation', inverted: false },
-  { key: 'sleep',      label: 'Sommeil',    inverted: false },
-  { key: 'soreness',   label: 'Douleurs',   inverted: true  },
-];
-
-const wellDimColor = (v: number, inv: boolean) => wellColor(inv ? 11 - v : v);
+const WELL_DIMS = WELLNESS_DIMENSIONS;
+const wellDimColor = wellnessDimColor;
 
 const fmtShort = (d: string) => {
   const dt = new Date(d);
@@ -91,7 +84,7 @@ export function PlayerBilanTab({ rpe, wellness, medical, playerId, playerName, s
   const radarData = useMemo(() =>
     wellP.length > 0
       ? WELL_DIMS.map(d => ({
-          dim: d.label,
+          dim: d.shortLabel,
           value: parseFloat((wellP.reduce((s, e) => s + (e[d.key as keyof typeof e] as number), 0) / wellP.length).toFixed(1)),
           fullMark: 10,
         }))
@@ -140,7 +133,7 @@ export function PlayerBilanTab({ rpe, wellness, medical, playerId, playerName, s
         {/* Bien-être radar */}
         <Card accentColor={radarData.length > 0 ? radarColor : undefined}
           style={{ cursor: 'pointer', height: '100%', minHeight: 280, display: 'flex', flexDirection: 'column' }}
-          onClick={() => onNavigate(`/wellness/history/${playerId}`, { from, playerName })}>
+          onClick={() => onNavigate(`/wellness/individual/${playerId}`, { from, playerName })}>
           <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={10}
             right={<ArrowRight size={13} style={{ color: '#475569' }} />}>Bien-être</CardTitle>
           {radarData.length === 0

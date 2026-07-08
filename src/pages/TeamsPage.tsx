@@ -340,7 +340,7 @@ function TeamsList() {
 
   return (
     <div className="p-4 md:p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Équipes</h1>
         <button onClick={() => setShowForm(true)}
           style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>

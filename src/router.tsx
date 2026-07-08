@@ -20,7 +20,7 @@ import StatsPage         from './pages/StatsPage';
 import PlayerReportPage  from './pages/PlayerReportPage';
 import TeamReportPage    from './pages/TeamReportPage';
 import RosterPage        from './pages/RosterPage';
-import StaffPage         from './pages/StaffPage';
+import MeetingsPage      from './pages/MeetingsPage';
 import AttendancePage    from './pages/AttendancePage';
 import ProfilePage       from './pages/ProfilePage';
 import PlayerRPEPage               from './pages/PlayerRPEPage';
@@ -29,13 +29,13 @@ import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
 import MeetingDetailPage           from './pages/MeetingDetailPage';
 import ExercisesPage               from './pages/ExercisesPage';
 import ExerciseDetailPage          from './pages/ExerciseDetailPage';
-import ConfigPage                  from './pages/ConfigPage';
-import ClubPage                    from './pages/ClubPage';
+import ConfigurationPage           from './pages/ConfigurationPage';
 import PlayerWellnessPublicPage    from './pages/PlayerWellnessPublicPage';
 import MatchesPage                 from './pages/MatchesPage';
 import MatchDetailPage             from './pages/MatchDetailPage';
 import AnalyseCollectivePage       from './pages/AnalyseCollectivePage';
 import AnalyseIndividuellePage     from './pages/AnalyseIndividuellePage';
+import AnalyseCroiseePage          from './pages/AnalyseCroiseePage';
 
 export const router = createBrowserRouter([
   {
@@ -73,16 +73,15 @@ export const router = createBrowserRouter([
           { path: 'stats',          Component: StatsPage        },
           { path: 'stats/:id',      Component: StatsPage        },
           { path: 'roster',          Component: RosterPage       },
-          { path: 'staff',               Component: StaffPage          },
-          { path: 'staff/meeting/:id',   Component: MeetingDetailPage  },
+          { path: 'meetings',            Component: MeetingsPage       },
+          { path: 'meetings/:id',        Component: MeetingDetailPage  },
           { path: 'attendance',      Component: AttendancePage   },
           { path: 'sessions',        Component: TrainingSessionsPage      },
           { path: 'sessions/:id',    Component: TrainingSessionDetailPage },
           { path: 'exercises',       Component: ExercisesPage             },
           { path: 'exercises/:id',   Component: ExerciseDetailPage        },
           { path: 'profile',         Component: ProfilePage      },
-          { path: 'team/:id',        Component: ConfigPage       },
-{ path: 'organization/:id', Component: ClubPage        },
+          { path: 'configuration',  Component: ConfigurationPage },
           { path: 'matches',        Component: MatchesPage      },
           { path: 'matches/:id',   Component: MatchDetailPage  },
           { path: 'reports/player', Component: PlayerReportPage },
@@ -90,6 +89,8 @@ export const router = createBrowserRouter([
           { path: 'collective-analyze',      Component: AnalyseCollectivePage   },
           { path: 'individual-analyze',    Component: AnalyseIndividuellePage },
           { path: 'individual-analyze/:id', Component: AnalyseIndividuellePage },
+          { path: 'cross-analyze',         Component: AnalyseCroiseePage },
+          { path: 'cross-analyze/:id',     Component: AnalyseCroiseePage },
           { path: '*', element: <Navigate to="/dashboard" replace /> },
         ],
       },

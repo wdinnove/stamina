@@ -1,13 +1,14 @@
 import React from 'react';
 
-export function Card({ children, style, onClick, accentColor }: {
+export function Card({ children, style, className, onClick, accentColor }: {
   children: React.ReactNode;
   style?: React.CSSProperties;
+  className?: string;
   onClick?: () => void;
   accentColor?: string;
 }) {
   return (
-    <div onClick={onClick} style={{
+    <div className={className} onClick={onClick} style={{
       backgroundColor: '#161920',
       border: accentColor ? `1px solid ${accentColor}35` : '1px solid #2A2F3A',
       borderLeft: accentColor ? `3px solid ${accentColor}` : '1px solid #2A2F3A',
@@ -21,14 +22,15 @@ export function Card({ children, style, onClick, accentColor }: {
   );
 }
 
-export function CardTitle({ icon, children, right, mb = 10 }: {
+export function CardTitle({ icon, children, right, mb = 10, align = 'center' }: {
   icon?: React.ReactNode;
   children: React.ReactNode;
   right?: React.ReactNode;
   mb?: number;
+  align?: React.CSSProperties['alignItems'];
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: mb }}>
+    <div style={{ display: 'flex', alignItems: align, justifyContent: 'space-between', marginBottom: mb }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         {icon && <span>{icon}</span>}
         <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>

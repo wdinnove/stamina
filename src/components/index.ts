@@ -4,6 +4,7 @@ export { RequireAuth }   from './RequireAuth';
 export { KPICard }       from './KPICard';
 export { StatusBadge }   from './StatusBadge';
 export { PlayerAvatar }  from './PlayerAvatar';
+export { PlayerSelect }  from './PlayerSelect';
 export { StaminaLogo }   from './StaminaLogo';
 export { ChartTooltip }  from './ChartTooltip';
 export { Breadcrumb }    from './Breadcrumb';

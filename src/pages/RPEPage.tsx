@@ -6,14 +6,14 @@ import {
   ComposedChart, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { Save, Check, Zap, Activity, BarChart2, List, Users } from 'lucide-react';
+import { Save, Check, Zap, Activity, Users, Calendar } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
 import { notifyOrg } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
 import { supabase } from '../api/client';
-import { StatusBadge, PlayerAvatar, RpeBarChart, ChargeBarChart, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, PlayerRankingTable, EmptyState } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerSelect, RpeBarChart, ChargeBarChart, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, PlayerRankingTable, EmptyState, DateRangeCard, useDateRange } from '../components';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, RPEEntry, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
@@ -72,8 +72,6 @@ function computeAcwr(history: RPEEntry[]): number | null {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type Period = '30j' | 'saison';
 
 interface TeamChartDay {
   label: string;
@@ -134,6 +132,9 @@ export default function RPEPage() {
     }
   };
 
+  // ── Date range (onglets Historique joueur / Historique équipe)
+  const dateRange = useDateRange(selected?.season.startDate);
+
   // ── Roster
   const [roster, setRoster]               = useState<Player[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -169,12 +170,9 @@ export default function RPEPage() {
   const [indivComboView, setIndivComboView]     = useState<'session' | 'week'>('week');
   const [indivDisplay, setIndivDisplay]         = useState<'chart' | 'table'>('chart');
   const [indivTableView, setIndivTableView]     = useState<'session' | 'week'>('week');
-  const [teamSaisonDisplay, setTeamSaisonDisplay] = useState<TeamDisplayMode>('chart');
-  const [team30jDisplay, setTeam30jDisplay]       = useState<TeamDisplayMode>('chart');
-  const [teamComboView30j, setTeamComboView30j]   = useState<'session' | 'week'>('week');
+  const [teamDisplay, setTeamDisplay]           = useState<TeamDisplayMode>('chart');
 
   // ── Team history tab state
-  const [teamPeriod, setTeamPeriod]             = useState<Period>('30j');
   const [teamChartData, setTeamChartData]       = useState<TeamChartDay[]>([]);
   const [teamSessionRows, setTeamSessionRows]   = useState<TeamSessionRow[]>([]);
   const [playerRanking, setPlayerRanking]       = useState<PlayerRank[]>([]);
@@ -183,6 +181,7 @@ export default function RPEPage() {
   const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
   const [teamHistoryError, setTeamHistoryError]     = useState<string | null>(null);
   const [teamSeasonAvgRpe, setTeamSeasonAvgRpe]     = useState<number | null>(null);
+  const [teamSeasonAvgWeeklyLoad, setTeamSeasonAvgWeeklyLoad] = useState<number | null>(null);
 
   // ── Load roster when season changes
   useEffect(() => {
@@ -243,27 +242,22 @@ export default function RPEPage() {
 
   // ── Load team history
   useEffect(() => {
-    if (activeTab !== 'team_history' || !selected) return;
+    if (activeTab !== 'team_history' || !selected || !dateRange.from || !dateRange.to) return;
     setLoadingTeamHistory(true);
     setTeamHistoryError(null);
 
-    const today = todayStr();
-    let fromDate: string | null = null;
-    let toDate: string = today;
+    const fromDate = dateRange.from;
+    const toDate   = dateRange.to;
+    // Périodes courtes (≤ 45j) : timeline dense (chaque jour, 0 si pas de séance).
+    // Périodes longues (phase / saison) : timeline creuse (seulement les jours avec séance), sinon trop de points.
+    const daySpan = Math.round((new Date(toDate + 'T12:00:00').getTime() - new Date(fromDate + 'T12:00:00').getTime()) / 86400000) + 1;
     let allDates: string[] | null = null;
-
-    if (teamPeriod === 'saison') {
-      fromDate = selected.season.startDate;
-      toDate   = selected.season.endDate;
-    } else {
-      const n = 30;
-      const dates = Array.from({ length: n }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (n - 1 - i));
+    if (daySpan <= 45) {
+      allDates = Array.from({ length: daySpan }, (_, i) => {
+        const d = new Date(fromDate + 'T12:00:00');
+        d.setDate(d.getDate() + i);
         return d.toLocaleDateString('sv');
       });
-      fromDate = dates[0];
-      allDates = dates;
     }
 
     let q = supabase
@@ -442,23 +436,30 @@ export default function RPEPage() {
       setTeamHistoryError(err?.message ?? 'Erreur inattendue');
       setLoadingTeamHistory(false);
     });
-  }, [activeTab, selected, teamPeriod]);
+  }, [activeTab, selected, dateRange.from, dateRange.to]);
 
-  // ── Season-wide RPE average for team (independent of period)
+  // ── Season-wide RPE / charge average for team (indépendant de la période sélectionnée)
   useEffect(() => {
-    if (!selected) { setTeamSeasonAvgRpe(null); return; }
+    if (!selected) { setTeamSeasonAvgRpe(null); setTeamSeasonAvgWeeklyLoad(null); return; }
+    const weeks = Math.max(1, Math.ceil((new Date(selected.season.endDate).getTime() - new Date(selected.season.startDate).getTime()) / (7 * 86400000)));
     supabase
       .from('training_sessions')
-      .select('id')
+      .select('id, planned_duration')
       .eq('team_id', selected.team.id)
       .eq('season_id', selected.season.id)
       .then(async ({ data }) => {
-        const ids = (data ?? []).map((s: { id: string }) => s.id);
-        if (!ids.length) { setTeamSeasonAvgRpe(null); return; }
-        const { data: rpe } = await supabase.from('rpe_entries').select('rpe').in('session_id', ids);
-        const vals = (rpe ?? []).map((r: { rpe: number }) => r.rpe);
-        if (!vals.length) { setTeamSeasonAvgRpe(null); return; }
-        setTeamSeasonAvgRpe(Math.round(vals.reduce((s: number, v: number) => s + v, 0) / vals.length * 10) / 10);
+        const sessions = (data ?? []) as Array<{ id: string; planned_duration: number }>;
+        const durationById = new Map(sessions.map(s => [s.id, s.planned_duration]));
+        const ids = sessions.map(s => s.id);
+        if (!ids.length) { setTeamSeasonAvgRpe(null); setTeamSeasonAvgWeeklyLoad(null); return; }
+        const { data: rpe } = await supabase.from('rpe_entries').select('rpe, player_id, session_id').in('session_id', ids);
+        const rows = (rpe ?? []) as Array<{ rpe: number; player_id: string; session_id: string }>;
+        if (!rows.length) { setTeamSeasonAvgRpe(null); setTeamSeasonAvgWeeklyLoad(null); return; }
+        setTeamSeasonAvgRpe(Math.round(rows.reduce((s, r) => s + r.rpe, 0) / rows.length * 10) / 10);
+
+        const totalLoad = rows.reduce((s, r) => s + r.rpe * (durationById.get(r.session_id) ?? 0), 0);
+        const nPlayers  = new Set(rows.map(r => r.player_id)).size || 1;
+        setTeamSeasonAvgWeeklyLoad(Math.round(totalLoad / nPlayers / weeks));
       })
       .catch(() => {});
   }, [selected?.team.id, selected?.season.id]);
@@ -475,7 +476,9 @@ export default function RPEPage() {
   const DAYS_RPE       = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const nextSession    = linkedSessions.filter(s => s.date >= todayStr()).at(-1) ?? null;
 
-  const filtered     = history;
+  const filtered     = history.filter(e =>
+    (!dateRange.from || e.date >= dateRange.from) && (!dateRange.to || e.date <= dateRange.to)
+  );
   const chartData    = [...filtered].sort((a, b) => a.date.localeCompare(b.date)).map((e: RPEEntry) => ({
     date:  fmtDate(e.date),
     rpe:   e.rpe,
@@ -486,7 +489,7 @@ export default function RPEPage() {
   const totalLoad    = filtered.reduce((s: number, e: RPEEntry) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
   const weeklyChartData = (() => {
     const m = new Map<string, number>();
-    history.forEach(e => {
+    filtered.forEach(e => {
       const k = getWeekMonday(e.date);
       m.set(k, (m.get(k) ?? 0) + e.rpe * (e.actualDuration ?? e.plannedDuration));
     });
@@ -536,17 +539,15 @@ export default function RPEPage() {
     return [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
       .map(([d, rpes]) => ({ date: fmtDateShort(d), rpe: Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 }));
   })();
-  const thirtyDaysAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toLocaleDateString('sv'); })();
-  const rows30jTeam = teamSessionRows.filter(s => s.date >= thirtyDaysAgoStr);
   const seasonWeeks = selected ? Math.max(1, Math.ceil((new Date(selected.season.endDate).getTime() - new Date(selected.season.startDate).getTime()) / (7 * 86400000))) : 20;
   const nPlayersTeam = playerRanking.length || 1;
-  const avgWeeklyLoadSaison = teamKpis ? Math.round(teamKpis.totalLoad / nPlayersTeam / seasonWeeks) : 0;
-  const tierSaison = getWeekTier(avgWeeklyLoadSaison, thresholds.lightMax, thresholds.normalMax);
-  const totalLoad30jTeam = rows30jTeam.reduce((s, r) => s + r.totalLoad, 0);
-  const avgWeeklyLoad30j = Math.round(totalLoad30jTeam / nPlayersTeam / 4);
-  const tier30j = getWeekTier(avgWeeklyLoad30j, thresholds.lightMax, thresholds.normalMax);
-  const rpe30jVals = rows30jTeam.map(s => s.avg);
-  const rpe30j = rpe30jVals.length ? Math.round(rpe30jVals.reduce((s, v) => s + v, 0) / rpe30jVals.length * 10) / 10 : null;
+  const teamPeriodWeeks = dateRange.from && dateRange.to
+    ? Math.max(1, Math.round((new Date(dateRange.to).getTime() - new Date(dateRange.from).getTime()) / (7 * 86400000)))
+    : seasonWeeks;
+  const avgWeeklyLoadTeam = teamKpis ? Math.round(teamKpis.totalLoad / nPlayersTeam / teamPeriodWeeks) : 0;
+  const tierTeam = getWeekTier(avgWeeklyLoadTeam, thresholds.lightMax, thresholds.normalMax);
+  const teamShowSeasonDiff = dateRange.preset !== 'saison';
+  const rpeAvgTeamPeriod = teamKpis && teamKpis.sessions > 0 ? teamKpis.avg : null;
   const avgRosterSize = teamSessionRows.length
     ? teamSessionRows.reduce((s, r) => s + r.nbPlayers, 0) / teamSessionRows.length
     : 1;
@@ -615,9 +616,6 @@ export default function RPEPage() {
     return teamSessionRows.filter(s => s.date >= cutoffStr).reduce((sum, s) => sum + s.totalLoad, 0);
   })();
 
-  // ── Chart interval for team history
-  const chartInterval = teamPeriod === '30j' ? 4 : Math.max(0, Math.floor((teamChartData.length) / 8) - 1);
-
   if (!selected) {
     return (
       <div className="p-4 md:p-6">
@@ -629,14 +627,14 @@ export default function RPEPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>RPE</h1>
         <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {(['collective', 'individual', 'team_history'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ padding: '6px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
               {tab === 'collective'
-                ? <><span className="hidden sm:inline">Nouvelle séance</span><span className="sm:hidden">Séance</span></>
+                ? <><span className="hidden sm:inline">Nouvelle saisie</span><span className="sm:hidden">Saisie</span></>
                 : tab === 'individual'
                 ? <><span className="hidden sm:inline">Historique joueur</span><span className="sm:hidden">Joueur</span></>
                 : <><span className="hidden sm:inline">Historique équipe</span><span className="sm:hidden">Équipe</span></>}
@@ -830,16 +828,22 @@ export default function RPEPage() {
 
             {/* Placeholder quand rien n'est sélectionné et pas en mode manuel */}
             {!existingSessionId && !manualMode && (
-              <div style={{ marginBottom: 16 }}>
-                <EmptyState message="Aucune séance sélectionnée." size="lg" />
+              <div style={{ marginBottom: 16, textAlign: 'center', padding: '56px 16px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8 }}>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748B', fontWeight: 500 }}>Aucune séance sélectionnée.</p>
+                <button
+                  onClick={() => setShowSessionPicker(true)}
+                  style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Calendar size={15} /> Sélectionner une séance
+                </button>
               </div>
             )}
 
             {(existingSessionId || manualMode) && (
               loadingRoster ? (
-                <EmptyState message="Chargement du roster…" />
+                <EmptyState message="Chargement de l'effectif…" />
               ) : roster.length === 0 ? (
-                <EmptyState message="Aucun joueur dans le roster pour cette saison." />
+                <EmptyState message="Aucun joueur dans l'effectif pour cette saison." />
               ) : (
                 <>
                   <style>{`
@@ -910,32 +914,37 @@ export default function RPEPage() {
       {/* ══ INDIVIDUAL ══════════════════════════════════════════════════════ */}
       {activeTab === 'individual' && (
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 16, gap: 4 }}>
-            <select value={selectedPlayerId ?? ''} onChange={e => setSelectedPlayerId(e.target.value)}
-              style={{ padding: '5px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 4, color: '#F1F5F9', fontSize: '0.78rem', outline: 'none', cursor: 'pointer' }}>
-              {roster.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
-            </select>
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <PlayerSelect players={roster} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} style={{ minWidth: 180 }} />
           </div>
 
+          <DateRangeCard from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
+            onPreset={p => dateRange.applyPreset(p, selected?.season.startDate)}
+            onFrom={dateRange.setFrom} onTo={dateRange.setTo} />
 
           {loadingHistory ? (
             <EmptyState message="Chargement…" />
           ) : history.length === 0 && selectedPlayerId ? (
             <EmptyState message={`Aucune donnée RPE pour ${selectedPlayer?.firstName} ${selectedPlayer?.lastName}.`} />
+          ) : filtered.length === 0 && history.length > 0 ? (
+            <EmptyState message="Aucune donnée RPE sur la période sélectionnée." />
           ) : history.length > 0 ? (
             <>
-                {/* KPIs joueur — même format que équipe */}
+                {/* KPIs joueur — même format que équipe, période sélectionnée vs moyenne saison */}
                 {(() => {
-                  const avgWeeklyLoad = Math.round(totalLoad / seasonWeeks);
+                  const periodWeeks = dateRange.from && dateRange.to
+                    ? Math.max(1, Math.round((new Date(dateRange.to).getTime() - new Date(dateRange.from).getTime()) / (7 * 86400000)))
+                    : seasonWeeks;
+                  const avgWeeklyLoad = Math.round(totalLoad / periodWeeks);
                   const tier          = avgWeeklyLoad > 0 ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
 
-                  const h30j          = history.filter(e => e.date >= thirtyDaysAgoStr);
-                  const load30j       = h30j.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
-                  const avgWeekly30j  = Math.round(load30j / 4);
-                  const rpe30jIndiv   = h30j.length ? Math.round(h30j.reduce((s, e) => s + e.rpe, 0) / h30j.length * 10) / 10 : null;
+                  const showSeasonDiff      = dateRange.preset !== 'saison';
+                  const seasonTotalLoad     = history.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+                  const seasonAvgWeeklyLoad = Math.round(seasonTotalLoad / seasonWeeks);
+                  const seasonAvgRpe        = history.length ? Math.round(history.reduce((s, e) => s + e.rpe, 0) / history.length * 10) / 10 : null;
 
-                  const chargeDelta   = avgWeeklyLoad > 0 && avgWeekly30j > 0 ? avgWeekly30j - avgWeeklyLoad : null;
-                  const rpeDelta      = avgRPE !== null && rpe30jIndiv !== null ? Math.round((rpe30jIndiv - avgRPE) * 10) / 10 : null;
+                  const chargeDelta   = showSeasonDiff && avgWeeklyLoad > 0 && seasonAvgWeeklyLoad > 0 ? avgWeeklyLoad - seasonAvgWeeklyLoad : null;
+                  const rpeDelta      = showSeasonDiff && avgRPE !== null && seasonAvgRpe !== null ? Math.round((avgRPE - seasonAvgRpe) * 10) / 10 : null;
 
                   const surchargeWeeks = weeklyChartData.filter(w => w.load >= thresholds.normalMax).length;
                   const totalWeeks     = weeklyChartData.length;
@@ -944,14 +953,12 @@ export default function RPEPage() {
                     const c = delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#475569';
                     return <span style={{ color: c, fontSize: '0.85rem', marginLeft: 4, fontFamily: 'JetBrains Mono, monospace' }}>{delta > 0 ? '↑' : delta < 0 ? '↓' : '='}</span>;
                   };
-                  const fmt  = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
-                  const todayStr2 = new Date().toLocaleDateString('sv');
-                  const sub30 = (delta: number, unit = '') =>
+                  const subSeason = (delta: number, unit = '') =>
                     <span style={{ color: '#475569', fontSize: '0.67rem' }}>
                       <span style={{ color: delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#94A3B8', fontWeight: 600 }}>
                         {delta > 0 ? '+' : ''}{delta}{unit}
                       </span>
-                      {' '}du {fmt(thirtyDaysAgoStr)} au {fmt(todayStr2)}
+                      {' '}vs saison
                     </span>;
 
                   return (
@@ -963,13 +970,13 @@ export default function RPEPage() {
                           <span>{avgWeeklyLoad > 0 ? avgWeeklyLoad.toLocaleString('fr') : '—'}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></span>
                           <span style={{ backgroundColor: tier.color + '22', color: tier.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{tier.label}</span>
                         </span> : '—'}
-                        sub={chargeDelta !== null ? <>{arrow(chargeDelta)}{' '}{sub30(chargeDelta, ' UA')}</> : undefined}
+                        sub={chargeDelta !== null ? <>{arrow(chargeDelta)}{' '}{subSeason(chargeDelta, ' UA')}</> : undefined}
                       />
                       <RpeKpiCard
                         accent={avgRPE !== null ? rpeColor(avgRPE) : '#334155'}
-                        label="RPE moyen de la saison"
+                        label="RPE moyen de la période"
                         value={avgRPE !== null ? avgRPE : '—'}
-                        sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{sub30(rpeDelta)}</> : (avgRPE !== null ? rpeLabel(Math.round(avgRPE)) : '—')}
+                        sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{subSeason(rpeDelta)}</> : (avgRPE !== null ? rpeLabel(Math.round(avgRPE)) : '—')}
                       />
                       <RpeKpiCard
                         accent={surchargeWeeks > 0 ? '#EF4444' : '#00E5A0'}
@@ -980,31 +987,28 @@ export default function RPEPage() {
                       />
                       <RpeKpiCard
                         accent="#3B82F6"
-                        label="Séances totales"
+                        label="Séances"
                         value={filtered.length}
                         valueColor="#F1F5F9"
-                        sub="toute la saison"
+                        sub="sur la période sélectionnée"
                       />
                     </div>
                   );
                 })()}
 
                 {/* Toggle graphique / tableau */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 16, backgroundColor: '#1A1E26', border: '1px solid #2A2F3A', borderRadius: 10, padding: 4 }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 16, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
                   {([
-                    { key: 'chart', label: 'Graphique', icon: BarChart2 },
-                    { key: 'table', label: 'Tableau',   icon: List      },
-                  ] as const).map(({ key, label, icon: Icon }) => {
+                    { key: 'chart', label: 'Graphique' },
+                    { key: 'table', label: 'Tableau'   },
+                  ] as const).map(({ key, label }) => {
                     const active = indivDisplay === key;
                     return (
                       <button key={key} onClick={() => setIndivDisplay(key)}
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                          padding: '9px 0', borderRadius: 7, border: active ? '1px solid #2A2F3A' : '1px solid transparent',
-                          cursor: 'pointer', fontSize: '0.8rem', fontWeight: active ? 600 : 400, transition: 'all 0.15s',
-                          backgroundColor: active ? '#242830' : 'transparent',
-                          color: active ? '#F1F5F9' : '#475569',
-                          boxShadow: active ? '0 1px 4px rgba(0,0,0,0.4)' : 'none' }}>
-                        <Icon size={14} strokeWidth={active ? 2.2 : 1.8} />
+                        style={{ flex: 1, padding: '6px 12px', borderRadius: 4, border: 'none',
+                          cursor: 'pointer', fontSize: '0.82rem', fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+                          backgroundColor: active ? '#1E2229' : 'transparent',
+                          color: active ? '#F1F5F9' : '#94A3B8' }}>
                         {label}
                       </button>
                     );
@@ -1193,16 +1197,18 @@ export default function RPEPage() {
       {/* ══ TEAM HISTORY ════════════════════════════════════════════════════ */}
       {activeTab === 'team_history' && (
         <div>
-          {/* Period selector */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 16, gap: 4 }}>
-            <span style={{ color: '#475569', fontSize: '0.78rem', marginRight: 8 }}>Période :</span>
-            {(['30j', 'saison'] as const).map(p => (
-              <button key={p} onClick={() => setTeamPeriod(p)}
-                style={{ padding: '5px 14px', borderRadius: 4, border: '1px solid', borderColor: teamPeriod === p ? '#00E5A0' : '#2A2F3A', backgroundColor: teamPeriod === p ? 'rgba(0,229,160,0.08)' : 'transparent', color: teamPeriod === p ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.78rem', fontWeight: teamPeriod === p ? 600 : 400, transition: 'all 0.15s' }}>
-                {p === 'saison' ? 'Saison' : p}
-              </button>
-            ))}
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 200 }}>
+              <Users size={15} style={{ position: 'absolute', left: 10, color: '#00E5A0', pointerEvents: 'none' }} />
+              <div style={{ width: '100%', padding: '8px 12px 8px 32px', backgroundColor: '#1E2229', border: '1px solid #00E5A050', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600 }}>
+                {selected?.team.name}
+              </div>
+            </div>
           </div>
+
+          <DateRangeCard from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
+            onPreset={p => dateRange.applyPreset(p, selected?.season.startDate)}
+            onFrom={dateRange.setFrom} onTo={dateRange.setTo} />
 
           {loadingTeamHistory ? (
             <EmptyState message="Chargement…" size="lg" />
@@ -1212,32 +1218,30 @@ export default function RPEPage() {
             </div>
           ) : !teamKpis || teamKpis.sessions === 0 ? (
             <EmptyState message="Aucune séance RPE enregistrée sur cette période." size="lg" />
-          ) : teamPeriod === 'saison' ? (
+          ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* KPIs saison */}
+              {/* KPIs période — comparés à la moyenne saison */}
               {(() => {
                 const arrow = (delta: number) => {
                   const c = delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#475569';
                   const sym = delta > 0 ? '↑' : delta < 0 ? '↓' : '=';
                   return <span style={{ color: c, fontSize: '0.85rem', marginLeft: 4, fontFamily: 'JetBrains Mono, monospace' }}>{sym}</span>;
                 };
-                const fmt = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
-                const today30 = new Date().toLocaleDateString('sv');
-                const sub30 = (delta: number, unit = '') =>
+                const subSeason = (delta: number, unit = '') =>
                   <span style={{ color: '#475569', fontSize: '0.67rem' }}>
                     <span style={{ color: delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#94A3B8', fontWeight: 600 }}>
                       {delta > 0 ? '+' : ''}{delta}{unit}
                     </span>
-                    {' '}du {fmt(thirtyDaysAgoStr)} au {fmt(today30)}
+                    {' '}vs saison
                   </span>;
 
-                const chargeDelta = avgWeeklyLoad30j > 0 && avgWeeklyLoadSaison > 0
-                  ? avgWeeklyLoad30j - avgWeeklyLoadSaison : null;
-                const rpeDelta = teamSeasonAvgRpe !== null && rpe30j !== null
-                  ? Math.round((rpe30j - teamSeasonAvgRpe) * 10) / 10 : null;
+                const chargeDelta = teamShowSeasonDiff && avgWeeklyLoadTeam > 0 && teamSeasonAvgWeeklyLoad !== null && teamSeasonAvgWeeklyLoad > 0
+                  ? avgWeeklyLoadTeam - teamSeasonAvgWeeklyLoad : null;
+                const rpeDelta = teamShowSeasonDiff && teamSeasonAvgRpe !== null && rpeAvgTeamPeriod !== null
+                  ? Math.round((rpeAvgTeamPeriod - teamSeasonAvgRpe) * 10) / 10 : null;
 
-                // Semaines en surcharge
+                // Semaines en surcharge sur la période
                 const weekLoadMap = new Map<string, { load: number; playerSum: number; count: number }>();
                 teamSessionRows.forEach(s => {
                   const k = getWeekMonday(s.date);
@@ -1256,19 +1260,19 @@ export default function RPEPage() {
                 return (
                   <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
                     <RpeKpiCard
-                      accent={tierSaison.color}
+                      accent={tierTeam.color}
                       label="Charge moyenne par semaine"
                       value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        <span>{avgWeeklyLoadSaison > 0 ? avgWeeklyLoadSaison.toLocaleString('fr') : '—'}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></span>
-                        <span style={{ backgroundColor: tierSaison.color + '22', color: tierSaison.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{tierSaison.label}</span>
+                        <span>{avgWeeklyLoadTeam > 0 ? avgWeeklyLoadTeam.toLocaleString('fr') : '—'}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></span>
+                        <span style={{ backgroundColor: tierTeam.color + '22', color: tierTeam.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{tierTeam.label}</span>
                       </span>}
-                      sub={chargeDelta !== null ? <>{arrow(chargeDelta)}{' '}{sub30(chargeDelta, ' UA')}</> : undefined}
+                      sub={chargeDelta !== null ? <>{arrow(chargeDelta)}{' '}{subSeason(chargeDelta, ' UA')}</> : undefined}
                     />
                     <RpeKpiCard
-                      accent={teamSeasonAvgRpe !== null ? rpeColor(teamSeasonAvgRpe) : '#334155'}
-                      label="RPE moyen de la saison"
-                      value={teamSeasonAvgRpe !== null ? teamSeasonAvgRpe : '—'}
-                      sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{sub30(rpeDelta)}</> : (teamSeasonAvgRpe !== null ? rpeLabel(Math.round(teamSeasonAvgRpe)) : '—')}
+                      accent={rpeAvgTeamPeriod !== null ? rpeColor(rpeAvgTeamPeriod) : '#334155'}
+                      label="RPE moyen de la période"
+                      value={rpeAvgTeamPeriod !== null ? rpeAvgTeamPeriod : '—'}
+                      sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{subSeason(rpeDelta)}</> : (rpeAvgTeamPeriod !== null ? rpeLabel(Math.round(rpeAvgTeamPeriod)) : '—')}
                     />
                     <RpeKpiCard
                       accent={surchargeWeeks > 0 ? '#EF4444' : '#00E5A0'}
@@ -1279,19 +1283,19 @@ export default function RPEPage() {
                     />
                     <RpeKpiCard
                       accent="#3B82F6"
-                      label="Séances totales"
+                      label="Séances"
                       value={teamKpis ? teamKpis.sessions : '—'}
                       valueColor="#F1F5F9"
-                      sub="toute la saison"
+                      sub="sur la période sélectionnée"
                     />
                   </div>
                 );
               })()}
 
-              <TeamDisplayToggle value={teamSaisonDisplay} onChange={setTeamSaisonDisplay} />
+              <TeamDisplayToggle value={teamDisplay} onChange={setTeamDisplay} />
 
               {/* Graphique */}
-              {teamSaisonDisplay === 'chart' && (() => {
+              {teamDisplay === 'chart' && (() => {
                 const sessionCombo = [...teamSessionRows].reverse().map(s => ({
                   date: fmtDateWithDay(s.date),
                   load: Math.round(s.totalLoad / Math.max(s.nbPlayers, 1)),
@@ -1327,147 +1331,11 @@ export default function RPEPage() {
                 );
               })()}
 
-              {teamSaisonDisplay === 'table' && (
+              {teamDisplay === 'table' && (
                 <TeamSessionHistoryTable rows={teamSessionRows} sessionLoadNormal={sessionLoadNormal} />
               )}
 
-              {teamSaisonDisplay === 'ranking' && (
-                <PlayerRankingTable players={playerRanking} sessionLoadNormal={sessionLoadNormal} normalMax={thresholds.normalMax} />
-              )}
-
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-              {/* KPIs 30j */}
-              {(() => {
-                const arrow = (delta: number) => {
-                  const c = delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#475569';
-                  const sym = delta > 0 ? '↑' : delta < 0 ? '↓' : '=';
-                  return <span style={{ color: c, fontSize: '0.85rem', marginLeft: 4, fontFamily: 'JetBrains Mono, monospace' }}>{sym}</span>;
-                };
-                const fmt30 = (iso: string) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
-                const today30str = new Date().toLocaleDateString('sv');
-                const sub30j = (delta: number, unit = '') =>
-                  <span style={{ color: '#475569', fontSize: '0.67rem' }}>
-                    <span style={{ color: delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#94A3B8', fontWeight: 600 }}>
-                      {delta > 0 ? '+' : ''}{delta}{unit}
-                    </span>
-                    {' '}du {fmt30(thirtyDaysAgoStr)} au {fmt30(today30str)}
-                  </span>;
-
-                // Charge moy par semaine sur 30j
-                const weekLoadMap30j = new Map<string, { load: number; playerSum: number; count: number }>();
-                rows30jTeam.forEach(s => {
-                  const k = getWeekMonday(s.date);
-                  if (!weekLoadMap30j.has(k)) weekLoadMap30j.set(k, { load: 0, playerSum: 0, count: 0 });
-                  const w = weekLoadMap30j.get(k)!;
-                  w.load += s.totalLoad; w.playerSum += s.nbPlayers; w.count++;
-                });
-                const totalWeeks30j = weekLoadMap30j.size;
-                const surchargeWeeks30j = [...weekLoadMap30j.values()].filter(w => {
-                  const avgPlayers = w.playerSum / w.count;
-                  return avgPlayers > 0 && (w.load / avgPlayers) >= thresholds.normalMax;
-                }).length;
-                const weekLoads30j = [...weekLoadMap30j.values()].map(w => {
-                  const avg = w.playerSum / w.count;
-                  return avg > 0 ? Math.round(w.load / avg) : 0;
-                });
-                const avgWeekLoad30jVal = weekLoads30j.length
-                  ? Math.round(weekLoads30j.reduce((s, v) => s + v, 0) / weekLoads30j.length)
-                  : 0;
-                const tier30jKpi = getWeekTier(avgWeekLoad30jVal, thresholds.lightMax, thresholds.normalMax);
-
-                // RPE moyen 30j
-                const rpe30jAvg = rpe30j;
-
-                // Comparaison vs saison (pour sous-titres)
-                const chargeDelta30j = avgWeekLoad30jVal > 0 && avgWeeklyLoadSaison > 0
-                  ? avgWeekLoad30jVal - avgWeeklyLoadSaison : null;
-                const rpeDelta30j = teamSeasonAvgRpe !== null && rpe30jAvg !== null
-                  ? Math.round((rpe30jAvg - teamSeasonAvgRpe) * 10) / 10 : null;
-
-                const nbSeances30j = rows30jTeam.length;
-
-                return (
-                  <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
-                    <RpeKpiCard
-                      accent={tier30jKpi.color}
-                      label="Charge moyenne par semaine"
-                      value={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        <span>{avgWeekLoad30jVal > 0 ? avgWeekLoad30jVal.toLocaleString('fr') : '—'}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></span>
-                        <span style={{ backgroundColor: tier30jKpi.color + '22', color: tier30jKpi.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{tier30jKpi.label}</span>
-                      </span>}
-                      sub={chargeDelta30j !== null ? <>{arrow(chargeDelta30j)}{' '}{sub30j(chargeDelta30j, ' UA')}</> : undefined}
-                    />
-                    <RpeKpiCard
-                      accent={rpe30jAvg !== null ? rpeColor(rpe30jAvg) : '#334155'}
-                      label="RPE moyen de la période"
-                      value={rpe30jAvg !== null ? rpe30jAvg : '—'}
-                      sub={rpeDelta30j !== null ? <>{arrow(rpeDelta30j)}{' '}{sub30j(rpeDelta30j)}</> : (rpe30jAvg !== null ? rpeLabel(Math.round(rpe30jAvg)) : '—')}
-                    />
-                    <RpeKpiCard
-                      accent={surchargeWeeks30j > 0 ? '#EF4444' : '#00E5A0'}
-                      label="Semaines surcharge"
-                      value={<><span style={{ color: surchargeWeeks30j > 0 ? '#EF4444' : '#00E5A0' }}>{surchargeWeeks30j}</span><span style={{ color: '#475569', fontSize: '0.9rem', fontWeight: 400 }}> / {totalWeeks30j}</span></>}
-                      valueColor="#F1F5F9"
-                      sub={totalWeeks30j > 0 ? `${Math.round(surchargeWeeks30j / totalWeeks30j * 100)} % des semaines` : '—'}
-                    />
-                    <RpeKpiCard
-                      accent="#3B82F6"
-                      label="Séances totales"
-                      value={nbSeances30j}
-                      valueColor="#F1F5F9"
-                      sub="sur les 30 derniers jours"
-                    />
-                  </div>
-                );
-              })()}
-
-              <TeamDisplayToggle value={team30jDisplay} onChange={setTeam30jDisplay} />
-
-              {/* Graphique 30j */}
-              {team30jDisplay === 'chart' && (() => {
-                const sessionCombo30j = [...rows30jTeam].reverse().map(s => ({
-                  date: fmtDateWithDay(s.date),
-                  load: Math.round(s.totalLoad / Math.max(s.nbPlayers, 1)),
-                  rpe:  s.avg,
-                }));
-                const weekCombMap30j = new Map<string, { load: number; playerSum: number; count: number; rpes: number[] }>();
-                rows30jTeam.forEach(s => {
-                  const k = getWeekMonday(s.date);
-                  if (!weekCombMap30j.has(k)) weekCombMap30j.set(k, { load: 0, playerSum: 0, count: 0, rpes: [] });
-                  const e = weekCombMap30j.get(k)!;
-                  e.load += s.totalLoad; e.playerSum += s.nbPlayers; e.count += 1;
-                  if (s.avg > 0) e.rpes.push(s.avg);
-                });
-                const weekCombo30j = [...weekCombMap30j.entries()]
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([d, { load, playerSum, count, rpes }]) => ({
-                    date: fmtDateWithDay(d),
-                    load: Math.round(load / Math.max(playerSum / count, 1)),
-                    rpe:  rpes.length ? Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 : 0,
-                  }))
-                  .filter(d => d.rpe > 0);
-                const comboData30j = teamComboView30j === 'session' ? sessionCombo30j : weekCombo30j;
-                const high30j      = teamComboView30j === 'session' ? sessionLoadNormal : thresholds.normalMax;
-                return (
-                  <ChargeRpeComboChart
-                    data={comboData30j}
-                    view={teamComboView30j}
-                    onViewChange={setTeamComboView30j}
-                    high={high30j}
-                    title="Charge UA + RPE — 30 derniers jours"
-                    height={360}
-                  />
-                );
-              })()}
-
-              {team30jDisplay === 'table' && (
-                <TeamSessionHistoryTable rows={rows30jTeam} sessionLoadNormal={sessionLoadNormal} title="Historique séances — 30j" />
-              )}
-
-              {team30jDisplay === 'ranking' && (
+              {teamDisplay === 'ranking' && (
                 <PlayerRankingTable players={playerRanking} sessionLoadNormal={sessionLoadNormal} normalMax={thresholds.normalMax} />
               )}
 

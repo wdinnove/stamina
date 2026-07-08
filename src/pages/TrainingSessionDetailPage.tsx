@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, Upload, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, Plus, GripVertical, ArrowRight, TrendingUp, TrendingDown, Minus, BookOpen } from 'lucide-react';
+import { ArrowLeft, Clock, Upload, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, Plus, GripVertical, ArrowRight, TrendingUp, TrendingDown, Minus, BookOpen, Users, Check, Save } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -93,7 +93,7 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
 
   const filtered = exercises.filter(ex => {
     const q = query.toLowerCase();
-    return ex.name.toLowerCase().includes(q) || (ex.category ?? '').toLowerCase().includes(q);
+    return ex.name.toLowerCase().includes(q) || (ex.categoryName ?? '').toLowerCase().includes(q);
   });
 
   useEffect(() => {
@@ -130,11 +130,11 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
       {/* Champ — même box model que inputStyle, padding géré par le flex + input interne */}
       <div
         onClick={() => { setOpen(true); inputRef.current?.focus(); }}
-        style={{ ...inputStyle, display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#0F1117', border: '1px solid #1E2229', cursor: 'text', padding: 0 }}>
+        style={{ ...inputStyle, display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#0F1117', border: '1px solid rgba(0,229,160,0.35)', boxShadow: '0 0 0 1px rgba(0,229,160,0.08)', cursor: 'text', padding: 0 }}>
         {/* Préfixe icône + label */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 0 0 10px', flexShrink: 0 }}>
-          <BookOpen size={12} color="#475569" />
-          <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 500, whiteSpace: 'nowrap' }}>Bibliothèque</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 0 0 12px', flexShrink: 0 }}>
+          <BookOpen size={13} color="#00E5A0" />
+          <span style={{ color: '#00E5A0', fontSize: '0.74rem', fontWeight: 700, whiteSpace: 'nowrap' }}>Bibliothèque</span>
         </div>
         {/* Séparateur */}
         <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: '#1E2229' }} />
@@ -148,7 +148,7 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
           onChange={e => { if (!selected) { setQuery(e.target.value); setOpen(true); setCursor(-1); } }}
           onFocus={() => { setOpen(true); }}
           onKeyDown={handleKey}
-          style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: selected ? '#F1F5F9' : '#94A3B8', fontSize: '0.84rem', padding: '8px 0', minWidth: 0, cursor: selected ? 'default' : 'text' }} />
+          style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: selected ? '#F1F5F9' : '#94A3B8', fontSize: '0.88rem', padding: '10px 0', minWidth: 0, cursor: selected ? 'default' : 'text' }} />
         {/* Bouton effacer */}
         {(value || query) && (
           <button type="button" onClick={e => { e.stopPropagation(); clear(); }}
@@ -177,7 +177,7 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
                 onMouseEnter={() => setCursor(i)}
                 onMouseLeave={() => setCursor(-1)}>
                 <span style={{ color: '#F1F5F9', fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
-                {ex.category && <span style={{ color: '#475569', fontSize: '0.7rem', flexShrink: 0 }}>{ex.category}</span>}
+                {ex.categoryName && <span style={{ color: '#475569', fontSize: '0.7rem', flexShrink: 0 }}>{ex.categoryName}</span>}
               </button>
             ))
           )}
@@ -384,7 +384,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                           if (ex) setEditForm(f => ({
                             ...f,
                             label: ex.name,
-                            ...(ex.category ? { category: ex.category } : {}),
+                            ...(ex.categoryName ? { category: ex.categoryName } : {}),
                           }));
                         }}
                       />
@@ -420,14 +420,15 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
                       <button onClick={() => setEditingId(null)}
-                        style={{ flex: 1, padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
+                        style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
                         Annuler
                       </button>
                       <button disabled={saving} onClick={() => handleEditSave(block)}
-                        style={{ flex: 1, padding: '8px 10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>
-                        {saving ? '…' : 'Enregistrer'}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>
+                        <Save size={14} />
+                        {saving ? 'Enregistrement…' : 'Enregistrer'}
                       </button>
                     </div>
                   </div>
@@ -544,7 +545,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                 if (ex) setForm(f => ({
                   ...f,
                   label: ex.name,
-                  ...(ex.category ? { category: ex.category } : {}),
+                  ...(ex.categoryName ? { category: ex.categoryName } : {}),
                 }));
               }}
             />
@@ -580,14 +581,15 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
             <button type="button" onClick={() => { setShowForm(false); setForm(BLANK_BLOCK); setFormDrillId(null); }}
-              style={{ flex: 1, padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
+              style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
               Annuler
             </button>
             <button type="submit" disabled={saving}
-              style={{ flex: 1, padding: '8px 10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>
-              {saving ? 'Ajout…' : 'Ajouter'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>
+              <Save size={14} />
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
             </button>
           </div>
         </form>
@@ -600,67 +602,75 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
         </div>
       )}
 
-      {/* Modal détail exercice */}
+      {/* Modal détail exercice — même format que la fiche exercice */}
       {viewExercise && (
         <div
           onClick={() => setViewExercise(null)}
           style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <style>{`
-            .ex-view-desc ul { list-style-type: disc; padding-left: 20px; }
-            .ex-view-desc ol { list-style-type: decimal; padding-left: 20px; }
-            .ex-view-desc li { display: list-item; }
-            .ex-view-desc strong { font-weight: 700; color: #F1F5F9; }
-            .ex-view-desc em { font-style: italic; }
-            .ex-view-desc p { margin-bottom: 8px; }
+            .ex-view-desc { color:#94A3B8; font-size:0.88rem; line-height:1.6; }
+            .ex-view-desc p { margin:0 0 8px; }
+            .ex-view-desc p:last-child { margin:0; }
+            .ex-view-desc ul { margin:4px 0; padding-left:18px; list-style-type:disc; }
+            .ex-view-desc ol { margin:4px 0; padding-left:18px; list-style-type:decimal; }
+            .ex-view-desc li { display:list-item; margin:2px 0; }
+            .ex-view-desc strong { color:#F1F5F9; }
           `}</style>
           <div
             onClick={e => e.stopPropagation()}
-            style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: 24, maxWidth: 520, width: '100%', maxHeight: '80vh', overflowY: 'auto' }}>
+            style={{ position: 'relative', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 24, maxWidth: 720, width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
+            <button onClick={() => setViewExercise(null)}
+              style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+              <X size={18} />
+            </button>
+
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <BookOpen size={16} style={{ color: '#00E5A0', flexShrink: 0 }} />
-                  <h3 style={{ margin: 0, color: '#F1F5F9', fontSize: '1.05rem', fontWeight: 700 }}>{viewExercise.name}</h3>
-                </div>
-                {viewExercise.category && (
-                  <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: 4, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', color: '#94A3B8' }}>
-                    {viewExercise.category}
-                  </span>
-                )}
-              </div>
-              <button onClick={() => setViewExercise(null)}
-                style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, flexShrink: 0, display: 'flex', alignItems: 'center' }}
-                onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
-                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                <X size={18} />
-              </button>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16, paddingRight: 28 }}>
+              <h1 style={{ color: '#F1F5F9', margin: 0 }}>{viewExercise.name}</h1>
+              {viewExercise.categoryName && (
+                <span style={{ color: viewExercise.categoryColor, backgroundColor: viewExercise.categoryColor + '18', fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: 4, flexShrink: 0 }}>
+                  {viewExercise.categoryName}
+                </span>
+              )}
             </div>
+
+            {/* Description */}
+            <div style={{ borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+              <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Description</p>
+              {viewExercise.description && viewExercise.description !== '<p></p>' ? (
+                <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: viewExercise.description }} />
+              ) : (
+                <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune description.</span>
+              )}
+            </div>
+
             {/* Images */}
             {viewExerciseImages.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Images</p>
                 <ExerciseImageGallery images={viewExerciseImages} alt={viewExercise.name} />
               </div>
             )}
-            {/* Description */}
-            {viewExercise.description ? (
-              <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: viewExercise.description }}
-                style={{ color: '#94A3B8', fontSize: '0.84rem', lineHeight: 1.65 }} />
-            ) : (
-              <p style={{ color: '#475569', fontSize: '0.84rem', fontStyle: 'italic', margin: 0 }}>Aucune description disponible.</p>
-            )}
+
             {/* Document */}
             {viewExercise.documentUrl && (
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Document</p>
                 <a href={viewExercise.documentUrl} target="_blank" rel="noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#94A3B8', fontSize: '0.82rem' }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#F1F5F9', fontSize: '0.85rem', textDecoration: 'none' }}>
+                  <FileText size={15} color="#00E5A0" />
                   {viewExercise.documentName || 'Document PDF'}
+                  <ExternalLink size={13} color="#475569" />
                 </a>
               </div>
             )}
+
             {/* Vidéo */}
             {viewExercise.videoUrl && detectSocialPlatform(viewExercise.videoUrl) && (
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
+                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Vidéo</p>
                 <SocialVideoEmbed url={viewExercise.videoUrl} />
               </div>
             )}
@@ -814,6 +824,16 @@ export default function TrainingSessionDetailPage() {
   const [editError,  setEditError]  = useState('');
   const [editForm,   setEditForm]   = useState({ date: '', sessionType: 'training', duration: '90', notes: '' });
 
+  const [rosterPlayers,    setRosterPlayers]    = useState<Player[]>([]);
+  const [showAttendance,   setShowAttendance]   = useState(false);
+  const [attSavingId,      setAttSavingId]      = useState<string | null>(null);
+  const [attError,         setAttError]         = useState('');
+
+  useEffect(() => {
+    if (!session?.seasonId) return;
+    playersApi.listBySeason(session.seasonId).then(setRosterPlayers).catch(() => {});
+  }, [session?.seasonId]);
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -879,6 +899,29 @@ export default function TrainingSessionDetailPage() {
     }
   }
 
+  async function toggleAttendance(playerId: string, status: TrainingAttendance['status']) {
+    if (!session) return;
+    const current = attendance.find(a => a.playerId === playerId)?.status;
+    setAttSavingId(playerId);
+    setAttError('');
+    try {
+      if (current === status) {
+        await attendanceApi.deleteAttendance(session.id, playerId);
+        setAttendance(prev => prev.filter(a => a.playerId !== playerId));
+      } else {
+        await attendanceApi.setAttendance({ sessionId: session.id, playerId, status });
+        setAttendance(prev => [
+          ...prev.filter(a => a.playerId !== playerId),
+          { id: `${session.id}:${playerId}`, sessionId: session.id, playerId, status, createdAt: new Date().toISOString() },
+        ]);
+      }
+    } catch (err: unknown) {
+      setAttError(err instanceof Error ? err.message : 'Erreur.');
+    } finally {
+      setAttSavingId(null);
+    }
+  }
+
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
     border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
@@ -915,10 +958,15 @@ export default function TrainingSessionDetailPage() {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <h1 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.25rem' }}>{fmtDateFull(session.date)}</h1>
-          <button onClick={openEdit} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Edit size={13} /> Modifier
-          </button>
+          <h1 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>{fmtDateFull(session.date)}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => { setAttError(''); setShowAttendance(true); }} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Users size={13} /> Modifier les présences
+            </button>
+            <button onClick={openEdit} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Edit size={13} /> Modifier
+            </button>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 4 }}>
@@ -1128,6 +1176,72 @@ export default function TrainingSessionDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal présences */}
+      {showAttendance && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowAttendance(false); }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
+              <div>
+                <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Présences</h2>
+                <p style={{ color: '#475569', fontSize: '0.78rem', margin: '2px 0 0' }}>{fmtDateFull(session.date)}</p>
+              </div>
+              <button onClick={() => setShowAttendance(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, display: 'flex' }}><X size={18} /></button>
+            </div>
+
+            {attError && (
+              <div style={{ padding: '10px 20px 0' }}>
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{attError}</span>
+              </div>
+            )}
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+              {rosterPlayers.length === 0 ? (
+                <p style={{ color: '#475569', fontSize: '0.85rem', textAlign: 'center', padding: '32px 0' }}>Aucun joueur dans l'effectif.</p>
+              ) : rosterPlayers.map(p => {
+                const status = attendance.find(a => a.playerId === p.id)?.status;
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderBottom: '1px solid #1E2229' }}>
+                    <PlayerAvatar player={p} size={30} />
+                    <span style={{ flex: 1, minWidth: 0, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.lastName} {p.firstName}
+                    </span>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      {(['present', 'absent', 'late'] as const).map(s => {
+                        const cfg = STATUS_CFG[s];
+                        const active = status === s;
+                        const Icon = s === 'present' ? Check : s === 'absent' ? X : Clock;
+                        return (
+                          <button key={s} type="button" title={cfg.label} disabled={attSavingId === p.id}
+                            onClick={() => toggleAttendance(p.id, s)}
+                            style={{
+                              width: 32, height: 32, borderRadius: 7,
+                              border: `1px solid ${active ? cfg.color : '#2A2F3A'}`,
+                              backgroundColor: active ? cfg.bg : 'transparent',
+                              color: active ? cfg.color : '#475569',
+                              cursor: attSavingId === p.id ? 'not-allowed' : 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                            <Icon size={14} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid #1E2229', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAttendance(false)}
+                style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, Legend } from 'recharts';
 import { ArrowLeft, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { players, matchStats, teamMatchStats, getPlayerById, getPlayerStats, playerSeasonAvg, fg2Pct, fg3Pct, ftPct, formatDate, evalColor, TeamMatchStat, MatchStat } from '../data';
-import { PlayerAvatar, Breadcrumb } from '../components';
+import { PlayerAvatar, PlayerSelect, Breadcrumb } from '../components';
 
 type Tab = 'player' | 'team' | 'match';
 
@@ -192,10 +192,7 @@ function PlayerStatsView() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-        <select value={selectedPlayer} onChange={e => setSelectedPlayer(e.target.value)}
-          style={{ padding: '7px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
-          {t1Players.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
-        </select>
+        <PlayerSelect players={t1Players} value={selectedPlayer} onChange={setSelectedPlayer} />
         <select style={{ padding: '7px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
           <option>Saison 2025/26</option>
         </select>
@@ -426,7 +423,7 @@ export default function StatsPage() {
     <div className="p-4 md:p-6">
       <div style={{ marginBottom: 20 }}>
         <Breadcrumb items={breadcrumbItems} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: breadcrumbItems.length > 0 ? 8 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: breadcrumbItems.length > 0 ? 8 : 0 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Statistiques</h1>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {(['team', 'player', 'match'] as Tab[]).map(t => (

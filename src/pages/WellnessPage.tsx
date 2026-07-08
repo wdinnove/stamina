@@ -1,38 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Save, Check, Mail, X } from 'lucide-react';
+import { Save, Check, Mail, X, Heart, TrendingUp, Users, Smile, Meh, Frown } from 'lucide-react';
 import { sendEmail } from '../api/email';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
+import { DateRangeCard, useDateRange, PlayerSelect, Card, CardTitle } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessGlobalScore, wellnessStatus } from '../utils/wellness';
 import type { Player, WellnessEntry } from '../data/types';
 
-const dimensions = [
-  { key: 'fatigue',    label: 'Fatigue',              emoji: '😴', desc: 'Très reposé ← → Épuisé',           inverted: true  },
-  { key: 'mood',       label: 'Humeur',               emoji: '😊', desc: 'Très mauvaise ← → Très bonne',     inverted: false },
-  { key: 'stress',     label: 'Stress / Tension',     emoji: '😰', desc: 'Calme ← → Très stressé',           inverted: true  },
-  { key: 'motivation', label: 'Motivation',            emoji: '💪', desc: 'Aucune motivation ← → Très motivé', inverted: false },
-  { key: 'sleep',      label: 'Qualité du sommeil',   emoji: '🌙', desc: 'Mauvaise ← → Excellente',          inverted: false },
-  { key: 'soreness',   label: 'Douleurs musculaires', emoji: '🦵', desc: 'Aucune ← → Très intenses',         inverted: true  },
-];
-
-const scoreColor  = (v: number) => v >= 7 ? '#00E5A0' : v >= 5 ? '#F59E0B' : '#EF4444';
-const dimColor    = (v: number, inverted: boolean) => scoreColor(inverted ? 11 - v : v);
+const dimensions = WELLNESS_DIMENSIONS;
+const scoreColor = wellnessScoreColor;
+const dimColor   = wellnessDimColor;
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtDate(iso: string): string {
   const [, m, d] = iso.split('-').map(Number);
   return `${d} ${MONTHS[m - 1]}`;
-}
-
-function previewScore(values: Record<string, number>): number {
-  return Math.round((
-    (10 - values.fatigue) + values.mood + (10 - values.stress) +
-    values.motivation + values.sleep + (10 - values.soreness)
-  ) / 6 * 10) / 10;
 }
 
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { color: string; name: string; value: number }[]; label?: string }) => {
@@ -47,11 +34,12 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   );
 };
 
-type Tab = 'entry' | 'history';
+type Tab = 'entry' | 'history' | 'team';
 
 const TAB_SLUGS: Record<string, Tab> = {
-  new:     'entry',
-  history: 'history',
+  new:        'entry',
+  individual: 'history',
+  team:       'team',
 };
 
 export default function WellnessPage() {
@@ -60,16 +48,20 @@ export default function WellnessPage() {
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
   const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'entry';
-  const selectedPlayerId = urlId ?? null;
+  const selectedPlayerId = activeTab === 'team' ? null : (urlId ?? null);
 
   const setActiveTab = (t: Tab) => {
-    const slug = t === 'entry' ? 'new' : 'history';
+    if (t === 'team') {
+      navigate(selected ? `/wellness/team/${selected.team.id}` : '/wellness/team', { replace: true });
+      return;
+    }
+    const slug = t === 'entry' ? 'new' : 'individual';
     const pid  = selectedPlayerId ?? roster[0]?.id;
     navigate(pid ? `/wellness/${slug}/${pid}` : `/wellness/${slug}`, { replace: true });
   };
 
   const setSelectedPlayerId = (id: string) => {
-    const slug = activeTab === 'entry' ? 'new' : 'history';
+    const slug = activeTab === 'entry' ? 'new' : 'individual';
     navigate(`/wellness/${slug}/${id}`, { replace: true });
   };
 
@@ -90,6 +82,12 @@ export default function WellnessPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
 
+  const [teamHistory, setTeamHistory]               = useState<WellnessEntry[]>([]);
+  const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
+
+  const dateRange = useDateRange(selected?.season.startDate, 21);
+  const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
+
   const [showLinkModal,    setShowLinkModal]    = useState(false);
   const [linkSelected,     setLinkSelected]     = useState<Set<string>>(new Set());
   const [linkSending,      setLinkSending]      = useState(false);
@@ -101,14 +99,25 @@ export default function WellnessPage() {
     playersApi.listBySeason(selected.season.id)
       .then(players => {
         setRoster(players);
-        if (players.length > 0 && !urlId) {
-          const slug = activeTab === 'entry' ? 'new' : 'history';
+        if (players.length > 0 && !urlId && activeTab !== 'team') {
+          const slug = activeTab === 'entry' ? 'new' : 'individual';
           navigate(`/wellness/${slug}/${players[0].id}`, { replace: true });
+        } else if (activeTab === 'team' && !urlId) {
+          navigate(`/wellness/team/${selected.team.id}`, { replace: true });
         }
       })
       .catch(() => {})
       .finally(() => setLoadingRoster(false));
   }, [selected?.season.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'team' || roster.length === 0) return;
+    setLoadingTeamHistory(true);
+    Promise.all(roster.map(p => wellnessApi.getByPlayer(p.id)))
+      .then(lists => setTeamHistory(lists.flat()))
+      .catch(() => {})
+      .finally(() => setLoadingTeamHistory(false));
+  }, [activeTab, roster, historyVersion]);
 
   useEffect(() => {
     if (!selectedPlayerId) { setHistory([]); return; }
@@ -137,36 +146,98 @@ export default function WellnessPage() {
   }, [selectedPlayerId, entryDate]);
 
   const selectedPlayer = roster.find(p => p.id === selectedPlayerId);
-  const score = previewScore(values);
+  const score = wellnessGlobalScore(values as { fatigue: number; mood: number; stress: number; motivation: number; sleep: number; soreness: number });
 
-  const historyAsc = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const last14     = historyAsc.slice(-14);
-  const last3      = historyAsc.slice(-3);
+  // Dernière saisie enregistrée avant la date en cours d'édition, pour donner un repère pendant la saisie
+  const previousEntry = history.find(e => e.date < entryDate) ?? null;
+  const scoreDiff = previousEntry ? Math.round((score - previousEntry.score) * 10) / 10 : null;
 
-  const lineData = last14.map((e, i) => ({
-    idx: i, date: fmtDate(e.date),
-    fatigue: e.fatigue, humeur: e.mood, stress: e.stress,
-    motivation: e.motivation, sommeil: e.sleep, douleur: e.soreness, score: e.score,
-  }));
+  const isTeamView = activeTab === 'team';
 
-  const radarData = last3.length > 0
-    ? dimensions.map(d => ({
-        dim: d.label,
-        value: parseFloat((last3.reduce((s, e) => s + (e[d.key as keyof WellnessEntry] as number), 0) / last3.length).toFixed(1)),
-        fullMark: 10,
-      }))
-    : [];
-  const avgScore      = last3.length > 0 ? last3.reduce((s, e) => s + e.score, 0) / last3.length : 5;
-  const radarColor    = scoreColor(avgScore);
+  // Agrégat quotidien de l'équipe : moyenne de chaque dimension entre tous les joueurs ayant saisi ce jour-là
+  const teamDailySeries: WellnessEntry[] = (() => {
+    const byDate = new Map<string, WellnessEntry[]>();
+    teamHistory.forEach(e => {
+      const arr = byDate.get(e.date);
+      if (arr) arr.push(e); else byDate.set(e.date, [e]);
+    });
+    return [...byDate.entries()].map(([date, entries]) => ({
+      id: date, playerId: 'team', date,
+      fatigue:    wellnessAvg(entries.map(e => e.fatigue))    ?? 0,
+      mood:       wellnessAvg(entries.map(e => e.mood))       ?? 0,
+      stress:     wellnessAvg(entries.map(e => e.stress))     ?? 0,
+      motivation: wellnessAvg(entries.map(e => e.motivation)) ?? 0,
+      sleep:      wellnessAvg(entries.map(e => e.sleep))      ?? 0,
+      soreness:   wellnessAvg(entries.map(e => e.soreness))   ?? 0,
+      score:      wellnessAvg(entries.map(e => e.score))      ?? 0,
+    }));
+  })();
 
-  const heatmapData = historyAsc.map(e => ({
-    date: e.date, score: e.score,
-    label: new Date(e.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 3),
-  }));
+  const sourceHistory = isTeamView ? teamDailySeries : history;
 
-  const tableData  = [...history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
-  const heatColor  = (v: number) => v >= 7 ? '#00E5A033' : v >= 5 ? '#F59E0B33' : '#EF444433';
-  const heatBorder = (v: number) => v >= 7 ? '#00E5A0'   : v >= 5 ? '#F59E0B'   : '#EF4444';
+  const historyInRange = sourceHistory.filter(e =>
+    (!dateRange.from || e.date >= dateRange.from) && (!dateRange.to || e.date <= dateRange.to)
+  );
+  const historyAsc = [...historyInRange].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Une mini-série par dimension : valeurs brutes sur la courbe, axe inversé pour les dimensions
+  // "inversées" (fatigue/stress/douleurs) pour que le haut du graphique reste toujours "mieux".
+  const dimensionSeries = dimensions.map(dim => {
+    const rawValues = historyAsc.map(e => e[dim.key as keyof WellnessEntry] as number);
+    const avg = rawValues.length > 0 ? Math.round(rawValues.reduce((s, v) => s + v, 0) / rawValues.length * 10) / 10 : null;
+    return {
+      ...dim,
+      avg,
+      series: historyAsc.map((e, i) => ({ idx: i, date: fmtDate(e.date), value: e[dim.key as keyof WellnessEntry] as number })),
+    };
+  });
+
+  // Score global de la période : une seule moyenne, réutilisée pour le radar POMS et le KPI "Score global"
+  const scoreAvg    = wellnessAvg(historyInRange.map(e => e.score));
+  const radarColor  = scoreColor(scoreAvg ?? 5);
+
+  const radarData = dimensionSeries.map(dim => ({ dim: dim.label, value: dim.avg ?? 0, fullMark: 10 }));
+
+  // Série du score global (déjà "plus haut = mieux", pas d'inversion nécessaire)
+  const scoreSeries = historyAsc.map((e, i) => ({ idx: i, date: fmtDate(e.date), value: e.score }));
+
+  const tableData = [...historyInRange].sort((a, b) => b.date.localeCompare(a.date));
+
+  // ── KPI de la période : score global + les 6 dimensions, avec l'écart vs la moyenne de la saison ──
+  // Pas de comparaison quand le preset sélectionné est déjà "Saison" (l'écart serait toujours ~0).
+  const seasonEntries = selected?.season.startDate
+    ? sourceHistory.filter(e => e.date >= selected.season.startDate)
+    : sourceHistory;
+  const seasonScoreAvg = wellnessAvg(seasonEntries.map(e => e.score));
+  const showSeasonDiff = dateRange.preset !== 'saison';
+
+  const periodKpis = [
+    {
+      key: 'score', emoji: '⚡', label: 'Score global', inverted: false,
+      value: scoreAvg,
+      prev:  showSeasonDiff ? seasonScoreAvg : null,
+    },
+    ...dimensionSeries.map(dim => ({
+      key: dim.key, emoji: dim.emoji, label: dim.shortLabel, inverted: dim.inverted,
+      value: dim.avg,
+      prev: showSeasonDiff ? wellnessAvg(seasonEntries.map(e => e[dim.key as keyof WellnessEntry] as number)) : null,
+    })),
+  ];
+
+  // ── Résumé en langage naturel de la période, affiché sous le sélecteur de dates ──
+  const goodDims = dimensionSeries.filter(d => d.avg !== null && wellnessStatus(d.avg, d.inverted) === 'good').map(d => d.shortLabel);
+  const midDims  = dimensionSeries.filter(d => d.avg !== null && wellnessStatus(d.avg, d.inverted) === 'mid').map(d => d.shortLabel);
+  const badDims  = dimensionSeries.filter(d => d.avg !== null && wellnessStatus(d.avg, d.inverted) === 'bad').map(d => d.shortLabel);
+  const insightStatus: 'good' | 'mid' | 'bad' | null = scoreAvg === null ? null : wellnessStatus(scoreAvg, false);
+  const insightColor  = insightStatus === null ? '#475569' : scoreColor(scoreAvg ?? 5);
+  const insightLabel  = insightStatus === 'good' ? 'plutôt bonne' : insightStatus === 'mid' ? 'moyenne' : 'compliquée';
+  const InsightIcon   = insightStatus === 'good' ? Smile : insightStatus === 'mid' ? Meh : Frown;
+  const insightSeasonDiff = showSeasonDiff && scoreAvg !== null && seasonScoreAvg !== null
+    ? Math.round((scoreAvg - seasonScoreAvg) * 10) / 10 : null;
+  const insightSeasonPhrase = insightSeasonDiff === null ? null
+    : Math.abs(insightSeasonDiff) < 0.2 ? 'stable par rapport à la saison'
+    : insightSeasonDiff > 0 ? `en progression par rapport à la saison (+${insightSeasonDiff})`
+    : `en baisse par rapport à la saison (${insightSeasonDiff})`;
 
   function openLinkModal() {
     setLinkSelected(new Set(roster.filter(p => p.email).map(p => p.id)));
@@ -239,19 +310,14 @@ export default function WellnessPage() {
   return (
     <div className="p-4 md:p-6">
       <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
           <h1 style={{ color: '#F1F5F9', margin: 0 }}>Bien-être</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={openLinkModal} disabled={roster.length === 0}
-              style={{ padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: roster.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-              <Mail size={13} />
-              <span className="hidden sm:inline">Envoyer les liens</span>
-            </button>
             <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
-              {(['entry', 'history'] as const).map(tab => (
+              {(['entry', 'history', 'team'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   style={{ padding: '6px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
-                  {tab === 'entry' ? 'Saisie' : 'Historique'}
+                  {tab === 'entry' ? 'Nouvelle saisie' : tab === 'history' ? 'Historique joueur' : 'Historique équipe'}
                 </button>
               ))}
             </div>
@@ -260,18 +326,32 @@ export default function WellnessPage() {
       </div>
 
       {/* Player selector */}
-      <div style={{ marginBottom: 24 }}>
-        {loadingRoster ? (
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        {isTeamView ? (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 200 }}>
+            <Users size={15} style={{ position: 'absolute', left: 10, color: '#00E5A0', pointerEvents: 'none' }} />
+            <div style={{
+              width: '100%', padding: '8px 12px 8px 32px', backgroundColor: '#1E2229',
+              border: '1px solid #00E5A050', borderRadius: 6, color: '#F1F5F9',
+              fontSize: '0.85rem', fontWeight: 600,
+            }}>
+              {selected?.team.name}
+            </div>
+          </div>
+        ) : loadingRoster ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Chargement…</span>
         ) : roster.length === 0 ? (
-          <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun joueur dans le roster pour cette saison.</span>
+          <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun joueur dans l'effectif pour cette saison.</span>
         ) : (
-          <select value={selectedPlayerId ?? ''} onChange={e => setSelectedPlayerId(e.target.value)}
-            style={{ padding: '8px 14px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.88rem', outline: 'none' }}>
-            {roster.map(p => (
-              <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
-            ))}
-          </select>
+          <PlayerSelect players={roster} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} />
+        )}
+
+        {activeTab === 'entry' && (
+          <button onClick={openLinkModal} disabled={roster.length === 0}
+            style={{ marginLeft: 'auto', padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: roster.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+            <Mail size={13} />
+            <span className="hidden sm:inline">Envoyer les liens</span>
+          </button>
         )}
       </div>
 
@@ -294,12 +374,16 @@ export default function WellnessPage() {
           <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 20 }}>
             {dimensions.map(dim => {
               const val = values[dim.key];
+              const prevVal = previousEntry ? (previousEntry[dim.key as keyof WellnessEntry] as number) : null;
               return (
                 <div key={dim.key}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                     <label style={{ color: '#F1F5F9', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: '1.1rem' }}>{dim.emoji}</span>
                       <span style={{ fontWeight: 500 }}>{dim.label}</span>
+                      {prevVal !== null && (
+                        <span style={{ color: '#475569', fontSize: '0.7rem', fontWeight: 400 }}>préc. {prevVal}</span>
+                      )}
                     </label>
                     <span style={{ color: dimColor(val, dim.inverted), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
                   </div>
@@ -327,6 +411,11 @@ export default function WellnessPage() {
               <p style={{ color: scoreColor(score), fontSize: '1.4rem', fontWeight: 800, margin: '2px 0 0', fontFamily: 'JetBrains Mono, monospace' }}>
                 {score} / 10 {score < 5 ? '⚠️ Attention' : score < 7 ? '🟡 Modéré' : '✅ Bien'}
               </p>
+              {previousEntry && scoreDiff !== null && (
+                <p style={{ color: Math.abs(scoreDiff) < 0.05 ? '#475569' : scoreDiff > 0 ? '#00E5A0' : '#EF4444', fontSize: '0.75rem', margin: '4px 0 0' }}>
+                  vs dernière saisie ({fmtDate(previousEntry.date)}, {previousEntry.score}) : {Math.abs(scoreDiff) < 0.05 ? '=' : `${scoreDiff > 0 ? '▲ +' : '▼ '}${scoreDiff}`}
+                </p>
+              )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               {saveError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{saveError}</span>}
@@ -340,125 +429,203 @@ export default function WellnessPage() {
       )}
 
       {/* ── History tab */}
-      {activeTab === 'history' && (
-        loadingHistory ? (
-          <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement…</div>
-        ) : history.length === 0 ? (
-          <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-            Aucune donnée bien-être{selectedPlayer ? ` pour ${selectedPlayer.firstName} ${selectedPlayer.lastName}` : ''}.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {(activeTab === 'history' || activeTab === 'team') && (
+        <>
+          <DateRangeCard
+            from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
+            onPreset={p => dateRange.applyPreset(p, selected?.season.startDate)}
+            onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+          />
 
-            {/* Ligne 1 : Heatmap pleine largeur */}
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-              <h3 style={{ color: '#F1F5F9', margin: '0 0 14px', fontSize: '0.9rem' }}>Heatmap bien-être — historique complet</h3>
-              <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-                <div style={{ display: 'flex', gap: 6, minWidth: 'max-content' }}>
-                  {heatmapData.map((day, i) => (
-                    <div key={i} title={`${fmtDate(day.date)} — Score: ${day.score}`}
-                      style={{ width: 44, height: 44, borderRadius: 6, backgroundColor: heatColor(day.score), border: `1px solid ${heatBorder(day.score)}44`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, flexShrink: 0 }}>
-                      <span style={{ color: '#94A3B8', fontSize: '0.62rem' }}>{day.label}</span>
-                      <span style={{ color: heatBorder(day.score), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{day.score}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {/* Indicateur de sens */}
-              <div style={{ display: 'flex', alignItems: 'center', marginTop: 8, gap: 6 }}>
-                <span style={{ color: '#475569', fontSize: '0.68rem' }}>← plus ancien</span>
-                <div style={{ flex: 1, height: 1, backgroundColor: '#2A2F3A' }} />
-                <span style={{ color: '#475569', fontSize: '0.68rem' }}>aujourd'hui →</span>
-              </div>
-              <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
-                {[['#00E5A0', '≥ 7 Bien'], ['#F59E0B', '5–7 Modéré'], ['#EF4444', '< 5 Attention']].map(([c, l]) => (
-                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: c + '44', border: `1px solid ${c}` }} />
-                    <span style={{ color: '#94A3B8', fontSize: '0.7rem' }}>{l}</span>
-                  </div>
-                ))}
+          {/* Résumé en langage naturel de la période */}
+          {!loadingHistory && !loadingTeamHistory && (selectedPlayer || isTeamView) && insightStatus !== null && (
+            <div style={{
+              backgroundColor: `${insightColor}10`, border: `1px solid ${insightColor}40`, borderLeft: `4px solid ${insightColor}`,
+              borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap',
+            }}>
+              <InsightIcon size={22} style={{ color: insightColor, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <p style={{ color: '#F1F5F9', margin: 0, fontSize: '0.86rem', fontWeight: 600 }}>
+                  {isTeamView ? "L'équipe traverse" : `${selectedPlayer?.firstName} traverse`} une période {insightLabel} ({scoreAvg}/10){insightSeasonPhrase ? `, ${insightSeasonPhrase}` : ''}
+                </p>
+                {(goodDims.length > 0 || midDims.length > 0 || badDims.length > 0) && (
+                  <p style={{ color: '#94A3B8', margin: '4px 0 0', fontSize: '0.8rem' }}>
+                    {goodDims.length > 0 && (
+                      <><span style={{ color: '#00E5A0', fontWeight: 600 }}>Points forts</span> : {goodDims.join(', ')}. </>
+                    )}
+                    {midDims.length > 0 && (
+                      <><span style={{ color: '#F59E0B', fontWeight: 600 }}>Points d'attention</span> : {midDims.join(', ')}. </>
+                    )}
+                    {badDims.length > 0 && (
+                      <><span style={{ color: '#EF4444', fontWeight: 600 }}>Points négatifs</span> : {badDims.join(', ')}.</>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
+          )}
 
-            {/* Ligne 2 : POMS | Graphique */}
-            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
-              {/* POMS — moyenne 3 dernières saisies */}
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-                <h3 style={{ color: '#F1F5F9', margin: '0 0 2px', fontSize: '0.9rem' }}>Profil POMS</h3>
-                <p style={{ color: '#475569', fontSize: '0.74rem', margin: '0 0 8px' }}>Moyenne des {last3.length} dernière{last3.length > 1 ? 's' : ''} saisie{last3.length > 1 ? 's' : ''}</p>
-                <ResponsiveContainer width="100%" height={220}>
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="#2A2F3A" />
-                    <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                    <Radar name="Moy." dataKey="value" stroke={radarColor} fill={radarColor} fillOpacity={0.15} strokeWidth={2}
-                      dot={(props: { cx: number; cy: number; index: number }) => {
-                        const dim = dimensions[props.index];
-                        const dataPoint = radarData[props.index];
-                        if (!dim || !dataPoint) return <circle key={props.index} cx={props.cx} cy={props.cy} r={0} />;
-                        const color = dimColor(dataPoint.value, dim.inverted);
-                        return <circle key={props.index} cx={props.cx} cy={props.cy} r={6} fill={color} stroke="#161920" strokeWidth={2} />;
-                      }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
+          {(isTeamView ? loadingTeamHistory : loadingHistory) ? (
+            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement…</div>
+          ) : historyInRange.length === 0 ? (
+            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
+              Aucune donnée bien-être {isTeamView ? "pour l'équipe" : selectedPlayer ? `pour ${selectedPlayer.firstName} ${selectedPlayer.lastName}` : ''} sur la période sélectionnée.
+            </div>
+          ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Graphique d'évolution + légende */}
-              <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
-                  <h3 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.9rem' }}>Évolution 14 jours</h3>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    {[
-                      { color: '#00E5A0', label: 'Score',   opacity: 1   },
-                      { color: '#EF4444', label: 'Fatigue', opacity: 0.7 },
-                      { color: '#F59E0B', label: 'Stress',  opacity: 0.7 },
-                    ].map(({ color, label, opacity }) => (
-                      <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <div style={{ width: 18, height: 2, backgroundColor: color, borderRadius: 1, opacity }} />
-                        <span style={{ color: '#94A3B8', fontSize: '0.7rem' }}>{label}</span>
+            {/* Ligne 0 : Résumé chiffré de la période */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7" style={{ gap: 10 }}>
+              {periodKpis.map((k, i) => {
+                const color = k.value !== null ? dimColor(k.value, k.inverted) : '#475569';
+                const diff  = k.value !== null && k.prev !== null ? Math.round((k.value - k.prev) * 10) / 10 : null;
+                const flat  = diff !== null && Math.abs(diff) < 0.05;
+                const better = diff !== null ? (k.inverted ? diff < 0 : diff > 0) : null;
+                return (
+                  <Card key={k.key} className={i === 0 ? 'col-span-2 sm:col-span-1' : undefined} accentColor={k.value !== null ? color : undefined} style={{ textAlign: 'center', padding: '10px 8px' }}>
+                    <div style={{ color: '#475569', fontSize: '0.62rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.emoji} {k.label}</div>
+                    <div style={{ color, fontSize: '1.2rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{k.value ?? '—'}</div>
+                    <div style={{ fontSize: '0.66rem', marginTop: 4, fontWeight: 600, color: diff === null ? '#334155' : flat ? '#475569' : better ? '#00E5A0' : '#EF4444' }}>
+                      {diff === null ? '—' : flat ? '=' : `${better ? '▲' : '▼'} ${diff > 0 ? '+' : ''}${diff}`}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {/* Ligne 2 : POMS | Évolution */}
+            <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
+              <Card className="md:col-span-1" style={{ display: 'flex', flexDirection: 'column', alignSelf: 'start' }}>
+                <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={14}
+                  right={<span style={{ color: '#475569', fontSize: '0.7rem' }}>{historyAsc.length} saisie{historyAsc.length > 1 ? 's' : ''}</span>}
+                >Profil POMS</CardTitle>
+                <div style={{ position: 'relative', height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={radarData} outerRadius="68%" margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                      <PolarGrid stroke="#2A2F3A" />
+                      <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                      <Radar name="Moy." dataKey="value" stroke={radarColor} fill={radarColor} fillOpacity={0.1} strokeWidth={2}
+                        dot={(props: { cx: number; cy: number; index: number }) => {
+                          const dim = dimensions[props.index];
+                          const dataPoint = radarData[props.index];
+                          if (!dim || !dataPoint) return <circle key={props.index} cx={props.cx} cy={props.cy} r={0} />;
+                          const color = dimColor(dataPoint.value, dim.inverted);
+                          return <circle key={props.index} cx={props.cx} cy={props.cy} r={6} fill={color} stroke="#161920" strokeWidth={2} />;
+                        }}
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
+                    <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{scoreAvg ?? '—'}</div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="md:col-span-2" style={{ display: 'flex', flexDirection: 'column' }}>
+                <CardTitle icon={<TrendingUp size={12} style={{ color: '#00E5A0' }} />} mb={14} align="flex-start"
+                  right={
+                    <div style={{ display: 'flex', gap: 2, backgroundColor: '#0D0F14', borderRadius: 6, padding: 2 }}>
+                      {([['global', 'Global'], ['detail', 'Par type'], ['history', 'Historique']] as const).map(([key, label]) => (
+                        <button key={key} onClick={() => setEvoTab(key)}
+                          style={{ padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: evoTab === key ? 700 : 400, backgroundColor: evoTab === key ? '#1E2229' : 'transparent', color: evoTab === key ? '#00E5A0' : '#475569', whiteSpace: 'nowrap' }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  }
+                >Évolution</CardTitle>
+
+                {evoTab === 'global' && (
+                  <div style={{ flex: 1, minHeight: 220 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={scoreSeries} margin={{ top: 5, right: 8, bottom: 0, left: 0 }}>
+                        <defs>
+                          {/* y1/y2 approximés sur la zone de tracé typique une fois la card étirée à la hauteur de POMS,
+                              pour que le dégradé corresponde à l'échelle 0–10 affichée */}
+                          <linearGradient id="grad-score" gradientUnits="userSpaceOnUse" x1="0" y1={5} x2="0" y2={225}>
+                            <stop offset="0%"   stopColor="#00E5A0" />
+                            <stop offset="30%"  stopColor="#00E5A0" />
+                            <stop offset="50%"  stopColor="#F59E0B" />
+                            <stop offset="70%"  stopColor="#EF4444" />
+                            <stop offset="100%" stopColor="#EF4444" />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" />
+                        <XAxis dataKey="idx" tickFormatter={idx => scoreSeries[idx]?.date ?? ''}
+                          interval={Math.max(0, Math.ceil(scoreSeries.length / 10) - 1)}
+                          tick={{ fill: '#475569', fontSize: 10 }} />
+                        <YAxis domain={[0, 10]} ticks={[3, 6, 10]} width={28} tick={{ fill: '#475569', fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Line dataKey="value" name="Score" stroke="url(#grad-score)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {evoTab === 'detail' && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 10 }}>
+                      {dimensionSeries.map(dim => {
+                        const boxColor = dim.avg !== null ? dimColor(dim.avg, dim.inverted) : '#1E2229';
+                        return (
+                        <div key={dim.key} style={{ backgroundColor: '#0D0F14', border: `1px solid ${boxColor}50`, borderRadius: 8, padding: '10px 12px' }}>
+                          <div style={{ marginBottom: 8 }}>
+                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600 }}>{dim.emoji} {dim.shortLabel}</span>
+                          </div>
+                          <ResponsiveContainer width="100%" height={70}>
+                            <LineChart data={dim.series}>
+                              <defs>
+                                {/* Repères alignés sur les mêmes seuils que partout ailleurs dans l'app : ≥7 vert, ≥5 orange, sinon rouge (rouge plein dès ≤3 pour rester visible) */}
+                                <linearGradient id={`grad-${dim.key}`} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={70}>
+                                  <stop offset="0%"   stopColor="#00E5A0" />
+                                  <stop offset="30%"  stopColor="#00E5A0" />
+                                  <stop offset="50%"  stopColor="#F59E0B" />
+                                  <stop offset="70%"  stopColor="#EF4444" />
+                                  <stop offset="100%" stopColor="#EF4444" />
+                                </linearGradient>
+                              </defs>
+                              <YAxis domain={[0, 10]} reversed={dim.inverted} hide />
+                              <Tooltip content={<CustomTooltip />} />
+                              <Line
+                                dataKey="value" name={dim.label} stroke={`url(#grad-${dim.key})`} strokeWidth={2.5}
+                                dot={false} isAnimationActive={false}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {evoTab === 'history' && (
+                  <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
+                    <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, minWidth: 500 }}>
+                      {['Date', ...dimensions.map(d => d.shortLabel), 'Score'].map(h => (
+                        <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: h === 'Score' ? 'right' : 'left' }}>{h}</span>
+                      ))}
+                    </div>
+                    {tableData.map((e, idx) => (
+                      <div key={idx} style={{ padding: '6px 14px', borderBottom: '1px solid #1A1E26', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, alignItems: 'center', minWidth: 500 }}>
+                        <span style={{ color: '#64748B', fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
+                        {dimensions.map((dim, i) => {
+                          const val = [e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness][i];
+                          return (
+                            <span key={i} style={{ color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{val}</span>
+                          );
+                        })}
+                        <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{e.score}</span>
                       </div>
                     ))}
                   </div>
-                </div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={lineData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" vertical={false} />
-                    <XAxis dataKey="idx" tickFormatter={idx => lineData[idx]?.date ?? ''} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 10]} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} width={20} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Line dataKey="score"   stroke="#00E5A0" strokeWidth={2.5} dot={false} name="Score" />
-                    <Line dataKey="fatigue" stroke="#EF4444" strokeWidth={1.5} dot={false} name="Fatigue" strokeOpacity={0.7} />
-                    <Line dataKey="stress"  stroke="#F59E0B" strokeWidth={1.5} dot={false} name="Stress"  strokeOpacity={0.7} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Ligne 3 : Tableau pleine largeur */}
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, minWidth: 500 }}>
-                  {['Date', 'Fatigue', 'Humeur', 'Stress', 'Motiv.', 'Sommeil', 'Douleurs', 'Score'].map(h => (
-                    <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: h === 'Score' ? 'right' : 'left' }}>{h}</span>
-                  ))}
-                </div>
-                {tableData.map((e, idx) => (
-                  <div key={idx} style={{ padding: '6px 14px', borderBottom: '1px solid #1A1E26', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, alignItems: 'center', minWidth: 500 }}>
-                    <span style={{ color: '#64748B', fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
-                    {dimensions.map((dim, i) => {
-                      const val = [e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness][i];
-                      return (
-                        <span key={i} style={{ color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{val}</span>
-                      );
-                    })}
-                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{e.score}</span>
-                  </div>
-                ))}
-              </div>
+                )}
+              </Card>
             </div>
 
           </div>
-        )
+        )}
+        </>
       )}
 
       {/* ── Modale envoi liens wellness ── */}
