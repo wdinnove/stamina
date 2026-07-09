@@ -102,7 +102,7 @@ export default function RosterPage() {
           {!loading && filtered.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
               {filtered.map(player => (
-                <div key={player.id} onClick={() => navigate(`/individual-analyze/${player.id}`)}
+                <div key={player.id} onClick={() => navigate(`/roster/${player.id}`)}
                   style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>

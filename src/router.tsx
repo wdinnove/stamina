@@ -1,17 +1,13 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
 
-function RedirectToAnalyse() {
-  const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/individual-analyze/${id}`} replace />;
-}
-
 import { Layout }      from './layout/Layout';
 import { RequireAuth } from './components';
 
 import LoginPage         from './pages/LoginPage';
 import DashboardPage     from './pages/DashboardPage';
 import TeamsPage         from './pages/TeamsPage';
-import PlayersPage       from './pages/PlayersPage';
+import PlayersPage, { PlayerProfile } from './pages/PlayersPage';
+import PlayerHubPage     from './pages/PlayerHubPage';
 import RPEPage           from './pages/RPEPage';
 import WellnessPage      from './pages/WellnessPage';
 import MedicalPage       from './pages/MedicalPage';
@@ -23,7 +19,6 @@ import RosterPage        from './pages/RosterPage';
 import MeetingsPage      from './pages/MeetingsPage';
 import AttendancePage    from './pages/AttendancePage';
 import ProfilePage       from './pages/ProfilePage';
-import PlayerRPEPage               from './pages/PlayerRPEPage';
 import TrainingSessionsPage        from './pages/TrainingSessionsPage';
 import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
 import MeetingDetailPage           from './pages/MeetingDetailPage';
@@ -36,6 +31,12 @@ import MatchDetailPage             from './pages/MatchDetailPage';
 import AnalyseCollectivePage       from './pages/AnalyseCollectivePage';
 import AnalyseIndividuellePage     from './pages/AnalyseIndividuellePage';
 import AnalyseCroiseePage          from './pages/AnalyseCroiseePage';
+
+function PlayerProfileRoute() {
+  const { id } = useParams<{ id: string }>();
+  if (!id) return null;
+  return <PlayerProfile playerId={id} />;
+}
 
 export const router = createBrowserRouter([
   {
@@ -58,8 +59,7 @@ export const router = createBrowserRouter([
           { path: 'teams',           Component: TeamsPage        },
           { path: 'teams/:id',      Component: TeamsPage        },
           { path: 'players',           Component: PlayersPage      },
-          { path: 'players/:id',     element: <RedirectToAnalyse /> },
-          { path: 'players/:id/rpe', Component: PlayerRPEPage    },
+          { path: 'players/:id',     element: <PlayerProfileRoute /> },
           { path: 'rpe',             Component: RPEPage          },
           { path: 'rpe/:tab',        Component: RPEPage          },
           { path: 'rpe/:tab/:id',    Component: RPEPage          },
@@ -73,6 +73,7 @@ export const router = createBrowserRouter([
           { path: 'stats',          Component: StatsPage        },
           { path: 'stats/:id',      Component: StatsPage        },
           { path: 'roster',          Component: RosterPage       },
+          { path: 'roster/:id',      Component: PlayerHubPage    },
           { path: 'meetings',            Component: MeetingsPage       },
           { path: 'meetings/:id',        Component: MeetingDetailPage  },
           { path: 'attendance',      Component: AttendancePage   },

@@ -99,8 +99,9 @@ CREATE TABLE teams (
   category        TEXT    NOT NULL,  -- 'NF2', 'U21', 'U18'
   color           TEXT    NOT NULL DEFAULT '#3B82F6',
   description     TEXT,
-  load_light_max  INTEGER NOT NULL DEFAULT 2750,
-  load_normal_max INTEGER NOT NULL DEFAULT 4250,
+  load_light_max     INTEGER  NOT NULL DEFAULT 2750,
+  load_normal_max    INTEGER  NOT NULL DEFAULT 4250,
+  sessions_per_week  SMALLINT NOT NULL DEFAULT 3,
   eval_t_orange   NUMERIC NOT NULL DEFAULT 0,
   eval_t_blue     NUMERIC NOT NULL DEFAULT 5,
   eval_t_green    NUMERIC NOT NULL DEFAULT 10,
@@ -301,8 +302,10 @@ CREATE TABLE session_blocks (
   duration   SMALLINT        NOT NULL CHECK (duration > 0),  -- minutes
   category   TEXT            NOT NULL,  -- 'Échauffement', 'Jeu réduit'…
   intensity  block_intensity NOT NULL DEFAULT 'moyenne',
-  label      TEXT            NOT NULL,  -- nom de l'exercice
-  drill_id   UUID            NULL,      -- FK future : REFERENCES drills(id)
+  label       TEXT            NOT NULL,  -- nom de l'exercice
+  description TEXT            NULL,      -- description propre à cette occurrence (copiée depuis la bibliothèque si liée, modifiable sans impact)
+  consignes   TEXT            NULL,      -- instructions spécifiques à cette occurrence du bloc dans la séance
+  drill_id    UUID            NULL,      -- FK future : REFERENCES drills(id)
   -- Charge UA = durée × valeur intensité (basse=2, moyenne=5, haute=7, très élevée=9)
   load_ua    SMALLINT GENERATED ALWAYS AS (
     duration * CASE intensity
@@ -317,6 +320,53 @@ CREATE TABLE session_blocks (
 );
 
 CREATE INDEX ON session_blocks (session_id, position);
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 11b. SESSION TEAMS
+--      Répartition ad-hoc de l'effectif en équipes pour des jeux
+--      réduits / sparrings lors d'une séance. Plusieurs blocs possibles
+--      par séance (ex. "Bloc 1" en 3x3, "Bloc 2" en 5x5), chacun avec
+--      son propre découpage en équipes. Un joueur peut donc être dans
+--      des équipes différentes selon le bloc, mais une seule équipe
+--      au sein d'un même bloc. À l'enregistrement, l'existant est
+--      remplacé (delete + insert), pas d'historique de versions.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE session_team_blocks (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  label      TEXT NOT NULL DEFAULT 'Bloc 1',
+  position   SMALLINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON session_team_blocks (session_id, position);
+
+CREATE TABLE session_teams (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  block_id   UUID NOT NULL REFERENCES session_team_blocks(id) ON DELETE CASCADE,
+  session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,  -- dénormalisé pour simplifier les policies RLS
+  name       TEXT NOT NULL,
+  color      TEXT NOT NULL,
+  position   SMALLINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON session_teams (block_id, position);
+
+CREATE TABLE session_team_players (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  block_id        UUID NOT NULL REFERENCES session_team_blocks(id) ON DELETE CASCADE,
+  session_id      UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  session_team_id UUID NOT NULL REFERENCES session_teams(id) ON DELETE CASCADE,
+  player_id       UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (block_id, player_id)  -- un joueur n'appartient qu'à une seule équipe au sein d'un même bloc
+);
+
+CREATE INDEX ON session_team_players (session_team_id);
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -831,6 +881,7 @@ CREATE TABLE exercises (
   team_id       UUID REFERENCES teams(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   description   TEXT,
+  consignes     TEXT,  -- consignes par défaut, copiées dans le bloc de séance à l'ajout (modifiables sans impacter la bibliothèque)
   category_id   UUID REFERENCES exercise_categories(id) ON DELETE SET NULL,
   document_url  TEXT,
   document_name TEXT,
@@ -865,6 +916,9 @@ ALTER TABLE players               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_season         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_sessions     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_blocks        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_team_blocks   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_teams         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_team_players  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_documents     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rpe_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wellness_entries      ENABLE ROW LEVEL SECURITY;
@@ -946,6 +1000,46 @@ CREATE POLICY "training_session_access" ON training_sessions
 
 -- Blocs de séance
 CREATE POLICY "session_blocks_access" ON session_blocks
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+-- Équipes du jour (sparring)
+CREATE POLICY "session_team_blocks_access" ON session_team_blocks
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+CREATE POLICY "session_teams_access" ON session_teams
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+CREATE POLICY "session_team_players_access" ON session_team_players
   FOR ALL TO authenticated
   USING (
     session_id IN (
@@ -1468,3 +1562,71 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 --     1
 --   )
 -- ) STORED;
+
+-- Séances : équipes du jour (sparring), plusieurs blocs possibles par séance
+-- -- Si la version précédente (un seul bloc implicite) a déjà été exécutée, on repart de zéro :
+-- DROP TABLE IF EXISTS session_team_players CASCADE;
+-- DROP TABLE IF EXISTS session_teams CASCADE;
+--
+-- CREATE TABLE IF NOT EXISTS session_team_blocks (
+--   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+--   label      TEXT NOT NULL DEFAULT 'Bloc 1',
+--   position   SMALLINT NOT NULL DEFAULT 0,
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS session_team_blocks_session_id_idx ON session_team_blocks (session_id, position);
+--
+-- CREATE TABLE IF NOT EXISTS session_teams (
+--   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   block_id   UUID NOT NULL REFERENCES session_team_blocks(id) ON DELETE CASCADE,
+--   session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+--   name       TEXT NOT NULL,
+--   color      TEXT NOT NULL,
+--   position   SMALLINT NOT NULL DEFAULT 0,
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS session_teams_block_id_idx ON session_teams (block_id, position);
+--
+-- CREATE TABLE IF NOT EXISTS session_team_players (
+--   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   block_id        UUID NOT NULL REFERENCES session_team_blocks(id) ON DELETE CASCADE,
+--   session_id      UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+--   session_team_id UUID NOT NULL REFERENCES session_teams(id) ON DELETE CASCADE,
+--   player_id       UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+--   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--   UNIQUE (block_id, player_id)
+-- );
+-- CREATE INDEX IF NOT EXISTS session_team_players_team_id_idx ON session_team_players (session_team_id);
+--
+-- ALTER TABLE session_team_blocks  ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE session_teams        ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE session_team_players ENABLE ROW LEVEL SECURITY;
+--
+-- CREATE POLICY "session_team_blocks_access" ON session_team_blocks
+--   FOR ALL TO authenticated
+--   USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())))
+--   WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+--
+-- CREATE POLICY "session_teams_access" ON session_teams
+--   FOR ALL TO authenticated
+--   USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())))
+--   WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+--
+-- CREATE POLICY "session_team_players_access" ON session_team_players
+--   FOR ALL TO authenticated
+--   USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())))
+--   WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+-- Blocs de séance : consignes libres par occurrence de bloc
+-- ALTER TABLE session_blocks ADD COLUMN IF NOT EXISTS consignes TEXT;
+
+-- Description propre à l'occurrence du bloc (utile en ajout manuel, sans exercice de bibliothèque lié)
+-- ALTER TABLE session_blocks ADD COLUMN IF NOT EXISTS description TEXT;
+
+-- Bibliothèque d'exercices : consignes par défaut, en plus de la description
+-- ALTER TABLE exercises ADD COLUMN IF NOT EXISTS consignes TEXT;
+
+-- Nombre de séances/semaine par équipe : sert à dériver un seuil de charge "par séance"
+-- à partir des seuils hebdomadaires (au lieu d'un /3 en dur)
+-- ALTER TABLE teams ADD COLUMN IF NOT EXISTS sessions_per_week SMALLINT NOT NULL DEFAULT 3;

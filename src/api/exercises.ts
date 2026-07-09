@@ -11,6 +11,7 @@ function toExercise(row: Record<string, unknown>): Exercise {
     name:          row.name as string,
     teamId:        (row.team_id as string | null) ?? undefined,
     description:   (row.description as string | null) ?? undefined,
+    consignes:     (row.consignes as string | null) ?? undefined,
     categoryId:    cat?.id,
     categoryName:  cat?.name,
     categoryColor: cat?.color,
@@ -52,7 +53,7 @@ export const exercisesApi = {
   },
 
   async create(input: {
-    name: string; description?: string; categoryId?: string; teamId?: string;
+    name: string; description?: string; consignes?: string; categoryId?: string; teamId?: string;
     documentUrl?: string; documentName?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const { data, error } = await supabase
@@ -60,6 +61,7 @@ export const exercisesApi = {
       .insert({
         name:          input.name,
         description:   input.description || null,
+        consignes:     input.consignes || null,
         category_id:   input.categoryId || null,
         team_id:       input.teamId || null,
         document_url:  input.documentUrl || null,
@@ -73,12 +75,13 @@ export const exercisesApi = {
   },
 
   async update(id: string, patch: {
-    name?: string; description?: string; categoryId?: string;
+    name?: string; description?: string; consignes?: string; categoryId?: string;
     documentUrl?: string; documentName?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const payload: Record<string, unknown> = {};
     if (patch.name         !== undefined) payload.name          = patch.name;
     if (patch.description  !== undefined) payload.description   = patch.description || null;
+    if (patch.consignes    !== undefined) payload.consignes     = patch.consignes || null;
     if (patch.categoryId   !== undefined) payload.category_id   = patch.categoryId || null;
     if (patch.documentUrl  !== undefined) payload.document_url  = patch.documentUrl || null;
     if (patch.documentName !== undefined) payload.document_name = patch.documentName || null;

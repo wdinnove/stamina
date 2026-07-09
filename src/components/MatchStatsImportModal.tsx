@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Upload, AlertCircle, ChevronDown } from 'lucide-react';
+import { X, Upload, AlertCircle, ChevronDown, Download } from 'lucide-react';
 import { statsApi } from '../api/stats';
 import { matchesApi } from '../api/matches';
 import type { Match, Player, TeamMatchStat } from '../data/types';
@@ -80,6 +80,26 @@ const COL_MAP: Record<string, keyof CsvRow> = {
   'EVAL': 'eval', 'EFF': 'eval', 'EFFICIENCY': 'eval', 'EVALUATION': 'eval',
   '+/-': 'plusMinus', 'PM': 'plusMinus', 'PLUSMINUS': 'plusMinus', 'PLUS/MINUS': 'plusMinus',
 };
+
+// ─── Modèle CSV téléchargeable ──────────────────────────────────────────────────
+
+const CSV_TEMPLATE = `NOM;5D;MIN;PTS;2R;2T;3R;3T;LR;LT;RO;RD;PD;CT;IN;BP;FTE;FPR;EVAL;+/-
+Dupont Léa;0;28;14;5;9;1;3;2;2;1;4;3;0;2;3;4;2;9;+6
+Martin Chloé;0;22;8;3;6;0;1;2;3;0;5;5;1;1;2;3;3;3;-2
+Bernard Inès;1;18;6;2;4;0;0;2;2;2;3;2;0;0;1;2;1;2;+1
+`;
+
+function downloadCsvTemplate() {
+  const blob = new Blob(['﻿' + CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = 'modele_stats_match.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 function emptyRow(): CsvRow {
   return { nom: '', disq: false, min: 0, pts: 0, fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0, ro: 0, rd: 0, rt: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0, eval: null, plusMinus: null };
@@ -235,6 +255,10 @@ function UploadZone({ onFile, error }: { onFile: (f: File) => void; error: strin
       <input ref={ref} type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }}
       />
+      <button type="button" onClick={downloadCsvTemplate}
+        style={{ display: 'flex', alignItems: 'center', gap: 5, margin: '8px auto 0', padding: 0, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline' }}>
+        <Download size={11} /> Télécharger un exemple de fichier CSV
+      </button>
       {error && (
         <p style={{ color: '#EF4444', fontSize: '0.75rem', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
           <AlertCircle size={12} /> {error}

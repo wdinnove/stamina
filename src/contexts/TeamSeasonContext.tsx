@@ -9,8 +9,9 @@ export interface TeamSeasonOption {
 }
 
 export interface LoadThresholds {
-  lightMax:  number;
-  normalMax: number;
+  lightMax:        number;
+  normalMax:       number;
+  sessionsPerWeek: number;
 }
 
 export interface StatThresholds {
@@ -35,7 +36,7 @@ interface Ctx {
   orgRole:        OrgRole | null;
 }
 
-const DEFAULT_THRESHOLDS: LoadThresholds = { lightMax: 2750, normalMax: 4250 };
+const DEFAULT_THRESHOLDS: LoadThresholds = { lightMax: 2750, normalMax: 4250, sessionsPerWeek: 3 };
 
 const DEFAULT_STAT_THRESHOLDS: StatThresholds = {
   evalTOrange: 0, evalTBlue: 5, evalTGreen: 10,
@@ -139,8 +140,9 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
   }, [userId, tick]);
 
   const thresholds: LoadThresholds = {
-    lightMax:  selected?.team.loadLightMax  ?? DEFAULT_THRESHOLDS.lightMax,
-    normalMax: selected?.team.loadNormalMax ?? DEFAULT_THRESHOLDS.normalMax,
+    lightMax:        selected?.team.loadLightMax    ?? DEFAULT_THRESHOLDS.lightMax,
+    normalMax:       selected?.team.loadNormalMax   ?? DEFAULT_THRESHOLDS.normalMax,
+    sessionsPerWeek: selected?.team.sessionsPerWeek ?? DEFAULT_THRESHOLDS.sessionsPerWeek,
   };
 
   const statThresholds: StatThresholds = {

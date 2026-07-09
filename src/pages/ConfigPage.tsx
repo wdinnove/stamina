@@ -880,6 +880,7 @@ export function TeamConfigTab() {
 
   const [lightMax,  setLightMax]  = useState(DEFAULT_THRESHOLDS.lightMax);
   const [normalMax, setNormalMax] = useState(DEFAULT_THRESHOLDS.normalMax);
+  const [sessionsPerWeek, setSessionsPerWeek] = useState(DEFAULT_THRESHOLDS.sessionsPerWeek);
   const [thrSaving, setThrSaving] = useState(false);
   const [thrMsg,    setThrMsg]    = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -969,7 +970,8 @@ export function TeamConfigTab() {
   useEffect(() => {
     setLightMax(thresholds.lightMax);
     setNormalMax(thresholds.normalMax);
-  }, [thresholds.lightMax, thresholds.normalMax]);
+    setSessionsPerWeek(thresholds.sessionsPerWeek);
+  }, [thresholds.lightMax, thresholds.normalMax, thresholds.sessionsPerWeek]);
 
   useEffect(() => {
     setStat({ ...statThresholds });
@@ -1016,9 +1018,12 @@ export function TeamConfigTab() {
     if (lightMax >= normalMax) {
       setThrMsg({ ok: false, text: 'Le seuil "légère" doit être strictement inférieur au seuil "normale".' }); return;
     }
+    if (!Number.isInteger(sessionsPerWeek) || sessionsPerWeek < 1) {
+      setThrMsg({ ok: false, text: 'Le nombre de séances par semaine doit être un entier d\'au moins 1.' }); return;
+    }
     setThrSaving(true); setThrMsg(null);
     try {
-      await teamsApi.updateThresholds(selected.team.id, lightMax, normalMax);
+      await teamsApi.updateThresholds(selected.team.id, lightMax, normalMax, sessionsPerWeek);
       setThrMsg({ ok: true, text: 'Seuils enregistrés.' });
       reload();
     } catch (e) {
@@ -1152,6 +1157,20 @@ export function TeamConfigTab() {
               {'>'} {normalMax} UA
             </div>
             <p style={{ color: '#475569', fontSize: '0.68rem', marginTop: 3 }}>Au-dessus : zone rouge</p>
+          </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid #2A2F3A', marginTop: 20, paddingTop: 18 }}>
+          <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
+            <div>
+              <label style={labelStyle}>Séances par semaine</label>
+              <input type="number" min={1} max={14} step={1} value={sessionsPerWeek}
+                onChange={e => setSessionsPerWeek(Math.max(1, Math.trunc(Number(e.target.value))))}
+                style={{ ...inputStyle, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
+              <p style={{ color: '#475569', fontSize: '0.68rem', marginTop: 3 }}>
+                Utilisé pour dériver le seuil de charge « par séance » à partir du seuil hebdomadaire (≈ {Math.round(normalMax / Math.max(1, sessionsPerWeek))} UA/séance en zone normale).
+              </p>
+            </div>
           </div>
         </div>
 

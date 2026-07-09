@@ -159,8 +159,9 @@
   /* Rendu HTML issu du RichTextEditor */
   .rich-display p { margin: 0 0 4px; line-height: 1.6; }
   .rich-display p:last-child { margin-bottom: 0; }
-  .rich-display ul, .rich-display ol { padding-left: 1.3em; margin: 2px 0 4px; }
-  .rich-display li { margin-bottom: 2px; }
+  .rich-display ul { list-style: disc outside; padding-left: 1.3em; margin: 2px 0 4px; }
+  .rich-display ol { list-style: decimal outside; padding-left: 1.3em; margin: 2px 0 4px; }
+  .rich-display li { margin-bottom: 2px; display: list-item; }
   .rich-display strong { font-weight: 600; }
   .rich-display em { font-style: italic; }
 }

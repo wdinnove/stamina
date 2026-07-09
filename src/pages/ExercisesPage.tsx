@@ -33,6 +33,7 @@ function RichEditor({ value, onChange }: { value: string; onChange: (html: strin
           'font-size:0.85rem',
           'line-height:1.55',
           'font-family:inherit',
+          'flex:1',
         ].join(';'),
       },
     },
@@ -52,16 +53,16 @@ function RichEditor({ value, onChange }: { value: string; onChange: (html: strin
   );
 
   return (
-    <div style={{ border: '1px solid #2A2F3A', borderRadius: 6, backgroundColor: '#1E2229', overflow: 'hidden' }}>
+    <div style={{ border: '1px solid #2A2F3A', borderRadius: 6, backgroundColor: '#1E2229', overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 2, padding: '6px 8px', borderBottom: '1px solid #2A2F3A', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 2, padding: '6px 8px', borderBottom: '1px solid #2A2F3A', flexWrap: 'wrap', flexShrink: 0 }}>
         {btn(editor.isActive('bold'),        () => editor.chain().focus().toggleBold().run(),        'Gras',          <Bold size={13} />)}
         {btn(editor.isActive('italic'),      () => editor.chain().focus().toggleItalic().run(),      'Italique',      <Italic size={13} />)}
         {btn(editor.isActive('bulletList'),  () => editor.chain().focus().toggleBulletList().run(),  'Liste',         <List size={13} />)}
         {btn(editor.isActive('orderedList'), () => editor.chain().focus().toggleOrderedList().run(), 'Liste numérotée', <ListOrdered size={13} />)}
       </div>
       {/* Editor area */}
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} style={{ flex: 1, display: 'flex', flexDirection: 'column' }} />
       <style>{`
         .ProseMirror p { margin: 0 0 6px; }
         .ProseMirror p:last-child { margin: 0; }
@@ -129,6 +130,7 @@ function ExerciseModal({
   const [name,        setName]        = useState(editing?.name ?? '');
   const [categoryId,  setCategoryId]  = useState(editing?.categoryId ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
+  const [consignes,   setConsignes]   = useState(editing?.consignes ?? '');
   const [videoUrl,    setVideoUrl]    = useState(editing?.videoUrl ?? '');
   const [saving,      setSaving]      = useState(false);
   const [formError,   setFormError]   = useState('');
@@ -242,16 +244,19 @@ function ExerciseModal({
     setSaving(true);
     setFormError('');
     const plain = description.replace(/<[^>]+>/g, '').trim();
+    const plainConsignes = consignes.replace(/<[^>]+>/g, '').trim();
     try {
       if (editing) {
         const updated = await exercisesApi.update(editing.id, {
           name: name.trim(), description: plain ? description : undefined,
+          consignes: plainConsignes ? consignes : undefined,
           categoryId: categoryId || undefined, videoUrl: videoUrl.trim(),
         });
         onSaved(updated, false);
       } else {
         const created = await exercisesApi.create({
           name: name.trim(), description: plain ? description : undefined,
+          consignes: plainConsignes ? consignes : undefined,
           categoryId: categoryId || undefined, teamId, videoUrl: videoUrl.trim() || undefined,
         });
         for (let i = 0; i < pendingImages.length; i++) {
@@ -310,9 +315,19 @@ function ExerciseModal({
               </div>
             </div>
 
-            <div>
-              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Description</label>
-              <RichEditor value={description} onChange={setDescription} />
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Déroulement</label>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <RichEditor value={description} onChange={setDescription} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Objectifs</label>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <RichEditor value={consignes} onChange={setConsignes} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -471,7 +486,7 @@ export default function ExercisesPage() {
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 280 }}>Nom</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 140 }}>Catégorie</th>
-                <th className="hidden lg:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
+                <th className="hidden lg:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Déroulement</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 110 }}>Médias</th>
                 <th style={{ padding: '10px 20px', width: 40 }}></th>
               </tr>

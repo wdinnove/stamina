@@ -78,16 +78,17 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
   return (
     <>
       <style>{`
-        .rte-wrap { background: #1E2229; border: 1px solid #2A2F3A; border-radius: 6px; overflow: hidden; }
+        .rte-wrap { background: #1E2229; border: 1px solid #2A2F3A; border-radius: 6px; overflow: hidden; height: 100%; display: flex; flex-direction: column; }
         .rte-wrap:focus-within { border-color: #3A4454; }
-        .rte-toolbar { display: flex; align-items: center; gap: 2px; padding: 5px 8px; border-bottom: 1px solid #2A2F3A; background: #161920; }
-        .rte-body { padding: 10px 12px; position: relative; }
+        .rte-toolbar { display: flex; align-items: center; gap: 2px; padding: 5px 8px; border-bottom: 1px solid #2A2F3A; background: #161920; flex-shrink: 0; }
+        .rte-body { padding: 10px 12px; position: relative; flex: 1; display: flex; flex-direction: column; }
         .rte-placeholder { position: absolute; top: 10px; left: 12px; color: #475569; font-size: 0.85rem; pointer-events: none; line-height: 1.6; }
-        .rte-content { outline: none; color: #F1F5F9; font-size: 0.85rem; line-height: 1.6; }
+        .rte-content { outline: none; color: #F1F5F9; font-size: 0.85rem; line-height: 1.6; flex: 1; }
         .rte-content p { margin: 0 0 4px; }
         .rte-content p:last-child { margin-bottom: 0; }
-        .rte-content ul, .rte-content ol { padding-left: 1.3em; margin: 2px 0; }
-        .rte-content li { margin-bottom: 2px; }
+        .rte-content ul { list-style: disc outside; padding-left: 1.3em; margin: 2px 0; }
+        .rte-content ol { list-style: decimal outside; padding-left: 1.3em; margin: 2px 0; }
+        .rte-content li { margin-bottom: 2px; display: list-item; }
         .rte-content strong { color: #F1F5F9; }
         .rte-content em { color: #CBD5E1; }
       `}</style>
@@ -103,7 +104,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
           {editor.isEmpty && placeholder && (
             <span className="rte-placeholder">{placeholder}</span>
           )}
-          <EditorContent editor={editor} />
+          <EditorContent editor={editor} style={{ flex: 1, display: 'flex', flexDirection: 'column' }} />
         </div>
       </div>
     </>

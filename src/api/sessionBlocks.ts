@@ -9,8 +9,10 @@ function toBlock(row: Record<string, unknown>): SessionBlock {
     duration:  row.duration as number,
     category:  row.category as string,
     intensity: row.intensity as SessionBlock['intensity'],
-    label:     row.label as string,
-    loadUa:    row.load_ua as number,
+    label:       row.label as string,
+    description: row.description as string | undefined,
+    consignes:   row.consignes as string | undefined,
+    loadUa:      row.load_ua as number,
     drillId:   row.drill_id as string | null,
     createdAt: row.created_at as string,
   };
@@ -43,18 +45,22 @@ export const sessionBlocksApi = {
     category: string;
     intensity: SessionBlock['intensity'];
     label: string;
+    description?: string;
+    consignes?: string;
     drillId?: string | null;
   }): Promise<SessionBlock> {
     const { data, error } = await supabase
       .from('session_blocks')
       .insert({
-        session_id: sessionId,
-        position:   block.position,
-        duration:   block.duration,
-        category:   block.category,
-        intensity:  block.intensity,
-        label:      block.label,
-        drill_id:   block.drillId ?? null,
+        session_id:  sessionId,
+        position:    block.position,
+        duration:    block.duration,
+        category:    block.category,
+        intensity:   block.intensity,
+        label:       block.label,
+        description: block.description || null,
+        consignes:   block.consignes || null,
+        drill_id:    block.drillId ?? null,
       })
       .select()
       .single();
@@ -62,14 +68,16 @@ export const sessionBlocksApi = {
     return toBlock(data as Record<string, unknown>);
   },
 
-  async update(id: string, patch: Partial<Pick<SessionBlock, 'duration' | 'category' | 'intensity' | 'label' | 'position' | 'drillId'>>): Promise<SessionBlock> {
+  async update(id: string, patch: Partial<Pick<SessionBlock, 'duration' | 'category' | 'intensity' | 'label' | 'description' | 'consignes' | 'position' | 'drillId'>>): Promise<SessionBlock> {
     const payload: Record<string, unknown> = {};
-    if (patch.duration  !== undefined) payload.duration  = patch.duration;
-    if (patch.category  !== undefined) payload.category  = patch.category;
-    if (patch.intensity !== undefined) payload.intensity = patch.intensity;
-    if (patch.label     !== undefined) payload.label     = patch.label;
-    if (patch.position  !== undefined) payload.position  = patch.position;
-    if (patch.drillId   !== undefined) payload.drill_id  = patch.drillId;
+    if (patch.duration    !== undefined) payload.duration    = patch.duration;
+    if (patch.category    !== undefined) payload.category    = patch.category;
+    if (patch.intensity   !== undefined) payload.intensity    = patch.intensity;
+    if (patch.label       !== undefined) payload.label        = patch.label;
+    if (patch.description !== undefined) payload.description  = patch.description || null;
+    if (patch.consignes   !== undefined) payload.consignes    = patch.consignes || null;
+    if (patch.position    !== undefined) payload.position     = patch.position;
+    if (patch.drillId     !== undefined) payload.drill_id     = patch.drillId;
     const { data, error } = await supabase
       .from('session_blocks')
       .update(payload)

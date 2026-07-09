@@ -15,6 +15,7 @@ export { statsApi }     from './stats';
 export { matchesApi }   from './matches';
 export { documentsApi }     from './documents';
 export { sessionBlocksApi } from './sessionBlocks'
+export { sessionTeamsApi } from './sessionTeams';
 export { sendEmail } from './email';
 
 export type { ListPlayersFilters }       from './players';

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Plus, Search, Activity, Heart,
-  Stethoscope, CheckSquare, BarChart2, X, AlertCircle, Edit, ArrowRight,
+  Stethoscope, CheckSquare, BarChart2, X, AlertCircle, Edit, ArrowRight, Users,
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, Cell,
@@ -13,9 +13,9 @@ import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi, statsApi } fro
 import { attendanceApi } from '../api/attendance';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor } from '../utils/wellness';
-import { StatusBadge, PlayerAvatar, Card, CardTitle, EmptyState, PlayerDynamiqueTab, PlayerBilanTab, PlayerDynStatTab, DateRangeCard, useDateRange } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerHero, playerStatusLabel, playerStatusColor, Card, CardTitle, EmptyState, PlayerDynamiqueTab, PlayerBilanTab, PlayerDynStatTab, DateRangeCard, useDateRange } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { formatDate, getAge, evalColor } from '../data';
+import { evalColor } from '../data';
 import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action, MatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 
@@ -59,8 +59,6 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
-const flagEmoji: Record<string, string> = { FR: '🇫🇷', ES: '🇪🇸', CI: '🇨🇮', MA: '🇲🇦', IT: '🇮🇹' };
-
 // ── Sparkline SVG inline ──────────────────────────────────────────────────────
 function Sparkline({ values, color, h = 36 }: { values: number[]; color: string; h?: number }) {
   if (values.length < 2) return null;
@@ -98,7 +96,8 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, import('../data/types').TeamMatchStat>>(new Map());
   const [playerTab, setPlayerTab] = useState<'resume' | 'dynamique' | 'performance' | 'bilan' | 'dynstat'>(view === 'cross' ? 'resume' : 'performance');
   const [statsView, setStatsView] = useState<'basic' | 'advanced' | 'season'>('basic');
-  const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; stats: MatchStat[] }[]>([]);
+  const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]>([]);
+  const [allTeamsSeason, setAllTeamsSeason] = useState(false);
   const [basicSort, setBasicSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [seasonSort, setSeasonSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'season', dir: 'desc' });
@@ -139,16 +138,8 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
   useEffect(() => {
     if (!selected) return;
     setMatchStats([]);
-    setTeamStatsMap(new Map());
-    statsApi.getPlayerStatsBySeason(playerId, selected.season.id).then(stats => {
-      setMatchStats(stats);
-      const ids = stats.map(s => s.matchId).filter((id): id is string => !!id);
-      if (ids.length > 0) {
-        statsApi.listTeamStatsByMatchIds(ids).then(teamStats => {
-          setTeamStatsMap(new Map(teamStats.map(t => [t.matchId!, t])));
-        });
-      }
-    });
+    setAllTeamsSeason(false);
+    statsApi.getPlayerStatsBySeason(playerId, selected.season.id).then(setMatchStats);
     attendanceApi.listSessions(selected.team.id, selected.season.id).then(sessions => {
       if (!sessions.length) { setPresenceRate(null); return; }
       const ids = sessions.map(s => s.id);
@@ -160,9 +151,32 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
     });
   }, [playerId, selected]);
 
+  // ── Autres équipes ayant joué la même saison (même libellé, ex. "2025/2026") ──
+  const siblingSeasons = useMemo(
+    () => selected ? seasonGroupedStats.filter(g => g.seasonLabel === selected.season.label) : [],
+    [seasonGroupedStats, selected?.season.label]
+  );
+  const multiTeamSeason = siblingSeasons.length > 1;
+  const combinedSeasonStats = useMemo(
+    () => siblingSeasons.flatMap(g => g.stats),
+    [siblingSeasons]
+  );
+  const effectiveMatchStats = allTeamsSeason && multiTeamSeason ? combinedSeasonStats : matchStats;
+
+  const matchIdsKey = useMemo(
+    () => effectiveMatchStats.map(s => s.matchId).filter((id): id is string => !!id).sort().join(','),
+    [effectiveMatchStats]
+  );
+  useEffect(() => {
+    if (!matchIdsKey) { setTeamStatsMap(new Map()); return; }
+    statsApi.listTeamStatsByMatchIds(matchIdsKey.split(',')).then(teamStats => {
+      setTeamStatsMap(new Map(teamStats.map(t => [t.matchId!, t])));
+    });
+  }, [matchIdsKey]);
+
   const perfFilteredStats = perfRange.from
-    ? matchStats.filter(s => s.date >= perfRange.from && s.date <= perfRange.to)
-    : matchStats;
+    ? effectiveMatchStats.filter(s => s.date >= perfRange.from && s.date <= perfRange.to)
+    : effectiveMatchStats;
 
   if (loading) {
     return (
@@ -278,13 +292,6 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
   const avgWScore   = last3w.length > 0 ? last3w.reduce((s, e) => s + e.score, 0) / last3w.length : 5;
   const radarColor  = wellScoreColor(avgWScore);
 
-  const statusLabel: Record<Player['status'], string> = {
-    active: 'Actif', injured: 'Blessé', limited: 'Limité', suspended: 'Suspendu', unavailable: 'Indispo.',
-  };
-  const statusColor: Record<Player['status'], string> = {
-    active: '#00E5A0', injured: '#EF4444', limited: '#F59E0B', suspended: '#8B5CF6', unavailable: '#475569',
-  };
-
   const injuryCount  = medical.filter(m => m.type === 'injury').length;
   const wellnessAvg  = wellness.length > 0
     ? (wellness.reduce((s, e) => s + e.score, 0) / wellness.length).toFixed(1)
@@ -295,9 +302,9 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
   const kpis = [
     {
       label: 'Statut',
-      bigVal: statusLabel[player.status],
+      bigVal: playerStatusLabel[player.status],
       unit: undefined,
-      col: statusColor[player.status],
+      col: playerStatusColor[player.status],
       onClick: openEdit,
     },
     {
@@ -343,34 +350,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
         </div>
       </div>
 
-      <div style={{ backgroundColor: `${statusColor[player.status]}10`, border: `1px solid ${statusColor[player.status]}50`, borderLeft: `4px solid ${statusColor[player.status]}`, borderRadius: 8, padding: '14px 4px 14px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        <PlayerAvatar player={player} size={44} />
-        <div style={{ flex: 1, minWidth: 160 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>{player.firstName} {player.lastName}</span>
-            <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '1rem' }}>#{player.number} · {player.position}</span>
-          </div>
-          <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>
-            {flagEmoji[player.nationality] ?? ''}
-            {player.birthDate ? ` · ${getAge(player.birthDate)} ans` : ''}
-            {player.height && player.weight ? ` · ${player.height} cm / ${player.weight} kg` : ''}
-            {player.contractEnd ? ` · Contrat → ${formatDate(player.contractEnd)}` : ''}
-          </p>
-        </div>
-
-        <div className="flex items-stretch gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-[#2A2F3A]">
-          {/* Statut */}
-          <div style={{ display: 'flex', alignItems: 'center', paddingRight: 20 }}>
-            <div style={{
-              color: statusColor[player.status],
-              backgroundColor: `${statusColor[player.status]}18`,
-              border: `1px solid ${statusColor[player.status]}40`,
-              fontWeight: 700, fontSize: '0.82rem',
-              borderRadius: 20, padding: '5px 14px',
-            }}>{statusLabel[player.status]}</div>
-          </div>
-        </div>
-      </div>
+      <PlayerHero player={player} />
 
 
       {/* ── Tabs ── */}
@@ -654,6 +634,13 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
           mb={14}
           right={
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {statsView !== 'season' && multiTeamSeason && (
+                <button type="button" onClick={e => { e.stopPropagation(); setAllTeamsSeason(v => !v); }}
+                  title="Inclut les matchs joués avec les autres équipes du club sur cette même saison"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: allTeamsSeason ? 700 : 400, backgroundColor: allTeamsSeason ? 'rgba(0,229,160,0.12)' : 'transparent', color: allTeamsSeason ? '#00E5A0' : '#475569' }}>
+                  <Users size={11} /> Toutes les équipes
+                </button>
+              )}
               {statsView !== 'season' && perfFilteredStats.length > 0 && <span style={{ color: '#475569', fontSize: '0.72rem' }}>{perfFilteredStats.length} match{perfFilteredStats.length > 1 ? 's' : ''}</span>}
               <div style={{ display: 'flex', backgroundColor: '#0D0F14', borderRadius: 6, padding: 2, gap: 2 }}>
                 {([['basic', 'Brutes'], ['advanced', 'Avancées'], ['season', 'Par saison']] as const).map(([v, label]) => (
@@ -688,7 +675,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
             const toggle = (col: string) => setSeasonSort(prev =>
               prev.col === col ? { ...prev, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }
             );
-            const computed = seasonGroupedStats.map(({ seasonId, seasonLabel, stats: ss }) => {
+            const computed = seasonGroupedStats.map(({ seasonId, seasonLabel, teamName, stats: ss }) => {
               const n = ss.length;
               const sum = (k: keyof MatchStat) => ss.reduce((acc, m) => acc + (((m[k] as number) || 0)), 0);
               const avg = (k: keyof MatchStat) => n > 0 ? Math.round((sum(k) / n) * 10) / 10 : 0;
@@ -696,12 +683,16 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
               const evalAvg = withEval.length > 0
                 ? Math.round(withEval.reduce((a, s) => a + (s.eval ?? 0), 0) / withEval.length * 10) / 10
                 : null;
+              const withPm = ss.filter(s => s.plusMinus !== null);
+              const pmAvg = withPm.length > 0
+                ? Math.round(withPm.reduce((a, s) => a + (s.plusMinus ?? 0), 0) / withPm.length * 10) / 10
+                : null;
               return {
-                seasonId, seasonLabel, n,
+                seasonId, seasonLabel, teamName: teamName || '', n,
                 fg2m: sum('fg2m'), fg2a: sum('fg2a'),
                 fg3m: sum('fg3m'), fg3a: sum('fg3a'),
                 ftm: sum('ftm'), fta: sum('fta'),
-                starters: ss.filter(s => s.starter).length, evalAvg,
+                starters: ss.filter(s => s.starter).length, evalAvg, pmAvg,
                 avgMin: avg('min'), avgPts: avg('pts'),
                 avgRo: avg('ro'), avgRd: avg('rd'),
                 avgPd: avg('pd'), avgCt: avg('ct'),
@@ -719,12 +710,13 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
                 case 'fg2':    return m * ((a.fg2a > 0 ? a.fg2m / a.fg2a : 0) - (b.fg2a > 0 ? b.fg2m / b.fg2a : 0));
                 case 'fg3':    return m * ((a.fg3a > 0 ? a.fg3m / a.fg3a : 0) - (b.fg3a > 0 ? b.fg3m / b.fg3a : 0));
                 case 'ft':     return m * ((a.fta  > 0 ? a.ftm  / a.fta  : 0) - (b.fta  > 0 ? b.ftm  / b.fta  : 0));
-                case 'reb':    return m * ((a.avgRo + a.avgRd) - (b.avgRo + b.avgRd));
+                case 'rt':     return m * ((a.avgRo + a.avgRd) - (b.avgRo + b.avgRd));
                 case 'pd':     return m * (a.avgPd - b.avgPd);
                 case 'ct':     return m * (a.avgCt - b.avgCt);
                 case 'int':    return m * (a.avgInt - b.avgInt);
                 case 'bp':     return m * (a.avgBp - b.avgBp);
                 case 'eval':   return m * ((a.evalAvg ?? -99) - (b.evalAvg ?? -99));
+                case 'pm':     return m * ((a.pmAvg ?? -99) - (b.pmAvg ?? -99));
                 default:       return 0;
               }
             });
@@ -734,42 +726,56 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
                   <thead>
                     <tr>
                       <th onClick={() => toggle('season')} style={{ ...TH, textAlign: 'left', color: thC('season') }}>Saison{si('season')}</th>
+                      <th style={{ ...TH, textAlign: 'left', cursor: 'default' }}>Équipe</th>
                       <th onClick={() => toggle('mj')}    style={{ ...TH, color: thC('mj') }}>MJ{si('mj')}</th>
                       <th onClick={() => toggle('tit')}   style={{ ...TH, color: thC('tit') }}>Tit{si('tit')}</th>
                       <th onClick={() => toggle('min')}   style={{ ...TH, color: thC('min') }}>MIN{si('min')}</th>
                       <th onClick={() => toggle('pts')}   style={{ ...TH, color: thC('pts') }}>PTS{si('pts')}</th>
+                      <th style={{ ...TH, cursor: 'default' }}>2PT</th>
                       <th onClick={() => toggle('fg2')}   style={{ ...TH, color: thC('fg2') }}>2PT%{si('fg2')}</th>
+                      <th style={{ ...TH, cursor: 'default' }}>3PT</th>
                       <th onClick={() => toggle('fg3')}   style={{ ...TH, color: thC('fg3') }}>3PT%{si('fg3')}</th>
+                      <th style={{ ...TH, cursor: 'default' }}>LF</th>
                       <th onClick={() => toggle('ft')}    style={{ ...TH, color: thC('ft') }}>LF%{si('ft')}</th>
-                      <th onClick={() => toggle('reb')}   style={{ ...TH, color: thC('reb') }}>REB{si('reb')}</th>
+                      <th style={{ ...TH, cursor: 'default' }}>RO</th>
+                      <th style={{ ...TH, cursor: 'default' }}>RD</th>
+                      <th onClick={() => toggle('rt')}    style={{ ...TH, color: thC('rt') }}>RT{si('rt')}</th>
                       <th onClick={() => toggle('pd')}    style={{ ...TH, color: thC('pd') }}>PD{si('pd')}</th>
                       <th onClick={() => toggle('ct')}    style={{ ...TH, color: thC('ct') }}>CT{si('ct')}</th>
                       <th onClick={() => toggle('int')}   style={{ ...TH, color: thC('int') }}>INT{si('int')}</th>
                       <th onClick={() => toggle('bp')}    style={{ ...TH, color: thC('bp') }}>BP{si('bp')}</th>
                       <th onClick={() => toggle('eval')}  style={{ ...TH, color: thC('eval') }}>EVAL{si('eval')}</th>
+                      <th onClick={() => toggle('pm')}    style={{ ...TH, color: thC('pm') }}>±{si('pm')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map(({ seasonLabel, n, fg2m, fg2a, fg3m, fg3a, ftm, fta, starters, evalAvg, avgMin, avgPts, avgRo, avgRd, avgPd, avgCt, avgInt, avgBp }, i) => {
+                    {sorted.map(({ seasonId, seasonLabel, teamName, n, fg2m, fg2a, fg3m, fg3a, ftm, fta, starters, evalAvg, pmAvg, avgMin, avgPts, avgRo, avgRd, avgPd, avgCt, avgInt, avgBp }, i) => {
                       const fg2Pct = fg2a > 0 ? Math.round((fg2m / fg2a) * 100) : null;
                       const fg3Pct = fg3a > 0 ? Math.round((fg3m / fg3a) * 100) : null;
                       const ftPct  = fta  > 0 ? Math.round((ftm  / fta)  * 100) : null;
                       return (
-                        <tr key={seasonLabel} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                        <tr key={seasonId} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                           <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{seasonLabel}</td>
+                          <td style={{ ...TD, textAlign: 'left' }}>{teamName || '—'}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                           <td style={TD}>{starters}</td>
                           <td style={TD}>{avgMin}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
+                          <td style={TD}>{fg2m}/{fg2a}</td>
                           <td style={TD}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
+                          <td style={TD}>{fg3m}/{fg3a}</td>
                           <td style={TD}>{fg3Pct !== null ? `${fg3Pct}%` : '—'}</td>
+                          <td style={TD}>{ftm}/{fta}</td>
                           <td style={TD}>{ftPct  !== null ? `${ftPct}%`  : '—'}</td>
-                          <td style={TD}>{Math.round((avgRo + avgRd) * 10) / 10}</td>
+                          <td style={TD}>{avgRo}</td>
+                          <td style={TD}>{avgRd}</td>
+                          <td style={{ ...TD, color: '#F1F5F9' }}>{Math.round((avgRo + avgRd) * 10) / 10}</td>
                           <td style={TD}>{avgPd}</td>
                           <td style={TD}>{avgCt}</td>
                           <td style={TD}>{avgInt}</td>
                           <td style={TD}>{avgBp}</td>
                           <td style={{ ...TD, color: evalColor(evalAvg), fontWeight: evalAvg !== null ? 700 : 400 }}>{evalAvg !== null ? evalAvg : '—'}</td>
+                          <td style={{ ...TD, fontWeight: 700, color: pmAvg === null ? '#475569' : pmAvg > 0 ? '#00E5A0' : pmAvg < 0 ? '#EF4444' : '#94A3B8' }}>{pmAvg !== null ? (pmAvg > 0 ? `+${pmAvg}` : pmAvg) : '—'}</td>
                         </tr>
                       );
                     })}

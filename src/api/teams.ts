@@ -22,10 +22,10 @@ export const teamsApi = {
     return data ? toTeam(data) : null;
   },
 
-  async updateThresholds(id: string, lightMax: number, normalMax: number): Promise<void> {
+  async updateThresholds(id: string, lightMax: number, normalMax: number, sessionsPerWeek: number): Promise<void> {
     const { error } = await supabase
       .from('teams')
-      .update({ load_light_max: lightMax, load_normal_max: normalMax })
+      .update({ load_light_max: lightMax, load_normal_max: normalMax, sessions_per_week: sessionsPerWeek })
       .eq('id', id);
     if (error) throw error;
   },
@@ -112,8 +112,9 @@ function toTeam(row: Record<string, unknown>): Team {
     createdAt:        row.created_at      as string | undefined,
     playerCount:      undefined,
     currentSeason:    seasonsArr?.find(s => s.is_current)?.label,
-    loadLightMax:     (row.load_light_max  as number | undefined) ?? 2750,
-    loadNormalMax:    (row.load_normal_max as number | undefined) ?? 4250,
+    loadLightMax:     (row.load_light_max     as number | undefined) ?? 2750,
+    loadNormalMax:    (row.load_normal_max    as number | undefined) ?? 4250,
+    sessionsPerWeek:  (row.sessions_per_week  as number | undefined) ?? 3,
     evalTOrange:      (row.eval_t_orange   as number | undefined) ?? 0,
     evalTBlue:        (row.eval_t_blue     as number | undefined) ?? 5,
     evalTGreen:       (row.eval_t_green    as number | undefined) ?? 10,

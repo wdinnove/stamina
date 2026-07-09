@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, Users, X, AlertCircle, CheckCircle, Calendar, Save, Building2, Settings } from 'lucide-react';
+import { Plus, Search, Users, X, AlertCircle, CheckCircle, Calendar, Save, Building2, Settings, Pencil, Trash2 } from 'lucide-react';
 import { teamsApi, playersApi, configApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle } from '../components';
@@ -8,6 +8,13 @@ import type { Team, Player, Organization } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
+const STATUSES: { value: Player['status']; label: string }[] = [
+  { value: 'active',      label: 'Actif' },
+  { value: 'injured',     label: 'Blessé' },
+  { value: 'limited',     label: 'Limité' },
+  { value: 'suspended',   label: 'Suspendu' },
+  { value: 'unavailable', label: 'Indisponible' },
+];
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -174,6 +181,7 @@ function TeamsTab() {
 const emptyPlayerForm = {
   firstName: '', lastName: '', number: '',
   position: 'Meneur' as Player['position'],
+  status: 'active' as Player['status'],
   birthDate: '', nationality: 'FR',
   hand: 'right' as Player['hand'],
   height: '', weight: '', contractEnd: '', email: '',
@@ -192,6 +200,15 @@ function PlayersTab() {
   const [form,     setForm]     = useState(emptyPlayerForm);
   const [saving,   setSaving]   = useState(false);
   const [formErr,  setFormErr]  = useState('');
+
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [editForm,      setEditForm]      = useState(emptyPlayerForm);
+  const [editSaving,    setEditSaving]    = useState(false);
+  const [editErr,       setEditErr]       = useState('');
+
+  const [confirmDelete, setConfirmDelete] = useState<Player | null>(null);
+  const [deleting,      setDeleting]      = useState(false);
+  const [deleteErr,     setDeleteErr]     = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -239,6 +256,72 @@ function PlayersTab() {
 
   const closeForm = () => { setShowForm(false); setFormErr(''); setForm(emptyPlayerForm); };
 
+  const openEdit = (player: Player) => {
+    setEditingPlayer(player);
+    setEditForm({
+      firstName:   player.firstName,
+      lastName:    player.lastName,
+      number:      String(player.number),
+      position:    player.position,
+      status:      player.status,
+      birthDate:   player.birthDate,
+      nationality: player.nationality,
+      hand:        player.hand,
+      height:      player.height ? String(player.height) : '',
+      weight:      player.weight ? String(player.weight) : '',
+      contractEnd: player.contractEnd ?? '',
+      email:       player.email ?? '',
+    });
+    setEditErr('');
+  };
+  const closeEdit = () => { setEditingPlayer(null); setEditErr(''); setEditForm(emptyPlayerForm); };
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingPlayer) return;
+    setEditErr('');
+    setEditSaving(true);
+    try {
+      await playersApi.update(editingPlayer.id, {
+        firstName:   editForm.firstName,
+        lastName:    editForm.lastName,
+        number:      parseInt(editForm.number),
+        position:    editForm.position,
+        status:      editForm.status,
+        nationality: editForm.nationality || 'FR',
+        birthDate:   editForm.birthDate,
+        hand:        editForm.hand,
+        height:      editForm.height ? parseInt(editForm.height) : undefined,
+        weight:      editForm.weight ? parseInt(editForm.weight) : undefined,
+        contractEnd: editForm.contractEnd || undefined,
+        email:       editForm.email       || undefined,
+      });
+      setPlayers(prev => prev.map(p => p.id === editingPlayer.id
+        ? { ...p, ...editForm, number: parseInt(editForm.number), height: editForm.height ? parseInt(editForm.height) : undefined, weight: editForm.weight ? parseInt(editForm.weight) : undefined, contractEnd: editForm.contractEnd || undefined, email: editForm.email || undefined }
+        : p).sort((a, b) => a.lastName.localeCompare(b.lastName)));
+      closeEdit();
+    } catch (err: unknown) {
+      setEditErr(err instanceof Error ? err.message : 'Erreur lors de la modification.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleteErr('');
+    setDeleting(true);
+    try {
+      await playersApi.delete(confirmDelete.id);
+      setPlayers(prev => prev.filter(p => p.id !== confirmDelete.id));
+      setConfirmDelete(null);
+    } catch (err: unknown) {
+      setDeleteErr(err instanceof Error ? err.message : 'Erreur lors de la suppression.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16 }}>
@@ -277,22 +360,49 @@ function PlayersTab() {
           size="lg"
         />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-          {filtered.map(player => (
-            <div key={player.id}
-              onClick={() => navigate(`/players/${player.id}`, { state: { from: '/players' } })}
-              style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
-              <PlayerAvatar player={player} size={48} />
-              <div style={{ textAlign: 'center' }}>
-                <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>{player.lastName}</p>
-                <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '2px 0' }}>{player.firstName}</p>
-                <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>#{player.number} · {player.position.split(' ')[0]}</p>
-              </div>
-              <StatusBadge status={player.status} size="sm" />
-            </div>
-          ))}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                <th style={{ textAlign: 'left', padding: '8px 10px', color: '#475569', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joueur</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', color: '#475569', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Poste</th>
+                <th style={{ textAlign: 'center', padding: '8px 10px', color: '#475569', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>N°</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', color: '#475569', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Statut</th>
+                <th style={{ textAlign: 'right', padding: '8px 10px', color: '#475569', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((player, i) => (
+                <tr key={player.id}
+                  onClick={() => navigate(`/players/${player.id}`, { state: { from: '/players' } })}
+                  style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }}>
+                  <td style={{ padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <PlayerAvatar player={player} size={30} />
+                      <div>
+                        <div style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.85rem' }}>{player.lastName} {player.firstName}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '8px 10px', color: '#94A3B8', fontSize: '0.82rem' }}>{player.position}</td>
+                  <td style={{ padding: '8px 10px', color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center' }}>#{player.number}</td>
+                  <td style={{ padding: '8px 10px' }}><StatusBadge status={player.status} size="sm" /></td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button onClick={e => { e.stopPropagation(); openEdit(player); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem' }}>
+                        <Pencil size={11} /> Modifier
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setConfirmDelete(player); setDeleteErr(''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', backgroundColor: 'transparent', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, color: '#EF4444', cursor: 'pointer', fontSize: '0.72rem' }}>
+                        <Trash2 size={11} /> Supprimer
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -387,6 +497,141 @@ function PlayersTab() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {editingPlayer && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Modifier {editingPlayer.firstName} {editingPlayer.lastName}</h2>
+              <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            {editErr && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                <AlertCircle size={13} style={{ color: '#EF4444' }} />
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editErr}</span>
+              </div>
+            )}
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom *</label>
+                  <input required value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nom *</label>
+                  <input required value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date de naissance *</label>
+                  <input required type="date" value={editForm.birthDate} onChange={e => setEditForm(f => ({ ...f, birthDate: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>N° maillot *</label>
+                  <input required type="number" min={0} max={99} value={editForm.number}
+                    onChange={e => setEditForm(f => ({ ...f, number: e.target.value }))} style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poste *</label>
+                  <select required value={editForm.position}
+                    onChange={e => setEditForm(f => ({ ...f, position: e.target.value as Player['position'] }))}
+                    style={{ ...inputStyle }}>
+                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Statut</label>
+                  <select value={editForm.status}
+                    onChange={e => setEditForm(f => ({ ...f, status: e.target.value as Player['status'] }))}
+                    style={{ ...inputStyle }}>
+                    {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Main forte</label>
+                  <select value={editForm.hand}
+                    onChange={e => setEditForm(f => ({ ...f, hand: e.target.value as Player['hand'] }))}
+                    style={{ ...inputStyle }}>
+                    <option value="right">Droite</option>
+                    <option value="left">Gauche</option>
+                    <option value="both">Les deux</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nationalité</label>
+                  <input maxLength={2} placeholder="FR" value={editForm.nationality}
+                    onChange={e => setEditForm(f => ({ ...f, nationality: e.target.value.toUpperCase() }))} style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Taille (cm)</label>
+                  <input type="number" min={140} max={230} value={editForm.height}
+                    onChange={e => setEditForm(f => ({ ...f, height: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poids (kg)</label>
+                  <input type="number" min={40} max={150} value={editForm.weight}
+                    onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
+                  <input type="date" value={editForm.contractEnd}
+                    onChange={e => setEditForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
+                <input type="email" placeholder="joueur@example.com" value={editForm.email}
+                  onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button type="button" onClick={closeEdit}
+                  style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+                  Annuler
+                </button>
+                <button type="submit" disabled={editSaving}
+                  style={{ flex: 1, padding: 10, backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24 }}>
+            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer ce joueur ?</h2>
+            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
+              <strong style={{ color: '#F1F5F9' }}>{confirmDelete.firstName} {confirmDelete.lastName}</strong>
+            </p>
+            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>
+              Ce joueur et toutes ses données associées (RPE, bien-être, médical…) seront définitivement supprimés.
+            </p>
+            {deleteErr && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                <AlertCircle size={13} style={{ color: '#EF4444' }} />
+                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{deleteErr}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmDelete(null)} disabled={deleting}
+                style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
+                Annuler
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
           </div>
         </div>
       )}

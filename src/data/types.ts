@@ -97,6 +97,7 @@ export interface Team {
   currentSeason?: string;
   loadLightMax?: number;
   loadNormalMax?: number;
+  sessionsPerWeek?: number;
   evalTOrange?: number;
   evalTBlue?:   number;
   evalTGreen?:  number;
@@ -250,6 +251,22 @@ export interface TrainingSession {
   createdAt?: string;
 }
 
+export interface SessionTeamBlock {
+  id: string;
+  sessionId: string;
+  label: string;
+  position: number;
+}
+
+export interface SessionTeam {
+  id: string;
+  blockId: string;
+  sessionId: string;
+  name: string;
+  color: string;
+  position: number;
+}
+
 export interface SessionDocument {
   id: string;
   sessionId: string;
@@ -265,6 +282,7 @@ export interface Exercise {
   name: string;
   teamId?: string;
   description?: string;
+  consignes?: string;
   categoryId?: string;
   categoryName?: string;
   categoryColor?: string;
@@ -301,6 +319,8 @@ export interface SessionBlock {
   category: string;
   intensity: BlockIntensity;
   label: string;
+  description?: string;
+  consignes?: string;
   loadUa: number;
   drillId: string | null;
   createdAt: string;

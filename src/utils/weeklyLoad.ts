@@ -5,7 +5,7 @@ export interface WeekTier {
   bg: string;
 }
 
-export const DEFAULT_THRESHOLDS = { lightMax: 2750, normalMax: 4250 };
+export const DEFAULT_THRESHOLDS = { lightMax: 2750, normalMax: 4250, sessionsPerWeek: 3 };
 
 /** 4 zones en tiers égaux : Normal (vert) / Soutenu (jaune) / Élevée (orange) / Surcharge (rouge) */
 export function buildWeekTiers(_lightMax = DEFAULT_THRESHOLDS.lightMax, normalMax = DEFAULT_THRESHOLDS.normalMax): WeekTier[] {

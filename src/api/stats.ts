@@ -283,7 +283,7 @@ export const statsApi = {
     if (error) throw error;
   },
 
-  async getPlayerStatsGroupedBySeason(playerId: string): Promise<{ seasonId: string; seasonLabel: string; stats: MatchStat[] }[]> {
+  async getPlayerStatsGroupedBySeason(playerId: string): Promise<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]> {
     const { data: statsData, error: statsErr } = await supabase
       .from('match_stats')
       .select('*')
@@ -295,15 +295,20 @@ export const statsApi = {
     if (matchIds.length === 0) return [];
     const { data: matchData, error: matchErr } = await supabase
       .from('matches')
-      .select('id, season_id, seasons(label)')
+      .select('id, season_id, seasons(label, team_id, teams(name))')
       .in('id', matchIds);
     if (matchErr) throw matchErr;
-    const matchSeasonMap = new Map<string, { seasonId: string; seasonLabel: string }>();
+    const matchSeasonMap = new Map<string, { seasonId: string; seasonLabel: string; teamId: string; teamName: string }>();
     for (const m of matchData ?? []) {
-      const row = m as { id: string; season_id: string; seasons: { label: string } | null };
-      matchSeasonMap.set(row.id, { seasonId: row.season_id, seasonLabel: row.seasons?.label ?? row.season_id });
+      const row = m as { id: string; season_id: string; seasons: { label: string; team_id: string; teams: { name: string } | null } | null };
+      matchSeasonMap.set(row.id, {
+        seasonId: row.season_id,
+        seasonLabel: row.seasons?.label ?? row.season_id,
+        teamId: row.seasons?.team_id ?? '',
+        teamName: row.seasons?.teams?.name ?? '',
+      });
     }
-    const grouped = new Map<string, { seasonId: string; seasonLabel: string; stats: MatchStat[] }>();
+    const grouped = new Map<string, { seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }>();
     for (const stat of stats) {
       if (!stat.matchId) continue;
       const season = matchSeasonMap.get(stat.matchId);

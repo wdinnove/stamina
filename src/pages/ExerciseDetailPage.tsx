@@ -24,7 +24,7 @@ function RichEditor({ value, onChange }: { value: string; onChange: (html: strin
       attributes: {
         style: [
           'min-height:100px', 'padding:9px 11px', 'outline:none',
-          'color:#F1F5F9', 'font-size:0.85rem', 'line-height:1.55', 'font-family:inherit',
+          'color:#F1F5F9', 'font-size:0.85rem', 'line-height:1.55', 'font-family:inherit', 'flex:1',
         ].join(';'),
       },
     },
@@ -37,14 +37,14 @@ function RichEditor({ value, onChange }: { value: string; onChange: (html: strin
     </button>
   );
   return (
-    <div style={{ border: '1px solid #2A2F3A', borderRadius: 6, backgroundColor: '#1E2229', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', gap: 2, padding: '6px 8px', borderBottom: '1px solid #2A2F3A' }}>
+    <div style={{ border: '1px solid #2A2F3A', borderRadius: 6, backgroundColor: '#1E2229', overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', gap: 2, padding: '6px 8px', borderBottom: '1px solid #2A2F3A', flexShrink: 0 }}>
         {btn(editor.isActive('bold'),        () => editor.chain().focus().toggleBold().run(),        'Gras',            <Bold size={13} />)}
         {btn(editor.isActive('italic'),      () => editor.chain().focus().toggleItalic().run(),      'Italique',        <Italic size={13} />)}
         {btn(editor.isActive('bulletList'),  () => editor.chain().focus().toggleBulletList().run(),  'Liste',           <List size={13} />)}
         {btn(editor.isActive('orderedList'), () => editor.chain().focus().toggleOrderedList().run(), 'Liste numérotée', <ListOrdered size={13} />)}
       </div>
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} style={{ flex: 1, display: 'flex', flexDirection: 'column' }} />
       <style>{`
         .ProseMirror p { margin: 0 0 6px; }
         .ProseMirror p:last-child { margin: 0; }
@@ -57,8 +57,8 @@ function RichEditor({ value, onChange }: { value: string; onChange: (html: strin
   );
 }
 
-function RichContent({ html }: { html?: string }) {
-  if (!html || html === '<p></p>') return <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune description.</span>;
+function RichContent({ html, emptyLabel = 'Aucun déroulement.' }: { html?: string; emptyLabel?: string }) {
+  if (!html || html === '<p></p>') return <span style={{ color: '#475569', fontSize: '0.85rem' }}>{emptyLabel}</span>;
   return (
     <>
       <div className="ex-detail-desc" dangerouslySetInnerHTML={{ __html: html }} />
@@ -104,6 +104,7 @@ export default function ExerciseDetailPage() {
   const [name,        setName]        = useState('');
   const [categoryId,  setCategoryId]  = useState('');
   const [description, setDescription] = useState('');
+  const [consignes,   setConsignes]   = useState('');
   const [videoUrl,    setVideoUrl]    = useState('');
   const [saving,      setSaving]      = useState(false);
   const [formError,   setFormError]   = useState('');
@@ -136,6 +137,7 @@ export default function ExerciseDetailPage() {
     setName(exercise.name);
     setCategoryId(exercise.categoryId ?? '');
     setDescription(exercise.description ?? '');
+    setConsignes(exercise.consignes ?? '');
     setVideoUrl(exercise.videoUrl ?? '');
     setFormError('');
     setShowEdit(true);
@@ -210,10 +212,12 @@ export default function ExerciseDetailPage() {
     setSaving(true);
     setFormError('');
     const plain = description.replace(/<[^>]+>/g, '').trim();
+    const plainConsignes = consignes.replace(/<[^>]+>/g, '').trim();
     try {
       const updated = await exercisesApi.update(exercise.id, {
         name:        name.trim(),
         description: plain ? description : undefined,
+        consignes:   plainConsignes ? consignes : undefined,
         categoryId:  categoryId || undefined,
         videoUrl:    videoUrl.trim(),
       });
@@ -288,9 +292,15 @@ export default function ExerciseDetailPage() {
           )}
         </div>
 
-        <div style={{ borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
-          <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Description</p>
-          <RichContent html={exercise.description} />
+        <div className="grid grid-cols-1 md:grid-cols-2" style={{ borderTop: '1px solid #2A2F3A', paddingTop: 16, gap: 16 }}>
+          <div>
+            <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Déroulement</p>
+            <RichContent html={exercise.description} />
+          </div>
+          <div>
+            <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Objectifs</p>
+            <RichContent html={exercise.consignes} emptyLabel="Aucun objectif." />
+          </div>
         </div>
 
         {images.length > 0 && (
@@ -354,9 +364,19 @@ export default function ExerciseDetailPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Description</label>
-                  <RichEditor value={description} onChange={setDescription} />
+                <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14, alignItems: 'stretch' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Déroulement</label>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <RichEditor value={description} onChange={setDescription} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Objectifs</label>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <RichEditor value={consignes} onChange={setConsignes} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
