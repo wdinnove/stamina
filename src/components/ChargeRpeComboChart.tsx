@@ -2,7 +2,9 @@ import {
   ComposedChart, Bar, Cell, Line, XAxis, YAxis,
   Tooltip, CartesianGrid, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
+import { Activity } from 'lucide-react';
 import { rpeColor } from '../utils/rpe';
+import { CardTitle } from './Card';
 
 interface ComboDataPoint {
   date: string;
@@ -29,19 +31,21 @@ export function ChargeRpeComboChart({
 
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>{title}</p>
-        <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
-          {(['session', 'week'] as const).map(v => (
-            <button key={v} onClick={() => onViewChange(v)}
-              style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
-                backgroundColor: view === v ? '#2A2F3A' : 'transparent',
-                color: view === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
-              {v === 'session' ? 'Séance' : 'Semaine'}
-            </button>
-          ))}
-        </div>
-      </div>
+      <CardTitle icon={<Activity size={12} style={{ color: '#00E5A0' }} />} mb={10}
+        right={
+          <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
+            {(['session', 'week'] as const).map(v => (
+              <button key={v} onClick={() => onViewChange(v)}
+                style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
+                  backgroundColor: view === v ? '#2A2F3A' : 'transparent',
+                  color: view === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
+                {v === 'session' ? 'Séance' : 'Semaine'}
+              </button>
+            ))}
+          </div>
+        }>
+        {title}
+      </CardTitle>
 
       <div style={{ display: 'flex', gap: 16, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: '0.65rem', color: '#00E5A0' }}>{'< '}{t1.toLocaleString('fr')} Normal</span>

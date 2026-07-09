@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { ListChecks } from 'lucide-react';
 import type { TeamSessionRow, SessionType } from '../data/types';
 import { rpeColor } from '../utils/rpe';
+import { CardTitle } from './Card';
 
 const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
@@ -25,11 +27,13 @@ function getWeekMonday(isoDate: string): string {
 interface TeamSessionHistoryTableProps {
   rows:              TeamSessionRow[];
   sessionLoadNormal: number;
+  /** Seuil hebdomadaire (charge normale max) — utilisé pour classer les lignes en vue "Semaine" */
+  normalMax?:        number;
   title?:            string;
 }
 
 export function TeamSessionHistoryTable({
-  rows, sessionLoadNormal, title = 'Historique séances',
+  rows, sessionLoadNormal, normalMax = sessionLoadNormal, title = 'Historique séances',
 }: TeamSessionHistoryTableProps) {
   const [view, setView] = useState<'session' | 'week'>('session');
 
@@ -39,6 +43,14 @@ export function TeamSessionHistoryTable({
     ? { color: '#EF4444', label: 'Surcharge' }
     : ua >= uaT2 ? { color: '#F97316', label: 'Élevée'   }
     : ua >= uaT1 ? { color: '#EAB308', label: 'Soutenu'  }
+    : { color: '#00E5A0', label: 'Normal' };
+
+  const weekT1 = Math.round(normalMax / 3);
+  const weekT2 = Math.round(normalMax * 2 / 3);
+  const weekCfg = (ua: number) => ua >= normalMax
+    ? { color: '#EF4444', label: 'Surcharge' }
+    : ua >= weekT2 ? { color: '#F97316', label: 'Élevée'   }
+    : ua >= weekT1 ? { color: '#EAB308', label: 'Soutenu'  }
     : { color: '#00E5A0', label: 'Normal' };
 
   const weekMap = new Map<string, {
@@ -85,18 +97,22 @@ export function TeamSessionHistoryTable({
 
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1A1E26' }}>
-        <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>{title}</p>
-        <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
-          {(['session', 'week'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)}
-              style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
-                backgroundColor: view === v ? '#2A2F3A' : 'transparent',
-                color: view === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
-              {v === 'session' ? 'Séance' : 'Semaine'}
-            </button>
-          ))}
-        </div>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26' }}>
+        <CardTitle icon={<ListChecks size={12} style={{ color: '#00E5A0' }} />} mb={0}
+          right={
+            <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
+              {(['session', 'week'] as const).map(v => (
+                <button key={v} onClick={() => setView(v)}
+                  style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
+                    backgroundColor: view === v ? '#2A2F3A' : 'transparent',
+                    color: view === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
+                  {v === 'session' ? 'Séance' : 'Semaine'}
+                </button>
+              ))}
+            </div>
+          }>
+          {title}
+        </CardTitle>
       </div>
       <div style={{ overflowX: 'auto' }}>
         {view === 'session' ? (
@@ -132,7 +148,7 @@ export function TeamSessionHistoryTable({
             <tbody>
               {weekRows.map(w => {
                 const rpeC  = rpeColor(w.avgRpe);
-                const cfg   = uaCfg(w.avgUa);
+                const cfg   = weekCfg(w.avgUa);
                 const dateLabel = w.dateFrom === w.dateTo
                   ? fmtDateWithDay(w.dateFrom)
                   : `${fmtDateWithDay(w.dateFrom)} → ${fmtDateWithDay(w.dateTo)}`;

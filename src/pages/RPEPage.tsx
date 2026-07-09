@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone } from '../utils/rpe';
+import type { LoadEntry } from '../utils/rpe';
 import {
   ComposedChart, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { Save, Check, Zap, Activity, Users, Calendar } from 'lucide-react';
+import { Save, Check, Zap, Activity, Users, Calendar, AlertTriangle } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
 import { notifyOrg } from '../api/notifications';
@@ -55,21 +56,47 @@ function getWeekMonday(isoDate: string): string {
   return d.toLocaleDateString('sv');
 }
 
-function computeAcwr(history: RPEEntry[]): number | null {
-  if (history.length === 0) return null;
-  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const ref = new Date(sorted[sorted.length - 1].date);
-  const load = (days: number) => {
-    const cutoff = new Date(ref);
-    cutoff.setDate(cutoff.getDate() - days);
-    const entries = sorted.filter(e => new Date(e.date) >= cutoff);
-    if (!entries.length) return 0;
-    return entries.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0) / days;
-  };
-  const chronic = load(28);
-  if (!chronic) return null;
-  return Math.round((load(7) / chronic) * 100) / 100;
+/** Zone de fraîcheur (TSB — modèle PMC de Banister) */
+function freshnessZone(tsb: number): { label: string; color: string } {
+  if (tsb <= -30) return { label: 'Surmenage',     color: '#EF4444' };
+  if (tsb <= -10) return { label: 'Chargé',        color: '#F59E0B' };
+  if (tsb <=   5) return { label: 'Zone peak',     color: '#00E5A0' };
+  return                 { label: 'Sous-entraîné', color: '#60A5FA' };
 }
+
+/** Fraîcheur (TSB) à ce jour — modèle PMC de Banister (ATL décroissance 1/7, CTL décroissance 1/42) */
+function computeTsb(entries: LoadEntry[]): number | null {
+  if (!entries.length) return null;
+  const dailyLoadMap = new Map<string, number>();
+  entries.forEach(e => {
+    const load = e.rpe * (e.actualDuration ?? e.plannedDuration);
+    dailyLoadMap.set(e.date, (dailyLoadMap.get(e.date) ?? 0) + load);
+  });
+  const firstDate = [...entries.map(e => e.date)].sort()[0];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const cur   = new Date(firstDate + 'T00:00:00');
+  let atlV = 0, ctlV = 0, tsb = 0;
+  while (cur <= today) {
+    const iso  = cur.toLocaleDateString('sv');
+    const load = dailyLoadMap.get(iso) ?? 0;
+    tsb  = Math.round((ctlV - atlV) * 10) / 10;
+    atlV = atlV * (1 - 1 / 7)  + load * (1 / 7);
+    ctlV = ctlV * (1 - 1 / 42) + load * (1 / 42);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return tsb;
+}
+
+/** Nombre de jours entre la 1ère entrée et aujourd'hui (0 si aucune entrée) — sert à juger la fiabilité de l'ACWR/TSB */
+function historySpanDays(entries: LoadEntry[]): number {
+  if (!entries.length) return 0;
+  const firstDate = [...entries.map(e => e.date)].sort()[0];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const first = new Date(firstDate + 'T00:00:00');
+  return Math.floor((today.getTime() - first.getTime()) / 86400000) + 1;
+}
+
+const MIN_RELIABLE_HISTORY_DAYS = 28;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,7 +142,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 export default function RPEPage() {
-  const { selected, thresholds } = useTeamSeason();
+  const { selected, thresholds, loading: teamLoading } = useTeamSeason();
   const navigate     = useNavigate();
   const location     = useLocation();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
@@ -182,6 +209,9 @@ export default function RPEPage() {
   const [teamHistoryError, setTeamHistoryError]     = useState<string | null>(null);
   const [teamSeasonAvgRpe, setTeamSeasonAvgRpe]     = useState<number | null>(null);
   const [teamSeasonAvgWeeklyLoad, setTeamSeasonAvgWeeklyLoad] = useState<number | null>(null);
+  const [teamAcwrAvg, setTeamAcwrAvg]               = useState<number | null>(null);
+  const [teamFreshAvg, setTeamFreshAvg]             = useState<number | null>(null);
+  const [teamHistoryShort, setTeamHistoryShort]     = useState(false);
 
   // ── Load roster when season changes
   useEffect(() => {
@@ -464,6 +494,45 @@ export default function RPEPage() {
       .catch(() => {});
   }, [selected?.team.id, selected?.season.id]);
 
+  // ── Team-wide ACWR / Fraîcheur — moyenne des indicateurs individuels de chaque joueur (tout son historique, à ce jour)
+  useEffect(() => {
+    if (roster.length === 0) { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); return; }
+    const playerIds = roster.map(p => p.id);
+    supabase
+      .from('rpe_entries')
+      .select('rpe, actual_duration, player_id, training_sessions!inner(date, planned_duration)')
+      .in('player_id', playerIds)
+      .then(({ data, error }) => {
+        if (error || !data) { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); return; }
+        const byPlayer = new Map<string, LoadEntry[]>();
+        (data as unknown as Array<{ rpe: number; actual_duration: number | null; player_id: string; training_sessions: { date: string; planned_duration: number } }>).forEach(row => {
+          if (!byPlayer.has(row.player_id)) byPlayer.set(row.player_id, []);
+          byPlayer.get(row.player_id)!.push({
+            date:            row.training_sessions.date,
+            rpe:             row.rpe,
+            actualDuration:  row.actual_duration ?? undefined,
+            plannedDuration: row.training_sessions.planned_duration,
+          });
+        });
+        const today     = todayStr();
+        const acwrs:      number[] = [];
+        const freshVals:  number[] = [];
+        const spans:      number[] = [];
+        byPlayer.forEach(entries => {
+          const a = computeAcwr(entries, today);
+          if (a !== null) acwrs.push(a);
+          const t = computeTsb(entries);
+          if (t !== null) freshVals.push(t);
+          spans.push(historySpanDays(entries));
+        });
+        setTeamAcwrAvg(acwrs.length ? Math.round(acwrs.reduce((s, v) => s + v, 0) / acwrs.length * 100) / 100 : null);
+        setTeamFreshAvg(freshVals.length ? Math.round(freshVals.reduce((s, v) => s + v, 0) / freshVals.length * 10) / 10 : null);
+        const avgSpan = spans.length ? spans.reduce((s, v) => s + v, 0) / spans.length : 0;
+        setTeamHistoryShort(avgSpan < MIN_RELIABLE_HISTORY_DAYS);
+      })
+      .catch(() => { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); });
+  }, [roster]);
+
   // ── Derived (collective tab)
   const activeEntries = Object.entries(rpeValues).filter(([, v]) => v !== null) as [string, number][];
   const avgRpe        = activeEntries.length ? Math.round(activeEntries.reduce((s, [, v]) => s + v, 0) / activeEntries.length * 10) / 10 : 0;
@@ -551,8 +620,8 @@ export default function RPEPage() {
   const avgRosterSize = teamSessionRows.length
     ? teamSessionRows.reduce((s, r) => s + r.nbPlayers, 0) / teamSessionRows.length
     : 1;
-  const teamSessionLoadLight  = Math.round((thresholds.lightMax  / 3) * avgRosterSize);
-  const teamSessionLoadNormal = Math.round((thresholds.normalMax / 3) * avgRosterSize);
+  const teamSessionLoadLight  = Math.round((thresholds.lightMax  / thresholds.sessionsPerWeek) * avgRosterSize);
+  const teamSessionLoadNormal = Math.round((thresholds.normalMax / thresholds.sessionsPerWeek) * avgRosterSize);
   const teamWeekLoadLight     = Math.round(thresholds.lightMax  * avgRosterSize);
   const teamWeekLoadNormal    = Math.round(thresholds.normalMax * avgRosterSize);
 
@@ -606,15 +675,17 @@ export default function RPEPage() {
     }));
 
   const tableData     = [...history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
-  const acwr              = computeAcwr(history);
-  const sessionLoadLight  = Math.round(thresholds.lightMax  / 3);
-  const sessionLoadNormal = Math.round(thresholds.normalMax / 3);
+  const acwr              = computeAcwr(history, todayStr());
+  const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
+  const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
   const selectedPlayer = roster.find(p => p.id === selectedPlayerId);
   const weekLoadTeam = (() => {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6);
     const cutoffStr = cutoff.toLocaleDateString('sv');
     return teamSessionRows.filter(s => s.date >= cutoffStr).reduce((sum, s) => sum + s.totalLoad, 0);
   })();
+
+  if (teamLoading) return <div style={{ padding: 24, color: '#94A3B8', fontSize: '0.85rem' }}>Chargement…</div>;
 
   if (!selected) {
     return (
@@ -961,8 +1032,20 @@ export default function RPEPage() {
                       {' '}vs saison
                     </span>;
 
+                  const zone = acwrZone(acwr);
+
+                  // Fraîcheur (TSB) — modèle PMC de Banister. Données à l'heure actuelle, indépendantes de la période sélectionnée.
+                  const tsb   = computeTsb(history) ?? 0;
+                  const fresh = freshnessZone(tsb);
+
+                  // Historique court (< 28j) : ACWR/TSB restent affichés (utiles en phase de reprise) mais moins fiables statistiquement
+                  const shortHistory = historySpanDays(history) < MIN_RELIABLE_HISTORY_DAYS;
+
+                  const currentNote = <span style={{ color: '#475569', fontSize: '0.62rem' }}>· à ce jour</span>;
+                  const shortHistoryNote = <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, backgroundColor: '#F59E0B22', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}><AlertTriangle size={10} /> Période de reprise</span>;
+
                   return (
-                    <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10, marginBottom: 20 }}>
+                    <div className="grid grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 20 }}>
                       <RpeKpiCard
                         accent={tier ? tier.color : '#334155'}
                         label="Charge moyenne par semaine"
@@ -992,6 +1075,28 @@ export default function RPEPage() {
                         valueColor="#F1F5F9"
                         sub="sur la période sélectionnée"
                       />
+                      <RpeKpiCard
+                        accent={zone ? zone.color : '#334155'}
+                        label="ACWR — risque de blessure"
+                        value={acwr !== null ? acwr.toFixed(2) : '—'}
+                        sub={zone
+                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ backgroundColor: zone.color + '22', color: zone.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{zone.label}</span>
+                              {currentNote}
+                              {shortHistory && shortHistoryNote}
+                            </span>
+                          : 'Historique insuffisant (28j)'}
+                      />
+                      <RpeKpiCard
+                        accent={fresh.color}
+                        label="Fraîcheur (TSB)"
+                        value={<>{tsb > 0 ? '+' : ''}{tsb}</>}
+                        sub={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ backgroundColor: fresh.color + '22', color: fresh.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{fresh.label}</span>
+                          {currentNote}
+                          {shortHistory && shortHistoryNote}
+                        </span>}
+                      />
                     </div>
                   );
                 })()}
@@ -1018,7 +1123,7 @@ export default function RPEPage() {
                 {/* Graphe combiné UA + RPE joueur */}
                 {indivDisplay === 'chart' && (() => {
                   const weekCombMap = new Map<string, { load: number; rpes: number[] }>();
-                  history.forEach(e => {
+                  filtered.forEach(e => {
                     const k = getWeekMonday(e.date);
                     if (!weekCombMap.has(k)) weekCombMap.set(k, { load: 0, rpes: [] });
                     const w = weekCombMap.get(k)!;
@@ -1057,12 +1162,20 @@ export default function RPEPage() {
 
                 {/* Tableau historique */}
                 {indivDisplay === 'table' && (() => {
-                  const loadT1 = Math.round(sessionLoadNormal / 3);
-                  const loadT2 = Math.round(sessionLoadNormal * 2 / 3);
-                  const loadCfg = (ua: number) => ua >= sessionLoadNormal
+                  const sessionT1 = Math.round(sessionLoadNormal / 3);
+                  const sessionT2 = Math.round(sessionLoadNormal * 2 / 3);
+                  const loadCfgSession = (ua: number) => ua >= sessionLoadNormal
                     ? { color: '#EF4444', label: 'Surcharge' }
-                    : ua >= loadT2 ? { color: '#F97316', label: 'Élevée' }
-                    : ua >= loadT1 ? { color: '#EAB308', label: 'Soutenu' }
+                    : ua >= sessionT2 ? { color: '#F97316', label: 'Élevée' }
+                    : ua >= sessionT1 ? { color: '#EAB308', label: 'Soutenu' }
+                    : { color: '#00E5A0', label: 'Normal' };
+
+                  const weekT1 = Math.round(thresholds.normalMax / 3);
+                  const weekT2 = Math.round(thresholds.normalMax * 2 / 3);
+                  const loadCfgWeek = (ua: number) => ua >= thresholds.normalMax
+                    ? { color: '#EF4444', label: 'Surcharge' }
+                    : ua >= weekT2 ? { color: '#F97316', label: 'Élevée' }
+                    : ua >= weekT1 ? { color: '#EAB308', label: 'Soutenu' }
                     : { color: '#00E5A0', label: 'Normal' };
 
                   // Agrégation semaine
@@ -1127,7 +1240,7 @@ export default function RPEPage() {
                                 const load    = e.rpe * dur;
                                 const rpeC    = rpeColor(e.rpe);
                                 const typeCfg = SESSION_TYPES[e.sessionType] ?? SESSION_TYPES.training;
-                                const lCfg    = loadCfg(load);
+                                const lCfg    = loadCfgSession(load);
                                 return (
                                   <tr key={e.id} style={{ borderBottom: '1px solid #2A2F3A22' }}
                                     onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
@@ -1161,7 +1274,7 @@ export default function RPEPage() {
                             </thead>
                             <tbody>
                               {weekRows.map(w => {
-                                const lCfg = loadCfg(w.totalLoad);
+                                const lCfg = loadCfgWeek(w.totalLoad);
                                 const rpeC = rpeColor(w.avgRpe);
                                 const dateLabel = w.dateFrom === w.dateTo
                                   ? fmtDateWithDay(w.dateFrom)
@@ -1257,8 +1370,13 @@ export default function RPEPage() {
                   return avgPlayers > 0 && (w.load / avgPlayers) >= thresholds.normalMax;
                 }).length;
 
+                const teamZone  = acwrZone(teamAcwrAvg);
+                const teamFresh = teamFreshAvg !== null ? freshnessZone(teamFreshAvg) : null;
+                const currentNote = <span style={{ color: '#475569', fontSize: '0.62rem' }}>· à ce jour</span>;
+                const shortHistoryNote = <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, backgroundColor: '#F59E0B22', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}><AlertTriangle size={10} /> Période de reprise</span>;
+
                 return (
-                  <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
+                  <div className="grid grid-cols-2 lg:grid-cols-3" style={{ gap: 10 }}>
                     <RpeKpiCard
                       accent={tierTeam.color}
                       label="Charge moyenne par semaine"
@@ -1287,6 +1405,30 @@ export default function RPEPage() {
                       value={teamKpis ? teamKpis.sessions : '—'}
                       valueColor="#F1F5F9"
                       sub="sur la période sélectionnée"
+                    />
+                    <RpeKpiCard
+                      accent={teamZone ? teamZone.color : '#334155'}
+                      label="ACWR moyen — risque de blessure"
+                      value={teamAcwrAvg !== null ? teamAcwrAvg.toFixed(2) : '—'}
+                      sub={teamZone
+                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ backgroundColor: teamZone.color + '22', color: teamZone.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{teamZone.label}</span>
+                            {currentNote}
+                            {teamHistoryShort && shortHistoryNote}
+                          </span>
+                        : 'Historique insuffisant (28j)'}
+                    />
+                    <RpeKpiCard
+                      accent={teamFresh ? teamFresh.color : '#334155'}
+                      label="Fraîcheur moyenne (TSB)"
+                      value={teamFreshAvg !== null ? <>{teamFreshAvg > 0 ? '+' : ''}{teamFreshAvg}</> : '—'}
+                      sub={teamFresh
+                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ backgroundColor: teamFresh.color + '22', color: teamFresh.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{teamFresh.label}</span>
+                            {currentNote}
+                            {teamHistoryShort && shortHistoryNote}
+                          </span>
+                        : '—'}
                     />
                   </div>
                 );
@@ -1332,7 +1474,7 @@ export default function RPEPage() {
               })()}
 
               {teamDisplay === 'table' && (
-                <TeamSessionHistoryTable rows={teamSessionRows} sessionLoadNormal={sessionLoadNormal} />
+                <TeamSessionHistoryTable rows={teamSessionRows} sessionLoadNormal={sessionLoadNormal} normalMax={thresholds.normalMax} />
               )}
 
               {teamDisplay === 'ranking' && (

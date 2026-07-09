@@ -8,7 +8,7 @@ interface TeamDisplayToggleProps {
 const TABS = [
   { key: 'chart',   label: 'Graphique'  },
   { key: 'table',   label: 'Tableau'    },
-  { key: 'ranking', label: 'Classement' },
+  { key: 'ranking', label: 'Liste joueurs' },
 ] as const;
 
 export function TeamDisplayToggle({ value, onChange }: TeamDisplayToggleProps) {
