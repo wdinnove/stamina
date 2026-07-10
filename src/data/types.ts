@@ -105,7 +105,12 @@ export interface Team {
   ortgTGreen?:  number;
   drtgTAmber?:  number;
   drtgTRed?:    number;
+  defaultWellnessMethod?: WellnessEntryMethod;
+  publicWellnessMethod?:  WellnessEntryMethod;
 }
+
+/** Méthode de saisie bien-être : détaillée (6 axes précis), rapide (6 axes via smiley/couleur), ou note unique (1 valeur globale) */
+export type WellnessEntryMethod = 'detailed' | 'emoji' | 'single';
 
 export interface RPEEntry {
   id: string;

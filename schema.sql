@@ -109,6 +109,10 @@ CREATE TABLE teams (
   ortg_t_green    NUMERIC NOT NULL DEFAULT 90,
   drtg_t_amber    NUMERIC NOT NULL DEFAULT 100,
   drtg_t_red      NUMERIC NOT NULL DEFAULT 115,
+  default_wellness_method TEXT NOT NULL DEFAULT 'detailed'
+                    CHECK (default_wellness_method IN ('detailed', 'emoji', 'single')),
+  public_wellness_method  TEXT NOT NULL DEFAULT 'detailed'
+                    CHECK (public_wellness_method  IN ('detailed', 'emoji', 'single')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1357,10 +1361,17 @@ END;
 $$;
 
 -- Infos publiques d'un joueur — accessible sans authentification (anon)
+-- Inclut la méthode de saisie bien-être par défaut de son équipe (saison en cours)
 CREATE OR REPLACE FUNCTION get_player_public_info(p_player_id UUID)
-RETURNS TABLE(first_name TEXT, last_name TEXT)
+RETURNS TABLE(first_name TEXT, last_name TEXT, public_wellness_method TEXT)
 LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
-  SELECT first_name, last_name FROM players WHERE id = p_player_id;
+  SELECT p.first_name, p.last_name, COALESCE(t.public_wellness_method, 'detailed')
+  FROM players p
+  LEFT JOIN player_season ps ON ps.player_id = p.id
+  LEFT JOIN seasons s        ON s.id = ps.season_id AND s.is_current = TRUE
+  LEFT JOIN teams t          ON t.id = s.team_id
+  WHERE p.id = p_player_id
+  LIMIT 1;
 $$;
 GRANT EXECUTE ON FUNCTION get_player_public_info(UUID) TO anon;
 
@@ -1630,3 +1641,25 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 -- Nombre de séances/semaine par équipe : sert à dériver un seuil de charge "par séance"
 -- à partir des seuils hebdomadaires (au lieu d'un /3 en dur)
 -- ALTER TABLE teams ADD COLUMN IF NOT EXISTS sessions_per_week SMALLINT NOT NULL DEFAULT 3;
+
+-- Bien-être : méthode de saisie par défaut par équipe (interne = staff, public = lien joueur)
+-- ALTER TABLE teams ADD COLUMN IF NOT EXISTS default_wellness_method TEXT NOT NULL DEFAULT 'detailed'
+--   CHECK (default_wellness_method IN ('detailed', 'emoji', 'single'));
+-- ALTER TABLE teams ADD COLUMN IF NOT EXISTS public_wellness_method TEXT NOT NULL DEFAULT 'detailed'
+--   CHECK (public_wellness_method IN ('detailed', 'emoji', 'single'));
+--
+-- -- get_player_public_info change de type de retour (ajout de public_wellness_method) :
+-- -- CREATE OR REPLACE ne suffit pas, Postgres exige un DROP préalable (erreur 42P13).
+-- -- DROP FUNCTION IF EXISTS get_player_public_info(UUID);
+-- CREATE FUNCTION get_player_public_info(p_player_id UUID)
+-- RETURNS TABLE(first_name TEXT, last_name TEXT, public_wellness_method TEXT)
+-- LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+--   SELECT p.first_name, p.last_name, COALESCE(t.public_wellness_method, 'detailed')
+--   FROM players p
+--   LEFT JOIN player_season ps ON ps.player_id = p.id
+--   LEFT JOIN seasons s        ON s.id = ps.season_id AND s.is_current = TRUE
+--   LEFT JOIN teams t          ON t.id = s.team_id
+--   WHERE p.id = p_player_id
+--   LIMIT 1;
+-- $$;
+-- GRANT EXECUTE ON FUNCTION get_player_public_info(UUID) TO anon;

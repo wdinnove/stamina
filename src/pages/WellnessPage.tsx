@@ -9,12 +9,13 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { DateRangeCard, useDateRange, PlayerSelect, Card, CardTitle } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessGlobalScore, wellnessStatus } from '../utils/wellness';
-import type { Player, WellnessEntry } from '../data/types';
+import { WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessGlobalScore, wellnessStatus, wellnessRawValue, wellnessBroadcastValues } from '../utils/wellness';
+import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
 
 const dimensions = WELLNESS_DIMENSIONS;
 const scoreColor = wellnessScoreColor;
 const dimColor   = wellnessDimColor;
+const QUICK_ICONS = { frown: Frown, meh: Meh, smile: Smile };
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtDate(iso: string): string {
@@ -43,7 +44,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 export default function WellnessPage() {
-  const { selected } = useTeamSeason();
+  const { selected, defaultWellnessMethod } = useTeamSeason();
   const navigate     = useNavigate();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
@@ -72,6 +73,8 @@ export default function WellnessPage() {
   const [values, setValues]       = useState<Record<string, number>>(
     Object.fromEntries(dimensions.map(d => [d.key, 5]))
   );
+  const [entryMode, setEntryMode] = useState<WellnessEntryMethod>(defaultWellnessMethod);
+  const [singleValue, setSingleValue] = useState(5);
   const [note, setNote]           = useState('');
   const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
   const [saving, setSaving]       = useState(false);
@@ -92,6 +95,11 @@ export default function WellnessPage() {
   const [linkSelected,     setLinkSelected]     = useState<Set<string>>(new Set());
   const [linkSending,      setLinkSending]      = useState(false);
   const [linkSendResult,   setLinkSendResult]   = useState<{ sent: number; skipped: string[]; failed: string[] } | null>(null);
+
+  // Repart de la méthode par défaut de l'équipe à chaque changement d'équipe
+  useEffect(() => {
+    setEntryMode(defaultWellnessMethod);
+  }, [selected?.team.id, defaultWellnessMethod]);
 
   useEffect(() => {
     if (!selected) { setRoster([]); return; }
@@ -375,34 +383,68 @@ export default function WellnessPage() {
               style={{ padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 20 }}>
-            {dimensions.map(dim => {
-              const val = values[dim.key];
-              const prevVal = previousEntry ? (previousEntry[dim.key as keyof WellnessEntry] as number) : null;
-              return (
-                <div key={dim.key}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <label style={{ color: '#F1F5F9', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: '1.1rem' }}>{dim.emoji}</span>
-                      <span style={{ fontWeight: 500 }}>{dim.label}</span>
-                      {prevVal !== null && (
-                        <span style={{ color: '#475569', fontSize: '0.7rem', fontWeight: 400 }}>préc. {prevVal}</span>
-                      )}
-                    </label>
-                    <span style={{ color: dimColor(val, dim.inverted), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
+          {entryMode === 'single' ? (
+            <div style={{ padding: '20px', backgroundColor: '#1E2229', borderRadius: 8, textAlign: 'center' }}>
+              <p style={{ color: '#F1F5F9', fontWeight: 500, margin: '0 0 14px' }}>Comment tu te sens aujourd'hui, globalement ?</p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                {WELLNESS_QUICK_SCALE.map(opt => {
+                  const Icon = QUICK_ICONS[opt.icon];
+                  return (
+                    <button key={opt.v} onClick={() => { setSingleValue(opt.v); setValues(wellnessBroadcastValues(opt.v)); }}
+                      style={{ width: 72, height: 72, borderRadius: 12, border: `2px solid ${singleValue === opt.v ? opt.color : '#2A2F3A'}`, backgroundColor: singleValue === opt.v ? opt.color + '22' : '#161920', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, transition: 'all 0.1s' }}>
+                      <Icon size={26} color={singleValue === opt.v ? opt.color : '#475569'} />
+                      <span style={{ fontSize: '0.68rem', color: singleValue === opt.v ? opt.color : '#94A3B8', fontWeight: 600 }}>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 20 }}>
+              {dimensions.map(dim => {
+                const val = values[dim.key];
+                const prevVal = previousEntry ? (previousEntry[dim.key as keyof WellnessEntry] as number) : null;
+                return (
+                  <div key={dim.key}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <label style={{ color: '#F1F5F9', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: '1.1rem' }}>{dim.emoji}</span>
+                        <span style={{ fontWeight: 500 }}>{dim.label}</span>
+                        {prevVal !== null && (
+                          <span style={{ color: '#475569', fontSize: '0.7rem', fontWeight: 400 }}>préc. {prevVal}</span>
+                        )}
+                      </label>
+                      <span style={{ color: dimColor(val, dim.inverted), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
+                    </div>
+                    {entryMode === 'emoji' ? (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {WELLNESS_QUICK_SCALE.map(opt => {
+                          const raw = wellnessRawValue(opt.v, dim.inverted);
+                          const active = val === raw;
+                          const Icon = QUICK_ICONS[opt.icon];
+                          return (
+                            <button key={opt.v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: raw }))}
+                              style={{ flex: 1, height: 44, borderRadius: 8, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#1E2229', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.1s' }}>
+                              <Icon size={20} color={active ? opt.color : '#475569'} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
+                          <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
+                            style={{ flex: 1, minWidth: 0, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
+                          >{v}</button>
+                        ))}
+                      </div>
+                    )}
+                    <p style={{ color: '#475569', fontSize: '0.72rem', margin: '4px 0 0' }}>{dim.desc}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
-                      <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                        style={{ flex: 1, minWidth: 0, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
-                      >{v}</button>
-                    ))}
-                  </div>
-                  <p style={{ color: '#475569', fontSize: '0.72rem', margin: '4px 0 0' }}>{dim.desc}</p>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           <div style={{ marginTop: 20 }}>
             <label style={{ color: '#94A3B8', display: 'block', marginBottom: 6 }}>💬 Note libre (facultatif)</label>

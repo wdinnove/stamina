@@ -1,6 +1,6 @@
 import { supabase } from './client';
 import { exerciseCategoriesApi } from './exerciseCategories';
-import type { Team } from '../data/types';
+import type { Team, WellnessEntryMethod } from '../data/types';
 
 export const teamsApi = {
   async list(): Promise<Team[]> {
@@ -45,6 +45,14 @@ export const teamsApi = {
         drtg_t_amber:  t.drtgTAmber,
         drtg_t_red:    t.drtgTRed,
       })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async updateWellnessMethods(id: string, methods: { defaultMethod: WellnessEntryMethod; publicMethod: WellnessEntryMethod }): Promise<void> {
+    const { error } = await supabase
+      .from('teams')
+      .update({ default_wellness_method: methods.defaultMethod, public_wellness_method: methods.publicMethod })
       .eq('id', id);
     if (error) throw error;
   },
@@ -122,6 +130,8 @@ function toTeam(row: Record<string, unknown>): Team {
     ortgTGreen:       (row.ortg_t_green    as number | undefined) ?? 90,
     drtgTAmber:       (row.drtg_t_amber    as number | undefined) ?? 100,
     drtgTRed:         (row.drtg_t_red      as number | undefined) ?? 115,
+    defaultWellnessMethod: (row.default_wellness_method as WellnessEntryMethod | undefined) ?? 'detailed',
+    publicWellnessMethod:  (row.public_wellness_method  as WellnessEntryMethod | undefined) ?? 'detailed',
   };
 }
 

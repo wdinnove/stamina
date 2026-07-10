@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { teamsApi, seasonsApi } from '../api';
 import { supabase } from '../api/client';
-import type { Team, Season, OrgRole } from '../data/types';
+import type { Team, Season, OrgRole, WellnessEntryMethod } from '../data/types';
 
 export interface TeamSeasonOption {
   team: Team;
@@ -30,8 +30,10 @@ interface Ctx {
   setSelected:    (opt: TeamSeasonOption) => void;
   loading:        boolean;
   reload:         () => void;
-  thresholds:     LoadThresholds;
-  statThresholds: StatThresholds;
+  thresholds:            LoadThresholds;
+  statThresholds:        StatThresholds;
+  defaultWellnessMethod: WellnessEntryMethod;
+  publicWellnessMethod:  WellnessEntryMethod;
   orgId:          string | null;
   orgRole:        OrgRole | null;
 }
@@ -46,7 +48,9 @@ const DEFAULT_STAT_THRESHOLDS: StatThresholds = {
 
 const TeamSeasonContext = createContext<Ctx>({
   options: [], selected: null, setSelected: () => {}, loading: true, reload: () => {},
-  thresholds: DEFAULT_THRESHOLDS, statThresholds: DEFAULT_STAT_THRESHOLDS, orgId: null, orgRole: null,
+  thresholds: DEFAULT_THRESHOLDS, statThresholds: DEFAULT_STAT_THRESHOLDS,
+  defaultWellnessMethod: 'detailed', publicWellnessMethod: 'detailed',
+  orgId: null, orgRole: null,
 });
 
 function storageKey(userId: string) {
@@ -155,10 +159,13 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
     drtgTRed:    selected?.team.drtgTRed    ?? DEFAULT_STAT_THRESHOLDS.drtgTRed,
   };
 
+  const defaultWellnessMethod = selected?.team.defaultWellnessMethod ?? 'detailed';
+  const publicWellnessMethod  = selected?.team.publicWellnessMethod  ?? 'detailed';
+
   const orgId = selected?.team.organizationId ?? options[0]?.team.organizationId ?? null;
 
   return (
-    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload, thresholds, statThresholds, orgId, orgRole }}>
+    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, orgId, orgRole }}>
       {children}
     </TeamSeasonContext.Provider>
   );

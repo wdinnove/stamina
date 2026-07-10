@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
-import { Send, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Send, CheckCircle, AlertCircle, Clock, Smile, Meh, Frown } from 'lucide-react';
 import { supabase } from '../api/client';
 import { StaminaLogo } from '../components/StaminaLogo';
-import { wellnessScoreColor, wellnessDimColor, wellnessGlobalScore } from '../utils/wellness';
+import {
+  WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor,
+  wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues,
+} from '../utils/wellness';
+import type { WellnessEntryMethod } from '../data/types';
 
-const DIMS = [
-  { key: 'fatigue',    label: 'Fatigue',              emoji: '😴', desc: 'Très reposé → Épuisé',           inverted: true  },
-  { key: 'mood',       label: 'Humeur',               emoji: '😊', desc: 'Très mauvaise → Très bonne',     inverted: false },
-  { key: 'stress',     label: 'Stress',               emoji: '😰', desc: 'Calme → Très stressé',           inverted: true  },
-  { key: 'motivation', label: 'Motivation',            emoji: '💪', desc: 'Aucune → Très élevée',           inverted: false },
-  { key: 'sleep',      label: 'Sommeil',              emoji: '🌙', desc: 'Mauvais → Excellent',            inverted: false },
-  { key: 'soreness',   label: 'Douleurs musculaires', emoji: '🦵', desc: 'Aucune → Très intenses',         inverted: true  },
-];
+const DIMS = WELLNESS_DIMENSIONS;
 
 // Même formule que la colonne générée wellness_entries.score (schema.sql) et wellnessGlobalScore
 function calcScore(v: Record<string, number>) {
@@ -21,6 +18,7 @@ function calcScore(v: Record<string, number>) {
 
 const scoreColor = wellnessScoreColor;
 const dimColor   = wellnessDimColor;
+const QUICK_ICONS = { frown: Frown, meh: Meh, smile: Smile };
 
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function minDateStr() {
@@ -42,6 +40,8 @@ export default function PlayerWellnessPublicPage() {
   const [values, setValues] = useState<Record<string, number>>(
     Object.fromEntries(DIMS.map(d => [d.key, 5]))
   );
+  const [entryMode, setEntryMode] = useState<WellnessEntryMethod>('detailed');
+  const [singleValue, setSingleValue] = useState(5);
   const [notes,  setNotes]  = useState('');
 
   const [status,   setStatus]   = useState<Status>('idle');
@@ -53,7 +53,11 @@ export default function PlayerWellnessPublicPage() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (error || !data) { setNotFound(true); }
-        else setPlayerName(`${(data as { first_name: string; last_name: string }).first_name} ${(data as { first_name: string; last_name: string }).last_name}`);
+        else {
+          const info = data as { first_name: string; last_name: string; public_wellness_method: WellnessEntryMethod | null };
+          setPlayerName(`${info.first_name} ${info.last_name}`);
+          setEntryMode(info.public_wellness_method ?? 'detailed');
+        }
         setLoading(false);
       });
   }, [playerId]);
@@ -182,33 +186,69 @@ export default function PlayerWellnessPublicPage() {
             />
           </div>
 
-          {/* Sliders */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
-            {DIMS.map(dim => {
-              const val   = values[dim.key];
-              const color = dimColor(val, dim.inverted);
-              return (
-                <div key={dim.key}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                    <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 500 }}>
-                      {dim.emoji} {dim.label}
-                    </span>
-                    <span style={{ color, fontWeight: 700, fontSize: '1rem', minWidth: 20, textAlign: 'right' }}>{val}</span>
+          {entryMode === 'single' ? (
+            <div style={{ padding: '18px 12px', backgroundColor: '#0D0F14', border: '1px solid #2A2F3A', borderRadius: 8, marginBottom: 24, textAlign: 'center' }}>
+              <p style={{ color: '#F1F5F9', fontWeight: 500, margin: '0 0 14px', fontSize: '0.9rem' }}>Comment tu te sens aujourd'hui ?</p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                {WELLNESS_QUICK_SCALE.map(opt => {
+                  const Icon = QUICK_ICONS[opt.icon];
+                  return (
+                    <button key={opt.v} type="button" onClick={() => { setSingleValue(opt.v); setValues(wellnessBroadcastValues(opt.v)); }}
+                      style={{ width: 68, height: 68, borderRadius: 12, border: `2px solid ${singleValue === opt.v ? opt.color : '#2A2F3A'}`, backgroundColor: singleValue === opt.v ? opt.color + '22' : '#161920', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <Icon size={24} color={singleValue === opt.v ? opt.color : '#475569'} />
+                      <span style={{ fontSize: '0.65rem', color: singleValue === opt.v ? opt.color : '#94A3B8', fontWeight: 600 }}>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
+              {DIMS.map(dim => {
+                const val   = values[dim.key];
+                const color = dimColor(val, dim.inverted);
+                const [lo, hi] = dim.desc.split(' ← → ');
+                return (
+                  <div key={dim.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                      <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 500 }}>
+                        {dim.emoji} {dim.label}
+                      </span>
+                      <span style={{ color, fontWeight: 700, fontSize: '1rem', minWidth: 20, textAlign: 'right' }}>{val}</span>
+                    </div>
+                    {entryMode === 'emoji' ? (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {WELLNESS_QUICK_SCALE.map(opt => {
+                          const raw = wellnessRawValue(opt.v, dim.inverted);
+                          const active = val === raw;
+                          const Icon = QUICK_ICONS[opt.icon];
+                          return (
+                            <button key={opt.v} type="button" onClick={() => setValues(prev => ({ ...prev, [dim.key]: raw }))}
+                              style={{ flex: 1, height: 44, borderRadius: 8, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#0D0F14', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Icon size={20} color={active ? opt.color : '#475569'} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="range" min={1} max={10} step={1}
+                          value={val}
+                          onChange={e => setValues(prev => ({ ...prev, [dim.key]: Number(e.target.value) }))}
+                          style={{ width: '100%', accentColor: color, cursor: 'pointer' }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                          <span style={{ color: '#475569', fontSize: '0.68rem' }}>{lo?.trim()}</span>
+                          <span style={{ color: '#475569', fontSize: '0.68rem' }}>{hi?.trim()}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <input
-                    type="range" min={1} max={10} step={1}
-                    value={val}
-                    onChange={e => setValues(prev => ({ ...prev, [dim.key]: Number(e.target.value) }))}
-                    style={{ width: '100%', accentColor: color, cursor: 'pointer' }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-                    <span style={{ color: '#475569', fontSize: '0.68rem' }}>{dim.desc.split('→')[0].trim()}</span>
-                    <span style={{ color: '#475569', fontSize: '0.68rem' }}>{dim.desc.split('→')[1]?.trim()}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Score preview */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0D0F14', border: '1px solid #2A2F3A', borderRadius: 8, marginBottom: 20 }}>

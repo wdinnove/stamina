@@ -40,3 +40,36 @@ export function wellnessGlobalScore(values: { fatigue: number; mood: number; str
     values.motivation + values.sleep + (11 - values.soreness)
   ) / 6 * 10) / 10;
 }
+
+// ── Saisies rapides (emoji / note unique) ──────────────────────────────────────
+// Les 6 colonnes de wellness_entries stockent chacune une valeur "brute" 1-10 dont le sens
+// dépend de `inverted` (ex. fatigue : 10 = épuisé = mauvais). Les modes rapides ne demandent
+// qu'un ressenti global "plus haut = mieux" ; il faut le reconvertir par axe avant stockage,
+// sans quoi les axes inversés et non-inversés s'annulent et le score calculé tombe à 5.5 pile.
+
+/** 1-10 "ressenti" (plus haut = mieux) → valeur brute stockée pour un axe donné. */
+export function wellnessRawValue(v: number, inverted: boolean): number {
+  return inverted ? 11 - v : v;
+}
+
+/** Reconstruit les 6 valeurs brutes à partir d'un seul ressenti global (mode "Note unique"). */
+export function wellnessBroadcastValues(v: number): Record<WellnessDimension['key'], number> {
+  return Object.fromEntries(
+    WELLNESS_DIMENSIONS.map(dim => [dim.key, wellnessRawValue(v, dim.inverted)]),
+  ) as Record<WellnessDimension['key'], number>;
+}
+
+export interface WellnessQuickOption {
+  v: number;
+  /** Clé d'icône (Frown/Meh/Smile de lucide-react) — pas d'emoji, rendu en icône colorée côté UI */
+  icon: 'frown' | 'meh' | 'smile';
+  color: string;
+  label: string;
+}
+
+// Échelle 3 points utilisée par le mode "Emoji/couleur" (par axe) et le mode "Note unique" (global).
+export const WELLNESS_QUICK_SCALE: WellnessQuickOption[] = [
+  { v: 2, icon: 'frown', color: '#EF4444', label: 'Pas bien' },
+  { v: 5, icon: 'meh',   color: '#F59E0B', label: 'Moyen' },
+  { v: 9, icon: 'smile', color: '#00E5A0', label: 'Bien' },
+];

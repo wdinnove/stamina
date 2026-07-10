@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, Users, Search, Settings, UserCheck, UserPlus, AlertCircle } from 'lucide-react';
+import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, Users, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart } from 'lucide-react';
 import { teamsApi } from '../api';
 import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
 import { playersApi } from '../api/players';
@@ -10,7 +10,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
 import { Card, CardTitle, StatusBadge } from '../components';
-import type { ExerciseCategory, Player, StaffMember } from '../data/types';
+import type { ExerciseCategory, Player, StaffMember, WellnessEntryMethod } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -232,13 +232,14 @@ function CategoryRow({
   );
 }
 
-type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'categories';
+type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'categories';
 
 const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'info',       label: 'Informations', icon: Shield },
   { key: 'roster',     label: 'Effectif',     icon: Users },
   { key: 'staff',      label: 'Staff',        icon: UserCheck },
   { key: 'thresholds', label: 'Seuils',       icon: Sliders },
+  { key: 'wellness',   label: 'Bien-être',    icon: Heart },
   { key: 'categories', label: 'Catégories',   icon: Tag },
 ];
 
@@ -871,7 +872,7 @@ function StaffTab() {
 }
 
 export function TeamConfigTab() {
-  const { selected, reload, thresholds, statThresholds, orgRole } = useTeamSeason();
+  const { selected, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, orgRole } = useTeamSeason();
 
   const [activeTab, setActiveTab] = useState<Tab>('info');
 
@@ -888,6 +889,11 @@ export function TeamConfigTab() {
   const [stat, setStat] = useState<StatThresholds>(DEFAULT_STAT);
   const [statSaving, setStatSaving] = useState(false);
   const [statMsg, setStatMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const [wellnessDefaultMethod, setWellnessDefaultMethod] = useState<WellnessEntryMethod>('detailed');
+  const [wellnessPublicMethod,  setWellnessPublicMethod]  = useState<WellnessEntryMethod>('emoji');
+  const [wellnessSaving, setWellnessSaving] = useState(false);
+  const [wellnessMsg,    setWellnessMsg]    = useState<{ ok: boolean; text: string } | null>(null);
 
   const [categories,   setCategories]   = useState<ExerciseCategory[]>([]);
   const [catLoading,   setCatLoading]   = useState(true);
@@ -978,6 +984,11 @@ export function TeamConfigTab() {
     setStat({ ...statThresholds });
   }, [selected?.team.id]);
 
+  useEffect(() => {
+    setWellnessDefaultMethod(defaultWellnessMethod);
+    setWellnessPublicMethod(publicWellnessMethod);
+  }, [selected?.team.id, defaultWellnessMethod, publicWellnessMethod]);
+
   async function saveTeam() {
     if (!selected) return;
     setTeamSaving(true); setTeamMsg(null);
@@ -1030,6 +1041,18 @@ export function TeamConfigTab() {
     } catch (e) {
       setThrMsg({ ok: false, text: String(e) });
     } finally { setThrSaving(false); }
+  }
+
+  async function saveWellnessMethods() {
+    if (!selected) return;
+    setWellnessSaving(true); setWellnessMsg(null);
+    try {
+      await teamsApi.updateWellnessMethods(selected.team.id, { defaultMethod: wellnessDefaultMethod, publicMethod: wellnessPublicMethod });
+      setWellnessMsg({ ok: true, text: 'Méthodes de saisie enregistrées.' });
+      reload();
+    } catch (e) {
+      setWellnessMsg({ ok: false, text: String(e) });
+    } finally { setWellnessSaving(false); }
   }
 
   // null = rôle en cours de chargement → on bloque aussi (évite le flash de l'UI admin)
@@ -1270,6 +1293,44 @@ export function TeamConfigTab() {
         </div>
       </Card>
       </>
+      )}
+
+      {/* Bien-être */}
+      {activeTab === 'wellness' && (
+      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+          <CardTitle icon={<Heart size={14} color="#F472B6" />}>Bien-être — méthode de saisie</CardTitle>
+        </div>
+        <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
+          Méthode utilisée à l'ouverture du formulaire — Détaillé (6 axes précis), Rapide (6 axes via icône/couleur)
+          ou Note unique (1 seule valeur globale). Ce choix n'est modifiable qu'ici, pas depuis le formulaire lui-même.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Saisie interne (staff)</label>
+            <select value={wellnessDefaultMethod} onChange={e => setWellnessDefaultMethod(e.target.value as WellnessEntryMethod)} style={inputStyle}>
+              <option value="detailed">Détaillé</option>
+              <option value="emoji">Rapide (icône/couleur)</option>
+              <option value="single">Note unique</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Lien public joueur</label>
+            <select value={wellnessPublicMethod} onChange={e => setWellnessPublicMethod(e.target.value as WellnessEntryMethod)} style={inputStyle}>
+              <option value="detailed">Détaillé</option>
+              <option value="emoji">Rapide (icône/couleur)</option>
+              <option value="single">Note unique</option>
+            </select>
+          </div>
+        </div>
+
+        {wellnessMsg && (
+          <p style={{ color: wellnessMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{wellnessMsg.text}</p>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <SaveBtn loading={wellnessSaving} onClick={saveWellnessMethods} />
+        </div>
+      </Card>
       )}
 
       {/* Catégories d'exercices */}
