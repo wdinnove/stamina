@@ -1,23 +1,28 @@
-import { useState, useEffect } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useNavigate } from 'react-router';
+import { X } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from './RichTextEditor';
 import { EmptyState } from './EmptyState';
-import { MedCard, typeLabels, typeColors, typeIcons, severityConfig, fmtDate, daysBetween, rtpDaysLeft } from './MedicalCard';
+import { InjuryRecordCard } from './InjuryRecordCard';
+import { typeLabels, severityConfig } from './MedicalCard';
 import type { MedicalRecord, Player } from '../data/types';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const labelStyle: React.CSSProperties = { color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' };
 
-export function PlayerMedicalView({ playerId, onUpdated }: { playerId: string; onUpdated?: () => void }) {
+export interface PlayerMedicalViewHandle {
+  openForm: () => void;
+}
+
+export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId: string; onUpdated?: () => void }>(({ playerId, onUpdated }, ref) => {
+  const navigate = useNavigate();
   const [records, setRecords]   = useState<MedicalRecord[]>([]);
   const [player, setPlayer]     = useState<Player | null>(null);
   const [version, setVersion]   = useState(0);
-  const [recordView, setRecordView] = useState<'date' | 'section'>('date');
-  const [detailRecord, setDetailRecord] = useState<MedicalRecord | null>(null);
 
   const [closeModal, setCloseModal] = useState<{ recordId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
   const [closeSaving, setCloseSaving] = useState(false);
@@ -55,6 +60,8 @@ export function PlayerMedicalView({ playerId, onUpdated }: { playerId: string; o
     setSaveError(null);
     setShowForm(true);
   };
+
+  useImperativeHandle(ref, () => ({ openForm }));
 
   const openEdit = (record: MedicalRecord) => {
     setEditingRecord(record);
@@ -139,182 +146,53 @@ export function PlayerMedicalView({ playerId, onUpdated }: { playerId: string; o
 
   return (
     <>
-      {/* Header : sous-onglets + bouton nouvelle entrée */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
-          {([
-            { id: 'date'    as const, label: 'Par date' },
-            { id: 'section' as const, label: 'Par type'  },
-          ]).map(v => (
-            <button key={v.id} onClick={() => setRecordView(v.id)}
-              style={{ padding: '5px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.8rem', backgroundColor: recordView === v.id ? '#1E2229' : 'transparent', color: recordView === v.id ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
-              {v.label}
-            </button>
-          ))}
-        </div>
-        <button onClick={openForm} style={{ padding: '7px 13px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={13} /><span className="hidden sm:inline">Nouvelle entrée</span>
-        </button>
-      </div>
-
-      {/* ── Vue par date ── */}
-      {recordView === 'date' && (() => {
-        const allSorted = [...records].sort((a, b) => b.date.localeCompare(a.date));
-        return (
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: allSorted.length > 0 ? 14 : 0 }}>
-              <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700 }}>
-                Tous les dossiers
+      {/* 3 colonnes : Blessures / Traitements / Bilans — pleine largeur, empilées en mobile */}
+      <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 12 }}>
+        {([
+          { key: 'injury',    title: 'Blessures',    color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée.'  },
+          { key: 'treatment', title: 'Traitements',  color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré.' },
+          { key: 'checkup',   title: 'Bilans santé', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré.'     },
+        ]).map(section => (
+          <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: section.records.length > 0 ? 14 : 0 }}>
+              <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
+                {section.title}
               </h4>
-              {allSorted.length > 0 && (
-                <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.78rem', backgroundColor: '#2A2F3A', padding: '2px 8px', borderRadius: 3 }}>
-                  {allSorted.length}
+              {section.records.length > 0 && (
+                <span style={{ color: section.color, fontWeight: 700, fontSize: '0.78rem', backgroundColor: section.color + '18', padding: '2px 8px', borderRadius: 3 }}>
+                  {section.records.length}
                 </span>
               )}
             </div>
-            {allSorted.length === 0
-              ? <EmptyState message="Aucune entrée médicale." size="sm" />
+            {section.records.length === 0
+              ? <EmptyState message={section.emptyMsg} size="sm" />
               : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {allSorted.map(record => {
-                    const isActive = record.status === 'active';
-                    const days = record.rtpDate
-                      ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
-                      : null;
-                    const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                    const daysLabel = days !== null && days > 0
-                      ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
-                      : null;
-                    return (
-                      <MedCard
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[...section.records]
+                    .sort((a, b) => {
+                      if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+                      return b.date.localeCompare(a.date);
+                    })
+                    .map(record => (
+                      <InjuryRecordCard
                         key={record.id}
                         record={record}
-                        daysLabel={daysLabel}
-                        daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
+                        player={player ?? undefined}
+                        showAvatarColumn={false}
                         onEdit={() => openEdit(record)}
-                        onDetail={() => setDetailRecord(record)}
-                        onClose={isActive && record.type !== 'checkup'
+                        onClose={record.status === 'active' && record.type !== 'checkup'
                           ? () => setCloseModal({ recordId: record.id, date: TODAY, playerStatus: 'active' })
                           : undefined}
-                        showTypeBadge
+                        navigate={navigate}
                       />
-                    );
-                  })}
+                    ))
+                  }
                 </div>
               )
             }
           </div>
-        );
-      })()}
-
-      {/* ── 3 sections : Blessures / Traitements / Bilans ── */}
-      {recordView === 'section' && ([
-        { key: 'injury',    title: 'Blessures',    color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée.'  },
-        { key: 'treatment', title: 'Traitements',  color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré.' },
-        { key: 'checkup',   title: 'Bilans santé', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré.'     },
-      ]).map((section, si) => (
-        <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: si < 2 ? 12 : 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: section.records.length > 0 ? 14 : 0 }}>
-            <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
-              {section.title}
-            </h4>
-            {section.records.length > 0 && (
-              <span style={{ color: section.color, fontWeight: 700, fontSize: '0.78rem', backgroundColor: section.color + '18', padding: '2px 8px', borderRadius: 3 }}>
-                {section.records.length}
-              </span>
-            )}
-          </div>
-          {section.records.length === 0
-            ? <EmptyState message={section.emptyMsg} size="sm" />
-            : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[...section.records]
-                  .sort((a, b) => {
-                    if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
-                    return b.date.localeCompare(a.date);
-                  })
-                  .map(record => {
-                    const isActive = record.status === 'active';
-                    const days = record.rtpDate
-                      ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
-                      : null;
-                    const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                    const daysLabel = days !== null && days > 0
-                      ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
-                      : null;
-                    return (
-                      <MedCard
-                        key={record.id}
-                        record={record}
-                        daysLabel={daysLabel}
-                        daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
-                        onEdit={() => openEdit(record)}
-                        onDetail={() => setDetailRecord(record)}
-                        onClose={isActive && record.type !== 'checkup'
-                          ? () => setCloseModal({ recordId: record.id, date: TODAY, playerStatus: 'active' })
-                          : undefined}
-                      />
-                    );
-                  })
-                }
-              </div>
-            )
-          }
-        </div>
-      ))}
-
-      {/* ── DETAIL MODAL ── */}
-      {detailRecord && (() => {
-        const sev = detailRecord.severity ? severityConfig[detailRecord.severity] : null;
-        const col = typeColors[detailRecord.type] ?? '#94A3B8';
-        const totalDays = detailRecord.rtpDate ? daysBetween(detailRecord.date, detailRecord.rtpDate) : null;
-        return (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 480, padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 38, height: 38, borderRadius: '50%', backgroundColor: col + '20', border: `1px solid ${col}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
-                    {typeIcons[detailRecord.type]}
-                  </div>
-                  <div>
-                    <span style={{ color: col, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{typeLabels[detailRecord.type]}</span>
-                    <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem', margin: '2px 0 0' }}>{detailRecord.description}</p>
-                  </div>
-                </div>
-                <button onClick={() => setDetailRecord(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, flexShrink: 0 }}><X size={18} /></button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 14 }}>
-                {([
-                  { label: 'Date',   value: `${fmtDate(detailRecord.date)} ${detailRecord.date.slice(0, 4)}` },
-                  { label: 'Statut', value: detailRecord.status === 'active' ? 'En cours' : 'Clôturé', color: detailRecord.status === 'active' ? '#F59E0B' : '#00E5A0' },
-                  ...(sev ? [{ label: 'Gravité', value: sev.label, color: sev.color }] : []),
-                  ...(detailRecord.location ? [{ label: 'Localisation', value: detailRecord.location }] : []),
-                  ...(detailRecord.daysAbsent != null ? [{ label: "Jours d'absence", value: `${detailRecord.daysAbsent} jour${detailRecord.daysAbsent > 1 ? 's' : ''}`, color: '#F59E0B' }] : []),
-                  ...(detailRecord.rtpDate ? [{ label: detailRecord.type === 'injury' ? 'Date de retour' : 'Date de fin', value: `${fmtDate(detailRecord.rtpDate)} ${detailRecord.rtpDate.slice(0, 4)}${totalDays ? ` · ${totalDays}j` : ''}` }] : []),
-                  ...(detailRecord.resolvedDate ? [{ label: 'Clôturé le', value: `${fmtDate(detailRecord.resolvedDate)} ${detailRecord.resolvedDate.slice(0, 4)}`, color: '#00E5A0' }] : []),
-                ] as { label: string; value: string; color?: string }[]).map(({ label, value, color }) => (
-                  <div key={label} style={{ padding: '10px 12px', backgroundColor: '#1E2229', borderRadius: 6 }}>
-                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 3px', fontWeight: 600 }}>{label}</p>
-                    <p style={{ color: color ?? '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>{value}</p>
-                  </div>
-                ))}
-              </div>
-              {detailRecord.treatment && (
-                <div style={{ padding: '12px 14px', backgroundColor: '#1E2229', borderRadius: 6, marginBottom: 14 }}>
-                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 5px', fontWeight: 600 }}>
-                    {detailRecord.type === 'injury' ? 'Traitement & protocole' : 'Notes'}
-                  </p>
-                  <div className="rich-display" style={{ color: '#CBD5E1', fontSize: '0.84rem' }} dangerouslySetInnerHTML={{ __html: detailRecord.treatment }} />
-                </div>
-              )}
-              <button onClick={() => setDetailRecord(null)}
-                style={{ width: '100%', padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.88rem' }}>
-                Fermer
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+        ))}
+      </div>
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
@@ -550,4 +428,4 @@ export function PlayerMedicalView({ playerId, onUpdated }: { playerId: string; o
       )}
     </>
   );
-}
+});

@@ -19,6 +19,8 @@ export type { TeamDisplayMode } from './TeamDisplayToggle';
 export { TeamSessionHistoryTable } from './TeamSessionHistoryTable';
 export { PlayerRankingTable }   from './PlayerRankingTable';
 export { PlayerMedicalView }   from './PlayerMedicalView';
+export type { PlayerMedicalViewHandle } from './PlayerMedicalView';
+export { InjuryRecordCard }    from './InjuryRecordCard';
 export { PlayerDynamiqueTab }  from './PlayerDynamiqueTab';
 export { PlayerBilanTab }      from './PlayerBilanTab';
 export { PlayerDynStatTab }    from './PlayerDynStatTab';

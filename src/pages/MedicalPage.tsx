@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Plus, X, AlertCircle, Pencil, Search } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, X, Search, Pill, Ambulance, Users } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
+import { rpeApi } from '../api/rpe';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { StatusBadge, PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView } from '../components';
-import type { MedicalRecord, Player } from '../data/types';
+import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, RpeKpiCard, Card, CardTitle, playerStatusColor, playerStatusLabel } from '../components';
+import type { PlayerMedicalViewHandle } from '../components';
+import { computeAcwr, acwrZone } from '../utils/rpe';
+import type { MedicalRecord, Player, RPEEntry } from '../data/types';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtDate(iso: string): string {
@@ -29,10 +32,6 @@ const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
 };
 
-const typeIcons: Record<string, string> = {
-  injury: '🚑', checkup: '🩺', treatment: '💊',
-};
-
 type Tab = 'infirmary' | 'record' | 'team';
 
 const TAB_SLUGS: Record<string, Tab> = {
@@ -42,135 +41,6 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 const TODAY = new Date().toISOString().split('T')[0];
-
-// ─── Composant partagé ────────────────────────────────────────────────────────
-function MedCard({
-  record, player, daysLabel, daysColor,
-  onEdit, onClose, onDetail, hideType, showTypeBadge,
-  navigate,
-}: {
-  record: MedicalRecord;
-  player?: Player;
-  daysLabel: string | null;
-  daysColor: string;
-  onEdit: () => void;
-  onClose?: () => void;
-  onDetail?: () => void;
-  hideType?: boolean;
-  showTypeBadge?: boolean;
-  navigate: (path: string) => void;
-}) {
-  const col = typeColors[record.type] ?? '#94A3B8';
-  const sev = record.severity ? severityConfig[record.severity] : null;
-  const isResolved = record.status === 'resolved';
-
-  /* ── Mode compact (sections typées du dossier joueur) ── */
-  if (hideType) {
-    const badgeLabel = record.type === 'checkup'
-      ? 'Bilan santé'
-      : isResolved ? 'Clôturé' : 'En cours';
-    const badgeColor = record.type === 'checkup'
-      ? '#3B82F6'
-      : isResolved ? '#475569' : col;
-
-    return (
-      <div
-        onClick={onDetail}
-        style={{ backgroundColor: '#1E2229', border: `1px solid ${!isResolved && record.type !== 'checkup' ? col + '55' : '#2A2F3A'}`, borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: onDetail ? 'pointer' : 'default' }}
-      >
-        {/* Icône type — centrée verticalement */}
-        <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: col + '20', border: `1px solid ${col}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.88rem', flexShrink: 0 }}>
-          {typeIcons[record.type]}
-        </div>
-        {/* Contenu : 2 lignes */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Ligne 1 : titre + badges inline */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-            {showTypeBadge && (
-              <span style={{ color: col, fontSize: '0.65rem', fontWeight: 700, backgroundColor: col + '18', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-                {typeLabels[record.type]}
-              </span>
-            )}
-            <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.87rem', lineHeight: 1.3 }}>
-              {record.description}
-            </span>
-            {record.type !== 'checkup' && (
-              <span style={{ color: badgeColor, fontSize: '0.65rem', fontWeight: 700, backgroundColor: badgeColor + '18', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-                {badgeLabel}
-              </span>
-            )}
-            {sev && (
-              <span style={{ color: sev.color, fontSize: '0.65rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '2px 6px', borderRadius: 3, flexShrink: 0 }}>
-                {sev.label}
-              </span>
-            )}
-          </div>
-          {/* Ligne 2 : date */}
-          <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>
-            {fmtDate(record.date)}{daysLabel ? <span style={{ color: daysColor }}>{` · ${daysLabel}`}</span> : null}
-          </p>
-        </div>
-        {/* Bouton Modifier — centré verticalement */}
-        <button onClick={e => { e.stopPropagation(); onEdit(); }} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 4, color: '#475569', cursor: 'pointer', fontSize: '0.7rem', flexShrink: 0 }}>
-          <Pencil size={10} /> Modifier
-        </button>
-      </div>
-    );
-  }
-
-  /* ── Mode infirmerie (avec avatar joueur) ── */
-  return (
-    <div style={{ backgroundColor: '#1E2229', border: `1px solid ${col}30`, borderRadius: 8, padding: '14px 16px' }}>
-      <style>{`@media (min-width: 640px) { .med-card-actions { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; } }`}</style>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-
-        {player ? (
-          <PlayerAvatar player={player} size={34} onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }} />
-        ) : (
-          <div style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: col + '20', border: `1px solid ${col}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', flexShrink: 0 }}>
-            {typeIcons[record.type]}
-          </div>
-        )}
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4, flexWrap: 'wrap' }}>
-            {player && (
-              <span onClick={() => navigate(`/players/${player.id}`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
-                {player.firstName} {player.lastName}
-              </span>
-            )}
-            {player && <StatusBadge status={player.status} size="sm" />}
-            <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '1px 5px', borderRadius: 3 }}>{typeLabels[record.type]}</span>
-            {sev && <span style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '1px 5px', borderRadius: 3 }}>{sev.label}</span>}
-          </div>
-          <p style={{ color: col, fontWeight: 600, fontSize: '0.85rem', margin: '0 0 3px' }}>{typeIcons[record.type]} {record.description}</p>
-          <div style={{ display: 'flex', gap: 4, fontSize: '0.8rem', marginTop: 2 }}>
-            <span>💊</span>
-            {record.treatment
-              ? <div className="rich-display" style={{ color: '#CBD5E1' }} dangerouslySetInnerHTML={{ __html: record.treatment }} />
-              : <span style={{ color: '#475569' }}>—</span>}
-          </div>
-        </div>
-
-        <div className="med-card-actions w-full sm:w-auto" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid #2A2F3A' }}>
-          <span style={{ color: daysColor, fontWeight: 700, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-            {fmtDate(record.date)}{daysLabel ? ` · ${daysLabel}` : ''}
-          </span>
-          <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-            <button onClick={onEdit} style={{ padding: '3px 9px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3 }}>
-              <Pencil size={11} /> Modifier
-            </button>
-            {onClose && (
-              <button onClick={onClose} style={{ padding: '3px 9px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 4, color: '#00E5A0', cursor: 'pointer', fontSize: '0.72rem' }}>
-                Clôturer
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function MedicalPage() {
   const { selected } = useTeamSeason();
@@ -196,15 +66,19 @@ export default function MedicalPage() {
   const [seasonInjuries, setSeasonInjuries]   = useState<MedicalRecord[]>([]);
   const [seasonAllRecords, setSeasonAllRecords] = useState<MedicalRecord[]>([]);
   const [playerRecords, setPlayerRecords]     = useState<MedicalRecord[]>([]);
+  const [playerRpe, setPlayerRpe]             = useState<RPEEntry[]>([]);
 
   // Recap filters + detail modal
   const [recapSearch,       setRecapSearch]       = useState('');
   const [recapTypeFilter,   setRecapTypeFilter]   = useState('');
   const [recapPlayerFilter, setRecapPlayerFilter] = useState('');
   const [recapStatusFilter, setRecapStatusFilter] = useState('');
+  const [recapSortKey, setRecapSortKey] = useState<'date' | 'player' | 'description' | 'type' | 'severity' | 'status'>('date');
+  const [recapSortDir, setRecapSortDir] = useState<'asc' | 'desc'>('desc');
   const [detailRecord,      setDetailRecord]      = useState<MedicalRecord | null>(null);
   const [version, setVersion]                 = useState(0);
   const [recordView, setRecordView]           = useState<'section' | 'date'>('date');
+  const playerMedicalViewRef = useRef<PlayerMedicalViewHandle>(null);
 
   // clôture modal
   const [closeModal, setCloseModal] = useState<{ recordId: string; playerId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
@@ -265,6 +139,12 @@ export default function MedicalPage() {
     medicalApi.getByPlayer(selectedPlayerId).then(setPlayerRecords);
   }, [selectedPlayerId, version]);
 
+  // Load RPE history for selected player (ACWR)
+  useEffect(() => {
+    if (!selectedPlayerId) { setPlayerRpe([]); return; }
+    rpeApi.listPlayerHistory(selectedPlayerId).then(setPlayerRpe);
+  }, [selectedPlayerId, version]);
+
   const teamPlayerIds      = new Set(teamPlayers.map(p => p.id));
   const teamInjuries       = activeInjuries.filter(r => teamPlayerIds.has(r.playerId));
   const teamSeasonInjuries = seasonInjuries.filter(r => teamPlayerIds.has(r.playerId));
@@ -274,6 +154,7 @@ export default function MedicalPage() {
   const recInjuries   = playerRecords.filter(r => r.type === 'injury');
   const recTreatments = playerRecords.filter(r => r.type === 'treatment');
   const allCheckups   = playerRecords.filter(r => r.type === 'checkup');
+  const activePlayerInjury = [...recInjuries].sort((a, b) => b.date.localeCompare(a.date)).find(r => r.status === 'active') ?? null;
   const selectedPlayer     = teamPlayers.find(p => p.id === selectedPlayerId);
   const playerById         = (id: string) => teamPlayers.find(p => p.id === id);
 
@@ -301,11 +182,14 @@ export default function MedicalPage() {
   const seasonDays     = teamSeasonInjuries.reduce((s, r) => s + injuryDaysSeason(r), 0);
   const seasonPlayers  = new Set(teamSeasonInjuries.map(r => r.playerId)).size;
 
-  const rtpDaysLeft = (rtpDate: string) => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const rtp   = new Date(rtpDate + 'T00:00:00');
-    return Math.ceil((rtp.getTime() - today.getTime()) / 86400000);
-  };
+  // Stats — joueur sélectionné (onglet Historique joueur)
+  const playerSeasonInjuries = recInjuries.filter(r =>
+    (!selected?.season.startDate || r.date >= selected.season.startDate) &&
+    (!selected?.season.endDate   || r.date <= selected.season.endDate)
+  );
+  const playerSeasonDays  = playerSeasonInjuries.reduce((s, r) => s + injuryDaysSeason(r), 0);
+  const playerAcwr        = computeAcwr(playerRpe);
+  const playerAcwrZone    = acwrZone(playerAcwr);
 
   const openForm = (prePlayerId?: string) => {
     setEditingRecord(null);
@@ -419,9 +303,9 @@ export default function MedicalPage() {
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Médical</h1>
         <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
           {([
-            { id: 'infirmary', label: 'Infirmerie', short: 'Infirmerie' },
-            { id: 'team',      label: 'Vue équipe',  short: 'Équipe' },
-            { id: 'record',    label: 'Vue joueur',  short: 'Joueur'  },
+            { id: 'infirmary', label: 'Infirmerie',        short: 'Infirmerie' },
+            { id: 'record',    label: 'Historique joueur', short: 'Joueur'  },
+            { id: 'team',      label: 'Historique équipe', short: 'Équipe' },
           ] as const).map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '6px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab.id ? '#1E2229' : 'transparent', color: activeTab === tab.id ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
               <span className="hidden sm:inline">{tab.label}</span>
@@ -431,45 +315,98 @@ export default function MedicalPage() {
         </div>
       </div>
 
-      {/* ── INFIRMARY TAB ── */}
-      {activeTab === 'infirmary' && (
-        <div>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '20px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <h3 style={{ color: '#F1F5F9', margin: 0 }}>En cours ({teamActiveAll.length})</h3>
-              <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
-              </button>
-            </div>
-
-            {teamActiveAll.length === 0 && (
-              <EmptyState message="Aucune blessure ni traitement actif." size="sm" />
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {teamActiveAll.map(record => {
-                const player = playerById(record.playerId);
-                if (!player) return null;
-                const days = record.rtpDate ? rtpDaysLeft(record.rtpDate) : null;
-                const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                return (
-                  <MedCard
-                    key={record.id}
-                    record={record}
-                    player={player}
-                    daysLabel={days !== null ? `${rtpLabel} J+${days}` : null}
-                    daysColor={days !== null && days <= 3 ? '#00E5A0' : '#F59E0B'}
-                    onEdit={() => openEdit(record)}
-                    onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
-                    navigate={navigate}
-                  />
-                );
-              })}
+      {/* Sub-header : équipe en cours ou sélection joueur + actions */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        {activeTab === 'record' ? (
+          teamPlayers.length === 0 ? (
+            <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun joueur dans l'effectif pour cette saison.</span>
+          ) : (
+            <PlayerSelect players={teamPlayers} value={selectedPlayerId} onChange={setSelectedPlayerId} />
+          )
+        ) : (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 200 }}>
+            <Users size={15} style={{ position: 'absolute', left: 10, color: '#00E5A0', pointerEvents: 'none' }} />
+            <div style={{
+              width: '100%', padding: '8px 12px 8px 32px', backgroundColor: '#1E2229',
+              border: '1px solid #00E5A050', borderRadius: 6, color: '#F1F5F9',
+              fontSize: '0.85rem', fontWeight: 600,
+            }}>
+              {selected?.team.name}
             </div>
           </div>
+        )}
 
-        </div>
-      )}
+        {activeTab === 'infirmary' && (
+          <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
+          </button>
+        )}
+
+        {activeTab === 'record' && selectedPlayerId && (
+          <button onClick={() => playerMedicalViewRef.current?.openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
+          </button>
+        )}
+      </div>
+
+      {/* ── INFIRMARY TAB ── */}
+      {activeTab === 'infirmary' && (() => {
+        // Plus proche date de reprise/fin estimée en premier ; sans date connue, en fin de liste.
+        const byRtpAsc = (a: MedicalRecord, b: MedicalRecord) => {
+          if (!a.rtpDate && !b.rtpDate) return 0;
+          if (!a.rtpDate) return 1;
+          if (!b.rtpDate) return -1;
+          return a.rtpDate.localeCompare(b.rtpDate);
+        };
+        const activeInjuriesList   = teamActiveAll.filter(r => r.type === 'injury').sort(byRtpAsc);
+        const activeTreatmentsList = teamActiveAll.filter(r => r.type === 'treatment').sort(byRtpAsc);
+
+        const renderRecord = (record: MedicalRecord) => {
+          const player = playerById(record.playerId);
+          if (!player) return null;
+          return (
+            <InjuryRecordCard
+              key={record.id}
+              record={record}
+              player={player}
+              onEdit={() => openEdit(record)}
+              onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
+              navigate={navigate}
+            />
+          );
+        };
+
+        return (
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
+              <Card accentColor="#EF4444">
+                <CardTitle icon={<Ambulance size={13} color="#EF4444" />}>
+                  Blessures {activeInjuriesList.length > 0 ? `(${activeInjuriesList.length})` : ''}
+                </CardTitle>
+                {activeInjuriesList.length === 0 ? (
+                  <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucune blessure active</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {activeInjuriesList.map(renderRecord)}
+                  </div>
+                )}
+              </Card>
+              <Card accentColor="#00E5A0">
+                <CardTitle icon={<Pill size={13} color="#00E5A0" />}>
+                  Traitements en cours {activeTreatmentsList.length > 0 ? `(${activeTreatmentsList.length})` : ''}
+                </CardTitle>
+                {activeTreatmentsList.length === 0 ? (
+                  <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucun traitement en cours</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {activeTreatmentsList.map(renderRecord)}
+                  </div>
+                )}
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── TEAM TAB ── */}
       {activeTab === 'team' && (() => {
@@ -500,18 +437,30 @@ export default function MedicalPage() {
 
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 10 }}>
-              {[
-                { label: 'Disponibilité',       value: `${availPct}%`,            sub: `${availablePlayers}/${totalPlayers} joueurs`,    color: availPct >= 80 ? '#00E5A0' : availPct >= 60 ? '#F59E0B' : '#EF4444' },
-                { label: 'Blessés actifs',       value: String(teamInjuries.length), sub: `${new Set(teamInjuries.map(r => r.playerId)).size} joueurs`, color: teamInjuries.length > 0 ? '#EF4444' : '#00E5A0' },
-                { label: 'Blessures saison',     value: String(seasonCount),        sub: `${seasonPlayers} joueurs touchés`,               color: '#F59E0B' },
-                { label: 'Jours d\'absence',     value: seasonDays > 0 ? `${seasonDays}j` : '—', sub: 'cumulés saison',                   color: '#3B82F6' },
-              ].map(kpi => (
-                <div key={kpi.label} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
-                  <p style={{ color: '#94A3B8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px', fontWeight: 600 }}>{kpi.label}</p>
-                  <p style={{ color: kpi.color, fontSize: '1.4rem', fontWeight: 800, margin: '0 0 3px', fontFamily: 'JetBrains Mono, monospace' }}>{kpi.value}</p>
-                  <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>{kpi.sub}</p>
-                </div>
-              ))}
+              <RpeKpiCard
+                accent={availPct >= 80 ? '#00E5A0' : availPct >= 60 ? '#F59E0B' : '#EF4444'}
+                label="Disponibilité"
+                value={`${availPct}%`}
+                sub={`${availablePlayers}/${totalPlayers} joueurs`}
+              />
+              <RpeKpiCard
+                accent={teamInjuries.length > 0 ? '#EF4444' : '#00E5A0'}
+                label="Blessés actifs"
+                value={String(teamInjuries.length)}
+                sub={`${new Set(teamInjuries.map(r => r.playerId)).size} joueurs`}
+              />
+              <RpeKpiCard
+                accent="#F59E0B"
+                label="Blessures saison"
+                value={String(seasonCount)}
+                sub={`${seasonPlayers} joueurs touchés`}
+              />
+              <RpeKpiCard
+                accent="#3B82F6"
+                label="Jours d'absence"
+                value={seasonDays > 0 ? `${seasonDays}j` : '—'}
+                sub="cumulés saison"
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14 }}>
@@ -524,23 +473,19 @@ export default function MedicalPage() {
                 {teamInjuries.length === 0
                   ? <p style={{ color: '#00E5A0', fontSize: '0.85rem', margin: 0 }}>✓ Aucune blessure active</p>
                   : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {teamInjuries.map(r => {
-                        const p   = playerById(r.playerId);
+                        const p = playerById(r.playerId);
                         if (!p) return null;
-                        const sev = r.severity ? severityConfig[r.severity] : null;
-                        const days = r.rtpDate ? rtpDaysLeft(r.rtpDate) : null;
                         return (
-                          <div key={r.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', backgroundColor: '#1E2229', borderRadius: 6, borderLeft: '3px solid #EF4444', cursor: 'pointer' }}>
-                            <PlayerAvatar player={p} size={28} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.82rem', margin: 0 }}>{p.lastName} {p.firstName[0]}.</p>
-                              <p style={{ color: '#94A3B8', fontSize: '0.72rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</p>
-                            </div>
-                            <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                              {sev && <p style={{ color: sev.color, fontSize: '0.7rem', fontWeight: 700, margin: '0 0 2px' }}>{sev.label}</p>}
-                              {days !== null && <p style={{ color: days <= 3 ? '#00E5A0' : '#F59E0B', fontSize: '0.7rem', margin: 0 }}>RTP J+{days}</p>}
-                            </div>
+                          <div key={r.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                            <PlayerAvatar player={p} size={26} />
+                            <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>{p.lastName} {p.firstName[0]}.</span>
+                            <span style={{
+                              color: playerStatusColor[p.status], backgroundColor: `${playerStatusColor[p.status]}18`,
+                              fontSize: '0.66rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
+                            }}>{playerStatusLabel[p.status]}</span>
+                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 0 auto', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</span>
                           </div>
                         );
                       })}
@@ -628,6 +573,37 @@ export default function MedicalPage() {
               });
               const hasFilter = !!(recapTypeFilter || recapPlayerFilter || recapStatusFilter || recapSearch);
 
+              const severityRank = { mild: 1, moderate: 2, severe: 3 } as const;
+              const dir = recapSortDir === 'asc' ? 1 : -1;
+              const sorted = [...filtered].sort((a, b) => {
+                switch (recapSortKey) {
+                  case 'date':        return a.date.localeCompare(b.date) * dir;
+                  case 'player': {
+                    const pa = teamPlayers.find(pl => pl.id === a.playerId)?.lastName ?? '';
+                    const pb = teamPlayers.find(pl => pl.id === b.playerId)?.lastName ?? '';
+                    return pa.localeCompare(pb) * dir;
+                  }
+                  case 'description': return a.description.localeCompare(b.description) * dir;
+                  case 'type':        return typeLabels[a.type].localeCompare(typeLabels[b.type]) * dir;
+                  case 'severity':    return ((a.severity ? severityRank[a.severity] : 0) - (b.severity ? severityRank[b.severity] : 0)) * dir;
+                  case 'status':      return a.status.localeCompare(b.status) * dir;
+                  default:            return 0;
+                }
+              });
+
+              const toggleSort = (key: typeof recapSortKey) => {
+                if (recapSortKey === key) {
+                  setRecapSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                } else {
+                  setRecapSortKey(key);
+                  setRecapSortDir('desc');
+                }
+              };
+              const sortArrow = (key: typeof recapSortKey) => recapSortKey === key
+                ? <span style={{ fontSize: '0.6rem', marginLeft: 3 }}>{recapSortDir === 'asc' ? '▲' : '▼'}</span>
+                : null;
+              const thBase: React.CSSProperties = { padding: '7px 8px', textAlign: 'left', fontSize: '0.67rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, borderBottom: '1px solid #2A2F3A', cursor: 'pointer', userSelect: 'none' };
+
               return (
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
                   {/* Header */}
@@ -685,51 +661,59 @@ export default function MedicalPage() {
                     ? <EmptyState message={hasFilter ? 'Aucun résultat.' : 'Aucune entrée médicale cette saison.'} size="sm" />
                     : (
                       <div style={{ overflowX: 'auto' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 480 }}>
-                          {filtered.map((r, i) => {
-                            const p   = teamPlayers.find(pl => pl.id === r.playerId);
-                            const sev = r.severity ? severityConfig[r.severity] : null;
-                            const col = typeColors[r.type] ?? '#94A3B8';
-                            return (
-                              <div key={r.id} onClick={() => setDetailRecord(r)}
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '90px 1fr auto auto',
-                                  alignItems: 'center',
-                                  gap: 12,
-                                  padding: '9px 10px',
-                                  backgroundColor: i % 2 === 0 ? 'transparent' : '#1a1d24',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  transition: 'background-color 0.12s',
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E2229')}
-                                onMouseLeave={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'transparent' : '#1a1d24')}
-                              >
-                                <span style={{ color: '#475569', fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace' }}>
-                                  {fmtDate(r.date)}
-                                </span>
-                                <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  {p && <PlayerAvatar player={p} size={18} />}
-                                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600 }}>{p ? `${p.lastName} ${p.firstName[0]}.` : '—'}</span>
-                                  <span style={{ color: '#2A2F3A' }}>·</span>
-                                  <span style={{ color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: r.status === 'resolved' ? 'line-through' : 'none' }}>
-                                    {r.description}
-                                  </span>
-                                </div>
-                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: sev?.color ?? 'transparent', minWidth: 48, textAlign: 'right' }}>
-                                  {sev?.label ?? ''}
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                                  <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '1px 6px', borderRadius: 3 }}>
-                                    {typeLabels[r.type]}
-                                  </span>
-                                  {r.status === 'resolved' && <span style={{ color: '#00E5A0', fontSize: '0.68rem', fontWeight: 600 }}>✓</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                            <colgroup>
+                              <col style={{ width: '12%' }} />
+                              <col style={{ width: '20%' }} />
+                              <col />
+                              <col style={{ width: '14%' }} />
+                              <col style={{ width: '12%' }} />
+                              <col style={{ width: '12%' }} />
+                            </colgroup>
+                            <thead>
+                              <tr style={{ backgroundColor: '#1A1E26' }}>
+                                <th onClick={() => toggleSort('date')} style={{ ...thBase, color: recapSortKey === 'date' ? '#94A3B8' : '#475569' }}>Date{sortArrow('date')}</th>
+                                <th onClick={() => toggleSort('player')} style={{ ...thBase, color: recapSortKey === 'player' ? '#94A3B8' : '#475569' }}>Joueur{sortArrow('player')}</th>
+                                <th onClick={() => toggleSort('description')} style={{ ...thBase, color: recapSortKey === 'description' ? '#94A3B8' : '#475569' }}>Description{sortArrow('description')}</th>
+                                <th onClick={() => toggleSort('type')} style={{ ...thBase, color: recapSortKey === 'type' ? '#94A3B8' : '#475569' }}>Type{sortArrow('type')}</th>
+                                <th onClick={() => toggleSort('severity')} style={{ ...thBase, color: recapSortKey === 'severity' ? '#94A3B8' : '#475569' }}>Gravité{sortArrow('severity')}</th>
+                                <th onClick={() => toggleSort('status')} style={{ ...thBase, color: recapSortKey === 'status' ? '#94A3B8' : '#475569' }}>Statut{sortArrow('status')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sorted.map(r => {
+                                const p   = teamPlayers.find(pl => pl.id === r.playerId);
+                                const sev = r.severity ? severityConfig[r.severity] : null;
+                                const col = typeColors[r.type] ?? '#94A3B8';
+                                return (
+                                  <tr key={r.id} onClick={() => setDetailRecord(r)} style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer' }}
+                                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
+                                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                                  >
+                                    <td style={{ padding: '8px 8px', color: '#94A3B8', fontSize: '0.78rem', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(r.date)}</td>
+                                    <td style={{ padding: '8px 8px', overflow: 'hidden' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {p && <PlayerAvatar player={p} size={18} />}
+                                        <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? `${p.lastName} ${p.firstName[0]}.` : '—'}</span>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', textDecoration: r.status === 'resolved' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {r.description}
+                                    </td>
+                                    <td style={{ padding: '8px 8px' }}>
+                                      <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{typeLabels[r.type]}</span>
+                                    </td>
+                                    <td style={{ padding: '8px 8px', color: sev?.color ?? '#475569', fontSize: '0.75rem', fontWeight: 600 }}>{sev?.label ?? '—'}</td>
+                                    <td style={{ padding: '8px 8px' }}>
+                                      {r.status === 'resolved'
+                                        ? <span style={{ color: '#00E5A0', fontSize: '0.7rem', fontWeight: 600 }}>✓ Clôturé</span>
+                                        : <span style={{ color: '#F59E0B', fontSize: '0.7rem', fontWeight: 600 }}>En cours</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                       </div>
                     )
                   }
@@ -744,25 +728,47 @@ export default function MedicalPage() {
       {/* ── RECORD TAB ── */}
       {activeTab === 'record' && (
         <div>
-          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <PlayerSelect players={teamPlayers} value={selectedPlayerId} onChange={setSelectedPlayerId} />
-          </div>
-
           {selectedPlayer && (
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <PlayerAvatar player={selectedPlayer} size={44} />
-              <div>
-                <h3 style={{ color: '#F1F5F9', margin: 0 }}>Suivi Médical — {selectedPlayer.firstName} {selectedPlayer.lastName}</h3>
-                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                  <StatusBadge status={selectedPlayer.status} size="sm" />
-                </div>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 10, marginBottom: 14 }}>
+              <RpeKpiCard
+                accent={playerStatusColor[selectedPlayer.status]}
+                label="Statut"
+                value={playerStatusLabel[selectedPlayer.status]}
+                sub={
+                  selectedPlayer.status === 'active'
+                    ? '-'
+                    : (selectedPlayer.status === 'injured' || selectedPlayer.status === 'limited')
+                      ? (activePlayerInjury?.description ?? '-')
+                      : `${selectedPlayer.firstName} ${selectedPlayer.lastName}`
+                }
+              />
+              <RpeKpiCard
+                accent={playerSeasonDays > 0 ? '#3B82F6' : '#00E5A0'}
+                label="Jours d'absence"
+                value={playerSeasonDays > 0 ? `${playerSeasonDays}j` : '—'}
+                sub="cumulés saison"
+              />
+              <RpeKpiCard
+                accent={playerSeasonInjuries.length > 0 ? '#F59E0B' : '#00E5A0'}
+                label="Blessures saison"
+                value={String(playerSeasonInjuries.length)}
+                sub="cette saison"
+              />
+              <RpeKpiCard
+                accent={playerAcwrZone ? playerAcwrZone.color : '#334155'}
+                label="ACWR — risque de blessure"
+                value={playerAcwr !== null ? playerAcwr.toFixed(2) : '—'}
+                sub={playerAcwrZone
+                  ? <span style={{ backgroundColor: playerAcwrZone.color + '22', color: playerAcwrZone.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{playerAcwrZone.label}</span>
+                  : 'Historique insuffisant (28j)'}
+              />
             </div>
           )}
 
           {selectedPlayerId && (
             <PlayerMedicalView
               key={selectedPlayerId}
+              ref={playerMedicalViewRef}
               playerId={selectedPlayerId}
               onUpdated={() => setVersion(v => v + 1)}
             />
@@ -1003,7 +1009,16 @@ export default function MedicalPage() {
                     </div>
                     <div>
                       <label style={labelStyle}>Date de retour <span style={{ color: '#475569', fontWeight: 400 }}>— optionnel</span></label>
-                      <input type="date" value={fRtpDate} onChange={e => setFRtpDate(e.target.value)} style={inputStyle} />
+                      <input
+                        type="date" value={fRtpDate}
+                        onChange={e => {
+                          setFRtpDate(e.target.value);
+                          if (e.target.value && fDate) {
+                            setFDays(String(daysBetween(fDate, e.target.value)));
+                          }
+                        }}
+                        style={inputStyle}
+                      />
                     </div>
                   </div>
                 </>
