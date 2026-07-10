@@ -360,7 +360,7 @@ function toSentence(s: Signal): string {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, teamStatsMap }: Props) {
-  const dateRange = useDateRange(seasonStart);
+  const dateRange = useDateRange(seasonStart, 21);
   const didInit = useRef(false);
 
   useEffect(() => {

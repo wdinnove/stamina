@@ -89,10 +89,18 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style 
   return (
     <Card style={{ padding: '10px 14px', marginBottom: 14, ...style }}>
 
-      {/* ── Mobile : 2 lignes pleine largeur ── */}
+      {/* ── Mobile : 3 lignes pleine largeur (4 presets / 3 presets / 2 dates) ── */}
       <div className="flex flex-col gap-2 md:hidden w-full">
         <div className="flex gap-1.5 w-full">
-          {DATE_PRESETS.map(p => (
+          {DATE_PRESETS.slice(0, 4).map(p => (
+            <button key={String(p.value)} onClick={() => onPreset(p.value)}
+              className="flex-1" style={{ ...btnStyle(preset === p.value), padding: '5px 0' }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1.5 w-full">
+          {DATE_PRESETS.slice(4).map(p => (
             <button key={String(p.value)} onClick={() => onPreset(p.value)}
               className="flex-1" style={{ ...btnStyle(preset === p.value), padding: '5px 0' }}>
               {p.label}

@@ -160,7 +160,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
           </h3>
           <button onClick={() => setShowSeasonForm(v => !v)}
             style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Plus size={13} /> Nouvelle saison
+            <Plus size={13} /><span className="hidden sm:inline">Nouvelle saison</span>
           </button>
         </div>
 

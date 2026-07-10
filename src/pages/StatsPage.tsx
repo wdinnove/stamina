@@ -198,7 +198,7 @@ function PlayerStatsView() {
         </select>
         <button onClick={() => setShowForm(true)}
           style={{ marginLeft: 'auto', padding: '7px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={14} /> Saisir un match
+          <Plus size={14} /><span className="hidden sm:inline">Saisir un match</span>
         </button>
       </div>
 

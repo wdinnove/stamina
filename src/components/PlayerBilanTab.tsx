@@ -45,7 +45,7 @@ export function PlayerBilanTab({ rpe, wellness, medical, playerId, playerName, s
   const accentInj = activeInj.length > 0 ? '#EF4444' : injuries.length > 0 ? '#F59E0B' : '#00E5A0';
 
   // ── Filtre de date (s'applique à tout l'onglet) ──
-  const dateRange = useDateRange(seasonStart);
+  const dateRange = useDateRange(seasonStart, 21);
   const inRange = (iso: string) => (!dateRange.from || iso >= dateRange.from) && iso <= dateRange.to;
 
   const rpeP      = useMemo(() => rpe.filter(e => inRange(e.date)),      [rpe,      dateRange.from, dateRange.to]);

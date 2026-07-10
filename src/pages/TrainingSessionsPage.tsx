@@ -254,20 +254,23 @@ export default function TrainingSessionsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présents</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absents</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Retards</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Durée</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>RPE estimé / réel</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présents</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Absents</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Retards</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Durée</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                  <span className="hidden sm:inline">RPE estimé / réel</span>
+                  <span className="sm:hidden">RPE</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {grouped.map(group => (
                 <React.Fragment key={group.monthLabel}>
                   <tr>
-                    <td colSpan={7} style={{ padding: '8px 20px', backgroundColor: '#0D0F14', borderBottom: '1px solid #1E2229', borderTop: '1px solid #2A2F3A', verticalAlign: 'middle' }}>
+                    <td colSpan={7} className="px-3 sm:px-5" style={{ paddingTop: 8, paddingBottom: 8, backgroundColor: '#0D0F14', borderBottom: '1px solid #1E2229', borderTop: '1px solid #2A2F3A', verticalAlign: 'middle' }}>
                       <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.monthLabel}</span>
                     </td>
                   </tr>
@@ -296,35 +299,35 @@ export default function TrainingSessionsPage() {
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                       >
-                        <td style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}>
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, whiteSpace: 'nowrap' }}>
                           <span style={{ color: '#475569', fontSize: '0.78rem', fontWeight: 600 }}>{dow} </span>
                           <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
                           <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
                         </td>
-                        <td style={{ padding: '12px 20px' }}>
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
                           <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
                             {typeCfg.label}
                           </span>
                         </td>
-                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'center' }}>
                           <span style={{ color: counts?.present ? '#00E5A0' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                             {counts?.present ?? '—'}
                           </span>
                         </td>
-                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'center' }}>
                           <span style={{ color: counts?.absent ? '#EF4444' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                             {counts?.absent ?? '—'}
                           </span>
                         </td>
-                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', textAlign: 'center' }}>
+                        <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'center' }}>
                           <span style={{ color: counts?.late ? '#F59E0B' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                             {counts?.late ?? '—'}
                           </span>
                         </td>
-                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', color: '#94A3B8', fontSize: '0.82rem' }}>
+                        <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#94A3B8', fontSize: '0.82rem' }}>
                           {session.plannedDuration} min
                         </td>
-                        <td style={{ padding: '12px 16px 12px 20px' }}>
+                        <td className="pl-3 pr-2.5 sm:pl-5 sm:pr-4" style={{ paddingTop: 12, paddingBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ color: '#475569', fontSize: '0.82rem' }}>

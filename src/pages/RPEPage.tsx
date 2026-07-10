@@ -7,14 +7,14 @@ import {
   ComposedChart, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts';
-import { Save, Check, Zap, Activity, Users, Calendar, AlertTriangle } from 'lucide-react';
+import { Save, Check, Zap, Activity, Users, Calendar, AlertTriangle, ListChecks } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
 import { notifyOrg } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
 import { supabase } from '../api/client';
-import { StatusBadge, PlayerAvatar, PlayerSelect, RpeBarChart, ChargeBarChart, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, PlayerRankingTable, EmptyState, DateRangeCard, useDateRange } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerSelect, RpeBarChart, ChargeBarChart, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, PlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle } from '../components';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, RPEEntry, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
@@ -160,7 +160,7 @@ export default function RPEPage() {
   };
 
   // ── Date range (onglets Historique joueur / Historique équipe)
-  const dateRange = useDateRange(selected?.season.startDate);
+  const dateRange = useDateRange(selected?.season.startDate, 45);
 
   // ── Roster
   const [roster, setRoster]               = useState<Player[]>([]);
@@ -1207,18 +1207,22 @@ export default function RPEPage() {
 
                   return (
                     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-                      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Historique des séances</p>
-                        <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
-                          {(['session', 'week'] as const).map(v => (
-                            <button key={v} onClick={() => setIndivTableView(v)}
-                              style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
-                                backgroundColor: indivTableView === v ? '#2A2F3A' : 'transparent',
-                                color: indivTableView === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
-                              {v === 'session' ? 'Séance' : 'Semaine'}
-                            </button>
-                          ))}
-                        </div>
+                      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A' }}>
+                        <CardTitle icon={<ListChecks size={12} style={{ color: '#00E5A0' }} />} mb={0}
+                          right={
+                            <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
+                              {(['session', 'week'] as const).map(v => (
+                                <button key={v} onClick={() => setIndivTableView(v)}
+                                  style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
+                                    backgroundColor: indivTableView === v ? '#2A2F3A' : 'transparent',
+                                    color: indivTableView === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
+                                  {v === 'session' ? 'Séance' : 'Semaine'}
+                                </button>
+                              ))}
+                            </div>
+                          }>
+                          Historique des séances
+                        </CardTitle>
                       </div>
                       <div style={{ overflowX: 'auto' }}>
                         {indivTableView === 'session' ? (

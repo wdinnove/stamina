@@ -84,7 +84,7 @@ function TeamsTab() {
         </div>
         <button onClick={() => setShowForm(true)}
           style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
-          <Plus size={14} /> Nouvelle équipe
+          <Plus size={14} /><span className="hidden sm:inline">Nouvelle équipe</span>
         </button>
       </div>
 
@@ -341,7 +341,7 @@ function PlayersTab() {
         </select>
         <button onClick={() => setShowForm(true)}
           style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
-          <Plus size={14} /> Nouveau joueur
+          <Plus size={14} /><span className="hidden sm:inline">Nouveau joueur</span>
         </button>
       </div>
 

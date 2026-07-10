@@ -650,7 +650,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
     backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8,
   };
   const cardHeaderStyle: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 8,
     padding: '12px 16px', borderBottom: '1px solid #2A2F3A',
   };
 

@@ -1492,7 +1492,7 @@ export default function TrainingSessionDetailPage() {
             {teamsError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{teamsError}</span>}
             <button type="button" onClick={addBlock}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem' }}>
-              <Plus size={13} /> Ajouter un groupe
+              <Plus size={13} /><span className="hidden sm:inline">Ajouter un groupe</span>
             </button>
             <button type="button" onClick={handleSaveTeams} disabled={teamsSaving}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: teamsSaved ? '#1E2229' : teamsSaving ? '#1E2229' : '#00E5A0', border: teamsSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: teamsSaved ? '#00E5A0' : teamsSaving ? '#475569' : '#0D0F14', cursor: teamsSaving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>

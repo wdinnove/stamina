@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { BarChart2 } from 'lucide-react';
+import { BarChart2, ChevronDown, ChevronRight } from 'lucide-react';
 import { playersApi, statsApi } from '../api';
 import { evalColor, ortgColor, drtgColor } from '../data';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -58,13 +58,14 @@ export default function AnalyseCollectivePage() {
   const [outerTab,    setOuterTab]    = useState<OuterTab>('par-joueur');
   const [statsView,   setStatsView]   = useState<StatsView>('basic');
   const [normalize25, setNormalize25] = useState(false);
+  const [showBiplot,  setShowBiplot]  = useState(false);
 
   const [s1, setS1] = useState<Sort>({ col: 'pts',  dir: 'desc' }); // PJ Brutes
   const [s2, setS2] = useState<Sort>({ col: 'pts',  dir: 'desc' }); // PJ Avancées
   const [s4, setS4] = useState<Sort>({ col: 'date', dir: 'desc' }); // PM Brutes
   const [s5, setS5] = useState<Sort>({ col: 'date', dir: 'desc' }); // PM Avancées
 
-  const dateRange = useDateRange(selected?.season.startDate);
+  const dateRange = useDateRange(selected?.season.startDate, 'saison');
 
   useEffect(() => {
     if (!selected) return;
@@ -329,7 +330,7 @@ export default function AnalyseCollectivePage() {
         </div>
 
         {/* KPI chips */}
-        <div className="flex items-stretch gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-[#2A2F3A]">
+        <div className="grid grid-cols-3 gap-x-2 gap-y-3 sm:flex sm:items-stretch sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-[#2A2F3A]">
 
           {/* Bilan */}
           <div style={{ minWidth: 64, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
@@ -340,7 +341,7 @@ export default function AnalyseCollectivePage() {
             </div>
           </div>
 
-          <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
+          <div className="hidden sm:block" style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
 
           {/* Pts marqués */}
           <div style={{ minWidth: 52, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
@@ -350,7 +351,7 @@ export default function AnalyseCollectivePage() {
             </div>
           </div>
 
-          <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
+          <div className="hidden sm:block" style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
 
           {/* Pts concédés */}
           <div style={{ minWidth: 52, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
@@ -360,7 +361,7 @@ export default function AnalyseCollectivePage() {
             </div>
           </div>
 
-          <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
+          <div className="hidden sm:block" style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
 
           {/* Différentiel */}
           <div style={{ minWidth: 44, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
@@ -370,7 +371,7 @@ export default function AnalyseCollectivePage() {
             </span>
           </div>
 
-          <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
+          <div className="hidden sm:block" style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
 
           {/* ORtg */}
           <div style={{ minWidth: 44, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
@@ -380,7 +381,7 @@ export default function AnalyseCollectivePage() {
             </span>
           </div>
 
-          <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
+          <div className="hidden sm:block" style={{ width: 1, alignSelf: 'stretch', backgroundColor: `${heroAccent}25`, flexShrink: 0 }} />
 
           {/* DRtg */}
           <div style={{ minWidth: 44, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
@@ -416,14 +417,15 @@ export default function AnalyseCollectivePage() {
       <Card style={{ marginBottom: 14 }}>
         <CardTitle
           icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
-          mb={14}
+          mb={18}
+          info={<>
+            {outerTab === 'par-joueur' && sortedPJ.length > 0 &&
+              <>{sortedPJ.length} joueur{sortedPJ.length > 1 ? 's' : ''}</>}
+            {outerTab === 'par-match' && matchCount > 0 &&
+              <>{matchCount} match{matchCount > 1 ? 's' : ''} · {wins}V {matchCount - wins}D</>}
+          </>}
           right={
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {outerTab === 'par-joueur' && sortedPJ.length > 0 &&
-                <span style={{ color: '#475569', fontSize: '0.72rem' }}>{sortedPJ.length} joueur{sortedPJ.length > 1 ? 's' : ''}</span>}
-              {outerTab === 'par-match' && matchCount > 0 &&
-                <span style={{ color: '#475569', fontSize: '0.72rem' }}>{matchCount} match{matchCount > 1 ? 's' : ''} · {wins}V {matchCount - wins}D</span>}
-
               {/* Normalize 25 min toggle — par joueur only */}
               {outerTab === 'par-joueur' && statsView !== 'pca' && (
                 <button
@@ -619,9 +621,9 @@ export default function AnalyseCollectivePage() {
         {/* ── PAR JOUEUR : IMPACT ── */}
         {outerTab === 'par-joueur' && statsView === 'pca' && (
           <div>
-            <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 4px' }}>Qui fait la différence sur le terrain ?</h3>
-            <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px' }}>
-              On compare le niveau de jeu de chaque joueur, match après match, aux victoires et défaites de l'équipe (à partir de 5 matchs joués).
+            <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Qui fait la différence sur le terrain ?</h3>
+            <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 18px', lineHeight: 1.5 }}>
+              Ce classement indique si le niveau de jeu de chaque joueur est plus élevé lors des victoires ou des défaites de l'équipe (à partir de 5 matchs joués).
             </p>
             <PlayerImpactList impacts={playerImpacts} />
           </div>
@@ -795,22 +797,32 @@ export default function AnalyseCollectivePage() {
         {outerTab === 'par-match' && statsView === 'pca' && (
           pcaResult === null ? <EmptyState message="Pas assez de matchs (minimum 4) pour calculer une ACP." /> : (
             <div>
-              <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 4px' }}>Quelles statistiques font gagner l'équipe ?</h3>
-              <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px' }}>
-                Sur les {matchCount} matchs de la période, voici ce qui pèse vraiment sur le résultat — plus la barre est longue, plus l'effet est net.
+              <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Quelles statistiques font gagner l'équipe ?</h3>
+              <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 18px', lineHeight: 1.5 }}>
+                Sur les {matchCount} derniers matchs, voici les statistiques qui ont le plus influencé le résultat des rencontres. Plus le score est élevé, plus cette statistique a de poids.
               </p>
               <WinFactorsList factors={winFactors} />
 
-              <div style={{ borderTop: '1px solid #2A2F3A', margin: '22px 0 16px' }} />
+              <div style={{ borderTop: '1px solid #2A2F3A', margin: '30px 0 20px' }} />
 
-              <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 4px' }}>Tous les matchs, en un coup d'œil</h3>
-              <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px', lineHeight: 1.5 }}>
-                Chaque point représente un match — 🟢 pour une victoire, 🔴 pour une défaite — et chaque flèche une statistique de jeu.
-                Plus un match se rapproche de la pointe d'une flèche, plus l'équipe a été forte sur cette statistique ce soir-là.
-                Et quand les points verts se regroupent d'un côté d'une flèche pendant que les rouges restent de l'autre, c'est le signe
-                que cette statistique fait vraiment basculer les rencontres.
-              </p>
-              <PCABiplot points={pcaResult.points} vectors={pcaResult.vectors} varPct={pcaResult.varPct} />
+              <button type="button" onClick={() => setShowBiplot(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', color: '#64748B', fontSize: '0.75rem' }}>
+                {showBiplot ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {showBiplot ? 'Masquer le graphique détaillé' : 'Afficher le graphique détaillé'}
+              </button>
+
+              {showBiplot && (
+                <div style={{ marginTop: 20 }}>
+                  <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Tous les matchs, en un coup d'œil</h3>
+                  <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 18px', lineHeight: 1.5 }}>
+                    Chaque point représente un match : 🟢 victoire, 🔴 défaite. Chaque flèche représente une statistique de jeu.
+                    Plus un match est proche de la pointe d'une flèche, plus l'équipe a été performante sur cette statistique ce soir-là.
+                    Quand les points verts se regroupent d'un côté d'une flèche et les points rouges de l'autre, cette statistique
+                    influence fortement le résultat des matchs.
+                  </p>
+                  <PCABiplot points={pcaResult.points} vectors={pcaResult.vectors} varPct={pcaResult.varPct} />
+                </div>
+              )}
             </div>
           )
         )}

@@ -169,7 +169,7 @@ function PmcTooltip({ active, payload }: { active?: boolean; payload?: { payload
 interface Props { rpe: RPEEntry[]; wellness: WellnessEntry[]; matchStats: MatchStat[]; seasonStart?: string; }
 
 export function PlayerDynamiqueTab({ rpe, wellness, matchStats, seasonStart }: Props) {
-  const dateRange = useDateRange(seasonStart);
+  const dateRange = useDateRange(seasonStart, 45);
 
   const periodStart = new Date((dateRange.from || new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0]) + 'T00:00:00');
   const periodEnd   = new Date(dateRange.to   + 'T00:00:00');

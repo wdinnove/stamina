@@ -22,22 +22,27 @@ export function Card({ children, style, className, onClick, accentColor }: {
   );
 }
 
-export function CardTitle({ icon, children, right, mb = 10, align = 'center' }: {
+export function CardTitle({ icon, children, info, right, mb = 10, align = 'center' }: {
   icon?: React.ReactNode;
   children: React.ReactNode;
+  /** Contenu non-interactif (badge, compteur…) affiché à côté du titre — reste sur la même ligne que lui au lieu de passer avec les boutons */
+  info?: React.ReactNode;
   right?: React.ReactNode;
   mb?: number;
   align?: React.CSSProperties['alignItems'];
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: align, justifyContent: 'space-between', marginBottom: mb }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        {icon && <span>{icon}</span>}
-        <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-          {children}
-        </p>
+    <div style={{ display: 'flex', flexWrap: 'wrap', rowGap: 8, alignItems: align, justifyContent: 'space-between', marginBottom: mb }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {icon && <span>{icon}</span>}
+          <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+            {children}
+          </p>
+        </div>
+        {info && <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}>{info}</span>}
       </div>
-      {right && <div>{right}</div>}
+      {right && <div style={{ display: 'flex', alignItems: 'center' }}>{right}</div>}
     </div>
   );
 }

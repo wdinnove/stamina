@@ -441,7 +441,7 @@ export default function ExercisesPage() {
         </div>
         <button onClick={() => setShowModal(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 7, color: '#0D0F14', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
-          <Plus size={15} /> Ajouter
+          <Plus size={15} /><span className="hidden sm:inline">Ajouter</span>
         </button>
       </div>
 
@@ -480,15 +480,15 @@ export default function ExercisesPage() {
 
       {/* Table */}
       {filtered.length > 0 && (
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 360 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 280 }}>Nom</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 140 }}>Catégorie</th>
+                <th className="px-3 sm:px-5 w-[58%] sm:w-[280px]" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nom</th>
+                <th className="px-3 sm:px-5 w-[38%] sm:w-[140px]" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Catégorie</th>
                 <th className="hidden lg:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Déroulement</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', width: 110 }}>Médias</th>
-                <th style={{ padding: '10px 20px', width: 40 }}></th>
+                <th className="hidden sm:table-cell sm:w-[110px] sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Médias</th>
+                <th className="pr-2 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, width: 24 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -501,10 +501,10 @@ export default function ExercisesPage() {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                   >
-                    <td style={{ padding: '12px 20px', textAlign: 'left' }}>
-                      <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>{ex.name}</span>
+                    <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'left', overflow: 'hidden' }}>
+                      <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{ex.name}</span>
                     </td>
-                    <td style={{ padding: '12px 20px', textAlign: 'left' }}>
+                    <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'left', overflow: 'hidden' }}>
                       <CategoryBadge name={ex.categoryName} color={ex.categoryColor} />
                     </td>
                     <td className="hidden lg:table-cell" style={{ padding: '12px 20px', textAlign: 'left' }}>
@@ -512,7 +512,7 @@ export default function ExercisesPage() {
                         {desc || '—'}
                       </span>
                     </td>
-                    <td style={{ padding: '12px 20px', textAlign: 'left' }}>
+                    <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'left' }}>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <span title="Images" style={{ display: 'flex' }}>
                           <ImageIcon size={14} color={(ex.imageCount ?? 0) > 0 ? '#00E5A0' : '#2A2F3A'} />
@@ -525,7 +525,7 @@ export default function ExercisesPage() {
                         </span>
                       </div>
                     </td>
-                    <td style={{ padding: '12px 20px' }}>
+                    <td className="pr-2 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </td>
                   </tr>

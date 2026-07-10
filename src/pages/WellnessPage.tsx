@@ -310,14 +310,18 @@ export default function WellnessPage() {
   return (
     <div className="p-4 md:p-6">
       <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
           <h1 style={{ color: '#F1F5F9', margin: 0 }}>Bien-être</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
               {(['entry', 'history', 'team'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   style={{ padding: '6px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.82rem', backgroundColor: activeTab === tab ? '#1E2229' : 'transparent', color: activeTab === tab ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
-                  {tab === 'entry' ? 'Nouvelle saisie' : tab === 'history' ? 'Historique joueur' : 'Historique équipe'}
+                  {tab === 'entry'
+                    ? <><span className="hidden sm:inline">Nouvelle saisie</span><span className="sm:hidden">Saisie</span></>
+                    : tab === 'history'
+                    ? <><span className="hidden sm:inline">Historique joueur</span><span className="sm:hidden">Joueur</span></>
+                    : <><span className="hidden sm:inline">Historique équipe</span><span className="sm:hidden">Équipe</span></>}
                 </button>
               ))}
             </div>

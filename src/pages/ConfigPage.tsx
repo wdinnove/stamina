@@ -450,7 +450,7 @@ function RosterTab() {
         </div>
         <button onClick={() => setShowAddModal(true)}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0A0C10', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', flexShrink: 0 }}>
-          <Plus size={14} /> Ajouter
+          <Plus size={14} /><span className="hidden sm:inline">Ajouter</span>
         </button>
       </div>
 
@@ -671,14 +671,15 @@ function StaffTab() {
   return (
     <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
       <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<UserCheck size={14} color="#00E5A0" />}>Staff</CardTitle>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
-        <button onClick={() => setShowForm(true)}
-          style={{ padding: '7px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={14} /> Ajouter un membre
-        </button>
+        <CardTitle icon={<UserCheck size={14} color="#00E5A0" />} mb={0}
+          right={
+            <button onClick={() => setShowForm(true)}
+              style={{ padding: '7px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Plus size={14} /><span className="hidden sm:inline">Ajouter un membre</span>
+            </button>
+          }>
+          Staff
+        </CardTitle>
       </div>
 
       {error && (
@@ -1306,7 +1307,7 @@ export function TeamConfigTab() {
           <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Nouvelle catégorie…" style={{ ...inputStyle, flex: 1 }} />
           <button type="submit" disabled={addingCat || !newCatName.trim()}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', backgroundColor: (addingCat || !newCatName.trim()) ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: (addingCat || !newCatName.trim()) ? '#475569' : '#0A0C10', fontWeight: 700, fontSize: '0.82rem', cursor: (addingCat || !newCatName.trim()) ? 'not-allowed' : 'pointer' }}>
-            <Plus size={14} /> {addingCat ? 'Ajout…' : 'Ajouter'}
+            <Plus size={14} /><span className="hidden sm:inline">{addingCat ? 'Ajout…' : 'Ajouter'}</span>
           </button>
         </form>
         {addCatError && <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{addCatError}</p>}

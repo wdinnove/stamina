@@ -170,12 +170,6 @@ export default function MatchesPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <style>{`
-        @media (max-width: 639px) {
-          .matches-table th { padding: 8px 10px !important; }
-          .matches-table td { padding: 10px 10px !important; }
-        }
-      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Matchs</h1>
@@ -206,22 +200,22 @@ export default function MatchesPage() {
         <EmptyState message="Aucun match enregistré pour cette saison." size="lg" />
       ) : (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflowX: 'auto' }}>
-          <table className="matches-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+          <table className="matches-table sm:min-w-[420px]" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>J</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Adversaire</th>
-                <th className="hidden sm:table-cell" style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Résultat</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>J</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Adversaire</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Résultat</th>
               </tr>
             </thead>
             <tbody>
               {grouped.map(group => (
                 <React.Fragment key={group.monthLabel}>
                   <tr>
-                    <td colSpan={6} style={{ padding: '8px 20px', backgroundColor: '#0D0F14', borderBottom: '1px solid #1E2229', borderTop: '1px solid #2A2F3A', verticalAlign: 'middle' }}>
+                    <td colSpan={6} className="px-3 sm:px-5" style={{ paddingTop: 8, paddingBottom: 8, backgroundColor: '#0D0F14', borderBottom: '1px solid #1E2229', borderTop: '1px solid #2A2F3A', verticalAlign: 'middle' }}>
                       <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.monthLabel}</span>
                     </td>
                   </tr>
@@ -237,18 +231,18 @@ export default function MatchesPage() {
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                       >
-                        <td style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}>
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, whiteSpace: 'nowrap' }}>
                           <span style={{ color: '#475569', fontSize: '0.78rem', fontWeight: 600 }}>{dowAbbr} </span>
                           <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
                           <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
                         </td>
-                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px', color: '#475569', fontSize: '0.82rem' }}>
+                        <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#475569', fontSize: '0.82rem' }}>
                           {match.gameNumber ? `J${match.gameNumber}` : '—'}
                         </td>
-                        <td style={{ padding: '12px 20px', color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>
                           {match.opponent}
                         </td>
-                        <td className="hidden sm:table-cell" style={{ padding: '12px 20px' }}>
+                        <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
                           <span style={{
                             fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4,
                             color:           match.homeAway === 'home' ? '#3B82F6' : '#A855F7',
@@ -257,12 +251,12 @@ export default function MatchesPage() {
                             {match.homeAway === 'home' ? 'DOM' : 'EXT'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}>
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, whiteSpace: 'nowrap' }}>
                           <span style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, fontSize: '0.88rem', color: isWin ? '#00E5A0' : '#EF4444' }}>
                             {match.scoreUs} – {match.scoreThem}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 16px 12px 20px' }}>
+                        <td className="hidden sm:table-cell sm:pl-5 sm:pr-4" style={{ paddingTop: 12, paddingBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <span style={{
                               fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4,
@@ -290,7 +284,7 @@ export default function MatchesPage() {
           style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}
         >
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 460, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="p-4 sm:p-6" style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem' }}>
                 {editMatch ? 'Modifier le match' : 'Nouveau match'}

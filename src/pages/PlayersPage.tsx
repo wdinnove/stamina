@@ -102,7 +102,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
   const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [seasonSort, setSeasonSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'season', dir: 'desc' });
 
-  const perfRange = useDateRange(selected?.season.startDate);
+  const perfRange = useDateRange(selected?.season.startDate, 'saison');
 
   const [showEdit,      setShowEdit]      = useState(false);
   const [editSaving,    setEditSaving]    = useState(false);
@@ -619,19 +619,20 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
       {/* ── Performance ── */}
       {playerTab === 'performance' && <>
 
-      {statsView !== 'season' && (
-        <DateRangeCard
-          from={perfRange.from} to={perfRange.to} preset={perfRange.preset}
-          onPreset={p => perfRange.applyPreset(p, selected?.season.startDate)}
-          onFrom={perfRange.setFrom} onTo={perfRange.setTo}
-        />
-      )}
+      <DateRangeCard
+        from={perfRange.from} to={perfRange.to} preset={perfRange.preset}
+        onPreset={p => perfRange.applyPreset(p, selected?.season.startDate)}
+        onFrom={perfRange.setFrom} onTo={perfRange.setTo}
+      />
 
       {/* ── Ligne 5 : Statistiques par match ── */}
       <Card style={{ marginBottom: 14 }}>
         <CardTitle
           icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
           mb={14}
+          info={statsView !== 'season' && perfFilteredStats.length > 0
+            ? `${perfFilteredStats.length} match${perfFilteredStats.length > 1 ? 's' : ''}`
+            : undefined}
           right={
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {statsView !== 'season' && multiTeamSeason && (
@@ -641,7 +642,6 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
                   <Users size={11} /> Toutes les équipes
                 </button>
               )}
-              {statsView !== 'season' && perfFilteredStats.length > 0 && <span style={{ color: '#475569', fontSize: '0.72rem' }}>{perfFilteredStats.length} match{perfFilteredStats.length > 1 ? 's' : ''}</span>}
               <div style={{ display: 'flex', backgroundColor: '#0D0F14', borderRadius: 6, padding: 2, gap: 2 }}>
                 {([['basic', 'Brutes'], ['advanced', 'Avancées'], ['season', 'Par saison']] as const).map(([v, label]) => (
                   <button key={v} type="button" onClick={e => { e.stopPropagation(); setStatsView(v); }}
