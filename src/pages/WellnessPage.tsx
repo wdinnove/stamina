@@ -391,10 +391,10 @@ export default function WellnessPage() {
                     </label>
                     <span style={{ color: dimColor(val, dim.inverted), fontWeight: 700, fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', minWidth: 20, textAlign: 'right' }}>{val}</span>
                   </div>
-                  <div className="grid grid-cols-5 lg:grid-cols-10" style={{ gap: 4 }}>
+                  <div style={{ display: 'flex', gap: 4 }}>
                     {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
                       <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                        style={{ height: 36, borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
+                        style={{ flex: 1, minWidth: 0, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
                       >{v}</button>
                     ))}
                   </div>
