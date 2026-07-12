@@ -8,7 +8,8 @@ import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useLocation, useNavigate } from 'react-router';
 import { categoryConfig, priorityConfig } from '../data/config';
-import { PlayerAvatar } from '../components';
+import { sanitizeHtml } from '../utils/sanitize';
+import { PlayerAvatar, Modal, Badge } from '../components';
 import type { Action, ActionStatus, ActionCategory, ActionPriority, Player, StaffMember } from '../data/types';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -206,12 +207,10 @@ export default function ActionsPage() {
               {action.title}
             </p>
             {action.description && (
-              <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }} dangerouslySetInnerHTML={{ __html: action.description }} />
+              <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(action.description) }} />
             )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ color: catCfg.color, fontSize: '0.7rem', backgroundColor: catCfg.color + '18', padding: '2px 6px', borderRadius: 3, fontWeight: 600 }}>
-                {catCfg.label}
-              </span>
+              <Badge color={catCfg.color} bg={catCfg.color + '18'} label={catCfg.label} size="sm" style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: 3, fontWeight: 600 }} />
               <span style={{ color: priCfg.color, fontSize: '0.7rem', fontWeight: 600 }}>
                 {priCfg.label}
               </span>
@@ -311,7 +310,7 @@ export default function ActionsPage() {
           <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#F59E0B', fontWeight: 700, fontSize: '0.88rem' }}>Cette semaine</span>
-              <span style={{ backgroundColor: '#F59E0B22', color: '#F59E0B', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{thisWeek.length}</span>
+              <Badge color="#F59E0B" label={thisWeek.length} style={{ borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem' }} />
             </div>
             {thisWeek.length === 0
               ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune tâche cette semaine.</p>
@@ -322,7 +321,7 @@ export default function ActionsPage() {
           <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#3B82F6', fontWeight: 700, fontSize: '0.88rem' }}>Plus tard</span>
-              <span style={{ backgroundColor: '#3B82F622', color: '#3B82F6', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{later.length}</span>
+              <Badge color="#3B82F6" label={later.length} style={{ borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem' }} />
             </div>
             {later.length === 0
               ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune tâche à venir.</p>
@@ -333,7 +332,7 @@ export default function ActionsPage() {
           <div style={{ backgroundColor: '#0F1117', border: '1px solid #1E2229', borderRadius: 10, padding: '14px 14px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <span style={{ color: '#475569', fontWeight: 700, fontSize: '0.88rem' }}>Historique</span>
-              <span style={{ backgroundColor: '#47556922', color: '#475569', borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700 }}>{done.length}</span>
+              <Badge color="#475569" label={done.length} style={{ borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem' }} />
             </div>
             {done.length === 0
               ? <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune tâche terminée.</p>
@@ -344,33 +343,30 @@ export default function ActionsPage() {
       )}
 
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24 }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cette tâche ?</h2>
-            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-              <strong style={{ color: '#F1F5F9' }}>{confirmDelete.title}</strong>
-            </p>
-            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cette tâche sera définitivement supprimée.</p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
-                Annuler
-              </button>
-              <button onClick={handleDelete} disabled={deleting} className="btn-danger" style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
-                {deleting ? 'Suppression…' : 'Supprimer'}
-              </button>
-            </div>
+        <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
+          <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cette tâche ?</h2>
+          <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
+            <strong style={{ color: '#F1F5F9' }}>{confirmDelete.title}</strong>
+          </p>
+          <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cette tâche sera définitivement supprimée.</p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
+              Annuler
+            </button>
+            <button onClick={handleDelete} disabled={deleting} className="btn-danger" style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+              {deleting ? 'Suppression…' : 'Supprimer'}
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <Modal maxWidth={500} scrollOverlay={false} onClose={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }}>
           <style>{`
             @media (max-width: 539px) {
               .act-form-2col { grid-template-columns: 1fr !important; }
             }
           `}</style>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="px-4 sm:px-7" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 20, paddingBottom: 16, borderBottom: '1px solid #2A2F3A' }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Nouvelle tâche</h2>
               <button onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
@@ -436,8 +432,7 @@ export default function ActionsPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

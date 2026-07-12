@@ -35,6 +35,53 @@ function toEntry(row: Record<string, unknown>, session: TrainingSession): RPEEnt
 }
 
 export const rpeApi = {
+  // Séances d'une équipe/saison (colonnes minimales), optionnellement bornées par date — pour les agrégations RPEPage
+  async listTeamSessionsInRange(teamId: string, seasonId: string, from?: string, to?: string): Promise<Array<{ id: string; date: string; sessionType: SessionType; plannedDuration: number }>> {
+    let q = supabase
+      .from('training_sessions')
+      .select('id, date, session_type, planned_duration')
+      .eq('team_id', teamId)
+      .eq('season_id', seasonId)
+      .order('date', { ascending: true });
+    if (from) q = q.gte('date', from);
+    if (to)   q = q.lte('date', to);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []).map(r => ({
+      id: r.id as string, date: r.date as string,
+      sessionType: r.session_type as SessionType, plannedDuration: r.planned_duration as number,
+    }));
+  },
+
+  // RPE détaillées (rpe, durée réelle, joueuse, séance) pour un lot de séances — agrégations client (moyennes, charge…)
+  async listRpeDetailsBySessionIds(sessionIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; playerId: string; sessionId: string }>> {
+    if (!sessionIds.length) return [];
+    const { data, error } = await supabase
+      .from('rpe_entries')
+      .select('rpe, actual_duration, player_id, session_id')
+      .in('session_id', sessionIds);
+    if (error) throw error;
+    return (data ?? []).map(r => ({
+      rpe: r.rpe as number, actualDuration: (r.actual_duration as number | null) ?? undefined,
+      playerId: r.player_id as string, sessionId: r.session_id as string,
+    }));
+  },
+
+  // Historique RPE complet (avec date/durée planifiée de la séance jointe) pour un lot de joueuses — ACWR/TSB
+  async listRpeWithSessionByPlayerIds(playerIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; playerId: string; date: string; plannedDuration: number }>> {
+    if (!playerIds.length) return [];
+    const { data, error } = await supabase
+      .from('rpe_entries')
+      .select('rpe, actual_duration, player_id, training_sessions!inner(date, planned_duration)')
+      .in('player_id', playerIds);
+    if (error) throw error;
+    return (data as unknown as Array<{ rpe: number; actual_duration: number | null; player_id: string; training_sessions: { date: string; planned_duration: number } }>)
+      .map(r => ({
+        rpe: r.rpe, actualDuration: r.actual_duration ?? undefined, playerId: r.player_id,
+        date: r.training_sessions.date, plannedDuration: r.training_sessions.planned_duration,
+      }));
+  },
+
   // Toutes les entrées RPE d'une saison et/ou d'une joueuse, enrichies depuis la séance jointe
   async list(filters: ListRpeFilters = {}): Promise<RPEEntry[]> {
     let query = supabase
@@ -66,6 +113,14 @@ export const rpeApi = {
       .maybeSingle();
     if (error) throw error;
     return data ? toSession(data as Record<string, unknown>) : null;
+  },
+
+  // RPE brutes (session_id, rpe) pour un lot de séances — utilisé pour des moyennes côté client
+  async listRpeBySessionIds(sessionIds: string[]): Promise<Array<{ sessionId: string; rpe: number }>> {
+    if (!sessionIds.length) return [];
+    const { data, error } = await supabase.from('rpe_entries').select('session_id, rpe').in('session_id', sessionIds);
+    if (error) throw error;
+    return (data ?? []).map(r => ({ sessionId: r.session_id as string, rpe: r.rpe as number }));
   },
 
   // Load existing RPE values for a session as { playerId → rpe }

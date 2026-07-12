@@ -3,10 +3,15 @@ import { Card } from './Card';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export const isoToday  = () => new Date().toISOString().split('T')[0];
-export const isoOffset = (days: number) => new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+const isoOffset = (days: number) => new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+const isoOffsetFrom = (dateStr: string, days: number) => {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() - days);
+  return d.toLocaleDateString('sv');
+};
 
 export type DatePreset = 7 | 21 | 45 | 90 | 'phase1' | 'phase2' | 'saison';
-export const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
   { value: 7,        label: '7j'      },
   { value: 21,       label: '21j'     },
   { value: 45,       label: '45j'     },
@@ -16,13 +21,18 @@ export const DATE_PRESETS: { value: DatePreset; label: string }[] = [
   { value: 'saison', label: 'Saison'  },
 ];
 
-function computeRange(p: DatePreset, seasonStart?: string): [string, string] {
-  const start = seasonStart ?? isoOffset(365);
+// Toutes les bornes "haute" sont relatives à refEnd (fin de saison si celle-ci est déjà passée,
+// sinon aujourd'hui) — sans ça, sélectionner une saison passée puis "7j"/"Saison" calculait un
+// intervalle ancré sur la vraie date du jour, hors de toute donnée de la saison consultée.
+function computeRange(p: DatePreset, seasonStart?: string, seasonEnd?: string): [string, string] {
+  const start  = seasonStart ?? isoOffset(365);
   const startYear = new Date(start + 'T12:00:00').getFullYear();
-  if (p === 'saison') return [start, isoToday()];
+  const today  = isoToday();
+  const refEnd = seasonEnd && seasonEnd < today ? seasonEnd : today;
+  if (p === 'saison') return [start, refEnd];
   if (p === 'phase1') return [start, `${startYear}-12-31`];               // Phase 1 : août à décembre
   if (p === 'phase2') return [`${startYear + 1}-01-01`, `${startYear + 1}-06-30`]; // Phase 2 : janvier à juin
-  return [isoOffset(p), isoToday()];
+  return [isoOffsetFrom(refEnd, p), refEnd];
 }
 
 // Phase de saison en cours, utilisée comme preset par défaut si aucun n'est précisé
@@ -33,7 +43,7 @@ function currentPhase(seasonStart?: string): 'phase1' | 'phase2' {
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
-export function useDateRange(seasonStart?: string, defaultPreset?: DatePreset) {
+export function useDateRange(seasonStart?: string, defaultPreset?: DatePreset, seasonEnd?: string) {
   const [from,   setFrom]   = useState('');
   const [to,     setTo]     = useState(isoToday());
   const [preset, setPreset] = useState<DatePreset | null>(defaultPreset ?? 'phase1');
@@ -41,15 +51,15 @@ export function useDateRange(seasonStart?: string, defaultPreset?: DatePreset) {
   useEffect(() => {
     if (!seasonStart) return;
     const dp = defaultPreset ?? currentPhase(seasonStart);
-    const [f, t] = computeRange(dp, seasonStart);
+    const [f, t] = computeRange(dp, seasonStart, seasonEnd);
     setFrom(f);
     setTo(t);
     setPreset(dp);
-  }, [seasonStart]);
+  }, [seasonStart, seasonEnd]);
 
-  const applyPreset = (p: DatePreset, seasonStartDate?: string) => {
+  const applyPreset = (p: DatePreset, seasonStartDate?: string, seasonEndDate?: string) => {
     setPreset(p);
-    const [f, t] = computeRange(p, seasonStartDate ?? seasonStart);
+    const [f, t] = computeRange(p, seasonStartDate ?? seasonStart, seasonEndDate ?? seasonEnd);
     setFrom(f);
     setTo(t);
   };

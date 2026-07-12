@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { ListChecks } from 'lucide-react';
 import type { TeamSessionRow, SessionType } from '../data/types';
 import { rpeColor } from '../utils/rpe';
+import { mondayIso as getWeekMonday, getWeekTier } from '../utils/weeklyLoad';
+import { fmtDateWithDay } from '../utils/dateFormat';
 import { CardTitle } from './Card';
+import { Badge } from './Badge';
 
 const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
@@ -11,72 +14,50 @@ const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }
   rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
 };
 
-const DAY_ABBR = ['Di', 'Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa'];
-function fmtDateWithDay(iso: string): string {
-  const d = new Date(iso + 'T12:00:00');
-  const [, mm, dd] = iso.split('-');
-  return `${DAY_ABBR[d.getDay()]} ${Number(dd)}/${Number(mm)}`;
-}
-function getWeekMonday(isoDate: string): string {
-  const d = new Date(isoDate + 'T12:00:00');
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d.toLocaleDateString('sv');
-}
-
 interface TeamSessionHistoryTableProps {
   rows:              TeamSessionRow[];
+  sessionLoadLight:  number;
   sessionLoadNormal: number;
-  /** Seuil hebdomadaire (charge normale max) — utilisé pour classer les lignes en vue "Semaine" */
-  normalMax?:        number;
-  title?:            string;
+  /** Seuils hebdomadaires — utilisés pour classer les lignes en vue "Semaine" (défaut : mêmes seuils que par séance) */
+  lightMax?:  number;
+  normalMax?: number;
+  title?:     string;
 }
 
 export function TeamSessionHistoryTable({
-  rows, sessionLoadNormal, normalMax = sessionLoadNormal, title = 'Historique séances',
+  rows, sessionLoadLight, sessionLoadNormal, lightMax = sessionLoadLight, normalMax = sessionLoadNormal, title = 'Historique séances',
 }: TeamSessionHistoryTableProps) {
   const [view, setView] = useState<'session' | 'week'>('session');
 
-  const uaT1 = Math.round(sessionLoadNormal / 3);
-  const uaT2 = Math.round(sessionLoadNormal * 2 / 3);
-  const uaCfg = (ua: number) => ua >= sessionLoadNormal
-    ? { color: '#EF4444', label: 'Surcharge' }
-    : ua >= uaT2 ? { color: '#F97316', label: 'Élevée'   }
-    : ua >= uaT1 ? { color: '#EAB308', label: 'Soutenu'  }
-    : { color: '#00E5A0', label: 'Normal' };
-
-  const weekT1 = Math.round(normalMax / 3);
-  const weekT2 = Math.round(normalMax * 2 / 3);
-  const weekCfg = (ua: number) => ua >= normalMax
-    ? { color: '#EF4444', label: 'Surcharge' }
-    : ua >= weekT2 ? { color: '#F97316', label: 'Élevée'   }
-    : ua >= weekT1 ? { color: '#EAB308', label: 'Soutenu'  }
-    : { color: '#00E5A0', label: 'Normal' };
+  const uaCfg   = (ua: number) => getWeekTier(ua, sessionLoadLight, sessionLoadNormal);
+  const weekCfg = (ua: number) => getWeekTier(ua, lightMax, normalMax);
 
   const weekMap = new Map<string, {
     rpes: number[]; totalLoad: number; totalDur: number;
-    totalPlayers: number; dates: string[]; count: number;
+    players: Set<string>; totalPlayers: number; dates: string[]; count: number;
   }>();
   rows.forEach(s => {
     const k = getWeekMonday(s.date);
-    if (!weekMap.has(k)) weekMap.set(k, { rpes: [], totalLoad: 0, totalDur: 0, totalPlayers: 0, dates: [], count: 0 });
+    if (!weekMap.has(k)) weekMap.set(k, { rpes: [], totalLoad: 0, totalDur: 0, players: new Set(), totalPlayers: 0, dates: [], count: 0 });
     const w = weekMap.get(k)!;
     if (s.avg > 0) w.rpes.push(s.avg);
     w.totalLoad    += s.totalLoad;
     w.totalDur     += s.duration;
     w.totalPlayers += s.nbPlayers;
+    s.playerIds.forEach(id => w.players.add(id));
     w.count++;
     w.dates.push(s.date);
   });
   const weekRows = [...weekMap.entries()]
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([, { rpes, totalLoad, totalDur, totalPlayers, dates, count }]) => {
+    .map(([, { rpes, totalLoad, totalDur, players, totalPlayers, dates, count }]) => {
       const sorted     = [...dates].sort();
       const avgPlayers = Math.round(totalPlayers / count);
       return {
         dateFrom: sorted[0], dateTo: sorted[sorted.length - 1],
         avgRpe:   rpes.length ? Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 : 0,
-        avgUa:    avgPlayers > 0 ? Math.round(totalLoad / (totalPlayers / count)) : 0,
+        // Charge/joueuse ramenée à l'effectif DISTINCT de la semaine (pas la moyenne d'effectif par séance)
+        avgUa:    players.size > 0 ? Math.round(totalLoad / players.size) : 0,
         totalDur, avgPlayers,
       };
     });
@@ -130,12 +111,12 @@ export function TeamSessionHistoryTable({
                     onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                     onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
                     <td style={{ padding: '8px 14px', color: '#94A3B8', fontSize: '0.78rem', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDateWithDay(s.date)}</td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ backgroundColor: typeCfg.bg, color: typeCfg.color, fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{typeCfg.label}</span></td>
+                    <td style={{ padding: '8px 14px' }}><Badge color={typeCfg.color} bg={typeCfg.bg} label={typeCfg.label} size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.nbPlayers}</td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.duration} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
                     <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{s.avg}</span></td>
                     <td style={{ padding: '8px 14px', color: cfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{avgUaS.toLocaleString('fr')}</td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ backgroundColor: cfg.color + '20', color: cfg.color, fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{cfg.label}</span></td>
+                    <td style={{ padding: '8px 14px' }}><Badge color={cfg.color} bg={cfg.color + '20'} label={cfg.label} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                   </tr>
                 );
               })}
@@ -157,12 +138,12 @@ export function TeamSessionHistoryTable({
                     onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                     onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
                     <td style={{ padding: '8px 14px', color: '#94A3B8', fontSize: '0.78rem', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace' }}>{dateLabel}</td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ backgroundColor: '#3B82F622', color: '#3B82F6', fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>Semaine</span></td>
+                    <td style={{ padding: '8px 14px' }}><Badge color="#3B82F6" label="Semaine" size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgPlayers}</td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.totalDur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
                     <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{w.avgRpe}</span></td>
                     <td style={{ padding: '8px 14px', color: cfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgUa.toLocaleString('fr')}</td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ backgroundColor: cfg.color + '20', color: cfg.color, fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{cfg.label}</span></td>
+                    <td style={{ padding: '8px 14px' }}><Badge color={cfg.color} bg={cfg.color + '20'} label={cfg.label} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                   </tr>
                 );
               })}

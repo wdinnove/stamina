@@ -2,18 +2,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Edit, Trash2, Save, X, Check, AlertCircle, Calendar, Clock } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
-import { supabase } from '../api/client';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
+import { fmtDateFull } from '../utils/dateFormat';
+import { sanitizeHtml } from '../utils/sanitize';
+import { Modal } from '../components';
 import type { StaffMeeting } from '../data/types';
-
-const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-const DAYS_FULL = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-
-function fmtDateFull(dateStr: string) {
-  const d = new Date(dateStr + 'T12:00:00');
-  return `${DAYS_FULL[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
-}
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -45,22 +39,13 @@ export default function MeetingDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    supabase.from('staff_meetings').select('*').eq('id', id).maybeSingle()
-      .then(({ data, error }) => {
-        if (error || !data) { setFetchErr(error?.message ?? 'Réunion introuvable.'); setLoading(false); return; }
-        const m: StaffMeeting = {
-          id:        data.id,
-          teamId:    data.team_id,
-          title:     data.title,
-          date:      data.date,
-          time:      data.time,
-          notes:     data.notes ?? undefined,
-          createdAt: data.created_at,
-        };
+    meetingsApi.getById(id)
+      .then(m => {
+        if (!m) { setFetchErr('Réunion introuvable.'); setLoading(false); return; }
         setMeeting(m);
         setNotesDraft(m.notes ?? '');
         setLoading(false);
-      });
+      }, (err: { message?: string }) => { setFetchErr(err?.message ?? 'Réunion introuvable.'); setLoading(false); });
   }, [id]);
 
   if (loading) return (
@@ -238,7 +223,7 @@ export default function MeetingDetailPage() {
           <div
             className="rich-display"
             style={{ padding: '16px 20px', color: '#94A3B8', fontSize: '0.85rem', lineHeight: 1.65 }}
-            dangerouslySetInnerHTML={{ __html: meeting.notes }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(meeting.notes) }}
           />
         ) : (
           <div style={{ padding: '32px 20px', textAlign: 'center' }}>
@@ -251,18 +236,16 @@ export default function MeetingDetailPage() {
 
       {/* Confirm delete modal */}
       {confirmDel && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '24px', width: '100%', maxWidth: 380 }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la réunion ?</h2>
-            <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>"{meeting.title}" sera définitivement supprimée.</p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmDel(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-              <button onClick={confirmDelete} disabled={deleting} className="btn-danger" style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                {deleting ? 'Suppression…' : 'Supprimer'}
-              </button>
-            </div>
+        <Modal onClose={() => setConfirmDel(false)} maxWidth={380} overlayOpacity={0.7} style={{ padding: '24px' }}>
+          <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la réunion ?</h2>
+          <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>"{meeting.title}" sera définitivement supprimée.</p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setConfirmDel(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+            <button onClick={confirmDelete} disabled={deleting} className="btn-danger" style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+              {deleting ? 'Suppression…' : 'Supprimer'}
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

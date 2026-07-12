@@ -65,7 +65,7 @@ export default function AnalyseCollectivePage() {
   const [s4, setS4] = useState<Sort>({ col: 'date', dir: 'desc' }); // PM Brutes
   const [s5, setS5] = useState<Sort>({ col: 'date', dir: 'desc' }); // PM Avancées
 
-  const dateRange = useDateRange(selected?.season.startDate, 'saison');
+  const dateRange = useDateRange(selected?.season.startDate, 'saison', selected?.season.endDate);
 
   useEffect(() => {
     if (!selected) return;
@@ -139,7 +139,7 @@ export default function AnalyseCollectivePage() {
       const n   = ss.length;
       const adv = ss.map(m => calcPlayerAdvanced(m, teamStatsMap.get(m.matchId ?? '') ?? null));
       const avgA = (key: string) => {
-        const vals = adv.map(a => (a as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
+        const vals = adv.map(a => (a as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
         return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
       };
       return {
@@ -309,7 +309,7 @@ export default function AnalyseCollectivePage() {
 
       <DateRangeCard
         from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-        onPreset={p => dateRange.applyPreset(p, selected?.season.startDate)}
+        onPreset={p => dateRange.applyPreset(p, selected?.season.startDate, selected?.season.endDate)}
         onFrom={dateRange.setFrom} onTo={dateRange.setTo}
       />
 

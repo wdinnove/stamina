@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
 import { Send, CheckCircle, AlertCircle, Clock, Smile, Meh, Frown } from 'lucide-react';
-import { supabase } from '../api/client';
+import { wellnessApi } from '../api/wellness';
 import { StaminaLogo } from '../components/StaminaLogo';
 import {
   WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor,
   wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues,
 } from '../utils/wellness';
+import { fmtDate } from '../utils/dateFormat';
 import type { WellnessEntryMethod } from '../data/types';
 
 const DIMS = WELLNESS_DIMENSIONS;
@@ -49,17 +50,15 @@ export default function PlayerWellnessPublicPage() {
 
   useEffect(() => {
     if (!playerId) { setNotFound(true); setLoading(false); return; }
-    supabase.rpc('get_player_public_info', { p_player_id: playerId })
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error || !data) { setNotFound(true); }
+    wellnessApi.getPublicPlayerInfo(playerId)
+      .then(info => {
+        if (!info) { setNotFound(true); }
         else {
-          const info = data as { first_name: string; last_name: string; public_wellness_method: WellnessEntryMethod | null };
-          setPlayerName(`${info.first_name} ${info.last_name}`);
-          setEntryMode(info.public_wellness_method ?? 'detailed');
+          setPlayerName(`${info.firstName} ${info.lastName}`);
+          setEntryMode(info.publicWellnessMethod ?? 'detailed');
         }
         setLoading(false);
-      });
+      }, () => { setNotFound(true); setLoading(false); });
   }, [playerId]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,16 +66,16 @@ export default function PlayerWellnessPublicPage() {
     if (!playerId) return;
     setStatus('submitting');
 
-    const { error } = await supabase.rpc('submit_wellness_public', {
-      p_player_id:  playerId,
-      p_date:       date,
-      p_fatigue:    values.fatigue,
-      p_mood:       values.mood,
-      p_stress:     values.stress,
-      p_motivation: values.motivation,
-      p_sleep:      values.sleep,
-      p_soreness:   values.soreness,
-      p_notes:      notes.trim() || null,
+    const { error } = await wellnessApi.submitPublic({
+      playerId,
+      date,
+      fatigue:    values.fatigue,
+      mood:       values.mood,
+      stress:     values.stress,
+      motivation: values.motivation,
+      sleep:      values.sleep,
+      soreness:   values.soreness,
+      notes:      notes.trim() || null,
     });
 
     if (!error) {
@@ -137,7 +136,7 @@ export default function PlayerWellnessPublicPage() {
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <CheckCircle size={48} style={{ color: '#00E5A0', marginBottom: 16 }} />
             <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1.05rem', margin: '0 0 8px' }}>Formulaire envoyé !</p>
-            <p style={{ color: '#475569', fontSize: '0.85rem', margin: '0 0 24px' }}>Ton bien-être du {formatDate(date)} a bien été enregistré.</p>
+            <p style={{ color: '#475569', fontSize: '0.85rem', margin: '0 0 24px' }}>Ton bien-être du {fmtDate(date)} a bien été enregistré.</p>
             <button onClick={resetForm} style={btnStyle('#1E2229', '#94A3B8')}>
               Remplir un autre jour
             </button>
@@ -322,8 +321,3 @@ function btnStyle(bg: string, color: string, disabled = false): React.CSSPropert
   };
 }
 
-const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
-function formatDate(iso: string): string {
-  const [, m, d] = iso.split('-').map(Number);
-  return `${d} ${MONTHS[m - 1]}`;
-}

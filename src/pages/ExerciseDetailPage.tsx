@@ -4,8 +4,9 @@ import { ArrowLeft, Pencil, Trash2, AlertCircle, Bold, Italic, List, ListOrdered
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
+import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
-import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem } from '../components';
+import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem, Modal, Badge } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
@@ -61,7 +62,7 @@ function RichContent({ html, emptyLabel = 'Aucun déroulement.' }: { html?: stri
   if (!html || html === '<p></p>') return <span style={{ color: '#475569', fontSize: '0.85rem' }}>{emptyLabel}</span>;
   return (
     <>
-      <div className="ex-detail-desc" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="ex-detail-desc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
       <style>{`
         .ex-detail-desc { color:#94A3B8; font-size:0.88rem; line-height:1.6; }
         .ex-detail-desc p { margin:0 0 8px; }
@@ -286,9 +287,7 @@ export default function ExerciseDetailPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
           <h1 style={{ color: '#F1F5F9', margin: 0 }}>{exercise.name}</h1>
           {exercise.categoryName && (
-            <span style={{ color: exercise.categoryColor, backgroundColor: exercise.categoryColor + '18', fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: 4, flexShrink: 0 }}>
-              {exercise.categoryName}
-            </span>
+            <Badge color={exercise.categoryColor} bg={exercise.categoryColor + '18'} label={exercise.categoryName} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', flexShrink: 0 }} />
           )}
         </div>
 
@@ -334,9 +333,7 @@ export default function ExerciseDetailPage() {
 
       {/* Modal édition */}
       {showEdit && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 640, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <Modal maxWidth={640} scrollOverlay={false} style={{ padding: '24px' }} onClose={() => setShowEdit(false)} closeOnBackdropClick>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>Modifier l'exercice</h2>
               <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
@@ -437,34 +434,31 @@ export default function ExerciseDetailPage() {
                 .exercise-form-row { flex-direction: column; }
               }
             `}</style>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Confirmation suppression */}
       {showDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 380, padding: '24px' }}>
-            <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer cet exercice ?</h3>
-            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-              <strong style={{ color: '#F1F5F9' }}>{exercise.name}</strong> sera supprimé.
-            </p>
-            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 16px' }}>
-              Les blocs de séances liés conserveront leur libellé mais perdront le lien.
-            </p>
-            {delError && <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: 12 }}>{delError}</div>}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowDelete(false)}
-                style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                Annuler
-              </button>
-              <button onClick={handleDelete} disabled={deleting} className="btn-danger"
-                style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                {deleting ? 'Suppression…' : 'Supprimer'}
-              </button>
-            </div>
+        <Modal maxWidth={380} zIndex={110} overlayOpacity={0.8} scrollOverlay={false} style={{ padding: '24px' }} onClose={() => setShowDelete(false)}>
+          <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer cet exercice ?</h3>
+          <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
+            <strong style={{ color: '#F1F5F9' }}>{exercise.name}</strong> sera supprimé.
+          </p>
+          <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 16px' }}>
+            Les blocs de séances liés conserveront leur libellé mais perdront le lien.
+          </p>
+          {delError && <div style={{ color: '#EF4444', fontSize: '0.78rem', marginBottom: 12 }}>{delError}</div>}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowDelete(false)}
+              style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+              Annuler
+            </button>
+            <button onClick={handleDelete} disabled={deleting} className="btn-danger"
+              style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+              {deleting ? 'Suppression…' : 'Supprimer'}
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

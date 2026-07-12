@@ -4,9 +4,9 @@ import {
   Plus, Search, BarChart2, X, AlertCircle, Edit, Users,
 } from 'lucide-react';
 import { playersApi, rpeApi, wellnessApi, statsApi } from '../api';
-import { StatusBadge, PlayerAvatar, PlayerHero, Card, CardTitle, EmptyState, PlayerDynStatTab, DateRangeCard, useDateRange } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerHero, Card, CardTitle, EmptyState, PlayerDynStatTab, DateRangeCard, useDateRange, Modal } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { evalColor } from '../data';
+import { evalColor, ortgColor, shotPct } from '../data';
 import type { Player, RPEEntry, WellnessEntry, MatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 
@@ -35,7 +35,7 @@ const inputStyle: React.CSSProperties = {
 // ─── Profil joueur ────────────────────────────────────────────────────────────
 export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { playerId: string; hideBackButton?: boolean; playerSelect?: React.ReactNode }) {
   const navigate  = useNavigate();
-  const { selected } = useTeamSeason();
+  const { selected, statThresholds } = useTeamSeason();
 
   const [player,   setPlayer]   = useState<Player | null>(null);
   const [rpe,      setRpe]      = useState<RPEEntry[]>([]);
@@ -51,7 +51,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
   const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [seasonSort, setSeasonSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'season', dir: 'desc' });
 
-  const perfRange = useDateRange(selected?.season.startDate, 'saison');
+  const perfRange = useDateRange(selected?.season.startDate, 'saison', selected?.season.endDate);
 
   const [showEdit,      setShowEdit]      = useState(false);
   const [editSaving,    setEditSaving]    = useState(false);
@@ -229,7 +229,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
 
       {/* ── Dynamique (comparatif période vs saison) ── */}
       {playerTab === 'dynstat' && (
-        <PlayerDynStatTab rpe={rpe} wellness={wellness} matchStats={matchStats} seasonStart={selected?.season.startDate} teamStatsMap={teamStatsMap} />
+        <PlayerDynStatTab rpe={rpe} wellness={wellness} matchStats={matchStats} seasonStart={selected?.season.startDate} seasonEnd={selected?.season.endDate} teamStatsMap={teamStatsMap} />
       )}
 
 
@@ -238,7 +238,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
 
       <DateRangeCard
         from={perfRange.from} to={perfRange.to} preset={perfRange.preset}
-        onPreset={p => perfRange.applyPreset(p, selected?.season.startDate)}
+        onPreset={p => perfRange.applyPreset(p, selected?.season.startDate, selected?.season.endDate)}
         onFrom={perfRange.setFrom} onTo={perfRange.setTo}
       />
 
@@ -367,9 +367,9 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
                   </thead>
                   <tbody>
                     {sorted.map(({ seasonId, seasonLabel, teamName, n, fg2m, fg2a, fg3m, fg3a, ftm, fta, starters, evalAvg, pmAvg, avgMin, avgPts, avgRo, avgRd, avgPd, avgCt, avgInt, avgBp }, i) => {
-                      const fg2Pct = fg2a > 0 ? Math.round((fg2m / fg2a) * 100) : null;
-                      const fg3Pct = fg3a > 0 ? Math.round((fg3m / fg3a) * 100) : null;
-                      const ftPct  = fta  > 0 ? Math.round((ftm  / fta)  * 100) : null;
+                      const fg2Pct = shotPct(fg2m, fg2a);
+                      const fg3Pct = shotPct(fg3m, fg3a);
+                      const ftPct  = shotPct(ftm, fta);
                       return (
                         <tr key={seasonId} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                           <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{seasonLabel}</td>
@@ -430,9 +430,8 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
           const sum = (key: keyof MatchStat) => rows.reduce((acc, m) => acc + (((m[key] as number) || 0)), 0);
           const n = rows.length;
           const avg = (key: keyof MatchStat) => n > 0 ? Math.round(sum(key) / n * 10) / 10 : 0;
-          const evalCol = evalColor;
-          const ortgColor = (v: number | null) =>
-            v === null ? '#475569' : v > 90 ? '#00E5A0' : v >= 60 ? '#F59E0B' : '#EF4444';
+          const evalCol = (v: number | null) => evalColor(v, statThresholds);
+          const ortgCol = (v: number | null) => v === null ? '#475569' : ortgColor(v, statThresholds);
           const sortedBasic = [...rows].sort((a, b) => {
             const mult = basicSort.dir === 'asc' ? 1 : -1;
             switch (basicSort.col) {
@@ -483,16 +482,16 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
             }
           });
           const avgAdvField = (key: string) => {
-            const vals = advRows.map(m => (m.adv as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
+            const vals = advRows.map(m => (m.adv as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
             return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
           };
           const avgAdvPts = n > 0 ? Math.round(rows.reduce((a, m) => a + m.pts, 0) / n * 10) / 10 : null;
           const totalFg2m = sum('fg2m'), totalFg2a = sum('fg2a');
           const totalFg3m = sum('fg3m'), totalFg3a = sum('fg3a');
           const totalFtm  = sum('ftm'),  totalFta  = sum('fta');
-          const fg2Pct = totalFg2a > 0 ? Math.round((totalFg2m / totalFg2a) * 100) : null;
-          const fg3Pct = totalFg3a > 0 ? Math.round((totalFg3m / totalFg3a) * 100) : null;
-          const ftPct  = totalFta  > 0 ? Math.round((totalFtm  / totalFta)  * 100) : null;
+          const fg2Pct = shotPct(totalFg2m, totalFg2a);
+          const fg3Pct = shotPct(totalFg3m, totalFg3a);
+          const ftPct  = shotPct(totalFtm, totalFta);
           const withEval = rows.filter(m => m.eval !== null);
           const avgEval = withEval.length > 0
             ? Math.round(withEval.reduce((a, m) => a + (m.eval ?? 0), 0) / withEval.length * 10) / 10
@@ -537,9 +536,9 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
                 <tbody>
                   {sortedBasic.map((m, i) => {
                     const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
-                    const fg2p = m.fg2a > 0 ? Math.round((m.fg2m / m.fg2a) * 100) : null;
-                    const fg3p = m.fg3a > 0 ? Math.round((m.fg3m / m.fg3a) * 100) : null;
-                    const ftp  = m.fta  > 0 ? Math.round((m.ftm  / m.fta)  * 100) : null;
+                    const fg2p = shotPct(m.fg2m, m.fg2a);
+                    const fg3p = shotPct(m.fg3m, m.fg3a);
+                    const ftp  = shotPct(m.ftm, m.fta);
                     const pmCol = (m.plusMinus ?? 0) > 0 ? '#00E5A0' : (m.plusMinus ?? 0) < 0 ? '#EF4444' : '#475569';
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
@@ -636,7 +635,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
                         <td style={TD}>{fmt(m.adv.usagePct, '%')}</td>
-                        <td style={{ ...TD, color: ortgColor(m.adv.offRating) }}>{fmt(m.adv.offRating)}</td>
+                        <td style={{ ...TD, color: ortgCol(m.adv.offRating) }}>{fmt(m.adv.offRating)}</td>
                         <td style={TD}>{fmt(m.adv.efgPct, '%')}</td>
                         <td style={TD}>{fmt(m.adv.ftRate)}</td>
                         <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(m.adv.ptsProd)}</td>
@@ -656,7 +655,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 700 }}>{avgAdvPts}</td>
                     <td style={TD}>{fmt(avgAdvField('usagePct'), '%')}</td>
-                    {(() => { const v = avgAdvField('offRating'); return <td style={{ ...TD, color: ortgColor(v) }}>{fmt(v)}</td>; })()}
+                    {(() => { const v = avgAdvField('offRating'); return <td style={{ ...TD, color: ortgCol(v) }}>{fmt(v)}</td>; })()}
                     <td style={TD}>{fmt(avgAdvField('efgPct'), '%')}</td>
                     <td style={TD}>{fmt(avgAdvField('ftRate'))}</td>
                     <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgAdvField('ptsProd'))}</td>
@@ -679,8 +678,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
       {/* ── Modal déliaison roster ── */}
       {/* ── Modal édition joueur ── */}
       {showEdit && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        <Modal onClose={() => setShowEdit(false)} maxWidth={520} overlayOpacity={0.7} style={{ padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0 }}>Modifier {player.firstName} {player.lastName}</h2>
               <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
@@ -785,8 +783,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { play
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -935,8 +932,7 @@ export default function PlayersPage() {
       )}
 
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        <Modal onClose={closeForm} maxWidth={520} overlayOpacity={0.7} style={{ padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouveau joueur</h2>
               <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
@@ -1013,8 +1009,7 @@ export default function PlayersPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -36,7 +36,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
     const current = editor.getHTML();
     const next = value || '';
     if (next !== current && next !== (current === EMPTY ? '' : current)) {
-      editor.commands.setContent(next, false);
+      editor.commands.setContent(next, { emitUpdate: false });
     }
   }, [value, editor]);
 

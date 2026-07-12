@@ -2,22 +2,20 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowRight, Clock, Users, Activity, Trophy, Zap, Heart, Dumbbell } from 'lucide-react';
 import { BarChart, Bar, Cell, XAxis, YAxis, ResponsiveContainer, Tooltip, LineChart, Line } from 'recharts';
-import { PlayerAvatar, Card, CardTitle, ChargeRpeComboChart } from '../components';
+import { PlayerAvatar, Card, CardTitle, ChargeRpeComboChart, Badge } from '../components';
 import { categoryConfig } from '../data/config';
-import { playersApi, medicalApi, actionsApi, wellnessApi, matchesApi } from '../api';
-import { supabase } from '../api/client';
+import { playersApi, medicalApi, actionsApi, wellnessApi, matchesApi, rpeApi, attendanceApi } from '../api';
+import { profileApi } from '../api/profile';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Player, Action, MedicalRecord, Match } from '../data/types';
 import { rpeColor } from '../utils/rpe';
+import { mondayIso } from '../utils/weeklyLoad';
+import { fmtDateShort } from '../utils/dateFormat';
 
 function localDate(offsetDays = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
   return d.toLocaleDateString('sv');
-}
-function fmtShort(dateStr: string): string {
-  const [, mm, dd] = dateStr.split('-');
-  return `${dd}/${mm}`;
 }
 function fmtWeekday(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short' });
@@ -139,11 +137,7 @@ export default function DashboardPage() {
   const [loading,         setLoading]         = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase.from('profiles').select('first_name').eq('id', user.id).single()
-        .then(({ data }) => { if (data) setUserName(data.first_name ?? ''); });
-    });
+    profileApi.getCurrent().then(profile => { if (profile) setUserName(profile.firstName); });
   }, []);
 
   useEffect(() => {
@@ -177,14 +171,7 @@ export default function DashboardPage() {
       playersApi.listBySeason(selected.season.id),
       medicalApi.getActiveInjuries(),
       actionsApi.list({ teamId: selected.team.id }),
-      supabase
-        .from('training_sessions')
-        .select('id, date, planned_duration, session_type')
-        .eq('team_id', selected.team.id)
-        .eq('season_id', selected.season.id)
-        .gte('date', from30)
-        .lte('date', today)
-        .order('date', { ascending: true }),
+      rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, from30, today),
       wellnessApi.list({ from: from21, to: today }), // 3 semaines
       matchesApi.listBySeason(selected.team.id, selected.season.id),
     ])
@@ -203,7 +190,9 @@ export default function DashboardPage() {
         );
 
         // Séances
-        const sessions = (sessResult.data ?? []) as TrainingSession[];
+        const sessions: TrainingSession[] = sessResult.map(s => ({
+          id: s.id, date: s.date, planned_duration: s.plannedDuration, session_type: s.sessionType,
+        }));
 
         const sessionDurMap = new Map(sessions.map(s => [s.id, s.planned_duration]));
         const sessionDateMap = new Map(sessions.map(s => [s.id, s.date]));
@@ -215,12 +204,11 @@ export default function DashboardPage() {
         type RpeRow = { player_id: string; rpe: number; actual_duration: number | null; session_id: string };
 
         if (sessionIds21d.length > 0) {
-          const { data: rpeRows21d } = await supabase
-            .from('rpe_entries')
-            .select('player_id, rpe, actual_duration, session_id')
-            .in('session_id', sessionIds21d);
+          const rpeRows21d = await rpeApi.listRpeDetailsBySessionIds(sessionIds21d);
 
-          const rows = (rpeRows21d ?? []) as RpeRow[];
+          const rows: RpeRow[] = rpeRows21d.map(r => ({
+            player_id: r.playerId, rpe: r.rpe, actual_duration: r.actualDuration ?? null, session_id: r.sessionId,
+          }));
 
           // RPE moyen 7j (pour KPI card)
           const sessionIds7d = sessions.filter(s => s.date >= from7).map(s => s.id);
@@ -290,7 +278,7 @@ export default function DashboardPage() {
             .flatMap(s => {
               const e = sessionLoadMap.get(s.id);
               if (!e || e.nb === 0) return [];
-              return [{ date: fmtShort(s.date), rpe: Math.round(e.sumRpe / e.nb * 10) / 10, load: Math.round(e.total) }];
+              return [{ date: fmtDateShort(s.date), rpe: Math.round(e.sumRpe / e.nb * 10) / 10, load: Math.round(e.total) }];
             });
           setRpeChartData(chartPoints);
 
@@ -359,7 +347,7 @@ export default function DashboardPage() {
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, scores]) => ({
             date,
-            label: fmtShort(date),
+            label: fmtDateShort(date),
             score: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length * 10) / 10,
           }));
         setWellnessChartData(wellPoints);
@@ -371,55 +359,46 @@ export default function DashboardPage() {
         const kpiWins    = matchesList.filter(m => m.result === 'win').length;
         const kpiLosses  = matchesList.filter(m => m.result === 'loss').length;
 
-        const { data: allSessRaw } = await supabase
-          .from('training_sessions')
-          .select('id, date, planned_duration, session_type')
-          .eq('team_id', selected.team.id)
-          .eq('season_id', selected.season.id)
-          .lte('date', today);
-        type SessRow = { id: string; date: string; planned_duration: number; session_type: string };
-        const allSessRows  = (allSessRaw ?? []) as SessRow[];
+        const allSessRows  = await rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, undefined, today);
         const allSessIds   = allSessRows.map(s => s.id);
-        const trainSessIds = allSessRows.filter(s => s.session_type === 'training').map(s => s.id);
+        const trainSessIds = allSessRows.filter(s => s.sessionType === 'training').map(s => s.id);
 
-        const [{ data: seasonRpeRaw }, { data: seasonAttRaw }] = await Promise.all([
-          allSessIds.length > 0
-            ? supabase.from('rpe_entries').select('rpe, actual_duration, session_id').in('session_id', allSessIds)
-            : Promise.resolve({ data: [] }),
-          trainSessIds.length > 0
-            ? supabase.from('training_attendance').select('status').in('session_id', trainSessIds)
-            : Promise.resolve({ data: [] }),
+        const [seasonRpeRows2, seasonAttRows] = await Promise.all([
+          rpeApi.listRpeDetailsBySessionIds(allSessIds),
+          attendanceApi.listAttendance(trainSessIds),
         ]);
 
-        const durMap2   = new Map(allSessRows.map(s => [s.id, s.planned_duration]));
+        const durMap2   = new Map(allSessRows.map(s => [s.id, s.plannedDuration]));
         const dateMap2  = new Map(allSessRows.map(s => [s.id, s.date]));
-        type RpeRowSeason = { rpe: number; actual_duration: number | null; session_id: string };
-        const seasonRpeRows = (seasonRpeRaw ?? []) as RpeRowSeason[];
-        const totalSeasonLoad = seasonRpeRows.reduce((s, r) => {
-          const dur = r.actual_duration ?? durMap2.get(r.session_id) ?? 0;
-          return s + r.rpe * dur;
-        }, 0);
-        // Charge par semaine (lundi = clé)
-        const weekLoadMap = new Map<string, number>();
+        type RpeRowSeason = { rpe: number; actual_duration: number | null; player_id: string; session_id: string };
+        const seasonRpeRows: RpeRowSeason[] = seasonRpeRows2.map(r => ({
+          rpe: r.rpe, actual_duration: r.actualDuration ?? null, player_id: r.playerId, session_id: r.sessionId,
+        }));
+        // Charge par semaine (lundi = clé) ramenée à l'effectif ayant réellement loggué cette
+        // semaine-là — une simple charge totale équipe / nb de semaines (sans diviser par
+        // l'effectif) comparée à un seuil PAR JOUEUR déclenchait une fausse "Surcharge" dès
+        // que l'équipe dépassait quelques joueurs.
+        const weekLoadMap = new Map<string, { load: number; players: Set<string> }>();
         for (const r of seasonRpeRows) {
           const d = dateMap2.get(r.session_id);
           if (!d) continue;
-          const dt = new Date(d + 'T12:00:00');
-          const day = dt.getDay();
-          dt.setDate(dt.getDate() - (day === 0 ? 6 : day - 1));
-          const wk = dt.toLocaleDateString('sv');
+          const wk = mondayIso(d);
           const dur = r.actual_duration ?? durMap2.get(r.session_id) ?? 0;
-          weekLoadMap.set(wk, (weekLoadMap.get(wk) ?? 0) + r.rpe * dur);
+          if (!weekLoadMap.has(wk)) weekLoadMap.set(wk, { load: 0, players: new Set() });
+          const w = weekLoadMap.get(wk)!;
+          w.load += r.rpe * dur;
+          w.players.add(r.player_id);
         }
-        const nbWeeks = weekLoadMap.size;
-        const avgSeasonLoad = nbWeeks > 0 ? Math.round(totalSeasonLoad / nbWeeks) : null;
+        const weeklyPerPlayerLoads = [...weekLoadMap.values()].map(w => w.load / Math.max(w.players.size, 1));
+        const avgSeasonLoad = weeklyPerPlayerLoads.length
+          ? Math.round(weeklyPerPlayerLoads.reduce((a, b) => a + b, 0) / weeklyPerPlayerLoads.length)
+          : null;
         const avgSeasonRpe  = seasonRpeRows.length > 0
           ? Math.round(seasonRpeRows.reduce((s, r) => s + r.rpe, 0) / seasonRpeRows.length * 10) / 10
           : null;
 
-        const attRows = (seasonAttRaw ?? []) as { status: string }[];
-        const presentCount = attRows.filter(a => a.status === 'present' || a.status === 'late').length;
-        const kpiAttRate   = attRows.length > 0 ? Math.round(presentCount / attRows.length * 100) : null;
+        const presentCount = seasonAttRows.filter(a => a.status === 'present' || a.status === 'late').length;
+        const kpiAttRate   = seasonAttRows.length > 0 ? Math.round(presentCount / seasonAttRows.length * 100) : null;
 
         setKpiStats({
           active: kpiActive, injured: kpiInjured, limited: kpiLimited,
@@ -489,7 +468,7 @@ export default function DashboardPage() {
             label: 'Charge moy / semaine',
             value: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
               <span style={{ color: loadColor, fontFamily: 'JetBrains Mono, monospace' }}>{avgLoad !== null ? avgLoad.toLocaleString('fr') : '—'}</span>
-              {loadLabel && <span style={{ backgroundColor: loadColor + '22', color: loadColor, fontSize: '0.58rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{loadLabel}</span>}
+              {loadLabel && <Badge color={loadColor} label={loadLabel} size="sm" style={{ fontSize: '0.58rem', padding: '2px 6px' }} />}
             </span>,
             sub: <span style={{ color: '#475569' }}>UA · saison</span>,
             accent: loadColor,
@@ -602,7 +581,7 @@ export default function DashboardPage() {
                     <div style={{ width: 3, height: 32, borderRadius: 2, backgroundColor: typeColor, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: '0 0 2px', whiteSpace: 'nowrap' }}>
-                        {fmtWeekday(s.date)} {fmtShort(s.date)}
+                        {fmtWeekday(s.date)} {fmtDateShort(s.date)}
                         {s.date === today && <span style={{ color: '#00E5A0', fontSize: '0.6rem', marginLeft: 5, fontWeight: 700 }}>Auj.</span>}
                       </p>
                       <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -654,7 +633,7 @@ export default function DashboardPage() {
                       <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
                         <span style={{ color: matchColor, fontSize: '0.62rem', fontWeight: 700 }}>{win ? 'Victoire' : 'Défaite'}</span>
                         <span style={{ color: '#2A2F3A', fontSize: '0.6rem' }}>·</span>
-                        <span style={{ color: '#334155', fontSize: '0.62rem' }}>{match.homeAway === 'home' ? 'Dom.' : 'Ext.'} · {fmtShort(match.date)}</span>
+                        <span style={{ color: '#334155', fontSize: '0.62rem' }}>{match.homeAway === 'home' ? 'Dom.' : 'Ext.'} · {fmtDateShort(match.date)}</span>
                       </p>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>

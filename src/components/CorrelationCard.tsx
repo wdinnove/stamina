@@ -3,7 +3,7 @@ import { Card, CardTitle } from './Card';
 import { impactLabel, type CorrelationResult } from '../utils/correlation';
 import type { IndicatorDef, LagMode } from '../data/crossAnalysis';
 
-export const LAG_OPTIONS: { value: LagMode; label: string }[] = [
+const LAG_OPTIONS: { value: LagMode; label: string }[] = [
   { value: 'week', label: 'Moy. sem.' },
   { value: 0,      label: 'Jour J' },
   { value: 3,      label: 'J-3' },

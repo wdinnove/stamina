@@ -1,7 +1,7 @@
 import { supabase } from './client';
 import type { ExerciseCategory } from '../data/types';
 
-export const DEFAULT_EXERCISE_CATEGORIES: { name: string; color: string }[] = [
+const DEFAULT_EXERCISE_CATEGORIES: { name: string; color: string }[] = [
   { name: 'Warmup',     color: '#F59E0B' },
   { name: 'Jeu réduit', color: '#3B82F6' },
   { name: 'Jeu rapide', color: '#06B6D4' },

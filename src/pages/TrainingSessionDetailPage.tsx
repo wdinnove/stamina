@@ -8,14 +8,16 @@ import { documentsApi } from '../api/documents';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { sessionTeamsApi } from '../api/sessionTeams';
 import { exercisesApi } from '../api/exercises';
+import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { PlayerAvatar, RpeKpiCard } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, DropzoneEmptyState } from '../components';
 import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform } from '../utils/socialVideo';
-import { computeAcwr, acwrZone } from '../utils/rpe';
+import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { getWeekTier } from '../utils/weeklyLoad';
+import { fmtDateFull } from '../utils/dateFormat';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage, WellnessEntry } from '../data/types';
 
@@ -78,20 +80,6 @@ function PlayerChip({ player, status }: { player: Player; status?: TrainingAtten
   );
 }
 
-const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-const DAYS_FULL = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-
-function fmtDateFull(dateStr: string) {
-  const d = new Date(dateStr + 'T12:00:00');
-  return `${DAYS_FULL[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-function rpeColor(rpe: number): string {
-  if (rpe >= 8) return '#EF4444';
-  if (rpe >= 7) return '#F97316';
-  if (rpe >= 5) return '#EAB308';
-  return '#00E5A0';
-}
 
 // Fenêtre des 7 jours précédant (hors) la date de séance — indicateurs d'entrée en séance
 function windowBefore(sessionDate: string): { startStr: string; endStr: string } {
@@ -415,9 +403,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
             <span style={headerNeutralBadge}>{totalDuration} min</span>
             <span style={headerNeutralBadge}>{blocks.length} séquence{blocks.length > 1 ? 's' : ''}</span>
             {totalLoadTier && (
-              <span style={{ color: totalLoadTier.color, backgroundColor: totalLoadTier.color + '22', fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                {totalLoadUa} UA
-              </span>
+              <Badge color={totalLoadTier.color} label={`${totalLoadUa} UA`} style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px' }} />
             )}
           </div>
         )}
@@ -630,7 +616,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         <div style={{ color: '#475569', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Déroulement</div>
                         {block.description ? (
                           <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.76rem' }}
-                            dangerouslySetInnerHTML={{ __html: block.description }} />
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(block.description) }} />
                         ) : (
                           <span style={{ color: '#334155', fontSize: '0.76rem' }}>—</span>
                         )}
@@ -639,7 +625,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         <div style={{ color: '#475569', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Objectifs</div>
                         {block.consignes ? (
                           <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.76rem' }}
-                            dangerouslySetInnerHTML={{ __html: block.consignes }} />
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(block.consignes) }} />
                         ) : (
                           <span style={{ color: '#334155', fontSize: '0.76rem' }}>—</span>
                         )}
@@ -738,13 +724,11 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
       )}
 
       {!showForm && (
-        <div style={{ border: '1px dashed #2A2F3A', borderRadius: 8, padding: '20px 16px', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center', color: '#475569', fontSize: '0.8rem', cursor: 'pointer', transition: 'border-color 0.15s', marginTop: blocks.length > 0 ? 8 : 0 }}
+        <DropzoneEmptyState
+          label="Cliquer pour ajouter une séquence"
           onClick={() => { setShowForm(true); setBlockError(''); }}
-          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#3A4454'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#2A2F3A'; }}>
-          <Plus size={14} />
-          Cliquer pour ajouter une séquence
-        </div>
+          style={{ marginTop: blocks.length > 0 ? 8 : 0 }}
+        />
       )}
 
       {/* Modal détail exercice — même format que la fiche exercice */}
@@ -775,9 +759,8 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16, paddingRight: 28 }}>
               <h1 style={{ color: '#F1F5F9', margin: 0 }}>{viewExercise.name}</h1>
               {viewExercise.categoryName && (
-                <span style={{ color: viewExercise.categoryColor, backgroundColor: viewExercise.categoryColor + '18', fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: 4, flexShrink: 0 }}>
-                  {viewExercise.categoryName}
-                </span>
+                <Badge color={viewExercise.categoryColor} label={viewExercise.categoryName}
+                  style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', flexShrink: 0 }} />
               )}
             </div>
 
@@ -786,7 +769,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
               <div>
                 <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Déroulement</p>
                 {viewExercise.description && viewExercise.description !== '<p></p>' ? (
-                  <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: viewExercise.description }} />
+                  <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewExercise.description) }} />
                 ) : (
                   <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun déroulement.</span>
                 )}
@@ -794,7 +777,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
               <div>
                 <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Objectifs</p>
                 {viewExercise.consignes && viewExercise.consignes !== '<p></p>' ? (
-                  <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: viewExercise.consignes }} />
+                  <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewExercise.consignes) }} />
                 ) : (
                   <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun objectif.</span>
                 )}
@@ -904,16 +887,14 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
       />
 
       {docs.length === 0 && !uploading ? (
-        <div
+        <DropzoneEmptyState
+          label="Cliquer pour ajouter un document"
+          onClick={() => fileRef.current?.click()}
+          onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
-          onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-          onClick={() => fileRef.current?.click()}
-          style={{ border: `1px dashed ${dragOver ? '#00E5A0' : '#2A2F3A'}`, borderRadius: 8, padding: '20px 16px', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center', color: '#475569', fontSize: '0.8rem', cursor: 'pointer', transition: 'border-color 0.15s' }}
-        >
-          <Plus size={14} />
-          Cliquer pour ajouter un document
-        </div>
+          dragOver={dragOver}
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {docs.map(doc => (
@@ -1449,7 +1430,7 @@ export default function TrainingSessionDetailPage() {
               const thGroup: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '0.64rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #2A2F3A' };
               const thSub: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '0.64rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A' };
               const tierBadge = (tier: { label: string; color: string } | null) => tier ? (
-                <span style={{ color: tier.color, backgroundColor: tier.color + '22', fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{tier.label}</span>
+                <Badge color={tier.color} size="sm" label={tier.label} style={{ fontSize: '0.68rem' }} />
               ) : (
                 <span style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
               );
@@ -1485,7 +1466,9 @@ export default function TrainingSessionDetailPage() {
                       <tbody>
                         {relevantPlayers.map(p => {
                           const history    = historyMap[p.id] ?? [];
-                          const acwr       = computeAcwr(history, session.date);
+                          // Risque évalué à la veille de la séance (comme "Charge 7j"/"Bien-être 7j") :
+                          // reflète le risque en entrant dans la séance, pas après l'avoir effectuée.
+                          const acwr       = computeAcwr(history, windowBefore(session.date).endStr);
                           const acwrTier   = acwrZone(acwr);
                           const weekLoad   = acuteLoadBefore(history, session.date);
                           const weekTier   = weekLoad > 0 ? getWeekTier(weekLoad, thresholds.lightMax, thresholds.normalMax) : null;
@@ -1629,13 +1612,11 @@ export default function TrainingSessionDetailPage() {
           })}
 
           {blockDrafts.length === 0 && (
-            <button type="button" onClick={addBlock}
-              style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '20px 16px', minHeight: 60, boxSizing: 'border-box', background: 'none', textAlign: 'center', color: '#475569', fontSize: '0.8rem', cursor: 'pointer', transition: 'border-color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#3A4454'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#2A2F3A'; }}>
-              <Plus size={14} />
-              Cliquer pour ajouter
-            </button>
+            <DropzoneEmptyState
+              label="Cliquer pour ajouter"
+              onClick={addBlock}
+              style={{ width: '100%', background: 'none' }}
+            />
           )}
         </div>
         </>
@@ -1683,118 +1664,112 @@ export default function TrainingSessionDetailPage() {
 
       {/* Modal édition séance */}
       {showEdit && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 440, padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Modifier la séance</h2>
-              <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            {editError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editError}</span>
-              </div>
-            )}
-            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
-                  <input type="date" required value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
-                  <select required value={editForm.sessionType} onChange={e => setEditForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
-                    <option value="training">Entraînement</option>
-                    <option value="match">Match</option>
-                    <option value="gym">Salle</option>
-                    <option value="rest">Repos</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
-                <input type="number" required min={1} max={300} value={editForm.duration} onChange={e => setEditForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
-                <input type="text" placeholder="Optionnel…" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => setShowEdit(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-                <button type="submit" disabled={editSaving} style={{ flex: 1, padding: '10px', backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
-              </div>
-            </form>
+        <Modal onClose={() => setShowEdit(false)} closeOnBackdropClick maxWidth={440} overlayOpacity={0.7} style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Modifier la séance</h2>
+            <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
           </div>
-        </div>
+          {editError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editError}</span>
+            </div>
+          )}
+          <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
+                <input type="date" required value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
+                <select required value={editForm.sessionType} onChange={e => setEditForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
+                  <option value="training">Entraînement</option>
+                  <option value="match">Match</option>
+                  <option value="gym">Salle</option>
+                  <option value="rest">Repos</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+              <input type="number" required min={1} max={300} value={editForm.duration} onChange={e => setEditForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+              <input type="text" placeholder="Optionnel…" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={() => setShowEdit(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+              <button type="submit" disabled={editSaving} style={{ flex: 1, padding: '10px', backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Modal présences */}
       {showAttendance && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowAttendance(false); }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
-              <div>
-                <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Présences</h2>
-                <p style={{ color: '#475569', fontSize: '0.78rem', margin: '2px 0 0' }}>{fmtDateFull(session.date)}</p>
-              </div>
-              <button onClick={() => setShowAttendance(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, display: 'flex' }}><X size={18} /></button>
+        <Modal onClose={() => setShowAttendance(false)} closeOnBackdropClick maxWidth={480} maxHeight="85vh" overlayOpacity={0.7}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
+            <div>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Présences</h2>
+              <p style={{ color: '#475569', fontSize: '0.78rem', margin: '2px 0 0' }}>{fmtDateFull(session.date)}</p>
             </div>
-
-            {attError && (
-              <div style={{ padding: '10px 20px 0' }}>
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{attError}</span>
-              </div>
-            )}
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-              {rosterPlayers.length === 0 ? (
-                <p style={{ color: '#475569', fontSize: '0.85rem', textAlign: 'center', padding: '32px 0' }}>Aucun joueur dans l'effectif.</p>
-              ) : rosterPlayers.map(p => {
-                const status = attendance.find(a => a.playerId === p.id)?.status;
-                return (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderBottom: '1px solid #1E2229' }}>
-                    <PlayerAvatar player={p} size={30} />
-                    <span style={{ flex: 1, minWidth: 0, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.lastName} {p.firstName}
-                    </span>
-                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                      {(['present', 'absent', 'late'] as const).map(s => {
-                        const cfg = STATUS_CFG[s];
-                        const active = status === s;
-                        const Icon = s === 'present' ? Check : s === 'absent' ? X : Clock;
-                        return (
-                          <button key={s} type="button" title={cfg.label} disabled={attSavingId === p.id}
-                            onClick={() => toggleAttendance(p.id, s)}
-                            style={{
-                              width: 32, height: 32, borderRadius: 7,
-                              border: `1px solid ${active ? cfg.color : '#2A2F3A'}`,
-                              backgroundColor: active ? cfg.bg : 'transparent',
-                              color: active ? cfg.color : '#475569',
-                              cursor: attSavingId === p.id ? 'not-allowed' : 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                            <Icon size={14} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={{ padding: '14px 20px', borderTop: '1px solid #1E2229', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowAttendance(false)}
-                style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>
-                Fermer
-              </button>
-            </div>
+            <button onClick={() => setShowAttendance(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, display: 'flex' }}><X size={18} /></button>
           </div>
-        </div>
+
+          {attError && (
+            <div style={{ padding: '10px 20px 0' }}>
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{attError}</span>
+            </div>
+          )}
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+            {rosterPlayers.length === 0 ? (
+              <p style={{ color: '#475569', fontSize: '0.85rem', textAlign: 'center', padding: '32px 0' }}>Aucun joueur dans l'effectif.</p>
+            ) : rosterPlayers.map(p => {
+              const status = attendance.find(a => a.playerId === p.id)?.status;
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderBottom: '1px solid #1E2229' }}>
+                  <PlayerAvatar player={p} size={30} />
+                  <span style={{ flex: 1, minWidth: 0, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.lastName} {p.firstName}
+                  </span>
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    {(['present', 'absent', 'late'] as const).map(s => {
+                      const cfg = STATUS_CFG[s];
+                      const active = status === s;
+                      const Icon = s === 'present' ? Check : s === 'absent' ? X : Clock;
+                      return (
+                        <button key={s} type="button" title={cfg.label} disabled={attSavingId === p.id}
+                          onClick={() => toggleAttendance(p.id, s)}
+                          style={{
+                            width: 32, height: 32, borderRadius: 7,
+                            border: `1px solid ${active ? cfg.color : '#2A2F3A'}`,
+                            backgroundColor: active ? cfg.bg : 'transparent',
+                            color: active ? cfg.color : '#475569',
+                            cursor: attSavingId === p.id ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                          <Icon size={14} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ padding: '14px 20px', borderTop: '1px solid #1E2229', display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={() => setShowAttendance(false)}
+              style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>
+              Fermer
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

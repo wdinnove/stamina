@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { FacebookEmbed, InstagramEmbed, TikTokEmbed, XEmbed } from 'react-social-media-embed';
+import type { TwitterTweetEmbedProps } from 'react-twitter-embed/dist/components/TwitterTweetEmbed';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 
 function EmbedPlaceholder() {
@@ -20,7 +21,7 @@ export function SocialVideoEmbed({ url }: { url: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
       <div style={{ width: '100%', maxWidth: 540 }}>
-        {platform === 'twitter'   && <XEmbed url={url} width="100%" embedPlaceholder={placeholder} twitterTweetEmbedProps={{ options: { theme: 'dark' } }} />}
+        {platform === 'twitter'   && <XEmbed url={url} width="100%" embedPlaceholder={placeholder} twitterTweetEmbedProps={{ options: { theme: 'dark' } } as unknown as TwitterTweetEmbedProps} />}
         {platform === 'facebook'  && <FacebookEmbed url={url} width="100%" embedPlaceholder={placeholder} />}
         {platform === 'instagram' && <InstagramEmbed url={url} width="100%" embedPlaceholder={placeholder} />}
         {platform === 'tiktok'    && <TikTokEmbed url={url} width="100%" embedPlaceholder={placeholder} />}

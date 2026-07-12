@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Upload, X } from 'lucide-react';
 
-export const MAX_EXERCISE_IMAGES = 3;
+const MAX_EXERCISE_IMAGES = 3;
 
 export interface ExerciseImagePickerItem {
   key: string;

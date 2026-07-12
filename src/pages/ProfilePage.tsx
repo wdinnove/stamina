@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle, User, Lock, Save } from 'lucide-react';
-import { supabase } from '../api/client';
+import { profileApi } from '../api/profile';
 import { Card, CardTitle } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
@@ -34,23 +34,13 @@ export default function ProfilePage() {
   const [pwdSaving,  setPwdSaving]  = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setEmail(user.email ?? '');
-
-      const { data } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, organizations(name)')
-        .eq('id', user.id)
-        .single();
-      if (data) {
-        setFirstName(data.first_name ?? '');
-        setLastName(data.last_name ?? '');
-        const org = data.organizations as { name: string } | null;
-        setOrgName(org?.name ?? '');
-      }
-    })();
+    profileApi.getCurrent().then(profile => {
+      if (!profile) return;
+      setEmail(profile.email);
+      setFirstName(profile.firstName);
+      setLastName(profile.lastName);
+      setOrgName(profile.orgName);
+    });
   }, []);
 
   async function handleInfoSubmit(e: React.FormEvent) {
@@ -59,13 +49,7 @@ export default function ProfilePage() {
     setInfoMsg('');
     setInfoErr('');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié.');
-      const { error } = await supabase
-        .from('profiles')
-        .update({ first_name: firstName, last_name: lastName })
-        .eq('id', user.id);
-      if (error) throw error;
+      await profileApi.updateNames(firstName, lastName);
       setInfoMsg('Informations mises à jour.');
     } catch (err: unknown) {
       setInfoErr(err instanceof Error ? err.message : 'Erreur.');
@@ -88,11 +72,7 @@ export default function ProfilePage() {
     setPwdMsg('');
     setPwdErr('');
     try {
-      // Vérification du mot de passe actuel via re-signin
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password: currentPwd });
-      if (signInErr) throw new Error('Mot de passe actuel incorrect.');
-      const { error } = await supabase.auth.updateUser({ password: newPwd });
-      if (error) throw error;
+      await profileApi.changePassword(email, currentPwd, newPwd);
       setPwdMsg('Mot de passe mis à jour.');
       setCurrentPwd('');
       setNewPwd('');

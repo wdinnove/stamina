@@ -38,7 +38,9 @@ function usePerformanceData() {
       statsApi.listAllStatsBySeason(team.id, season.id),
       statsApi.listTeamStatsBySeason(team.id, season.id),
       rpeApi.list({ seasonId: season.id }),
-      wellnessApi.list({ from: season.startDate, to: isoToday() }),
+      // wellness_entries n'a pas de season_id : borner explicitement à la fin de saison,
+      // sinon une saison passée récupère aussi les entrées des saisons suivantes jusqu'à aujourd'hui.
+      wellnessApi.list({ from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() }),
       attendanceApi.listSessions(team.id, season.id),
     ]).then(async ([players, matchStats, teamMatchStats, rpe, wellness, sessions]) => {
       const [medical, attendance] = await Promise.all([
@@ -70,7 +72,7 @@ function usePerformanceData() {
     return () => { cancelled = true; };
   }, [selected?.team.id, selected?.season.id]);
 
-  return { data, loading, seasonStart: selected?.season.startDate };
+  return { data, loading, seasonStart: selected?.season.startDate, seasonEnd: selected?.season.endDate };
 }
 
 // ── Petits éléments partagés ──────────────────────────────────────────────────
@@ -163,8 +165,8 @@ function PositionSelect({ value, onChange, positions }: {
 export default function PerformancePage() {
   const navigate = useNavigate();
   const { thresholds, statThresholds, selected } = useTeamSeason();
-  const { data, loading, seasonStart } = usePerformanceData();
-  const dateRange = useDateRange(seasonStart);
+  const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
+  const dateRange = useDateRange(seasonStart, undefined, seasonEnd);
   const [aKey, setAKey] = useState('loadUa');
   const [bKey, setBKey] = useState('eval');
   const [lagDays, setLagDays] = useState<LagMode>('week');
@@ -275,7 +277,7 @@ export default function PerformancePage() {
 
       <DateRangeCard
         from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-        onPreset={p => dateRange.applyPreset(p, seasonStart)}
+        onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
         onFrom={dateRange.setFrom} onTo={dateRange.setTo}
       />
 
@@ -330,8 +332,8 @@ export function PerformancePlayerPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const { thresholds, statThresholds } = useTeamSeason();
-  const { data, loading, seasonStart } = usePerformanceData();
-  const dateRange = useDateRange(seasonStart);
+  const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
+  const dateRange = useDateRange(seasonStart, undefined, seasonEnd);
   const [aKey, setAKey] = useState('loadUa');
   const [bKey, setBKey] = useState('eval');
   const [lagDays, setLagDays] = useState<LagMode>('week');
@@ -418,7 +420,7 @@ export function PerformancePlayerPage() {
 
       <DateRangeCard
         from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-        onPreset={p => dateRange.applyPreset(p, seasonStart)}
+        onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
         onFrom={dateRange.setFrom} onTo={dateRange.setTo}
       />
 

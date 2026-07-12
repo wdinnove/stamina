@@ -55,8 +55,6 @@ export const navGroups = [
   },
 ];
 
-export const navItems = navGroups.flatMap(g => g.items);
-
 interface SidebarProps {
   collapsed: boolean;
 }

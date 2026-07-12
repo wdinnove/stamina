@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
-import { EmptyState } from '../components';
-import { supabase } from '../api/client';
-import { attendanceApi } from '../api';
+import { EmptyState, Modal } from '../components';
+import { attendanceApi, playersApi, rpeApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import type { Player, TrainingSession, TrainingAttendance } from '../data/types';
 
 type AttendanceStatus = TrainingAttendance['status'];
@@ -15,33 +15,10 @@ const STATUS = {
 } as const;
 
 const TODAY = new Date().toISOString().slice(0, 10);
-const DAYS_FR   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-const DAYS_FULL_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Lun→Dim
-const DAYS_FULL = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
 function fmtDate(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
-  return { dow: DAYS_FR[d.getDay()], day: d.getDate(), month: MONTHS_FR[d.getMonth()] };
-}
-
-function toPlayer(row: Record<string, unknown>): Player {
-  return {
-    id:                row.id                 as string,
-    firstName:         row.first_name         as string,
-    lastName:          row.last_name          as string,
-    number:            row.number             as number,
-    position:          row.position           as Player['position'],
-    secondaryPosition: row.secondary_position as Player['position'] | undefined,
-    organizationId:    row.organization_id    as string,
-    status:            row.status             as Player['status'],
-    nationality:       row.nationality        as string,
-    birthDate:         row.birth_date         as string,
-    height:            row.height_cm          as number | undefined,
-    weight:            row.weight_kg          as number | undefined,
-    hand:              row.hand               as Player['hand'],
-    contractEnd:       row.contract_end       as string | undefined,
-  };
+  return { dow: DAYS_ABBR3[d.getDay()], day: d.getDate(), month: MONTHS_ABBR3[d.getMonth()] };
 }
 
 const inputStyle: React.CSSProperties = {
@@ -91,19 +68,7 @@ export default function AttendancePage() {
 
     const { team, season } = selected;
 
-    const playersPromise = supabase
-      .from('player_season')
-      .select('players(*)')
-      .eq('season_id', season.id)
-      .then(({ data, error: e }) => {
-        if (e) throw e;
-        return (data ?? [])
-          .map(r => (r.players as Record<string, unknown> | null))
-          .filter((p): p is Record<string, unknown> => p !== null)
-          .map(toPlayer)
-          .sort((a, b) => a.lastName.localeCompare(b.lastName, 'fr'));
-      });
-
+    const playersPromise = playersApi.listBySeason(season.id);
     const sessionsPromise = attendanceApi.listSessions(team.id, season.id);
 
     Promise.all([playersPromise, sessionsPromise])
@@ -113,9 +78,7 @@ export default function AttendancePage() {
         const ids = ss.map(s => s.id);
         return Promise.all([
           attendanceApi.listAttendance(ids),
-          ids.length
-            ? supabase.from('rpe_entries').select('session_id, rpe').in('session_id', ids).then(r => (r.data ?? []) as Array<{ session_id: string; rpe: number }>)
-            : Promise.resolve([] as Array<{ session_id: string; rpe: number }>),
+          rpeApi.listRpeBySessionIds(ids),
         ]);
       })
       .then(([att, rpeRows]) => {
@@ -124,7 +87,7 @@ export default function AttendancePage() {
         setAttendanceMap(map);
 
         const groups: Record<string, number[]> = {};
-        rpeRows.forEach(r => { (groups[r.session_id] ??= []).push(r.rpe); });
+        rpeRows.forEach(r => { (groups[r.sessionId] ??= []).push(r.rpe); });
         const avgs: Record<string, number> = {};
         Object.entries(groups).forEach(([sid, rpes]) => {
           avgs[sid] = Math.round(rpes.reduce((a, b) => a + b, 0) / rpes.length * 10) / 10;
@@ -639,36 +602,33 @@ export default function AttendancePage() {
 
       {/* ── Modal confirmation suppression séance ── */}
       {confirmDeleteSession && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 380 }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la séance ?</h2>
-            <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>
-              {fmtDate(confirmDeleteSession.date).dow} {fmtDate(confirmDeleteSession.date).day} {fmtDate(confirmDeleteSession.date).month}
-              {confirmDeleteSession.notes ? ` — ${confirmDeleteSession.notes}` : ''} · Cette action supprimera aussi toutes les présences enregistrées.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => setConfirmDeleteSession(null)}
-                style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}
-              >
-                Annuler
-              </button>
-              <button
-                onClick={() => { deleteSession(confirmDeleteSession.id); setConfirmDeleteSession(null); }}
-                className="btn-danger"
-                style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}
-              >
-                Supprimer
-              </button>
-            </div>
+        <Modal maxWidth={380} scrollOverlay={false} style={{ padding: '28px' }} onClose={() => setConfirmDeleteSession(null)}>
+          <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la séance ?</h2>
+          <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>
+            {fmtDate(confirmDeleteSession.date).dow} {fmtDate(confirmDeleteSession.date).day} {fmtDate(confirmDeleteSession.date).month}
+            {confirmDeleteSession.notes ? ` — ${confirmDeleteSession.notes}` : ''} · Cette action supprimera aussi toutes les présences enregistrées.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => setConfirmDeleteSession(null)}
+              style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}
+            >
+              Annuler
+            </button>
+            <button
+              onClick={() => { deleteSession(confirmDeleteSession.id); setConfirmDeleteSession(null); }}
+              className="btn-danger"
+              style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+            >
+              Supprimer
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Modal nouvelle séance ── */}
       {showAddForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 480 }}>
+        <Modal maxWidth={480} scrollOverlay={false} style={{ padding: '28px' }} onClose={closeAddForm}>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouvelle séance</h2>
@@ -752,7 +712,7 @@ export default function AttendancePage() {
                               onChange={e => setRecurSlots(prev => prev.map((s, j) => j === i ? { ...s, dayOfWeek: Number(e.target.value) } : s))}
                               style={{ ...inputStyle, width: 140, flexShrink: 0 }}
                             >
-                              {DAYS_FULL_ORDER.map(d => (
+                              {DAYS_MONDAY_FIRST.map(d => (
                                 <option key={d} value={d}>{DAYS_FULL[d]}</option>
                               ))}
                             </select>
@@ -840,8 +800,7 @@ export default function AttendancePage() {
                 </>
               );
             })()}
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

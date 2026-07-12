@@ -5,6 +5,8 @@ import { meetingsApi } from '../api/meetings';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
+import { Modal } from '../components';
+import { MONTHS_ABBR3, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { StaffMeeting } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
@@ -15,11 +17,9 @@ const inputStyle: React.CSSProperties = {
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-const DAYS_FR   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 function fmtMeetDate(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
-  return { day: d.getDate(), month: MONTHS_FR[d.getMonth()], dow: DAYS_FR[d.getDay()] };
+  return { day: d.getDate(), month: MONTHS_ABBR3[d.getMonth()], dow: DAYS_ABBR3[d.getDay()] };
 }
 
 const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '' };
@@ -158,48 +158,46 @@ export default function MeetingsPage() {
 
       {/* Modal planifier une réunion */}
       {showMeetForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 460 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Planifier une réunion</h2>
-              <button onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            {meetFormError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{meetFormError}</span>
-              </div>
-            )}
-
-            <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleMeetingSubmit}>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre *</label>
-                <input type="text" required autoFocus placeholder="Ex : Réunion hebdo staff" value={meetForm.title} onChange={e => setMeetForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
-                  <input type="date" required value={meetForm.date} onChange={e => setMeetForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Heure *</label>
-                  <input type="time" required value={meetForm.time} onChange={e => setMeetForm(f => ({ ...f, time: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compte rendu / Notes</label>
-                <RichTextEditor value={meetForm.notes} onChange={html => setMeetForm(f => ({ ...f, notes: html }))} placeholder="Ordre du jour, décisions, notes…" minHeight={88} />
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-                <button type="submit" disabled={meetSaving} style={{ flex: 1, padding: '10px', backgroundColor: meetSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: meetSaving ? '#475569' : '#0D0F14', cursor: meetSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {meetSaving ? 'Enregistrement…' : 'Planifier'}
-                </button>
-              </div>
-            </form>
+        <Modal onClose={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} maxWidth={460} overlayOpacity={0.7} style={{ padding: '28px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Planifier une réunion</h2>
+            <button onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
           </div>
-        </div>
+
+          {meetFormError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{meetFormError}</span>
+            </div>
+          )}
+
+          <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleMeetingSubmit}>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre *</label>
+              <input type="text" required autoFocus placeholder="Ex : Réunion hebdo staff" value={meetForm.title} onChange={e => setMeetForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
+                <input type="date" required value={meetForm.date} onChange={e => setMeetForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Heure *</label>
+                <input type="time" required value={meetForm.time} onChange={e => setMeetForm(f => ({ ...f, time: e.target.value }))} style={inputStyle} />
+              </div>
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compte rendu / Notes</label>
+              <RichTextEditor value={meetForm.notes} onChange={html => setMeetForm(f => ({ ...f, notes: html }))} placeholder="Ordre du jour, décisions, notes…" minHeight={88} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={() => { setShowMeetForm(false); setMeetFormError(''); setMeetForm(emptyMeeting); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+              <button type="submit" disabled={meetSaving} style={{ flex: 1, padding: '10px', backgroundColor: meetSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: meetSaving ? '#475569' : '#0D0F14', cursor: meetSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {meetSaving ? 'Enregistrement…' : 'Planifier'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

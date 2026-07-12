@@ -3,23 +3,20 @@ import { useNavigate } from 'react-router';
 import { Plus, X, AlertCircle, Trash2 } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { EmptyState } from '../components';
+import { EmptyState, Modal } from '../components';
+import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { Match } from '../data/types';
-
-const MONTHS_FR  = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-const DAYS_FULL  = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-const DAYS_ABBR  = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 
 function fmtDate(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
   return {
     dowFull:    DAYS_FULL[d.getDay()],
-    dowAbbr:    DAYS_ABBR[d.getDay()],
+    dowAbbr:    DAYS_ABBR3[d.getDay()],
     day:        d.getDate(),
     dayPad:     String(d.getDate()).padStart(2, '0'),
-    monthFull:  MONTHS_FR[d.getMonth()],
+    monthFull:  MONTHS_FULL[d.getMonth()],
     monthKey:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-    monthLabel: `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`,
+    monthLabel: `${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`,
   };
 }
 
@@ -280,11 +277,7 @@ export default function MatchesPage() {
 
       {/* Modal add/edit */}
       {showModal && (
-        <div
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}
-        >
-          <div className="p-4 sm:p-6" style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+        <Modal onClose={() => setShowModal(false)} closeOnBackdropClick maxWidth={460} className="p-4 sm:p-6">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem' }}>
                 {editMatch ? 'Modifier le match' : 'Nouveau match'}
@@ -415,14 +408,12 @@ export default function MatchesPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Confirm delete */}
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 360, padding: '24px' }}>
+        <Modal maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer ce match ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px' }}>
               {confirmDelete.opponent} — {confirmDelete.date}<br />
@@ -437,8 +428,7 @@ export default function MatchesPage() {
                 {deleting ? 'Suppression…' : 'Supprimer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

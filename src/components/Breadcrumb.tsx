@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 
-export interface BreadcrumbItem {
+interface BreadcrumbItem {
   label: string;
   path: string;
 }

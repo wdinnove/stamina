@@ -3,41 +3,6 @@ import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { Layout }      from './layout/Layout';
 import { RequireAuth } from './components';
 
-import LoginPage         from './pages/LoginPage';
-import DashboardPage     from './pages/DashboardPage';
-import TeamsPage         from './pages/TeamsPage';
-import PlayersPage, { PlayerProfile } from './pages/PlayersPage';
-import PlayerHubPage     from './pages/PlayerHubPage';
-import RPEPage           from './pages/RPEPage';
-import WellnessPage      from './pages/WellnessPage';
-import MedicalPage       from './pages/MedicalPage';
-import ActionsPage       from './pages/ActionsPage';
-import StatsPage         from './pages/StatsPage';
-import PlayerReportPage  from './pages/PlayerReportPage';
-import TeamReportPage    from './pages/TeamReportPage';
-import RosterPage        from './pages/RosterPage';
-import MeetingsPage      from './pages/MeetingsPage';
-import AttendancePage    from './pages/AttendancePage';
-import ProfilePage       from './pages/ProfilePage';
-import TrainingSessionsPage        from './pages/TrainingSessionsPage';
-import TrainingSessionDetailPage   from './pages/TrainingSessionDetailPage';
-import MeetingDetailPage           from './pages/MeetingDetailPage';
-import ExercisesPage               from './pages/ExercisesPage';
-import ExerciseDetailPage          from './pages/ExerciseDetailPage';
-import ConfigurationPage           from './pages/ConfigurationPage';
-import PlayerWellnessPublicPage    from './pages/PlayerWellnessPublicPage';
-import MatchesPage                 from './pages/MatchesPage';
-import MatchDetailPage             from './pages/MatchDetailPage';
-import AnalyseCollectivePage       from './pages/AnalyseCollectivePage';
-import AnalyseIndividuellePage     from './pages/AnalyseIndividuellePage';
-import PerformancePage, { PerformancePlayerPage } from './pages/PerformancePage';
-
-function PlayerProfileRoute() {
-  const { id } = useParams<{ id: string }>();
-  if (!id) return null;
-  return <PlayerProfile playerId={id} />;
-}
-
 /** Ancienne route /cross-analyze/:id — redirige vers la page Performance joueuse */
 function CrossAnalyzeRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -47,11 +12,11 @@ function CrossAnalyzeRedirect() {
 export const router = createBrowserRouter([
   {
     path: '/login',
-    Component: LoginPage,
+    lazy: () => import('./pages/LoginPage').then(m => ({ Component: m.default })),
   },
   {
     path: '/player/:playerId/wellness',
-    Component: PlayerWellnessPublicPage,
+    lazy: () => import('./pages/PlayerWellnessPublicPage').then(m => ({ Component: m.default })),
   },
   {
     element: <RequireAuth />,
@@ -61,44 +26,49 @@ export const router = createBrowserRouter([
         Component: Layout,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-          { path: 'dashboard',      Component: DashboardPage    },
-          { path: 'teams',           Component: TeamsPage        },
-          { path: 'teams/:id',      Component: TeamsPage        },
-          { path: 'players',           Component: PlayersPage      },
-          { path: 'players/:id',     element: <PlayerProfileRoute /> },
-          { path: 'rpe',             Component: RPEPage          },
-          { path: 'rpe/:tab',        Component: RPEPage          },
-          { path: 'rpe/:tab/:id',    Component: RPEPage          },
-          { path: 'wellness',           Component: WellnessPage     },
-          { path: 'wellness/:tab',      Component: WellnessPage     },
-          { path: 'wellness/:tab/:id',  Component: WellnessPage     },
-          { path: 'medical',              Component: MedicalPage      },
-          { path: 'medical/:tab',        Component: MedicalPage      },
-          { path: 'medical/:tab/:id',    Component: MedicalPage      },
-          { path: 'actions',        Component: ActionsPage      },
-          { path: 'stats',          Component: StatsPage        },
-          { path: 'stats/:id',      Component: StatsPage        },
-          { path: 'roster',          Component: RosterPage       },
-          { path: 'roster/:id',      Component: PlayerHubPage    },
-          { path: 'meetings',            Component: MeetingsPage       },
-          { path: 'meetings/:id',        Component: MeetingDetailPage  },
-          { path: 'attendance',      Component: AttendancePage   },
-          { path: 'sessions',        Component: TrainingSessionsPage      },
-          { path: 'sessions/:id',    Component: TrainingSessionDetailPage },
-          { path: 'exercises',       Component: ExercisesPage             },
-          { path: 'exercises/:id',   Component: ExerciseDetailPage        },
-          { path: 'profile',         Component: ProfilePage      },
-          { path: 'configuration',  Component: ConfigurationPage },
-          { path: 'matches',        Component: MatchesPage      },
-          { path: 'matches/:id',   Component: MatchDetailPage  },
-          { path: 'reports/player', Component: PlayerReportPage },
-          { path: 'reports/team',   Component: TeamReportPage   },
-          { path: 'collective-analyze',      Component: AnalyseCollectivePage   },
-          { path: 'individual-analyze',    Component: AnalyseIndividuellePage },
-          { path: 'individual-analyze/:id', Component: AnalyseIndividuellePage },
-          { path: 'team-performance',        Component: PerformancePage       },
-          { path: 'player-performance',      Component: PerformancePlayerPage },
-          { path: 'player-performance/:id',  Component: PerformancePlayerPage },
+          { path: 'dashboard',      lazy: () => import('./pages/DashboardPage').then(m => ({ Component: m.default })) },
+          { path: 'teams',          lazy: () => import('./pages/TeamsPage').then(m => ({ Component: m.default })) },
+          { path: 'teams/:id',      lazy: () => import('./pages/TeamsPage').then(m => ({ Component: m.default })) },
+          { path: 'players',        lazy: () => import('./pages/PlayersPage').then(m => ({ Component: m.default })) },
+          {
+            path: 'players/:id',
+            lazy: () => import('./pages/PlayersPage').then(m => ({
+              Component: function PlayerProfileRoute() {
+                const { id } = useParams<{ id: string }>();
+                if (!id) return null;
+                return <m.PlayerProfile playerId={id} />;
+              },
+            })),
+          },
+          { path: 'rpe',             lazy: () => import('./pages/RPEPage').then(m => ({ Component: m.default })) },
+          { path: 'rpe/:tab',        lazy: () => import('./pages/RPEPage').then(m => ({ Component: m.default })) },
+          { path: 'rpe/:tab/:id',    lazy: () => import('./pages/RPEPage').then(m => ({ Component: m.default })) },
+          { path: 'wellness',           lazy: () => import('./pages/WellnessPage').then(m => ({ Component: m.default })) },
+          { path: 'wellness/:tab',      lazy: () => import('./pages/WellnessPage').then(m => ({ Component: m.default })) },
+          { path: 'wellness/:tab/:id',  lazy: () => import('./pages/WellnessPage').then(m => ({ Component: m.default })) },
+          { path: 'medical',              lazy: () => import('./pages/MedicalPage').then(m => ({ Component: m.default })) },
+          { path: 'medical/:tab',        lazy: () => import('./pages/MedicalPage').then(m => ({ Component: m.default })) },
+          { path: 'medical/:tab/:id',    lazy: () => import('./pages/MedicalPage').then(m => ({ Component: m.default })) },
+          { path: 'actions',        lazy: () => import('./pages/ActionsPage').then(m => ({ Component: m.default })) },
+          { path: 'roster',          lazy: () => import('./pages/RosterPage').then(m => ({ Component: m.default })) },
+          { path: 'roster/:id',      lazy: () => import('./pages/PlayerHubPage').then(m => ({ Component: m.default })) },
+          { path: 'meetings',            lazy: () => import('./pages/MeetingsPage').then(m => ({ Component: m.default })) },
+          { path: 'meetings/:id',        lazy: () => import('./pages/MeetingDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'attendance',      lazy: () => import('./pages/AttendancePage').then(m => ({ Component: m.default })) },
+          { path: 'sessions',        lazy: () => import('./pages/TrainingSessionsPage').then(m => ({ Component: m.default })) },
+          { path: 'sessions/:id',    lazy: () => import('./pages/TrainingSessionDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'exercises',       lazy: () => import('./pages/ExercisesPage').then(m => ({ Component: m.default })) },
+          { path: 'exercises/:id',   lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'profile',         lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },
+          { path: 'configuration',  lazy: () => import('./pages/ConfigurationPage').then(m => ({ Component: m.default })) },
+          { path: 'matches',        lazy: () => import('./pages/MatchesPage').then(m => ({ Component: m.default })) },
+          { path: 'matches/:id',   lazy: () => import('./pages/MatchDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'collective-analyze',      lazy: () => import('./pages/AnalyseCollectivePage').then(m => ({ Component: m.default })) },
+          { path: 'individual-analyze',    lazy: () => import('./pages/AnalyseIndividuellePage').then(m => ({ Component: m.default })) },
+          { path: 'individual-analyze/:id', lazy: () => import('./pages/AnalyseIndividuellePage').then(m => ({ Component: m.default })) },
+          { path: 'team-performance',        lazy: () => import('./pages/PerformancePage').then(m => ({ Component: m.default })) },
+          { path: 'player-performance',      lazy: () => import('./pages/PerformancePage').then(m => ({ Component: m.PerformancePlayerPage })) },
+          { path: 'player-performance/:id',  lazy: () => import('./pages/PerformancePage').then(m => ({ Component: m.PerformancePlayerPage })) },
           { path: 'cross-analyze',         element: <Navigate to="/player-performance" replace /> },
           { path: 'cross-analyze/:id',     element: <CrossAnalyzeRedirect /> },
           { path: '*', element: <Navigate to="/dashboard" replace /> },

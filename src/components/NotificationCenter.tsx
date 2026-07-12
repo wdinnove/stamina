@@ -1,6 +1,7 @@
 import { Bell, X, User, Trophy, Heart, CheckSquare, Calendar, Dumbbell, Users, FileText, Activity, Smile, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useNotifications } from '../contexts/NotificationContext';
+import { Modal } from './Modal';
 import type { AppNotification } from '../api/notifications';
 
 /* ── Helpers ── */
@@ -243,29 +244,15 @@ export function NotificationCenter() {
 
       {/* Modale */}
       {isOpen && (
-        <div
-          onClick={closeCenter}
-          style={{
-            position: 'fixed', inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            zIndex: 1000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
+        <Modal
+          onClose={closeCenter}
+          closeOnBackdropClick
+          maxWidth={460}
+          maxHeight="82vh"
+          zIndex={1000}
+          overlayOpacity={0.7}
+          style={{ borderRadius: 14, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.8)' }}
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 460,
-              maxHeight: '82vh',
-              backgroundColor: '#161920',
-              border: '1px solid #2A2F3A',
-              borderRadius: 14,
-              display: 'flex', flexDirection: 'column',
-              overflow: 'hidden',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.8)',
-            }}
-          >
             {/* Header */}
             <div style={{
               padding: '16px 20px',
@@ -344,8 +331,7 @@ export function NotificationCenter() {
                 </>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   );

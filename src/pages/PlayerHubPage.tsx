@@ -8,26 +8,15 @@ import { PlayerHero, Card, CardTitle, EmptyState, ChargeRpeComboChart } from '..
 import { evalColor } from '../data';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg } from '../utils/wellness';
 import { rpeColor, computeAcwr, acwrZone } from '../utils/rpe';
-import { fmtDate } from '../components/MedicalCard';
+import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
+import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { priorityConfig } from '../data/config';
 import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action, MatchStat } from '../data/types';
 
-const DAY_ABBR = ['Di', 'Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa'];
-function fmtDateWithDay(iso: string): string {
-  const d = new Date(iso + 'T12:00:00');
-  const [, mm, dd] = iso.split('-');
-  return `${DAY_ABBR[d.getDay()]} ${Number(dd)}/${Number(mm)}`;
-}
-function getWeekMonday(isoDate: string): string {
-  const d = new Date(isoDate + 'T12:00:00');
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d.toLocaleDateString('sv');
-}
 function isoDaysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().split('T')[0];
+  return d.toLocaleDateString('sv');
 }
 
 export default function PlayerHubPage() {

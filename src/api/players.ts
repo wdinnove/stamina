@@ -93,7 +93,7 @@ export const playersApi = {
     if (error) throw error;
     return (data ?? [])
       .map(row => {
-        const p = row.players as Record<string, unknown> | null;
+        const p = row.players as unknown as Record<string, unknown> | null;
         return p ? toPlayer(p) : null;
       })
       .filter((p): p is Player => p !== null)

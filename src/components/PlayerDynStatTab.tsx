@@ -9,6 +9,7 @@ interface Props {
   wellness: WellnessEntry[];
   matchStats: MatchStat[];
   seasonStart?: string;
+  seasonEnd?: string;
   teamStatsMap?: Map<string, TeamMatchStat>;
 }
 
@@ -359,8 +360,8 @@ function toSentence(s: Signal): string {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, teamStatsMap }: Props) {
-  const dateRange = useDateRange(seasonStart, 21);
+export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seasonEnd, teamStatsMap }: Props) {
+  const dateRange = useDateRange(seasonStart, 21, seasonEnd);
   const didInit = useRef(false);
 
   useEffect(() => {
@@ -374,6 +375,12 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, teamS
   const rpeP   = rpe.filter(r => inRange(r.date));
   const wellP  = wellness.filter(w => inRange(w.date));
   const matchP = matchStats.filter(m => inRange(m.date));
+
+  // Bornage à la saison en cours : rpe/wellness (contrairement à matchStats, déjà filtré par
+  // saison à la source) sont l'historique complet du joueur toutes saisons confondues — sans ce
+  // filtre, la comparaison "vs saison" mélangeait les saisons précédentes/suivantes avec la saison affichée.
+  const seasonRpe      = seasonStart ? rpe.filter(r => r.date >= seasonStart && (!seasonEnd || r.date <= seasonEnd)) : rpe;
+  const seasonWellness = seasonStart ? wellness.filter(w => w.date >= seasonStart && (!seasonEnd || w.date <= seasonEnd)) : wellness;
 
   // ── Match : valeurs période & saison ─────────────────────────────────────
 
@@ -422,34 +429,35 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, teamS
 
   // ── RPE ───────────────────────────────────────────────────────────────────
 
-  const pRpe = avg(rpeP.map(r => r.rpe)); const sRpe = avg(rpe.map(r => r.rpe));
+  const pRpe = avg(rpeP.map(r => r.rpe)); const sRpe = avg(seasonRpe.map(r => r.rpe));
   const toLoad = (r: RPEEntry) => r.rpe * (r.actualDuration ?? r.plannedDuration);
 
   const pDays = dateRange.from && dateRange.to
     ? Math.max(7, (new Date(dateRange.to + 'T00:00:00').getTime() - new Date(dateRange.from + 'T00:00:00').getTime()) / 86400000 + 1) : 21;
   const pWeeks = pDays / 7;
-  const sRef   = seasonStart ?? rpe[0]?.date;
+  // rpe est trié par created_at (listPlayerHistory), pas par date : ne pas supposer rpe[0] = plus ancien
+  const sRef   = seasonStart ?? [...rpe].sort((a, b) => a.date.localeCompare(b.date))[0]?.date;
   const sDays  = sRef && dateRange.to
     ? Math.max(7, (new Date(dateRange.to + 'T00:00:00').getTime() - new Date(sRef + 'T00:00:00').getTime()) / 86400000 + 1) : 91;
   const sWeeks = sDays / 7;
 
   const pLoadWk = rpeP.length ? +(rpeP.reduce((s, r) => s + toLoad(r), 0) / pWeeks).toFixed(0) : null;
-  const sLoadWk = rpe.length  ? +(rpe.reduce((s, r) => s + toLoad(r), 0) / sWeeks).toFixed(0)  : null;
+  const sLoadWk = seasonRpe.length  ? +(seasonRpe.reduce((s, r) => s + toLoad(r), 0) / sWeeks).toFixed(0)  : null;
   const pSessWk = +(rpeP.length / pWeeks).toFixed(1);
-  const sSessWk = rpe.length ? +(rpe.length / sWeeks).toFixed(1) : null;
+  const sSessWk = seasonRpe.length ? +(seasonRpe.length / sWeeks).toFixed(1) : null;
 
   // ── Bien-être ─────────────────────────────────────────────────────────────
 
   const wA = (arr: WellnessEntry[], key: 'score' | 'sleep' | 'fatigue' | 'mood' | 'motivation' | 'stress' | 'soreness') =>
     arr.length ? +(arr.reduce((s, w) => s + n(w[key]), 0) / arr.length).toFixed(2) : null;
 
-  const pSco = wA(wellP, 'score');       const sSco = wA(wellness, 'score');
-  const pSlp = wA(wellP, 'sleep');       const sSlp = wA(wellness, 'sleep');
-  const pFat = wA(wellP, 'fatigue');     const sFat = wA(wellness, 'fatigue');
-  const pMod = wA(wellP, 'mood');        const sMod = wA(wellness, 'mood');
-  const pMot = wA(wellP, 'motivation');  const sMot = wA(wellness, 'motivation');
-  const pStr = wA(wellP, 'stress');      const sStr = wA(wellness, 'stress');
-  const pSor = wA(wellP, 'soreness');    const sSor = wA(wellness, 'soreness');
+  const pSco = wA(wellP, 'score');       const sSco = wA(seasonWellness, 'score');
+  const pSlp = wA(wellP, 'sleep');       const sSlp = wA(seasonWellness, 'sleep');
+  const pFat = wA(wellP, 'fatigue');     const sFat = wA(seasonWellness, 'fatigue');
+  const pMod = wA(wellP, 'mood');        const sMod = wA(seasonWellness, 'mood');
+  const pMot = wA(wellP, 'motivation');  const sMot = wA(seasonWellness, 'motivation');
+  const pStr = wA(wellP, 'stress');      const sStr = wA(seasonWellness, 'stress');
+  const pSor = wA(wellP, 'soreness');    const sSor = wA(seasonWellness, 'soreness');
 
   // ── Résumé analytique ─────────────────────────────────────────────────────
 
@@ -500,7 +508,7 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, teamS
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <DateRangeCard
         from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-        onPreset={p => dateRange.applyPreset(p, seasonStart)}
+        onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
         onFrom={dateRange.setFrom} onTo={dateRange.setTo}
         style={{ marginBottom: 0 }}
       />

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Plus, Search, Users, X, AlertCircle, CheckCircle, Calendar, Save, Building2, Settings, Pencil, Trash2 } from 'lucide-react';
 import { teamsApi, playersApi, configApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle } from '../components';
+import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle, Modal } from '../components';
 import type { Team, Player, Organization } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -127,51 +127,49 @@ function TeamsTab() {
       )}
 
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: 28, width: '100%', maxWidth: 460 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle équipe</h2>
-              <button onClick={() => { setShowForm(false); setFormErr(''); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            {formErr && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444' }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formErr}</span>
-              </div>
-            )}
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ color: '#94A3B8', display: 'block', marginBottom: 5, fontSize: '0.82rem' }}>Nom *</label>
-                <input required placeholder="NF2 Féminine" value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', display: 'block', marginBottom: 5, fontSize: '0.82rem' }}>Catégorie *</label>
-                <input required placeholder="NF2, U21…" value={form.category}
-                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', display: 'block', marginBottom: 8, fontSize: '0.82rem' }}>Couleur</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {PRESET_COLORS.map(c => (
-                    <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
-                      style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: c, border: form.color === c ? '3px solid #F1F5F9' : '3px solid transparent', cursor: 'pointer', transition: 'all 0.12s' }} />
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => { setShowForm(false); setFormErr(''); }}
-                  style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                  Annuler
-                </button>
-                <button type="submit" disabled={saving}
-                  style={{ flex: 1, padding: 10, backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {saving ? 'Création…' : 'Créer'}
-                </button>
-              </div>
-            </form>
+        <Modal maxWidth={460} scrollOverlay={false} style={{ padding: 28 }} onClose={() => { setShowForm(false); setFormErr(''); }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle équipe</h2>
+            <button onClick={() => { setShowForm(false); setFormErr(''); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
           </div>
-        </div>
+          {formErr && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444' }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formErr}</span>
+            </div>
+          )}
+          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={{ color: '#94A3B8', display: 'block', marginBottom: 5, fontSize: '0.82rem' }}>Nom *</label>
+              <input required placeholder="NF2 Féminine" value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', display: 'block', marginBottom: 5, fontSize: '0.82rem' }}>Catégorie *</label>
+              <input required placeholder="NF2, U21…" value={form.category}
+                onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', display: 'block', marginBottom: 8, fontSize: '0.82rem' }}>Couleur</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {PRESET_COLORS.map(c => (
+                  <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
+                    style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: c, border: form.color === c ? '3px solid #F1F5F9' : '3px solid transparent', cursor: 'pointer', transition: 'all 0.12s' }} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={() => { setShowForm(false); setFormErr(''); }}
+                style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+                Annuler
+              </button>
+              <button type="submit" disabled={saving}
+                style={{ flex: 1, padding: 10, backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {saving ? 'Création…' : 'Créer'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </>
   );
@@ -407,233 +405,227 @@ function PlayersTab() {
       )}
 
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouveau joueur</h2>
-              <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            {formErr && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444' }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formErr}</span>
-              </div>
-            )}
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom *</label>
-                  <input required value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nom *</label>
-                  <input required value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date de naissance *</label>
-                  <input required type="date" value={form.birthDate} onChange={e => setForm(f => ({ ...f, birthDate: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>N° maillot *</label>
-                  <input required type="number" min={0} max={99} value={form.number}
-                    onChange={e => setForm(f => ({ ...f, number: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poste *</label>
-                  <select required value={form.position}
-                    onChange={e => setForm(f => ({ ...f, position: e.target.value as Player['position'] }))}
-                    style={{ ...inputStyle }}>
-                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Main forte</label>
-                  <select value={form.hand}
-                    onChange={e => setForm(f => ({ ...f, hand: e.target.value as Player['hand'] }))}
-                    style={{ ...inputStyle }}>
-                    <option value="right">Droite</option>
-                    <option value="left">Gauche</option>
-                    <option value="both">Les deux</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nationalité</label>
-                  <input maxLength={2} placeholder="FR" value={form.nationality}
-                    onChange={e => setForm(f => ({ ...f, nationality: e.target.value.toUpperCase() }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Taille (cm)</label>
-                  <input type="number" min={140} max={230} value={form.height}
-                    onChange={e => setForm(f => ({ ...f, height: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poids (kg)</label>
-                  <input type="number" min={40} max={150} value={form.weight}
-                    onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
-                <input type="date" value={form.contractEnd}
-                  onChange={e => setForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
-                <input type="email" placeholder="joueur@example.com" value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={closeForm}
-                  style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                  Annuler
-                </button>
-                <button type="submit" disabled={saving}
-                  style={{ flex: 1, padding: 10, backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {saving ? 'Création…' : 'Créer'}
-                </button>
-              </div>
-            </form>
+        <Modal maxWidth={520} style={{ padding: 28 }} onClose={closeForm}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouveau joueur</h2>
+            <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
           </div>
-        </div>
+          {formErr && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444' }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formErr}</span>
+            </div>
+          )}
+          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom *</label>
+                <input required value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nom *</label>
+                <input required value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date de naissance *</label>
+                <input required type="date" value={form.birthDate} onChange={e => setForm(f => ({ ...f, birthDate: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>N° maillot *</label>
+                <input required type="number" min={0} max={99} value={form.number}
+                  onChange={e => setForm(f => ({ ...f, number: e.target.value }))} style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poste *</label>
+                <select required value={form.position}
+                  onChange={e => setForm(f => ({ ...f, position: e.target.value as Player['position'] }))}
+                  style={{ ...inputStyle }}>
+                  {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Main forte</label>
+                <select value={form.hand}
+                  onChange={e => setForm(f => ({ ...f, hand: e.target.value as Player['hand'] }))}
+                  style={{ ...inputStyle }}>
+                  <option value="right">Droite</option>
+                  <option value="left">Gauche</option>
+                  <option value="both">Les deux</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nationalité</label>
+                <input maxLength={2} placeholder="FR" value={form.nationality}
+                  onChange={e => setForm(f => ({ ...f, nationality: e.target.value.toUpperCase() }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Taille (cm)</label>
+                <input type="number" min={140} max={230} value={form.height}
+                  onChange={e => setForm(f => ({ ...f, height: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poids (kg)</label>
+                <input type="number" min={40} max={150} value={form.weight}
+                  onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
+              </div>
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
+              <input type="date" value={form.contractEnd}
+                onChange={e => setForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
+              <input type="email" placeholder="joueur@example.com" value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={closeForm}
+                style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+                Annuler
+              </button>
+              <button type="submit" disabled={saving}
+                style={{ flex: 1, padding: 10, backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {saving ? 'Création…' : 'Créer'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {editingPlayer && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Modifier {editingPlayer.firstName} {editingPlayer.lastName}</h2>
-              <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+        <Modal maxWidth={520} style={{ padding: 28 }} onClose={closeEdit}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0 }}>Modifier {editingPlayer.firstName} {editingPlayer.lastName}</h2>
+            <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+          </div>
+          {editErr && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444' }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editErr}</span>
             </div>
-            {editErr && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444' }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{editErr}</span>
-              </div>
-            )}
-            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom *</label>
-                  <input required value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nom *</label>
-                  <input required value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date de naissance *</label>
-                  <input required type="date" value={editForm.birthDate} onChange={e => setEditForm(f => ({ ...f, birthDate: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>N° maillot *</label>
-                  <input required type="number" min={0} max={99} value={editForm.number}
-                    onChange={e => setEditForm(f => ({ ...f, number: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poste *</label>
-                  <select required value={editForm.position}
-                    onChange={e => setEditForm(f => ({ ...f, position: e.target.value as Player['position'] }))}
-                    style={{ ...inputStyle }}>
-                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Statut</label>
-                  <select value={editForm.status}
-                    onChange={e => setEditForm(f => ({ ...f, status: e.target.value as Player['status'] }))}
-                    style={{ ...inputStyle }}>
-                    {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Main forte</label>
-                  <select value={editForm.hand}
-                    onChange={e => setEditForm(f => ({ ...f, hand: e.target.value as Player['hand'] }))}
-                    style={{ ...inputStyle }}>
-                    <option value="right">Droite</option>
-                    <option value="left">Gauche</option>
-                    <option value="both">Les deux</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nationalité</label>
-                  <input maxLength={2} placeholder="FR" value={editForm.nationality}
-                    onChange={e => setEditForm(f => ({ ...f, nationality: e.target.value.toUpperCase() }))} style={inputStyle} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Taille (cm)</label>
-                  <input type="number" min={140} max={230} value={editForm.height}
-                    onChange={e => setEditForm(f => ({ ...f, height: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poids (kg)</label>
-                  <input type="number" min={40} max={150} value={editForm.weight}
-                    onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
-                  <input type="date" value={editForm.contractEnd}
-                    onChange={e => setEditForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
-                </div>
+          )}
+          <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Prénom *</label>
+                <input required value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} style={inputStyle} />
               </div>
               <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
-                <input type="email" placeholder="joueur@example.com" value={editForm.email}
-                  onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nom *</label>
+                <input required value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} style={inputStyle} />
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={closeEdit}
-                  style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                  Annuler
-                </button>
-                <button type="submit" disabled={editSaving}
-                  style={{ flex: 1, padding: 10, backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {editSaving ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date de naissance *</label>
+                <input required type="date" value={editForm.birthDate} onChange={e => setEditForm(f => ({ ...f, birthDate: e.target.value }))} style={inputStyle} />
               </div>
-            </form>
-          </div>
-        </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>N° maillot *</label>
+                <input required type="number" min={0} max={99} value={editForm.number}
+                  onChange={e => setEditForm(f => ({ ...f, number: e.target.value }))} style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poste *</label>
+                <select required value={editForm.position}
+                  onChange={e => setEditForm(f => ({ ...f, position: e.target.value as Player['position'] }))}
+                  style={{ ...inputStyle }}>
+                  {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Statut</label>
+                <select value={editForm.status}
+                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value as Player['status'] }))}
+                  style={{ ...inputStyle }}>
+                  {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Main forte</label>
+                <select value={editForm.hand}
+                  onChange={e => setEditForm(f => ({ ...f, hand: e.target.value as Player['hand'] }))}
+                  style={{ ...inputStyle }}>
+                  <option value="right">Droite</option>
+                  <option value="left">Gauche</option>
+                  <option value="both">Les deux</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nationalité</label>
+                <input maxLength={2} placeholder="FR" value={editForm.nationality}
+                  onChange={e => setEditForm(f => ({ ...f, nationality: e.target.value.toUpperCase() }))} style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Taille (cm)</label>
+                <input type="number" min={140} max={230} value={editForm.height}
+                  onChange={e => setEditForm(f => ({ ...f, height: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poids (kg)</label>
+                <input type="number" min={40} max={150} value={editForm.weight}
+                  onChange={e => setEditForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
+                <input type="date" value={editForm.contractEnd}
+                  onChange={e => setEditForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
+              </div>
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
+              <input type="email" placeholder="joueur@example.com" value={editForm.email}
+                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={closeEdit}
+                style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+                Annuler
+              </button>
+              <button type="submit" disabled={editSaving}
+                style={{ flex: 1, padding: 10, backgroundColor: editSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: editSaving ? '#475569' : '#0D0F14', cursor: editSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24 }}>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer ce joueur ?</h2>
-            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-              <strong style={{ color: '#F1F5F9' }}>{confirmDelete.firstName} {confirmDelete.lastName}</strong>
-            </p>
-            <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>
-              Ce joueur et toutes ses données associées (RPE, bien-être, médical…) seront définitivement supprimés.
-            </p>
-            {deleteErr && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444' }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{deleteErr}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmDelete(null)} disabled={deleting}
-                style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
-                Annuler
-              </button>
-              <button onClick={handleDelete} disabled={deleting}
-                style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
-                {deleting ? 'Suppression…' : 'Supprimer'}
-              </button>
+        <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
+          <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer ce joueur ?</h2>
+          <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
+            <strong style={{ color: '#F1F5F9' }}>{confirmDelete.firstName} {confirmDelete.lastName}</strong>
+          </p>
+          <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>
+            Ce joueur et toutes ses données associées (RPE, bien-être, médical…) seront définitivement supprimés.
+          </p>
+          {deleteErr && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+              <AlertCircle size={13} style={{ color: '#EF4444' }} />
+              <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{deleteErr}</span>
             </div>
+          )}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setConfirmDelete(null)} disabled={deleting}
+              style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
+              Annuler
+            </button>
+            <button onClick={handleDelete} disabled={deleting}
+              style={{ flex: 1, padding: '10px', backgroundColor: deleting ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deleting ? '#475569' : '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+              {deleting ? 'Suppression…' : 'Supprimer'}
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   );

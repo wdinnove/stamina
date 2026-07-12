@@ -12,7 +12,7 @@ export function hasVariance(values: number[]): boolean {
   return new Set(values.map(v => Math.round(v * 1000))).size > 1;
 }
 
-export function strengthWord(absCorr: number): 'Majeur' | 'Fort' | 'Modéré' | 'Léger' {
+function strengthWord(absCorr: number): 'Majeur' | 'Fort' | 'Modéré' | 'Léger' {
   if (absCorr >= 0.6) return 'Majeur';
   if (absCorr >= 0.4) return 'Fort';
   if (absCorr >= 0.25) return 'Modéré';

@@ -4,10 +4,11 @@ import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
+import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem } from '../components';
+import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
@@ -80,7 +81,7 @@ function RichText({ html }: { html?: string }) {
   if (!html || html === '<p></p>') return null;
   return (
     <>
-      <div className="exercise-desc" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="exercise-desc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
       <style>{`
         .exercise-desc { color:#64748B; font-size:0.78rem; line-height:1.5; }
         .exercise-desc p { margin:0 0 4px; }
@@ -99,9 +100,7 @@ function CategoryBadge({ name, color }: { name?: string; color?: string }) {
   if (!name) return null;
   const c = color ?? '#475569';
   return (
-    <span style={{ color: c, backgroundColor: c + '18', fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: 4, flexShrink: 0 }}>
-      {name}
-    </span>
+    <Badge color={c} bg={c + '18'} label={name} size="sm" style={{ fontWeight: 600, padding: '2px 8px', flexShrink: 0 }} />
   );
 }
 
@@ -280,9 +279,7 @@ function ExerciseModal({
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 640, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+    <Modal maxWidth={640} scrollOverlay={false} style={{ padding: '24px' }} onClose={onClose} closeOnBackdropClick>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
             {editing ? "Modifier l'exercice" : 'Nouvel exercice'}
@@ -383,8 +380,7 @@ function ExerciseModal({
             .exercise-form-row { flex-direction: column; }
           }
         `}</style>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

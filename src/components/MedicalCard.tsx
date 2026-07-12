@@ -1,11 +1,7 @@
 import { Pencil } from 'lucide-react';
 import type { MedicalRecord } from '../data/types';
-
-const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
-export function fmtDate(iso: string): string {
-  const [, m, d] = iso.split('-').map(Number);
-  return `${d} ${MONTHS[m - 1]}`;
-}
+import { fmtDate } from '../utils/dateFormat';
+import { Badge } from './Badge';
 
 export const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
@@ -17,11 +13,11 @@ export const typeLabels: Record<string, string> = {
   injury: 'Blessure', checkup: 'Bilan santé', treatment: 'Traitement',
 };
 
-export const typeColors: Record<string, string> = {
+const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
 };
 
-export const typeIcons: Record<string, string> = {
+const typeIcons: Record<string, string> = {
   injury: '🚑', checkup: '🩺', treatment: '💊',
 };
 
@@ -70,22 +66,16 @@ export function MedCard({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
           {showTypeBadge && (
-            <span style={{ color: col, fontSize: '0.65rem', fontWeight: 700, backgroundColor: col + '18', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-              {typeLabels[record.type]}
-            </span>
+            <Badge color={col} bg={col + '18'} label={typeLabels[record.type]} size="sm" style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }} />
           )}
           <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.87rem', lineHeight: 1.3 }}>
             {record.description}
           </span>
           {record.type !== 'checkup' && (
-            <span style={{ color: badgeColor, fontSize: '0.65rem', fontWeight: 700, backgroundColor: badgeColor + '18', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-              {badgeLabel}
-            </span>
+            <Badge color={badgeColor} bg={badgeColor + '18'} label={badgeLabel} size="sm" style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }} />
           )}
           {sev && (
-            <span style={{ color: sev.color, fontSize: '0.65rem', fontWeight: 600, backgroundColor: sev.color + '18', padding: '2px 6px', borderRadius: 3, flexShrink: 0 }}>
-              {sev.label}
-            </span>
+            <Badge color={sev.color} bg={sev.color + '18'} label={sev.label} size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 3, flexShrink: 0 }} />
           )}
         </div>
         <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>

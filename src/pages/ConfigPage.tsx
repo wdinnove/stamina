@@ -1,15 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, Users, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart } from 'lucide-react';
 import { teamsApi } from '../api';
 import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
 import { playersApi } from '../api/players';
 import { staffApi } from '../api/staff';
-import { supabase } from '../api/client';
 import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
-import { Card, CardTitle, StatusBadge } from '../components';
+import { Card, CardTitle, StatusBadge, Modal } from '../components';
 import type { ExerciseCategory, Player, StaffMember, WellnessEntryMethod } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
@@ -271,7 +270,6 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
   const [error, setError]           = useState('');
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState<Set<string>>(new Set());
-  const overlayRef                  = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     playersApi.list()
@@ -314,9 +312,7 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
   }
 
   return (
-    <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+    <Modal onClose={onClose} maxWidth={520} maxHeight="80vh" zIndex={1000} overlayOpacity={0.65} scrollOverlay={false} style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
           <div>
             <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>Ajouter à l'effectif</div>
@@ -381,8 +377,7 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -504,8 +499,7 @@ function RosterTab() {
       )}
 
       {unlinkTarget && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 380, padding: '24px' }}>
+        <Modal onClose={() => setUnlinkTarget(null)} maxWidth={380} zIndex={110} overlayOpacity={0.7} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Retirer de l'effectif ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
               <strong style={{ color: '#F1F5F9' }}>{unlinkTarget.firstName} {unlinkTarget.lastName}</strong> sera retiré de l'effectif de cette saison.
@@ -524,8 +518,7 @@ function RosterTab() {
                 {removing ? 'Retrait…' : 'Retirer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );
@@ -619,44 +612,15 @@ function StaffTab() {
     setInviteSaving(true);
     setInviteError('');
     try {
-      const { data: { user: me } } = await supabase.auth.getUser();
-      if (!me) throw new Error('Non authentifié.');
-      const { data: myProfile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', me.id)
-        .single();
-      if (profileErr) throw profileErr;
-
-      const { data, error } = await supabase.auth.signUp({
-        email:    inviteForm.email,
-        password: inviteForm.password,
-        options:  {
-          data: {
-            first_name:      inviting.firstName,
-            last_name:       inviting.lastName,
-            role:            inviting.role,
-            organization_id: myProfile.organization_id,
-          },
-        },
+      const profileId = await staffApi.inviteAndLink({
+        staffId:   inviting.id,
+        email:     inviteForm.email,
+        password:  inviteForm.password,
+        firstName: inviting.firstName,
+        lastName:  inviting.lastName,
+        role:      inviting.role,
       });
-      if (error) throw error;
-      if (!data.user) throw new Error('Aucun utilisateur retourné.');
-      if (!data.user.identities || data.user.identities.length === 0) {
-        throw new Error('Cet email est déjà associé à un compte existant.');
-      }
-
-      const { error: rpcErr } = await supabase.rpc('upsert_staff_profile', {
-        p_id:              data.user.id,
-        p_organization_id: myProfile.organization_id,
-        p_first_name:      inviting.firstName,
-        p_last_name:       inviting.lastName,
-        p_role:            inviting.role,
-      });
-      if (rpcErr) throw rpcErr;
-
-      await staffApi.linkProfile(inviting.id, data.user.id);
-      setStaff(prev => prev.map(s => s.id === inviting.id ? { ...s, profileId: data.user!.id } : s));
+      setStaff(prev => prev.map(s => s.id === inviting.id ? { ...s, profileId } : s));
       closeInvite();
     } catch (err: unknown) {
       setInviteError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -751,8 +715,7 @@ function StaffTab() {
 
       {/* Modal création de compte */}
       {inviting && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 420 }}>
+        <Modal onClose={closeInvite} maxWidth={420} overlayOpacity={0.7} style={{ padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Créer un compte</h2>
               <button onClick={closeInvite} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
@@ -799,14 +762,12 @@ function StaffTab() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Modal ajout membre */}
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: '28px', width: '100%', maxWidth: 440 }}>
+        <Modal onClose={closeForm} maxWidth={440} overlayOpacity={0.7} style={{ padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouveau membre du staff</h2>
               <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
@@ -864,8 +825,7 @@ function StaffTab() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );

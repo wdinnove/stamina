@@ -1,6 +1,5 @@
 import { supabase } from './client';
-import { playerSeasonAvg as computePlayerSeasonAvg } from '../data/helpers';
-import type { Match, MatchStat, TeamMatchStat, PlayerSeasonAvg, OpponentMatchStat } from '../data/types';
+import type { Match, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
 
 export interface BulkStatRow {
   playerId: string;
@@ -107,11 +106,6 @@ export const statsApi = {
       }
       return toMatchStat(row);
     });
-  },
-
-  // Calculé côté client depuis les match_stats — identique à helpers.ts
-  async getPlayerSeasonAvg(playerId: string): Promise<PlayerSeasonAvg> {
-    return computePlayerSeasonAvg(playerId);
   },
 
   async createMatchStat(input: Omit<MatchStat, 'id' | 'pts'>): Promise<MatchStat> {
@@ -300,7 +294,7 @@ export const statsApi = {
     if (matchErr) throw matchErr;
     const matchSeasonMap = new Map<string, { seasonId: string; seasonLabel: string; teamId: string; teamName: string }>();
     for (const m of matchData ?? []) {
-      const row = m as { id: string; season_id: string; seasons: { label: string; team_id: string; teams: { name: string } | null } | null };
+      const row = m as unknown as { id: string; season_id: string; seasons: { label: string; team_id: string; teams: { name: string } | null } | null };
       matchSeasonMap.set(row.id, {
         seasonId: row.season_id,
         seasonLabel: row.seasons?.label ?? row.season_id,

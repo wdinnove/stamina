@@ -248,7 +248,7 @@ export interface TrainingSession {
   teamId: string;
   seasonId: string;
   date: string;
-  sessionType: SessionType | string;
+  sessionType: SessionType;
   plannedDuration: number;
   notes?: string;
   partnerCount?: number;
@@ -314,7 +314,7 @@ export interface ExerciseImage {
   createdAt: string;
 }
 
-export type BlockIntensity = 'basse' | 'moyenne' | 'haute' | 'très élevée';
+type BlockIntensity = 'basse' | 'moyenne' | 'haute' | 'très élevée';
 
 export interface SessionBlock {
   id: string;
@@ -345,6 +345,9 @@ export interface TeamSessionRow {
   type: SessionType;
   duration: number;
   nbPlayers: number;
+  /** Identifiants des joueuses ayant loggué un RPE pour cette séance — sert à calculer
+   *  l'effectif distinct réellement actif sur une semaine (pas une moyenne par séance). */
+  playerIds: string[];
   avg: number;
   max: number;
   min: number;
@@ -363,17 +366,3 @@ export interface PlayerRank {
   weekLoads: number[];
 }
 
-/** Moyennes calculées d'une joueur sur la saison */
-export interface PlayerSeasonAvg {
-  gp: number;
-  min: number;
-  pts: number;
-  fg2m: number; fg2a: number; fg2pct: number;
-  fg3m: number; fg3a: number; fg3pct: number;
-  ftm: number;  fta: number;  ftpct: number;
-  ro: number; rd: number; rt: number;
-  pd: number; ct: number; intercepts: number; bp: number;
-  fte: number; fpr: number;
-  eval: number;
-  plusMinus: number;
-}

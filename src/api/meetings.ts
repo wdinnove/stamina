@@ -2,6 +2,12 @@ import { supabase } from './client';
 import type { StaffMeeting } from '../data/types';
 
 export const meetingsApi = {
+  async getById(id: string): Promise<StaffMeeting | null> {
+    const { data, error } = await supabase.from('staff_meetings').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? toMeeting(data) : null;
+  },
+
   async listByTeam(teamId: string): Promise<StaffMeeting[]> {
     const { data, error } = await supabase
       .from('staff_meetings')

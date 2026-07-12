@@ -7,7 +7,7 @@ import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
-import { DateRangeCard, useDateRange, PlayerSelect, Card, CardTitle } from '../components';
+import { DateRangeCard, useDateRange, PlayerSelect, Card, CardTitle, Modal } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessGlobalScore, wellnessStatus, wellnessRawValue, wellnessBroadcastValues } from '../utils/wellness';
 import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
@@ -88,7 +88,7 @@ export default function WellnessPage() {
   const [teamHistory, setTeamHistory]               = useState<WellnessEntry[]>([]);
   const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
 
-  const dateRange = useDateRange(selected?.season.startDate, 21);
+  const dateRange = useDateRange(selected?.season.startDate, 21, selected?.season.endDate);
   const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
 
   const [showLinkModal,    setShowLinkModal]    = useState(false);
@@ -214,7 +214,7 @@ export default function WellnessPage() {
   // ── KPI de la période : score global + les 6 dimensions, avec l'écart vs la moyenne de la saison ──
   // Pas de comparaison quand le preset sélectionné est déjà "Saison" (l'écart serait toujours ~0).
   const seasonEntries = selected?.season.startDate
-    ? sourceHistory.filter(e => e.date >= selected.season.startDate)
+    ? sourceHistory.filter(e => e.date >= selected.season.startDate && (!selected.season.endDate || e.date <= selected.season.endDate))
     : sourceHistory;
   const seasonScoreAvg = wellnessAvg(seasonEntries.map(e => e.score));
   const showSeasonDiff = dateRange.preset !== 'saison';
@@ -479,7 +479,7 @@ export default function WellnessPage() {
         <>
           <DateRangeCard
             from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-            onPreset={p => dateRange.applyPreset(p, selected?.season.startDate)}
+            onPreset={p => dateRange.applyPreset(p, selected?.season.startDate, selected?.season.endDate)}
             onFrom={dateRange.setFrom} onTo={dateRange.setTo}
           />
 
@@ -676,96 +676,94 @@ export default function WellnessPage() {
 
       {/* ── Modale envoi liens wellness ── */}
       {showLinkModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, padding: 28, width: '100%', maxWidth: 460, maxHeight: '85vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem' }}>Envoyer les liens bien-être</h2>
-              <button onClick={() => setShowLinkModal(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
+        <Modal onClose={() => setShowLinkModal(false)} maxWidth={460} maxHeight="85vh" overlayOpacity={0.7} style={{ padding: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem' }}>Envoyer les liens bien-être</h2>
+            <button onClick={() => setShowLinkModal(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+          </div>
 
-            {linkSendResult ? (
-              <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                <div style={{ fontSize: '2rem', marginBottom: 12 }}>
-                  {linkSendResult.failed.length > 0 && linkSendResult.sent === 0 ? '✗' : '✓'}
+          {linkSendResult ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: '2rem', marginBottom: 12 }}>
+                {linkSendResult.failed.length > 0 && linkSendResult.sent === 0 ? '✗' : '✓'}
+              </div>
+              <p style={{ color: '#F1F5F9', margin: '0 0 4px', fontWeight: 600 }}>
+                {linkSendResult.sent} lien{linkSendResult.sent > 1 ? 's' : ''} envoyé{linkSendResult.sent > 1 ? 's' : ''}
+              </p>
+              {linkSendResult.failed.length > 0 && (
+                <div style={{ marginTop: 12, padding: '10px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, textAlign: 'left' }}>
+                  <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 4px', fontWeight: 600 }}>Échec d'envoi</p>
+                  {linkSendResult.failed.map(n => (
+                    <p key={n} style={{ color: '#EF4444', fontSize: '0.75rem', margin: '2px 0' }}>· {n}</p>
+                  ))}
                 </div>
-                <p style={{ color: '#F1F5F9', margin: '0 0 4px', fontWeight: 600 }}>
-                  {linkSendResult.sent} lien{linkSendResult.sent > 1 ? 's' : ''} envoyé{linkSendResult.sent > 1 ? 's' : ''}
-                </p>
-                {linkSendResult.failed.length > 0 && (
-                  <div style={{ marginTop: 12, padding: '10px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, textAlign: 'left' }}>
-                    <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 4px', fontWeight: 600 }}>Échec d'envoi</p>
-                    {linkSendResult.failed.map(n => (
-                      <p key={n} style={{ color: '#EF4444', fontSize: '0.75rem', margin: '2px 0' }}>· {n}</p>
-                    ))}
-                  </div>
-                )}
-                {linkSendResult.skipped.length > 0 && (
-                  <div style={{ marginTop: 10, padding: '10px 14px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, textAlign: 'left' }}>
-                    <p style={{ color: '#F59E0B', fontSize: '0.78rem', margin: '0 0 4px', fontWeight: 600 }}>Sans email</p>
-                    {linkSendResult.skipped.map(n => (
-                      <p key={n} style={{ color: '#F59E0B', fontSize: '0.75rem', margin: '2px 0' }}>· {n}</p>
-                    ))}
-                  </div>
-                )}
-                <button onClick={() => setShowLinkModal(false)}
-                  style={{ marginTop: 20, padding: '8px 24px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700 }}>
-                  Fermer
+              )}
+              {linkSendResult.skipped.length > 0 && (
+                <div style={{ marginTop: 10, padding: '10px 14px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 6, textAlign: 'left' }}>
+                  <p style={{ color: '#F59E0B', fontSize: '0.78rem', margin: '0 0 4px', fontWeight: 600 }}>Sans email</p>
+                  {linkSendResult.skipped.map(n => (
+                    <p key={n} style={{ color: '#F59E0B', fontSize: '0.75rem', margin: '2px 0' }}>· {n}</p>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => setShowLinkModal(false)}
+                style={{ marginTop: 20, padding: '8px 24px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700 }}>
+                Fermer
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>
+                  {linkSelected.size} joueur{linkSelected.size > 1 ? 's' : ''} sélectionné{linkSelected.size > 1 ? 's' : ''}
+                </span>
+                <button onClick={() => {
+                  const withEmail = roster.filter(p => p.email).map(p => p.id);
+                  setLinkSelected(prev => prev.size === withEmail.length ? new Set() : new Set(withEmail));
+                }} style={{ background: 'none', border: 'none', color: '#00E5A0', cursor: 'pointer', fontSize: '0.78rem' }}>
+                  Tout sélectionner / désélectionner
                 </button>
               </div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>
-                    {linkSelected.size} joueur{linkSelected.size > 1 ? 's' : ''} sélectionné{linkSelected.size > 1 ? 's' : ''}
-                  </span>
-                  <button onClick={() => {
-                    const withEmail = roster.filter(p => p.email).map(p => p.id);
-                    setLinkSelected(prev => prev.size === withEmail.length ? new Set() : new Set(withEmail));
-                  }} style={{ background: 'none', border: 'none', color: '#00E5A0', cursor: 'pointer', fontSize: '0.78rem' }}>
-                    Tout sélectionner / désélectionner
-                  </button>
-                </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
-                  {roster.map(player => {
-                    const hasEmail = !!player.email;
-                    const checked  = linkSelected.has(player.id);
-                    return (
-                      <label key={player.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 6, backgroundColor: checked ? 'rgba(0,229,160,0.06)' : '#1E2229', border: `1px solid ${checked ? 'rgba(0,229,160,0.2)' : '#2A2F3A'}`, cursor: hasEmail ? 'pointer' : 'not-allowed', opacity: hasEmail ? 1 : 0.45 }}>
-                        <input type="checkbox" checked={checked} disabled={!hasEmail}
-                          onChange={() => setLinkSelected(prev => {
-                            const next = new Set(prev);
-                            checked ? next.delete(player.id) : next.add(player.id);
-                            return next;
-                          })}
-                          style={{ accentColor: '#00E5A0', width: 15, height: 15 }} />
-                        <span style={{ flex: 1, color: '#F1F5F9', fontSize: '0.85rem' }}>
-                          {player.firstName} {player.lastName}
-                        </span>
-                        {hasEmail
-                          ? <span style={{ color: '#475569', fontSize: '0.72rem' }}>{player.email}</span>
-                          : <span style={{ color: '#EF4444', fontSize: '0.72rem' }}>Pas d'email</span>
-                        }
-                      </label>
-                    );
-                  })}
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+                {roster.map(player => {
+                  const hasEmail = !!player.email;
+                  const checked  = linkSelected.has(player.id);
+                  return (
+                    <label key={player.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 6, backgroundColor: checked ? 'rgba(0,229,160,0.06)' : '#1E2229', border: `1px solid ${checked ? 'rgba(0,229,160,0.2)' : '#2A2F3A'}`, cursor: hasEmail ? 'pointer' : 'not-allowed', opacity: hasEmail ? 1 : 0.45 }}>
+                      <input type="checkbox" checked={checked} disabled={!hasEmail}
+                        onChange={() => setLinkSelected(prev => {
+                          const next = new Set(prev);
+                          checked ? next.delete(player.id) : next.add(player.id);
+                          return next;
+                        })}
+                        style={{ accentColor: '#00E5A0', width: 15, height: 15 }} />
+                      <span style={{ flex: 1, color: '#F1F5F9', fontSize: '0.85rem' }}>
+                        {player.firstName} {player.lastName}
+                      </span>
+                      {hasEmail
+                        ? <span style={{ color: '#475569', fontSize: '0.72rem' }}>{player.email}</span>
+                        : <span style={{ color: '#EF4444', fontSize: '0.72rem' }}>Pas d'email</span>
+                      }
+                    </label>
+                  );
+                })}
+              </div>
 
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={() => setShowLinkModal(false)}
-                    style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                    Annuler
-                  </button>
-                  <button onClick={handleSendLinks} disabled={linkSending || linkSelected.size === 0}
-                    style={{ flex: 1, padding: 10, backgroundColor: linkSending || linkSelected.size === 0 ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: linkSending || linkSelected.size === 0 ? '#475569' : '#0D0F14', cursor: linkSending || linkSelected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <Mail size={14} /> {linkSending ? 'Envoi…' : `Envoyer (${linkSelected.size})`}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setShowLinkModal(false)}
+                  style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+                  Annuler
+                </button>
+                <button onClick={handleSendLinks} disabled={linkSending || linkSelected.size === 0}
+                  style={{ flex: 1, padding: 10, backgroundColor: linkSending || linkSelected.size === 0 ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: linkSending || linkSelected.size === 0 ? '#475569' : '#0D0F14', cursor: linkSending || linkSelected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Mail size={14} /> {linkSending ? 'Envoi…' : `Envoyer (${linkSelected.size})`}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
     </div>
   );

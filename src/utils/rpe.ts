@@ -25,14 +25,6 @@ export function rpeLabel(v: number): string {
   return labels[v] ?? '';
 }
 
-/** Zones RPE pour légendes et seuils */
-export const RPE_ZONES = [
-  { label: '0–4 Facile',    color: '#00E5A0', max: 4  },
-  { label: '5–6 Soutenu',   color: '#EAB308', max: 6  },
-  { label: '7 Difficile',   color: '#F97316', max: 7  },
-  { label: '8–10 Extrême',  color: '#EF4444', max: 10 },
-] as const;
-
 /** ACWR (Acute:Chronic Workload Ratio) — charge aiguë (7j) / charge chronique (28j) */
 export function computeAcwr(history: LoadEntry[], refDate?: string): number | null {
   if (history.length === 0) return null;
@@ -40,7 +32,8 @@ export function computeAcwr(history: LoadEntry[], refDate?: string): number | nu
   const ref = refDate ? new Date(refDate) : new Date(sorted[sorted.length - 1].date);
   const load = (days: number) => {
     const cutoff = new Date(ref);
-    cutoff.setDate(cutoff.getDate() - days);
+    // -(days-1) car les deux bornes sont inclusives : ex. 7j = J-6 → J (7 jours pile), pas J-7 → J (8 jours)
+    cutoff.setDate(cutoff.getDate() - (days - 1));
     const entries = sorted.filter(e => new Date(e.date) >= cutoff && new Date(e.date) <= ref);
     if (!entries.length) return 0;
     return entries.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0) / days;

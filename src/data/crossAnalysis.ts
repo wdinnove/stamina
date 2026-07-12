@@ -73,7 +73,7 @@ export function eachDay(from: string, to: string): string[] {
   return days;
 }
 
-export function shiftDate(iso: string, days: number): string {
+function shiftDate(iso: string, days: number): string {
   const d = new Date(iso + 'T12:00:00');
   d.setDate(d.getDate() + days);
   return d.toLocaleDateString('sv');
@@ -218,7 +218,7 @@ function playerAdvStat(
 
 const TEAM_COLORS = ['#60A5FA', '#00E5A0', '#F59E0B', '#EC4899', '#8B5CF6', '#38BDF8', '#F97316', '#EAB308', '#2DD4BF', '#A78BFA'];
 
-export const INDICATORS: IndicatorDef[] = [
+const INDICATORS: IndicatorDef[] = [
   // ── Match — Statistiques brutes (joueuse ; en vue équipe = moyenne des joueuses) ──
   playerMatchStat('eval',      'Évaluation',       'Éval', '#60A5FA', '',    m => m.eval),
   playerMatchStat('plusMinus', '+/-',              '+/-',  '#3B82F6', '',    m => m.plusMinus),
@@ -330,8 +330,6 @@ export const INDICATORS: IndicatorDef[] = [
   },
 ];
 
-/** Indicateurs strictement individuels (données propres à la joueuse) */
-export const playerIndicators = () => INDICATORS.filter(i => i.playerSeries);
 export const teamIndicators   = () => INDICATORS.filter(i => i.teamSeries || i.playerSeries);
 /**
  * Vue joueuse : ses indicateurs individuels + les collectifs de match (ORtg, DRtg,
@@ -473,7 +471,7 @@ export function correlateIndicators(
 
 // ── Zones à risque ────────────────────────────────────────────────────────────
 
-export type RiskLevel = 'red' | 'amber';
+type RiskLevel = 'red' | 'amber';
 
 export interface RiskAlert {
   playerId: string;

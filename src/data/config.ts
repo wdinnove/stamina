@@ -1,9 +1,6 @@
 import type { PlayerStatus, ActionCategory, ActionPriority } from './types';
 
 export const CURRENT_DATE = '2026-01-15';
-export const CURRENT_TEAM_ID = 't1';
-export const SEASON_LABEL = '2025/26';
-export const TOTAL_SEASON_GAMES = 14;
 
 export const statusConfig: Record<PlayerStatus, { label: string; color: string; bg: string }> = {
   active:      { label: 'Actif',        color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'  },

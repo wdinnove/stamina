@@ -2,23 +2,9 @@ import {
   ComposedChart, Bar, Cell, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea, ResponsiveContainer,
 } from 'recharts';
 import { eachDay, type IndicatorDef, type InjuryEpisode, type SeriesPoint } from '../data/crossAnalysis';
-import { mondayIso } from '../utils/weeklyLoad';
+import { mondayIso, getWeekTier, buildWeekTiers } from '../utils/weeklyLoad';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
-
-const CHARGE_TIERS = [
-  { max: 1 / 3, label: 'Normal',    color: '#00E5A0' },
-  { max: 2 / 3, label: 'Soutenu',   color: '#EAB308' },
-  { max: 1,     label: 'Élevée',    color: '#F97316' },
-  { max: Infinity, label: 'Surcharge', color: '#EF4444' },
-];
-
-/** Couleur d'une barre de charge selon les seuils d'équipe (3 tiers égaux + surcharge au-delà) */
-function chargeTierColor(v: number, high: number): string {
-  if (!high) return CHARGE_TIERS[0].color;
-  const ratio = v / high;
-  return (CHARGE_TIERS.find(t => ratio < t.max) ?? CHARGE_TIERS[CHARGE_TIERS.length - 1]).color;
-}
 
 /** Au-delà de ~10 semaines, on regroupe par semaine pour garder un graphique lisible */
 const WEEKLY_THRESHOLD_DAYS = 70;
@@ -30,7 +16,7 @@ interface ChartRow {
   injuryLabels: string[];
 }
 
-export interface CrossSeries { def: IndicatorDef; points: SeriesPoint[] }
+interface CrossSeries { def: IndicatorDef; points: SeriesPoint[] }
 
 interface CrossTimelineChartProps {
   a: CrossSeries;
@@ -74,9 +60,12 @@ export function CrossTimelineChart({ a, b, from, to, injuries = [], loadThreshol
   const weekly = days.length > WEEKLY_THRESHOLD_DAYS;
   const keyOf = weekly ? mondayIso : (d: string) => d;
 
-  // Seuil « haut » de charge : par semaine si les barres sont regroupées par semaine, par séance sinon
+  // Seuils de charge : par semaine si les barres sont regroupées par semaine, par séance sinon
   const chargeHigh = loadThresholds
     ? (weekly ? loadThresholds.normalMax : Math.round(loadThresholds.normalMax / loadThresholds.sessionsPerWeek))
+    : null;
+  const chargeLow = loadThresholds
+    ? (weekly ? loadThresholds.lightMax : Math.round(loadThresholds.lightMax / loadThresholds.sessionsPerWeek))
     : null;
 
   const keys = [...new Set(days.map(keyOf))].sort();
@@ -141,7 +130,7 @@ export function CrossTimelineChart({ a, b, from, to, injuries = [], loadThreshol
         return (
           <Bar key={id} yAxisId={id} dataKey={id} name={def.shortLabel} radius={[3, 3, 0, 0]} maxBarSize={26}>
             {rows.map((r, i) => (
-              <Cell key={i} fill={r[id] !== null ? chargeTierColor(r[id]!, chargeHigh) : 'transparent'} fillOpacity={0.65} />
+              <Cell key={i} fill={r[id] !== null ? getWeekTier(r[id]!, chargeLow ?? undefined, chargeHigh).color : 'transparent'} fillOpacity={0.65} />
             ))}
           </Bar>
         );
@@ -172,10 +161,10 @@ export function CrossTimelineChart({ a, b, from, to, injuries = [], loadThreshol
         <SeriesChip def={b.def} weekly={weekly} />
         {chargeHigh !== null && [a.def, b.def].some(d => d.key === 'loadUa') && (
           <span style={{ display: 'flex', gap: 6 }}>
-            {['Normal', 'Soutenu', 'Élevée', 'Surcharge'].map((label, i) => (
-              <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: CHARGE_TIERS[i].color }} />
-                {label}
+            {buildWeekTiers(chargeLow ?? undefined, chargeHigh).map(tier => (
+              <span key={tier.label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: tier.color }} />
+                {tier.label}
               </span>
             ))}
           </span>

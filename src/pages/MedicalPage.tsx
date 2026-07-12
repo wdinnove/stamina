@@ -7,16 +7,12 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, RpeKpiCard, Card, CardTitle, playerStatusColor, playerStatusLabel } from '../components';
+import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
 import type { PlayerMedicalViewHandle } from '../components';
 import { computeAcwr, acwrZone } from '../utils/rpe';
-import type { MedicalRecord, Player, RPEEntry } from '../data/types';
-
-const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
-function fmtDate(iso: string): string {
-  const [, m, d] = iso.split('-').map(Number);
-  return `${d} ${MONTHS[m - 1]}`;
-}
+import { fmtDate } from '../utils/dateFormat';
+import { sanitizeHtml } from '../utils/sanitize';
+import type { MedicalRecord, Player, RPEEntry, PlayerStatus } from '../data/types';
 
 const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
@@ -30,6 +26,10 @@ const typeLabels: Record<string, string> = {
 
 const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
+};
+
+const typeIcons: Record<string, string> = {
+  injury: '🚑', checkup: '🩺', treatment: '💊',
 };
 
 type Tab = 'infirmary' | 'record' | 'team';
@@ -96,7 +96,7 @@ export default function MedicalPage() {
   const [fDays, setFDays]             = useState('');
   const [fTreatment, setFTreatment]   = useState('');
   const [fRtpDate, setFRtpDate]       = useState('');
-  const [fPlayerStatus, setFPlayerStatus] = useState<'active' | 'limited' | 'injured' | 'unavailable'>('injured');
+  const [fPlayerStatus, setFPlayerStatus] = useState<PlayerStatus>('injured');
   const [saving, setSaving]           = useState(false);
   const [saveError, setSaveError]     = useState<string | null>(null);
 
@@ -613,16 +613,16 @@ export default function MedicalPage() {
                     </h3>
                     <div style={{ display: 'flex', gap: 6 }}>
                       {(['injury', 'treatment', 'checkup'] as const).map(t => (
-                        <span key={t} style={{ color: typeColors[t], fontSize: '0.7rem', fontWeight: 600, backgroundColor: typeColors[t] + '18', padding: '2px 7px', borderRadius: 3 }}>
-                          {typeLabels[t]} · {teamAllRecords.filter(r => r.type === t).length}
-                        </span>
+                        <Badge key={t} color={typeColors[t]} bg={typeColors[t] + '18'} size="sm"
+                          label={<>{typeLabels[t]} · {teamAllRecords.filter(r => r.type === t).length}</>}
+                          style={{ fontSize: '0.7rem', fontWeight: 600, borderRadius: 3 }} />
                       ))}
                     </div>
                   </div>
 
                   {/* Filtres */}
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                    <div style={{ position: 'relative', flex: '1 1 160px', minWidth: 140 }}>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-2" style={{ marginBottom: 14 }}>
+                    <div className="w-full sm:w-auto" style={{ position: 'relative', flex: '1 1 160px', minWidth: 140 }}>
                       <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
                       <input
                         placeholder="Rechercher…"
@@ -632,26 +632,30 @@ export default function MedicalPage() {
                       />
                     </div>
                     <select value={recapTypeFilter} onChange={e => setRecapTypeFilter(e.target.value)}
-                      style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapTypeFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none' }}>
+                      className="w-full sm:w-auto"
+                      style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapTypeFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}>
                       <option value="">Tous types</option>
                       <option value="injury">Blessure</option>
                       <option value="treatment">Traitement</option>
                       <option value="checkup">Bilan santé</option>
                     </select>
                     <select value={recapPlayerFilter} onChange={e => setRecapPlayerFilter(e.target.value)}
-                      style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapPlayerFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', flex: '0 1 140px' }}>
+                      className="w-full sm:w-auto"
+                      style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapPlayerFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box', flex: '0 1 140px' }}>
                       <option value="">Tous joueurs</option>
                       {teamPlayers.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName[0]}.</option>)}
                     </select>
                     <select value={recapStatusFilter} onChange={e => setRecapStatusFilter(e.target.value)}
-                      style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapStatusFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none' }}>
+                      className="w-full sm:w-auto"
+                      style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapStatusFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}>
                       <option value="">Tous statuts</option>
                       <option value="active">En cours</option>
                       <option value="resolved">Clôturé</option>
                     </select>
                     {hasFilter && (
                       <button onClick={() => { setRecapSearch(''); setRecapTypeFilter(''); setRecapPlayerFilter(''); setRecapStatusFilter(''); }}
-                        style={{ padding: '7px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        className="w-full sm:w-auto"
+                        style={{ padding: '7px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <X size={12} /> Effacer
                       </button>
                     )}
@@ -701,7 +705,7 @@ export default function MedicalPage() {
                                       {r.description}
                                     </td>
                                     <td style={{ padding: '8px 8px' }}>
-                                      <span style={{ color: col, fontSize: '0.7rem', fontWeight: 600, backgroundColor: col + '18', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{typeLabels[r.type]}</span>
+                                      <Badge color={col} bg={col + '18'} size="sm" label={typeLabels[r.type]} style={{ fontSize: '0.7rem', fontWeight: 600 }} />
                                     </td>
                                     <td style={{ padding: '8px 8px', color: sev?.color ?? '#475569', fontSize: '0.75rem', fontWeight: 600 }}>{sev?.label ?? '—'}</td>
                                     <td style={{ padding: '8px 8px' }}>
@@ -759,7 +763,7 @@ export default function MedicalPage() {
                 label="ACWR — risque de blessure"
                 value={playerAcwr !== null ? playerAcwr.toFixed(2) : '—'}
                 sub={playerAcwrZone
-                  ? <span style={{ backgroundColor: playerAcwrZone.color + '22', color: playerAcwrZone.color, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{playerAcwrZone.label}</span>
+                  ? <Badge color={playerAcwrZone.color} size="sm" label={playerAcwrZone.label} style={{ fontSize: '0.62rem' }} />
                   : 'Historique insuffisant (28j)'}
               />
             </div>
@@ -783,8 +787,7 @@ export default function MedicalPage() {
         const col = typeColors[detailRecord.type] ?? '#94A3B8';
         const totalDays = detailRecord.rtpDate ? daysBetween(detailRecord.date, detailRecord.rtpDate) : null;
         return (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 480, padding: '24px' }}>
+          <Modal onClose={() => setDetailRecord(null)} maxWidth={480} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -824,7 +827,7 @@ export default function MedicalPage() {
                   <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 5px', fontWeight: 600 }}>
                     {detailRecord.type === 'injury' ? 'Traitement & protocole' : 'Notes'}
                   </p>
-                  <div className="rich-display" style={{ color: '#CBD5E1', fontSize: '0.84rem' }} dangerouslySetInnerHTML={{ __html: detailRecord.treatment }} />
+                  <div className="rich-display" style={{ color: '#CBD5E1', fontSize: '0.84rem' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(detailRecord.treatment) }} />
                 </div>
               )}
 
@@ -832,15 +835,13 @@ export default function MedicalPage() {
                 style={{ width: '100%', padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.88rem' }}>
                 Fermer
               </button>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 360, padding: '24px' }}>
+        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Clôturer l'entrée</h2>
               <button onClick={() => setCloseModal(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
@@ -890,20 +891,18 @@ export default function MedicalPage() {
                 {closeSaving ? 'Clôture…' : 'Confirmer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── FORM MODAL ── */}
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <Modal onClose={() => setShowForm(false)} maxWidth={560} maxHeight="85vh">
           <style>{`
             @media (max-width: 539px) {
               .med-form-player-date { grid-template-columns: 1fr !important; }
               .med-form-days-rtp    { grid-template-columns: 1fr !important; }
             }
           `}</style>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
             {/* Header */}
             <div className="px-4 sm:px-6" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, paddingBottom: 14, borderBottom: '1px solid #2A2F3A', flexShrink: 0 }}>
@@ -1103,8 +1102,7 @@ export default function MedicalPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -49,7 +49,7 @@ export function computeWinFactors(teamStats: TeamMatchStat[]): WinFactor[] {
     .map(v => {
       const pairs = rows
         .map((m, i) => [v.get(m), winVals[i]] as const)
-        .filter((p): p is [number, number] => p[0] !== null);
+        .filter((p): p is [number, 0 | 1] => p[0] !== null);
       if (pairs.length < MIN_MATCHES) return null;
       const xs = pairs.map(p => p[0]);
       if (!hasVariance(xs)) return null;

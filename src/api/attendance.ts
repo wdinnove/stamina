@@ -1,5 +1,5 @@
 import { supabase } from './client';
-import type { TrainingSession, TrainingAttendance } from '../data/types';
+import type { TrainingSession, TrainingAttendance, SessionType } from '../data/types';
 
 function toSession(row: Record<string, unknown>): TrainingSession {
   return {
@@ -7,7 +7,7 @@ function toSession(row: Record<string, unknown>): TrainingSession {
     teamId:          row.team_id          as string,
     seasonId:        row.season_id        as string,
     date:            row.date             as string,
-    sessionType:     row.session_type     as string,
+    sessionType:     row.session_type     as SessionType,
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
     partnerCount:    (row.partner_count   as number) ?? 0,

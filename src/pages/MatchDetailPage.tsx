@@ -6,10 +6,10 @@ import { statsApi } from '../api/stats';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
-import { EmptyState } from '../components';
+import { EmptyState, Modal } from '../components';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
-import { evalColor } from '../data';
+import { evalColor, shotPct } from '../data';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const DAYS_FR   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -756,8 +756,7 @@ export default function MatchDetailPage() {
             const pB = playerById.get(playerB);
             type Metric = { label: string; a: number; b: number; displayA: string; displayB: string; higherBetter: boolean | null };
             type MetricGroup = { title: string; metrics: Metric[] };
-            const calcEfg = (s: MatchStat) => { const fga = s.fg2a + s.fg3a; return fga > 0 ? Math.round((s.fg2m + 0.5 * s.fg3m) / fga * 1000) / 10 : 0; };
-            const calcPct = (m: number, a: number) => a > 0 ? Math.round(m / a * 100) : 0;
+            const calcPct = (m: number, a: number) => shotPct(m, a) ?? 0;
             const advA = sA ? calcPlayerAdvanced(sA, teamStats) : null;
             const advB = sB ? calcPlayerAdvanced(sB, teamStats) : null;
             const hasAdv = !!(teamStats && teamStats.possessions > 0 && advA && advB);
@@ -775,7 +774,7 @@ export default function MatchDetailPage() {
                 { label: '+/-', a: sA.plusMinus ?? 0, b: sB.plusMinus ?? 0, displayA: sA.plusMinus != null ? (sA.plusMinus > 0 ? `+${sA.plusMinus}` : String(sA.plusMinus)) : '—', displayB: sB.plusMinus != null ? (sB.plusMinus > 0 ? `+${sB.plusMinus}` : String(sB.plusMinus)) : '—', higherBetter: true },
               ]},
               { title: 'Tirs', metrics: [
-                { label: 'eFG%', a: calcEfg(sA), b: calcEfg(sB), displayA: `${calcEfg(sA)}%`, displayB: `${calcEfg(sB)}%`, higherBetter: true },
+                { label: 'eFG%', a: advA?.efgPct ?? 0, b: advB?.efgPct ?? 0, displayA: `${advA?.efgPct ?? 0}%`, displayB: `${advB?.efgPct ?? 0}%`, higherBetter: true },
                 { label: '2pts', a: sA.fg2m, b: sB.fg2m, displayA: `${sA.fg2m}/${sA.fg2a}`, displayB: `${sB.fg2m}/${sB.fg2a}`, higherBetter: true },
                 { label: '2pts%', a: calcPct(sA.fg2m, sA.fg2a), b: calcPct(sB.fg2m, sB.fg2a), displayA: `${calcPct(sA.fg2m, sA.fg2a)}%`, displayB: `${calcPct(sB.fg2m, sB.fg2a)}%`, higherBetter: true },
                 { label: '3pts', a: sA.fg3m, b: sB.fg3m, displayA: `${sA.fg3m}/${sA.fg3a}`, displayB: `${sB.fg3m}/${sB.fg3a}`, higherBetter: true },
@@ -1052,9 +1051,7 @@ export default function MatchDetailPage() {
 
       {/* Edit modal */}
       {showEdit && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 460, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <Modal onClose={() => setShowEdit(false)} closeOnBackdropClick maxWidth={460} overlayOpacity={0.7} scrollOverlay={false} style={{ padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem' }}>Modifier le match</h2>
               <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
@@ -1133,14 +1130,12 @@ export default function MatchDetailPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Confirm delete */}
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 360, padding: '24px' }}>
+        <Modal maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer ce match ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 4px' }}>vs {match.opponent} — {match.date}</p>
             <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 20px' }}>Les statistiques associées seront aussi supprimées.</p>
@@ -1151,8 +1146,7 @@ export default function MatchDetailPage() {
                 {deleting ? 'Suppression…' : 'Supprimer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Import modal */}

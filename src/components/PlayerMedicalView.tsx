@@ -6,9 +6,11 @@ import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from './RichTextEditor';
 import { EmptyState } from './EmptyState';
+import { Modal } from './Modal';
+import { Badge } from './Badge';
 import { InjuryRecordCard } from './InjuryRecordCard';
 import { typeLabels, severityConfig } from './MedicalCard';
-import type { MedicalRecord, Player } from '../data/types';
+import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const labelStyle: React.CSSProperties = { color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 };
@@ -36,7 +38,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
   const [fDays, setFDays]               = useState('');
   const [fTreatment, setFTreatment]     = useState('');
   const [fRtpDate, setFRtpDate]         = useState('');
-  const [fPlayerStatus, setFPlayerStatus] = useState<'active' | 'limited' | 'injured' | 'unavailable'>('injured');
+  const [fPlayerStatus, setFPlayerStatus] = useState<PlayerStatus>('injured');
   const [saving, setSaving]             = useState(false);
   const [saveError, setSaveError]       = useState<string | null>(null);
 
@@ -159,9 +161,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
                 {section.title}
               </h4>
               {section.records.length > 0 && (
-                <span style={{ color: section.color, fontWeight: 700, fontSize: '0.78rem', backgroundColor: section.color + '18', padding: '2px 8px', borderRadius: 3 }}>
-                  {section.records.length}
-                </span>
+                <Badge color={section.color} bg={section.color + '18'} label={section.records.length} style={{ padding: '2px 8px', borderRadius: 3 }} />
               )}
             </div>
             {section.records.length === 0
@@ -196,8 +196,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 360, padding: '24px' }}>
+        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Clôturer l'entrée</h2>
               <button onClick={() => setCloseModal(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
@@ -251,15 +250,13 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
                 {closeSaving ? 'Clôture…' : 'Confirmer'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── FORM MODAL ── */}
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <Modal onClose={() => setShowForm(false)} maxWidth={560} maxHeight="85vh">
           <style>{`@media (max-width: 539px) { .med-form-days-rtp { grid-template-columns: 1fr !important; } }`}</style>
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
             <div className="px-4 sm:px-6" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, paddingBottom: 14, borderBottom: '1px solid #2A2F3A', flexShrink: 0 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>
@@ -423,8 +420,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   );

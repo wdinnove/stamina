@@ -21,7 +21,7 @@ function toTeam(row: Record<string, unknown>): SessionTeam {
   };
 }
 
-export interface SessionTeamWithPlayers {
+interface SessionTeamWithPlayers {
   name: string;
   color: string;
   playerIds: string[];

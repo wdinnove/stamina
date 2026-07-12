@@ -1,6 +1,7 @@
 import { Pencil, Bandage, Stethoscope, Pill } from 'lucide-react';
 import { PlayerAvatar } from './PlayerAvatar';
 import { StatusBadge } from './StatusBadge';
+import { Badge } from './Badge';
 import { statusConfig } from '../data/config';
 import type { MedicalRecord, Player } from '../data/types';
 
@@ -10,13 +11,13 @@ function fmtDateLong(iso: string): string {
   return `${d} ${MONTHS_LONG[m - 1]} ${y}`;
 }
 
-export const severityConfig = {
+const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
   moderate: { label: 'Modéré', color: '#fb923c' },
   severe:   { label: 'Grave',  color: '#EF4444' },
 };
 
-export const typeLabels: Record<string, string> = {
+const typeLabels: Record<string, string> = {
   injury: 'Blessure', checkup: 'Bilan santé', treatment: 'Traitement',
 };
 
@@ -83,7 +84,7 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '3px 0 0', flexWrap: 'wrap' }}>
             <p style={{ color: '#CBD5E1', fontSize: '0.85rem', fontWeight: 500, margin: 0, lineHeight: 1.3 }}>{record.description}</p>
             {sev && (
-              <span style={{ color: sev.color, fontSize: '0.66rem', fontWeight: 700, backgroundColor: sev.color + '18', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>{sev.label}</span>
+              <Badge color={sev.color} bg={sev.color + '18'} label={sev.label} size="sm" style={{ fontSize: '0.66rem', padding: '1px 6px', flexShrink: 0 }} />
             )}
           </div>
 

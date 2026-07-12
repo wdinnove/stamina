@@ -5,6 +5,8 @@ import { matchesApi } from '../api/matches';
 import type { Match, Player, TeamMatchStat } from '../data/types';
 import { evalColor } from '../data';
 import type { BulkStatRow, CollectiveStatInput, OpponentStatInput } from '../api/stats';
+import { Modal } from './Modal';
+import { DropzoneEmptyState } from './DropzoneEmptyState';
 
 // ─── Types internes ───────────────────────────────────────────────────────────
 
@@ -139,10 +141,10 @@ function parseCsv(text: string): ParseResult {
         row.disq = val === '1' || val.toLowerCase() === 'oui' || val.toLowerCase() === 'x';
       } else if (field === 'eval' || field === 'plusMinus') {
         const p = parseFloat(val.replace(',', '.'));
-        (row as Record<string, unknown>)[field] = isNaN(p) ? null : p;
+        (row as unknown as Record<string, unknown>)[field] = isNaN(p) ? null : p;
       } else {
         const p = parseFloat(val.replace(',', '.'));
-        (row as Record<string, unknown>)[field] = isNaN(p) ? 0 : p;
+        (row as unknown as Record<string, unknown>)[field] = isNaN(p) ? 0 : p;
       }
     });
     return row;
@@ -237,21 +239,15 @@ function UploadZone({ onFile, error }: { onFile: (f: File) => void; error: strin
   const ref = useRef<HTMLInputElement>(null);
   return (
     <div>
-      <button
-        type="button"
+      <DropzoneEmptyState
+        label="Choisir un fichier CSV"
         onClick={() => ref.current?.click()}
+        icon={<Upload size={14} color="#00E5A0" />}
         style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px',
-          backgroundColor: '#1E2229', border: '1px dashed #2A2F3A', borderRadius: 8,
-          color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', width: '100%',
-          justifyContent: 'center',
+          gap: 8, padding: '10px 16px', minHeight: 'auto',
+          backgroundColor: '#1E2229', color: '#94A3B8', fontSize: '0.82rem', width: '100%',
         }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#00E5A0'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#2A2F3A'; }}
-      >
-        <Upload size={14} color="#00E5A0" />
-        Choisir un fichier CSV
-      </button>
+      />
       <input ref={ref} type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }}
       />
@@ -655,11 +651,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
   };
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px 12px', overflowY: 'auto' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, width: '100%', maxWidth: 1400, flexShrink: 0 }}>
+    <Modal maxWidth={1400} overlayOpacity={0.85} zIndex={200} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #2A2F3A' }}>
@@ -785,7 +777,6 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -8,7 +8,7 @@ export interface TeamSeasonOption {
   season: Season;
 }
 
-export interface LoadThresholds {
+interface LoadThresholds {
   lightMax:        number;
   normalMax:       number;
   sessionsPerWeek: number;
@@ -106,8 +106,7 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
         setOrgRole((data.org_role as OrgRole) ?? 'editor');
-      })
-      .catch(() => { /* réseau : orgRole reste null, le guard bloquera */ });
+      }, () => { /* réseau : orgRole reste null, le guard bloquera */ });
     return () => { cancelled = true; };
   }, [userId]);
 
