@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, Plus, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, Users, Check, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, Plus, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, Users, Check, Save, ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -8,11 +8,16 @@ import { documentsApi } from '../api/documents';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { sessionTeamsApi } from '../api/sessionTeams';
 import { exercisesApi } from '../api/exercises';
-import { PlayerAvatar } from '../components';
+import { wellnessApi } from '../api/wellness';
+import { PlayerAvatar, RpeKpiCard } from '../components';
 import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform } from '../utils/socialVideo';
-import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage } from '../data/types';
+import { computeAcwr, acwrZone } from '../utils/rpe';
+import type { LoadEntry } from '../utils/rpe';
+import { getWeekTier } from '../utils/weeklyLoad';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage, WellnessEntry } from '../data/types';
 
 // Noir, blanc, rouge, bleu, vert, jaune
 const TEAM_COLORS = ['#0D0F14', '#F1F5F9', '#EF4444', '#3B82F6', '#00E5A0', '#EAB308'];
@@ -66,7 +71,7 @@ function PlayerChip({ player, status }: { player: Player; status?: TrainingAtten
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, cursor: 'grab', userSelect: 'none' }}>
       <PlayerAvatar player={player} size={22} />
       <span style={{ color: '#F1F5F9', fontSize: '0.8rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {player.lastName} {player.firstName[0]}.
+        {player.firstName.toUpperCase()} {player.lastName[0]}.
       </span>
       {cfg && <span title={cfg.label} style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: cfg.color, flexShrink: 0 }} />}
     </div>
@@ -88,14 +93,37 @@ function rpeColor(rpe: number): string {
   return '#00E5A0';
 }
 
-// Même convention que la liste des séances (TrainingSessionsPage) pour comparer réel vs estimé
-function deltaColor(real: number, estimated: number): string {
-  if (estimated <= 0) return '#94A3B8';
-  const delta = (real - estimated) / estimated;
-  if (delta > 0.25)      return '#EF4444';
-  if (delta > 0.10)      return '#F59E0B';
-  if (delta < -0.10)     return '#3B82F6';
-  return '#00E5A0';
+// Fenêtre des 7 jours précédant (hors) la date de séance — indicateurs d'entrée en séance
+function windowBefore(sessionDate: string): { startStr: string; endStr: string } {
+  const end = new Date(sessionDate + 'T12:00:00');
+  end.setDate(end.getDate() - 1);
+  const start = new Date(sessionDate + 'T12:00:00');
+  start.setDate(start.getDate() - 7);
+  return { startStr: start.toLocaleDateString('sv'), endStr: end.toLocaleDateString('sv') };
+}
+
+// Charge cumulée sur les 7 jours précédant la date de séance
+function acuteLoadBefore(history: LoadEntry[], sessionDate: string): number {
+  const { startStr, endStr } = windowBefore(sessionDate);
+  return history
+    .filter(e => e.date >= startStr && e.date <= endStr)
+    .reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+}
+
+// Score bien-être moyen sur les 7 jours précédant la date de séance
+function wellnessAvgBefore(entries: WellnessEntry[], sessionDate: string): number | null {
+  const { startStr, endStr } = windowBefore(sessionDate);
+  const inWindow = entries.filter(e => e.date >= startStr && e.date <= endStr);
+  if (inWindow.length === 0) return null;
+  return Math.round((inWindow.reduce((sum, e) => sum + e.score, 0) / inWindow.length) * 10) / 10;
+}
+
+// Même seuils que wellnessScoreColor — pour un badge texte plutôt qu'une valeur brute
+function wellnessTier(v: number | null): { label: string; color: string } | null {
+  if (v === null) return null;
+  if (v >= 7) return { label: 'Bon',    color: '#00E5A0' };
+  if (v >= 5) return { label: 'Moyen',  color: '#F59E0B' };
+  return { label: 'Faible', color: '#EF4444' };
 }
 
 function fmtSize(bytes?: number): string {
@@ -234,6 +262,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   blocks: SessionBlock[];
   onBlocksChange: (blocks: SessionBlock[]) => void;
 }) {
+  const { thresholds } = useTeamSeason();
   const [showForm,       setShowForm]       = useState(false);
   const [saving,         setSaving]         = useState(false);
   const [blockError,     setBlockError]     = useState('');
@@ -371,6 +400,10 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
 
   const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
   const totalLoadUa   = blocks.reduce((s, b) => s + b.loadUa, 0);
+  const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
+  const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
+  const totalLoadTier = totalLoadUa > 0 ? getWeekTier(totalLoadUa, sessionLoadLight, sessionLoadNormal) : null;
+  const headerNeutralBadge: React.CSSProperties = { backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', fontWeight: 600, fontSize: '0.72rem', padding: '2px 7px', whiteSpace: 'nowrap' };
 
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
@@ -378,9 +411,15 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
         <BookOpen size={15} style={{ color: '#00E5A0' }} />
         <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Contenu de la séance</h2>
         {blocks.length > 0 && (
-          <span style={{ color: '#475569', fontSize: '0.72rem' }}>
-            {totalDuration} min · {blocks.length} bloc{blocks.length > 1 ? 's' : ''} · <span style={{ color: '#F59E0B' }}>{totalLoadUa} UA</span>
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={headerNeutralBadge}>{totalDuration} min</span>
+            <span style={headerNeutralBadge}>{blocks.length} séquence{blocks.length > 1 ? 's' : ''}</span>
+            {totalLoadTier && (
+              <span style={{ color: totalLoadTier.color, backgroundColor: totalLoadTier.color + '22', fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                {totalLoadUa} UA
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -395,7 +434,6 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
             const intCfg = INTENSITY_CFG[block.intensity] ?? INTENSITY_CFG['moyenne'];
             const linkedExercise = block.drillId ? exercises.find(e => e.id === block.drillId) ?? null : null;
             const neutralBadge: React.CSSProperties = { backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap' };
-            const uaBadge: React.CSSProperties = { backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 4, color: '#F59E0B', fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' };
             const isEditing = editingId === block.id;
 
             const isDragging = draggingIndex === i;
@@ -536,13 +574,13 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         </div>
                       </div>
                       {/* Ligne 2 : badges, indentés */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 28, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 50, flexWrap: 'wrap' }}>
                         <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px' }}>{block.duration} min</span>
                         <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px' }}>{block.category}</span>
                         <span style={{ color: intCfg.color, backgroundColor: intCfg.bg, fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                          {intCfg.label}
+                          Intensité {intCfg.label.toLowerCase()}
                         </span>
-                        <span style={{ ...uaBadge, fontSize: '0.68rem', padding: '2px 7px' }}>{block.loadUa} UA</span>
+                        <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px' }}>{block.loadUa} UA</span>
                       </div>
                     </div>
 
@@ -560,9 +598,9 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                       <span style={{ color: '#F1F5F9', fontSize: '0.9rem', fontWeight: 700, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.label}</span>
                       <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.category}</span>
                       <span style={{ color: intCfg.color, backgroundColor: intCfg.bg, fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                        {intCfg.label}
+                        Intensité {intCfg.label.toLowerCase()}
                       </span>
-                      <span style={{ ...uaBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.loadUa} UA</span>
+                      <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.loadUa} UA</span>
                       <div style={{ width: 1, height: 18, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
                       {block.drillId && (
                         <button
@@ -705,7 +743,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
           onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#3A4454'; }}
           onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#2A2F3A'; }}>
           <Plus size={14} />
-          Cliquer pour ajouter
+          Cliquer pour ajouter une séquence
         </div>
       )}
 
@@ -874,7 +912,7 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
           style={{ border: `1px dashed ${dragOver ? '#00E5A0' : '#2A2F3A'}`, borderRadius: 8, padding: '20px 16px', minHeight: 60, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center', color: '#475569', fontSize: '0.8rem', cursor: 'pointer', transition: 'border-color 0.15s' }}
         >
           <Plus size={14} />
-          Glisser-déposer ou cliquer pour ajouter
+          Cliquer pour ajouter un document
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -920,6 +958,7 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
 export default function TrainingSessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { thresholds } = useTeamSeason();
 
   const [session,    setSession]    = useState<TrainingSession | null>(null);
   const [players,    setPlayers]    = useState<Player[]>([]);
@@ -936,10 +975,16 @@ export default function TrainingSessionDetailPage() {
 
   const [rosterPlayers,    setRosterPlayers]    = useState<Player[]>([]);
   const [showAttendance,   setShowAttendance]   = useState(false);
-  const [presencesCollapsed, setPresencesCollapsed] = useState(false);
+  const [presencesCollapsed, setPresencesCollapsed] = useState(true);
   const [teamsCollapsed,     setTeamsCollapsed]     = useState(true);
   const [attSavingId,      setAttSavingId]      = useState<string | null>(null);
   const [attError,         setAttError]         = useState('');
+
+  const [physicalCollapsed, setPhysicalCollapsed] = useState(true);
+  const [historyMap,   setHistoryMap]   = useState<Record<string, LoadEntry[]>>({});
+  const [wellnessMap,  setWellnessMap]  = useState<Record<string, WellnessEntry[]>>({});
+  const [acwrLoading,  setAcwrLoading]  = useState(false);
+  const [acwrLoaded,   setAcwrLoaded]   = useState(false);
 
   const [blockDrafts, setBlockDrafts] = useState<BlockDraft[]>(defaultBlockDrafts);
   const [teamsSaving, setTeamsSaving] = useState(false);
@@ -1001,6 +1046,25 @@ export default function TrainingSessionDetailPage() {
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Charge l'historique RPE + bien-être de chaque joueuse concernée (ACWR, charge 7j, bien-être 7j)
+  // Chargé dès l'arrivée sur la page (pas seulement à l'ouverture du bloc) pour alimenter le compteur d'alertes dans le titre
+  useEffect(() => {
+    if (acwrLoaded || !session) return;
+    const knownIds = new Set([...attendance.map(a => a.playerId), ...rpeEntries.map(e => e.playerId)]);
+    const targets = players.filter(p => knownIds.has(p.id));
+    if (targets.length === 0) { setAcwrLoaded(true); return; }
+    setAcwrLoading(true);
+    Promise.all([
+      Promise.all(targets.map(p => rpeApi.listPlayerHistory(p.id).then(history => [p.id, history] as const))),
+      Promise.all(targets.map(p => wellnessApi.getByPlayer(p.id).then(entries => [p.id, entries] as const))),
+    ])
+      .then(([rpeEntriesRes, wellnessRes]) => {
+        setHistoryMap(Object.fromEntries(rpeEntriesRes));
+        setWellnessMap(Object.fromEntries(wellnessRes));
+      })
+      .finally(() => { setAcwrLoading(false); setAcwrLoaded(true); });
+  }, [acwrLoaded, session, players, attendance, rpeEntries]);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}>
@@ -1178,27 +1242,21 @@ export default function TrainingSessionDetailPage() {
 
   function renderPlayerItem(player: Player) {
     const attStatus = attMap[player.id] as TrainingAttendance['status'] | undefined;
-    const rpe       = rpeMap[player.id];
     const statusCfg = attStatus === 'late' ? STATUS_CFG[attStatus] : null;
     return (
       <div key={player.id} onClick={() => navigate(`/players/${player.id}`)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8, padding: '8px 10px', cursor: 'pointer' }}>
-        <PlayerAvatar player={player} size={26} />
-        <span style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {player.firstName} {player.lastName[0]}.
+        <span className="hidden sm:block">
+          <PlayerAvatar player={player} size={26} />
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-          {rpe && (
-            <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: rpeColor(rpe.rpe) + '22', color: rpeColor(rpe.rpe), fontSize: '0.7rem', fontWeight: 700 }}>
-              {rpe.rpe}
-            </span>
-          )}
-          {statusCfg && (
-            <span style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>
-              {statusCfg.label}
-            </span>
-          )}
-        </div>
+        <span style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {player.firstName.toUpperCase()} {player.lastName[0]}.
+        </span>
+        {statusCfg && (
+          <span style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+            {statusCfg.label}
+          </span>
+        )}
       </div>
     );
   }
@@ -1213,6 +1271,11 @@ export default function TrainingSessionDetailPage() {
   const blockLoadUa     = blocks.reduce((s, b) => s + b.loadUa, 0);
   const estimatedRpe    = blockDuration > 0 ? blockLoadUa / blockDuration : null;
   const avgLoadPerPlayer = rpeEntries.length > 0 ? totalLoad / rpeEntries.length : null;
+  const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
+  const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
+
+  const acwrAlertCount   = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], session.date))?.label === 'Risque élevé').length;
+  const acwrWarningCount = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], session.date))?.label === 'Risque modéré').length;
 
   return (
     <div className="p-4 md:p-6">
@@ -1226,86 +1289,25 @@ export default function TrainingSessionDetailPage() {
         </button>
       </div>
 
-      {/* Header + KPIs */}
+      {/* Header */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-
-          {/* Partie 1 : titre + infos */}
-          <div style={{ flex: '1 1 220px', minWidth: 200 }}>
-            <h1 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>{fmtDateFull(session.date)}</h1>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 4 }}>
-                {typeCfg.label}
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.82rem' }}>
-                <Clock size={13} /> {session.plannedDuration} min
-              </span>
-              {(session.partnerCount ?? 0) > 0 && (
-                <span style={{ color: '#475569', fontSize: '0.78rem' }}>{session.partnerCount} partenaire{(session.partnerCount ?? 0) > 1 ? 's' : ''}</span>
-              )}
-            </div>
-          </div>
-
-          {/* Partie 2 : KPIs alignés à droite */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
-        {(estimatedRpe !== null || avgRpe !== null) && (
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
-            {estimatedRpe !== null && (
-              <div style={{ textAlign: 'center', minWidth: 84 }}>
-                <div style={{ color: '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{estimatedRpe.toFixed(1)}</div>
-                <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>RPE estimé</div>
-              </div>
-            )}
-            {estimatedRpe !== null && (
-              <div style={{ width: 1, height: 28, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
-            )}
-            {avgRpe !== null ? (
-                <div style={{ textAlign: 'center', minWidth: 84 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                    <span style={{ color: estimatedRpe !== null ? deltaColor(avgRpe, estimatedRpe) : rpeColor(avgRpe), fontSize: '1.15rem', fontWeight: 700 }}>{avgRpe.toFixed(1)}</span>
-                    {estimatedRpe !== null && avgRpe > estimatedRpe && <ArrowUp size={13} style={{ color: '#EF4444' }} />}
-                    {estimatedRpe !== null && avgRpe < estimatedRpe && <ArrowDown size={13} style={{ color: '#00E5A0' }} />}
-                  </div>
-                  <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>RPE réel</div>
-                </div>
-            ) : (
-              <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}
-                onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
-                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-                Saisir le RPE
-                <ArrowRight size={11} />
-              </button>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 200 }}>
+            <h1 style={{ color: '#F1F5F9', margin: 0 }}>{fmtDateFull(session.date)}</h1>
+            {session.notes && (
+              <p style={{ color: '#94A3B8', fontSize: '0.82rem', fontStyle: 'italic', margin: '6px 0 0' }}>{session.notes}</p>
             )}
           </div>
-        )}
-        {(blockLoadUa > 0 || avgLoadPerPlayer !== null) && (
-          <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
-            {blockLoadUa > 0 && (
-              <div style={{ textAlign: 'center', minWidth: 84 }}>
-                <div style={{ color: '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{blockLoadUa}</div>
-                <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>Charge estimée</div>
-              </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 4 }}>
+              {typeCfg.label}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', fontWeight: 600, fontSize: '0.75rem', padding: '3px 10px' }}>
+              <Clock size={13} /> {session.plannedDuration} min
+            </span>
+            {(session.partnerCount ?? 0) > 0 && (
+              <span style={{ color: '#475569', fontSize: '0.78rem' }}>{session.partnerCount} partenaire{(session.partnerCount ?? 0) > 1 ? 's' : ''}</span>
             )}
-            {blockLoadUa > 0 && (
-              <div style={{ width: 1, height: 28, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
-            )}
-            {avgLoadPerPlayer !== null ? (
-                <div style={{ textAlign: 'center', minWidth: 84 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                    <span style={{ color: blockLoadUa > 0 ? deltaColor(avgLoadPerPlayer, blockLoadUa) : '#F1F5F9', fontSize: '1.15rem', fontWeight: 700 }}>{Math.round(avgLoadPerPlayer)}</span>
-                    {blockLoadUa > 0 && avgLoadPerPlayer > blockLoadUa && <ArrowUp size={13} style={{ color: '#EF4444' }} />}
-                    {blockLoadUa > 0 && avgLoadPerPlayer < blockLoadUa && <ArrowDown size={13} style={{ color: '#00E5A0' }} />}
-                  </div>
-                  <div style={{ color: '#94A3B8', fontSize: '0.68rem' }}>Charge réelle</div>
-                </div>
-            ) : (
-              blockLoadUa > 0 && (
-                <span style={{ color: '#2A2F3A', fontSize: '0.72rem' }}>—</span>
-              )
-            )}
-          </div>
-        )}
           </div>
         </div>
       </div>
@@ -1369,6 +1371,157 @@ export default function TrainingSessionDetailPage() {
               <Edit size={13} /> Modifier
             </button>
           </div>
+        )}
+      </div>
+
+      {/* Charge physique (RPE, charge, ACWR) */}
+      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: physicalCollapsed ? 0 : 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Activity size={15} style={{ color: '#00E5A0' }} />
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Charge physique</h2>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {acwrAlertCount > 0 && (
+                <span style={{ color: '#EF4444', fontSize: '0.78rem', fontWeight: 700 }}>
+                  {acwrAlertCount} alerte{acwrAlertCount > 1 ? 's' : ''}
+                </span>
+              )}
+              {acwrWarningCount > 0 && (
+                <span style={{ color: '#F59E0B', fontSize: '0.78rem', fontWeight: 700 }}>
+                  {acwrWarningCount} point{acwrWarningCount > 1 ? 's' : ''} d'attention
+                </span>
+              )}
+            </div>
+          </div>
+          <button onClick={() => setPhysicalCollapsed(v => !v)} title={physicalCollapsed ? 'Afficher' : 'Réduire'}
+            style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+            {physicalCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+          </button>
+        </div>
+
+        {!physicalCollapsed && (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10, marginBottom: 18 }}>
+              <RpeKpiCard accent={estimatedRpe !== null ? rpeColor(estimatedRpe) : '#334155'} label="RPE estimé" value={estimatedRpe !== null ? estimatedRpe.toFixed(1) : '—'} />
+              <RpeKpiCard
+                accent={avgRpe !== null ? rpeColor(avgRpe) : '#334155'}
+                label="RPE réel"
+                value={avgRpe !== null ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {avgRpe.toFixed(1)}
+                    {estimatedRpe !== null && avgRpe > estimatedRpe && <ArrowUp size={16} style={{ color: '#EF4444' }} />}
+                    {estimatedRpe !== null && avgRpe < estimatedRpe && <ArrowDown size={16} style={{ color: '#00E5A0' }} />}
+                  </span>
+                ) : (
+                  <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 400, fontFamily: 'Inter, sans-serif', padding: 0 }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                    Saisir le RPE
+                    <ArrowRight size={11} />
+                  </button>
+                )}
+              />
+              <RpeKpiCard accent={blockLoadUa > 0 ? getWeekTier(blockLoadUa, sessionLoadLight, sessionLoadNormal).color : '#334155'} label="Charge estimée" value={blockLoadUa > 0 ? blockLoadUa : '—'} />
+              <RpeKpiCard
+                accent={avgLoadPerPlayer !== null ? getWeekTier(avgLoadPerPlayer, sessionLoadLight, sessionLoadNormal).color : '#334155'}
+                label="Charge réelle"
+                value={avgLoadPerPlayer !== null ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {Math.round(avgLoadPerPlayer)}
+                    {blockLoadUa > 0 && avgLoadPerPlayer > blockLoadUa && <ArrowUp size={16} style={{ color: '#EF4444' }} />}
+                    {blockLoadUa > 0 && avgLoadPerPlayer < blockLoadUa && <ArrowDown size={16} style={{ color: '#00E5A0' }} />}
+                  </span>
+                ) : '—'}
+              />
+            </div>
+
+            {acwrLoading ? (
+              <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Chargement…</p>
+            ) : relevantPlayers.length === 0 ? (
+              <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune donnée enregistrée pour cette séance.</p>
+            ) : (() => {
+              const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
+              const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
+              const groupSep: React.CSSProperties = { borderRight: '1px solid #2A2F3A' };
+              const thGroup: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '0.64rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #2A2F3A' };
+              const thSub: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '0.64rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A' };
+              const tierBadge = (tier: { label: string; color: string } | null) => tier ? (
+                <span style={{ color: tier.color, backgroundColor: tier.color + '22', fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{tier.label}</span>
+              ) : (
+                <span style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
+              );
+              return (
+                <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26' }}>
+                    <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Détail par joueuse</p>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                      <colgroup>
+                        <col />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '13%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '13%' }} />
+                        <col style={{ width: '15%' }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ backgroundColor: '#1A1E26' }}>
+                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', ...groupSep }}>Joueuse</th>
+                          <th colSpan={3} style={{ ...thGroup, ...groupSep }}>Avant séance</th>
+                          <th colSpan={2} style={thGroup}>Après séance</th>
+                        </tr>
+                        <tr style={{ backgroundColor: '#1A1E26' }}>
+                          <th style={thSub}>Risque blessure</th>
+                          <th style={thSub}>Charge 7j</th>
+                          <th style={{ ...thSub, ...groupSep }}>Bien-être 7j</th>
+                          <th style={thSub}>RPE</th>
+                          <th style={thSub}>Charge</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {relevantPlayers.map(p => {
+                          const history    = historyMap[p.id] ?? [];
+                          const acwr       = computeAcwr(history, session.date);
+                          const acwrTier   = acwrZone(acwr);
+                          const weekLoad   = acuteLoadBefore(history, session.date);
+                          const weekTier   = weekLoad > 0 ? getWeekTier(weekLoad, thresholds.lightMax, thresholds.normalMax) : null;
+                          const wellnessAvg = wellnessAvgBefore(wellnessMap[p.id] ?? [], session.date);
+                          const rpeEntry   = rpeMap[p.id];
+                          const sessLoad   = rpeEntry ? rpeEntry.rpe * (rpeEntry.actualDuration ?? session.plannedDuration) : null;
+                          const sessTier   = sessLoad !== null ? getWeekTier(sessLoad, sessionLoadLight, sessionLoadNormal) : null;
+                          const highRisk = acwrTier?.label === 'Risque élevé';
+                          const rowBg    = highRisk ? 'rgba(239,68,68,0.05)' : 'transparent';
+                          return (
+                            <tr key={p.id} onClick={() => navigate(`/rpe/individual/${p.id}`, { state: { from: `/sessions/${session.id}`, playerName: `${p.firstName} ${p.lastName}` } })}
+                              style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
+                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
+                              onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>
+                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #1E2229' }}>{p.firstName.toUpperCase()} {p.lastName[0]}.</td>
+                              <td style={{ padding: '8px 8px', textAlign: 'center' }}>
+                                {acwrTier ? tierBadge(acwrTier) : (
+                                  <span title="Historique insuffisant (28 jours)" style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '8px 8px', textAlign: 'center' }}>{tierBadge(weekTier)}</td>
+                              <td style={{ padding: '8px 8px', textAlign: 'center', borderRight: '1px solid #1E2229' }}>{tierBadge(wellnessTier(wellnessAvg))}</td>
+                              <td style={{ padding: '8px 8px', textAlign: 'center', color: rpeEntry ? rpeColor(rpeEntry.rpe) : '#334155', fontSize: '0.85rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                                {rpeEntry ? rpeEntry.rpe : '—'}
+                              </td>
+                              <td style={{ padding: '8px 8px', textAlign: 'center' }}>{tierBadge(sessTier)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+          </>
         )}
       </div>
 
@@ -1504,8 +1657,8 @@ export default function TrainingSessionDetailPage() {
 
       <SessionBlocks sessionId={session.id} blocks={blocks} onBlocksChange={setBlocks} />
 
-      {/* Notes + Documents, côte à côte */}
-      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16, marginBottom: 16, alignItems: 'start' }}>
+      {/* Notes, puis Documents en dessous */}
+      <div className="grid grid-cols-1" style={{ gap: 16, marginBottom: 16, alignItems: 'start' }}>
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
