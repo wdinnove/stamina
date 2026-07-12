@@ -7,6 +7,14 @@ export interface WeekTier {
 
 export const DEFAULT_THRESHOLDS = { lightMax: 2750, normalMax: 4250, sessionsPerWeek: 3 };
 
+/** Lundi de la semaine du jour donné (YYYY-MM-DD, heure locale) */
+export function mondayIso(isoDate: string): string {
+  const d = new Date(isoDate + 'T12:00:00');
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return d.toLocaleDateString('sv');
+}
+
 /** 4 zones en tiers égaux : Normal (vert) / Soutenu (jaune) / Élevée (orange) / Surcharge (rouge) */
 export function buildWeekTiers(_lightMax = DEFAULT_THRESHOLDS.lightMax, normalMax = DEFAULT_THRESHOLDS.normalMax): WeekTier[] {
   const t1 = Math.round(normalMax / 3);

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
+import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
 import {
   ComposedChart, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -49,44 +50,6 @@ function fmtDateWithDay(iso: string): string {
   const [, mm, dd] = iso.split('-');
   return `${DAY_ABBR[d.getDay()]} ${Number(dd)}/${Number(mm)}`;
 }
-function getWeekMonday(isoDate: string): string {
-  const d = new Date(isoDate + 'T12:00:00');
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d.toLocaleDateString('sv');
-}
-
-/** Zone de fraîcheur (TSB — modèle PMC de Banister) */
-function freshnessZone(tsb: number): { label: string; color: string } {
-  if (tsb <= -30) return { label: 'Surmenage',     color: '#EF4444' };
-  if (tsb <= -10) return { label: 'Chargé',        color: '#F59E0B' };
-  if (tsb <=   5) return { label: 'Zone peak',     color: '#00E5A0' };
-  return                 { label: 'Sous-entraîné', color: '#60A5FA' };
-}
-
-/** Fraîcheur (TSB) à ce jour — modèle PMC de Banister (ATL décroissance 1/7, CTL décroissance 1/42) */
-function computeTsb(entries: LoadEntry[]): number | null {
-  if (!entries.length) return null;
-  const dailyLoadMap = new Map<string, number>();
-  entries.forEach(e => {
-    const load = e.rpe * (e.actualDuration ?? e.plannedDuration);
-    dailyLoadMap.set(e.date, (dailyLoadMap.get(e.date) ?? 0) + load);
-  });
-  const firstDate = [...entries.map(e => e.date)].sort()[0];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const cur   = new Date(firstDate + 'T00:00:00');
-  let atlV = 0, ctlV = 0, tsb = 0;
-  while (cur <= today) {
-    const iso  = cur.toLocaleDateString('sv');
-    const load = dailyLoadMap.get(iso) ?? 0;
-    tsb  = Math.round((ctlV - atlV) * 10) / 10;
-    atlV = atlV * (1 - 1 / 7)  + load * (1 / 7);
-    ctlV = ctlV * (1 - 1 / 42) + load * (1 / 42);
-    cur.setDate(cur.getDate() + 1);
-  }
-  return tsb;
-}
-
 /** Nombre de jours entre la 1ère entrée et aujourd'hui (0 si aucune entrée) — sert à juger la fiabilité de l'ACWR/TSB */
 function historySpanDays(entries: LoadEntry[]): number {
   if (!entries.length) return 0;
@@ -1036,7 +999,7 @@ export default function RPEPage() {
 
                   // Fraîcheur (TSB) — modèle PMC de Banister. Données à l'heure actuelle, indépendantes de la période sélectionnée.
                   const tsb   = computeTsb(history) ?? 0;
-                  const fresh = freshnessZone(tsb);
+                  const fresh = tsbZone(tsb);
 
                   // Historique court (< 28j) : ACWR/TSB restent affichés (utiles en phase de reprise) mais moins fiables statistiquement
                   const shortHistory = historySpanDays(history) < MIN_RELIABLE_HISTORY_DAYS;
@@ -1375,7 +1338,7 @@ export default function RPEPage() {
                 }).length;
 
                 const teamZone  = acwrZone(teamAcwrAvg);
-                const teamFresh = teamFreshAvg !== null ? freshnessZone(teamFreshAvg) : null;
+                const teamFresh = teamFreshAvg !== null ? tsbZone(teamFreshAvg) : null;
                 const currentNote = <span style={{ color: '#475569', fontSize: '0.62rem' }}>· à ce jour</span>;
                 const shortHistoryNote = <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, backgroundColor: '#F59E0B22', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}><AlertTriangle size={10} /> Période de reprise</span>;
 

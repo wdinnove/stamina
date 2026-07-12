@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Settings, Trophy, BarChart2, UserSearch, GitCompare,
+  CheckSquare, LogOut, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Settings, Trophy, BarChart2, UserSearch, GitCompare, TrendingUp,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
@@ -26,18 +26,24 @@ export const navGroups = [
     title: 'Compétition',
     items: [
       { path: '/matches',             icon: Trophy,     label: 'Matchs'             },
-      { path: '/collective-analyze',  icon: BarChart2,  label: 'Statistiques collectives' },
+    ],
+  },
+  {
+    title: 'Analyse',
+    items: [
+      { path: '/collective-analyze',  icon: BarChart2,   label: 'Statistiques collectives' },
+      { path: '/individual-analyze',  icon: UserSearch,  label: 'Statistiques individuelles' },
+      { path: '/team-performance',    icon: TrendingUp,  label: 'Performance équipe'  },
+      { path: '/player-performance',  icon: GitCompare,  label: 'Performance joueuse' },
     ],
   },
   {
     title: 'Joueurs',
     items: [
       { path: '/roster',            icon: ClipboardList,   label: 'Effectif'            },
-      { path: '/individual-analyze', icon: UserSearch, label: 'Statistiques individuelles' },
       { path: '/rpe/new',           icon: Activity,        label: 'RPE'                 },
       { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'           },
       { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'             },
-      { path: '/cross-analyze',     icon: GitCompare,      label: 'Analyse croisée'     },
     ],
   },
   {

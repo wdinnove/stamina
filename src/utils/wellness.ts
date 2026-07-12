@@ -9,7 +9,7 @@ export interface WellnessDimension {
 }
 
 // Source unique pour les 6 dimensions bien-être : libellés, emojis, sens (inverted) et couleur d'identité.
-// Utilisé par WellnessPage, PlayerBilanTab, PlayerDynamiqueTab, PlayersPage et PlayerWellnessPublicPage.
+// Utilisé par WellnessPage, PerformancePage, crossAnalysis, PlayersPage et PlayerWellnessPublicPage.
 export const WELLNESS_DIMENSIONS: WellnessDimension[] = [
   { key: 'fatigue',    label: 'Fatigue',              shortLabel: 'Fatigue',    emoji: '😴', desc: 'Très reposé ← → Épuisé',            inverted: true,  color: '#EF4444' },
   { key: 'mood',       label: 'Humeur',               shortLabel: 'Humeur',     emoji: '😊', desc: 'Très mauvaise ← → Très bonne',      inverted: false, color: '#00E5A0' },

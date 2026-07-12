@@ -1,22 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Plus, Search, Activity, Heart,
-  Stethoscope, CheckSquare, BarChart2, X, AlertCircle, Edit, ArrowRight, Users,
+  Plus, Search, BarChart2, X, AlertCircle, Edit, Users,
 } from 'lucide-react';
-import {
-  LineChart, Line, BarChart, Bar, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis,
-} from 'recharts';
-import { playersApi, rpeApi, wellnessApi, medicalApi, actionsApi, statsApi } from '../api';
-import { attendanceApi } from '../api/attendance';
-import { computeWeeklyUa, getWeekTier } from '../utils/weeklyLoad';
-import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor } from '../utils/wellness';
-import { StatusBadge, PlayerAvatar, PlayerHero, playerStatusLabel, playerStatusColor, Card, CardTitle, EmptyState, PlayerDynamiqueTab, PlayerBilanTab, PlayerDynStatTab, DateRangeCard, useDateRange } from '../components';
+import { playersApi, rpeApi, wellnessApi, statsApi } from '../api';
+import { StatusBadge, PlayerAvatar, PlayerHero, Card, CardTitle, EmptyState, PlayerDynStatTab, DateRangeCard, useDateRange } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { evalColor } from '../data';
-import type { Player, RPEEntry, WellnessEntry, MedicalRecord, Action, MatchStat } from '../data/types';
+import type { Player, RPEEntry, WellnessEntry, MatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
@@ -24,24 +15,6 @@ function fmtShortDate(iso: string) {
   const [, m, d] = iso.split('-').map(Number);
   return `${d} ${MONTHS[m - 1]}`;
 }
-
-const RPETooltip = ({ active, payload, label }: { active?: boolean; payload?: { color: string; name: string; value: number }[]; label?: string }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, padding: '8px 12px', fontSize: '0.78rem' }}>
-      <p style={{ color: '#94A3B8', margin: '0 0 4px' }}>{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color, margin: '2px 0' }}>
-          {p.name}: <strong>{p.value}</strong>
-        </p>
-      ))}
-    </div>
-  );
-};
-
-const wellDimensions = WELLNESS_DIMENSIONS;
-const wellScoreColor = wellnessScoreColor;
-const wellDimColor   = wellnessDimColor;
 
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
 
@@ -59,42 +32,18 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
-// ── Sparkline SVG inline ──────────────────────────────────────────────────────
-function Sparkline({ values, color, h = 36 }: { values: number[]; color: string; h?: number }) {
-  if (values.length < 2) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const VW = 200;
-  const pts = values.map((v, i) => [
-    (i / (values.length - 1)) * VW,
-    h - 2 - ((v - min) / range) * (h - 4),
-  ]);
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-  const [lx, ly] = pts[pts.length - 1];
-  return (
-    <svg viewBox={`0 0 ${VW} ${h}`} style={{ width: '100%', height: h, display: 'block', overflow: 'visible' }}>
-      <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx.toFixed(1)} cy={ly.toFixed(1)} r={3} fill={color} />
-    </svg>
-  );
-}
-
 // ─── Profil joueur ────────────────────────────────────────────────────────────
-export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = 'stats' }: { playerId: string; hideBackButton?: boolean; playerSelect?: React.ReactNode; view?: 'stats' | 'cross' }) {
+export function PlayerProfile({ playerId, hideBackButton, playerSelect }: { playerId: string; hideBackButton?: boolean; playerSelect?: React.ReactNode }) {
   const navigate  = useNavigate();
-  const { thresholds, selected } = useTeamSeason();
+  const { selected } = useTeamSeason();
 
   const [player,   setPlayer]   = useState<Player | null>(null);
   const [rpe,      setRpe]      = useState<RPEEntry[]>([]);
   const [wellness, setWellness] = useState<WellnessEntry[]>([]);
-  const [medical,  setMedical]  = useState<MedicalRecord[]>([]);
-  const [actions,   setActions]   = useState<Action[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [presenceRate, setPresenceRate] = useState<number | null>(null);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, import('../data/types').TeamMatchStat>>(new Map());
-  const [playerTab, setPlayerTab] = useState<'resume' | 'dynamique' | 'performance' | 'bilan' | 'dynstat'>(view === 'cross' ? 'resume' : 'performance');
+  const [playerTab, setPlayerTab] = useState<'performance' | 'dynstat'>('performance');
   const [statsView, setStatsView] = useState<'basic' | 'advanced' | 'season'>('basic');
   const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]>([]);
   const [allTeamsSeason, setAllTeamsSeason] = useState(false);
@@ -123,14 +72,10 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
       playersApi.getById(playerId),
       rpeApi.listPlayerHistory(playerId),
       wellnessApi.getByPlayer(playerId),
-      medicalApi.getByPlayer(playerId),
-      actionsApi.getByPlayer(playerId),
-    ]).then(([p, rpeData, wellnessData, medicalData, actionsData]) => {
+    ]).then(([p, rpeData, wellnessData]) => {
       setPlayer(p);
       setRpe(rpeData);
       setWellness(wellnessData);
-      setMedical(medicalData);
-      setActions(actionsData);
     }).finally(() => setLoading(false));
     statsApi.getPlayerStatsGroupedBySeason(playerId).then(setSeasonGroupedStats);
   }, [playerId]);
@@ -140,15 +85,6 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
     setMatchStats([]);
     setAllTeamsSeason(false);
     statsApi.getPlayerStatsBySeason(playerId, selected.season.id).then(setMatchStats);
-    attendanceApi.listSessions(selected.team.id, selected.season.id).then(sessions => {
-      if (!sessions.length) { setPresenceRate(null); return; }
-      const ids = sessions.map(s => s.id);
-      attendanceApi.listAttendance(ids).then(records => {
-        const playerRecords = records.filter(r => r.playerId === playerId);
-        const presentCount  = playerRecords.filter(r => r.status === 'present' || r.status === 'late').length;
-        setPresenceRate(Math.round((presentCount / sessions.length) * 100));
-      });
-    });
   }, [playerId, selected]);
 
   // ── Autres équipes ayant joué la même saison (même libellé, ex. "2025/2026") ──
@@ -251,85 +187,6 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
     }
   };
 
-  // ── Données calculées ──
-  const lastRPE        = rpe[0];
-  const lastWellness   = wellness[0];
-  const activeMedical  = medical.filter(m => m.status === 'active');
-  const pendingActions = actions.filter(a => a.status !== 'done').length;
-
-  const rpeVal     = lastRPE?.rpe ?? null;
-  const rpeCol     = rpeVal === null ? '#475569' : rpeVal >= 8 ? '#EF4444' : rpeVal >= 6 ? '#F59E0B' : '#00E5A0';
-  const avg7       = rpe.length > 0 ? rpe.slice(0, 7).reduce((s, r) => s + r.rpe, 0) / Math.min(rpe.length, 7) : null;
-  const avg7Rounded = avg7 !== null ? Math.round(avg7 * 10) / 10 : null;
-  const rpeAvgCol  = avg7 === null ? '#475569' : avg7 >= 8 ? '#EF4444' : avg7 >= 6 ? '#F59E0B' : '#00E5A0';
-  const rpeTrendDelta = rpe.length >= 2 ? Math.round((rpe[0].rpe - rpe[1].rpe) * 10) / 10 : null;
-  const wVal    = lastWellness?.score ?? null;
-  const wCol    = wVal === null ? '#475569' : wVal < 5 ? '#EF4444' : wVal < 7 ? '#F59E0B' : '#00E5A0';
-  const wTrend  = wellness.length >= 2 ? Math.round((wellness[0].score - wellness[1].score) * 10) / 10 : null;
-  const medCol  = activeMedical.length > 0 ? '#EF4444' : '#00E5A0';
-  const actCol  = pendingActions > 0 ? '#F59E0B' : '#00E5A0';
-  const weeklyUa = computeWeeklyUa(rpe);
-  const weekTier = weeklyUa > 0 ? getWeekTier(weeklyUa, thresholds.lightMax, thresholds.normalMax) : null;
-  const rpeSparkVals  = rpe.slice(0, 7).reverse().map(r => r.rpe);
-  const wellSparkVals = wellness.slice(0, 7).reverse().map(w => w.score);
-  const wellSubs = lastWellness ? [
-    { label: 'Sommeil',    v: lastWellness.sleep,      c: '#3B82F6' },
-    { label: 'Fatigue',    v: lastWellness.fatigue,    c: '#F59E0B' },
-    { label: 'Humeur',     v: lastWellness.mood,       c: '#00E5A0' },
-    { label: 'Stress',     v: lastWellness.stress,     c: '#EF4444' },
-    { label: 'Motivation', v: lastWellness.motivation, c: '#8B5CF6' },
-    { label: 'Douleurs',   v: lastWellness.soreness,   c: '#F472B6' },
-  ] : [];
-
-  const last3w      = [...wellness].sort((a, b) => a.date.localeCompare(b.date)).slice(-3);
-  const radarData   = last3w.length > 0
-    ? wellDimensions.map(d => ({
-        dim:      d.shortLabel,
-        value:    parseFloat((last3w.reduce((s, e) => s + (e[d.key as keyof typeof e] as number), 0) / last3w.length).toFixed(1)),
-        fullMark: 10,
-      }))
-    : [];
-  const avgWScore   = last3w.length > 0 ? last3w.reduce((s, e) => s + e.score, 0) / last3w.length : 5;
-  const radarColor  = wellScoreColor(avgWScore);
-
-  const injuryCount  = medical.filter(m => m.type === 'injury').length;
-  const wellnessAvg  = wellness.length > 0
-    ? (wellness.reduce((s, e) => s + e.score, 0) / wellness.length).toFixed(1)
-    : null;
-  const wellnessAvgNum = wellnessAvg !== null ? parseFloat(wellnessAvg) : null;
-  const wellnessAvgCol = wellnessAvgNum === null ? '#475569' : wellnessAvgNum < 5 ? '#EF4444' : wellnessAvgNum < 7 ? '#F59E0B' : '#00E5A0';
-
-  const kpis = [
-    {
-      label: 'Statut',
-      bigVal: playerStatusLabel[player.status],
-      unit: undefined,
-      col: playerStatusColor[player.status],
-      onClick: openEdit,
-    },
-    {
-      label: 'Présence entr.',
-      bigVal: presenceRate !== null ? String(presenceRate) : '—',
-      unit: presenceRate !== null ? '%' : undefined,
-      col: presenceRate === null ? '#475569' : presenceRate >= 80 ? '#00E5A0' : presenceRate >= 60 ? '#F59E0B' : '#EF4444',
-      onClick: () => navigate(`/rpe/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } }),
-    },
-    {
-      label: 'Blessures saison',
-      bigVal: String(injuryCount),
-      unit: undefined,
-      col: injuryCount === 0 ? '#00E5A0' : injuryCount === 1 ? '#F59E0B' : '#EF4444',
-      onClick: () => navigate(`/medical/record/${playerId}`),
-    },
-    {
-      label: 'Moy. bien-être',
-      bigVal: wellnessAvg ?? '—',
-      unit: wellnessAvg !== null ? '/10' : undefined,
-      col: wellnessAvgCol,
-      onClick: () => navigate(`/wellness/individual/${playerId}`, { state: { from: `/players/${playerId}`, playerName: `${player.firstName} ${player.lastName}` } }),
-    },
-  ];
-
   return (
     <div className="p-4 md:p-6">
 
@@ -339,7 +196,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
             ← Retour à l'effectif
           </button>
         ) : (
-          <h1 style={{ color: '#F1F5F9', margin: 0 }}>{view === 'cross' ? 'Analyse croisée' : 'Statistiques individuelles'}</h1>
+          <h1 style={{ color: '#F1F5F9', margin: 0 }}>Statistiques individuelles</h1>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           {!hideBackButton ? (
@@ -356,11 +213,7 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
       {/* ── Tabs ── */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, marginBottom: 14, overflowX: 'auto' }}>
         <div style={{ display: 'flex', gap: 4, minWidth: 'max-content', width: '100%' }}>
-          {(view === 'cross' ? [
-            { key: 'resume',      label: "Vue d'ensemble"  },
-            { key: 'bilan',       label: 'Bilan physique' },
-            { key: 'dynamique',   label: 'Analyse croisée'},
-          ] as const : [
+          {([
             { key: 'performance', label: 'Statistiques'   },
             { key: 'dynstat',     label: 'Dynamique'      },
           ] as const).map(t => (
@@ -373,248 +226,12 @@ export function PlayerProfile({ playerId, hideBackButton, playerSelect, view = '
         </div>
       </div>
 
-      {/* ── Résumé ── */}
-      {playerTab === 'resume' && <>
-
-      {/* ── Stats saison ── */}
-      {(() => {
-        const ss = matchStats;
-        const n  = ss.length;
-        const sumK = (k: keyof MatchStat) => ss.reduce((a, m) => a + (((m[k] as number) || 0)), 0);
-        const avgK = (k: keyof MatchStat) => n > 0 ? Math.round(sumK(k) / n * 10) / 10 : null;
-        const fg2Pct = sumK('fg2a') > 0 ? `${Math.round(sumK('fg2m') / sumK('fg2a') * 100)}%` : '—';
-        const fg3Pct = sumK('fg3a') > 0 ? `${Math.round(sumK('fg3m') / sumK('fg3a') * 100)}%` : '—';
-        const ftPct  = sumK('fta')  > 0 ? `${Math.round(sumK('ftm')  / sumK('fta')  * 100)}%` : '—';
-        const reb    = n > 0 ? Math.round((sumK('ro') + sumK('rd')) / n * 10) / 10 : null;
-        const withEval = ss.filter(s => s.eval !== null);
-        const evalAvg  = withEval.length > 0 ? Math.round(withEval.reduce((a, s) => a + (s.eval ?? 0), 0) / withEval.length * 10) / 10 : null;
-        type Chip = { label: string; value: string | number | null; hi?: boolean; col?: string };
-        const chips: Chip[] = [
-          { label: 'MJ',   value: n,             hi: true },
-          { label: 'Tit',  value: ss.filter(s => s.starter).length },
-          { label: 'Min',  value: avgK('min') },
-          { label: 'Pts',  value: avgK('pts'),    hi: true },
-          { label: '2PT%', value: fg2Pct },
-          { label: '3PT%', value: fg3Pct },
-          { label: 'LF%',  value: ftPct },
-          { label: 'Reb',  value: reb },
-          { label: 'Pd',   value: avgK('pd') },
-          { label: 'Ct',   value: avgK('ct') },
-          { label: 'Éval', value: evalAvg,        col: evalAvg !== null ? evalColor(evalAvg) : undefined },
-        ];
-        return (
-          <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => navigate(`/individual-analyze/${playerId}`)}>
-            <CardTitle icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />} mb={12}
-              right={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {n > 0 && <span style={{ color: '#475569', fontSize: '0.72rem' }}>{n} match{n > 1 ? 's' : ''}</span>}
-                  <ArrowRight size={13} style={{ color: '#475569' }} />
-                </div>
-              }
-            >Stats saison</CardTitle>
-            {n === 0
-              ? <EmptyState message="Aucune statistique pour cette saison." size="sm" />
-              : <div style={{ overflowX: 'auto', paddingBottom: 2 }}>
-                  <div style={{ display: 'flex', width: 'max-content', margin: '0 auto' }}>
-                  {chips.map((c, i) => (
-                    <div key={c.label} style={{ flex: '0 0 auto', textAlign: 'center', padding: '4px 18px', borderRight: i < chips.length - 1 ? '1px solid #1E2229' : 'none', minWidth: 58 }}>
-                      <div style={{ color: '#475569', fontSize: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>{c.label}</div>
-                      <div style={{ color: c.col ?? (c.hi ? '#F1F5F9' : '#94A3B8'), fontSize: '0.95rem', fontWeight: c.hi || c.col ? 700 : 500, fontFamily: 'JetBrains Mono, monospace' }}>{c.value ?? '—'}</div>
-                    </div>
-                  ))}
-                  </div>
-                </div>
-            }
-          </Card>
-        );
-      })()}
-
-      {/* ── 3 col : RPE · Bien-être · Infirmerie ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3" style={{ gap: 12, marginBottom: 14, alignItems: 'stretch' }}>
-
-        {/* RPE */}
-        {(() => {
-          const accent = weekTier?.color ?? rpeCol;
-          const sparkData = [...rpe].sort((a, b) => a.date.localeCompare(b.date)).slice(-12).map(r => ({
-            date: fmtShortDate(r.date), rpe: r.rpe,
-            fill: r.rpe >= 8 ? '#EF4444' : r.rpe >= 6 ? '#F97316' : r.rpe >= 4 ? '#F59E0B' : '#00E5A0',
-          }));
-          const rpeAvgSaison = rpe.length > 0 ? Math.round(rpe.reduce((s, r) => s + r.rpe, 0) / rpe.length * 10) / 10 : null;
-          const kpis = [
-            { label: 'Moy. saison', val: rpeAvgSaison !== null ? `${rpeAvgSaison}/10` : '—', col: rpeAvgSaison !== null ? rpeAvgCol : '#475569' },
-            { label: 'Charge 7j',   val: weeklyUa > 0 ? `${weeklyUa} UA` : '—', col: weekTier?.color ?? '#475569' },
-            { label: 'Dernier',     val: rpeVal !== null ? `${rpeVal}/10` : '—', col: rpeCol },
-          ];
-          return (
-            <Card accentColor={accent} style={{ cursor: 'pointer', height: '100%', minHeight: 320, display: 'flex', flexDirection: 'column' }}
-              onClick={() => setPlayerTab('bilan')}>
-              <CardTitle icon={<Activity size={12} style={{ color: accent }} />} mb={10} right={<ArrowRight size={13} style={{ color: '#475569' }} />}>Charge &amp; RPE</CardTitle>
-              {rpe.length === 0
-                ? <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}><EmptyState message="Aucune session." size="sm" /></div>
-                : <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ flex: 1, minHeight: 160 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={sparkData} barSize={10} barCategoryGap="20%" margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
-                          <Bar dataKey="rpe" radius={[3, 3, 0, 0]}>
-                            {sparkData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div style={{ display: 'flex', borderTop: '1px solid #1E2229', marginTop: 10, paddingTop: 10 }}>
-                      {kpis.map((k, i) => (
-                        <div key={k.label} style={{ flex: 1, textAlign: 'center', borderRight: i < kpis.length - 1 ? '1px solid #1E2229' : 'none', padding: '0 6px' }}>
-                          <div style={{ color: '#475569', fontSize: '0.57rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{k.label}</div>
-                          <div style={{ color: k.col, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{k.val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-              }
-            </Card>
-          );
-        })()}
-
-        {/* Bien-être */}
-        {(() => {
-          const wellKpis = [
-            { label: 'Score moy.', val: wellness.length > 0 ? `${avgWScore.toFixed(1)}/10` : '—', col: wellness.length > 0 ? radarColor : '#475569' },
-            { label: 'Saisies',    val: wellness.length.toString(), col: '#F1F5F9' },
-            { label: 'Dernière',   val: wellness[0] ? fmtShortDate(wellness[0].date) : '—', col: '#94A3B8' },
-          ];
-          return (
-            <Card accentColor={wellness.length > 0 ? radarColor : undefined} style={{ cursor: 'pointer', height: '100%', minHeight: 320, display: 'flex', flexDirection: 'column' }}
-              onClick={() => setPlayerTab('bilan')}>
-              <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={10} right={<ArrowRight size={13} style={{ color: '#475569' }} />}>Bien-être</CardTitle>
-              {wellness.length === 0
-                ? <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}><EmptyState message="Aucune saisie." size="sm" /></div>
-                : <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ flex: 1, minHeight: 160 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart data={radarData} margin={{ top: 8, right: 20, bottom: 8, left: 20 }}>
-                          <PolarGrid stroke="#2A2F3A" />
-                          <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 9 }} />
-                          <Radar name="Moy." dataKey="value" stroke={radarColor} fill={radarColor} fillOpacity={0.15} strokeWidth={2}
-                            dot={(props: { cx: number; cy: number; index: number }) => {
-                              const dim = wellDimensions[props.index];
-                              const pt  = radarData[props.index];
-                              if (!dim || !pt) return <circle key={props.index} cx={props.cx} cy={props.cy} r={0} />;
-                              return <circle key={props.index} cx={props.cx} cy={props.cy} r={5} fill={wellDimColor(pt.value, dim.inverted)} stroke="#161920" strokeWidth={2} />;
-                            }}
-                          />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div style={{ display: 'flex', borderTop: '1px solid #1E2229', marginTop: 8, paddingTop: 10 }}>
-                      {wellKpis.map((k, i) => (
-                        <div key={k.label} style={{ flex: 1, textAlign: 'center', borderRight: i < wellKpis.length - 1 ? '1px solid #1E2229' : 'none', padding: '0 6px' }}>
-                          <div style={{ color: '#475569', fontSize: '0.57rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{k.label}</div>
-                          <div style={{ color: k.col, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{k.val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-              }
-            </Card>
-          );
-        })()}
-
-        {/* Infirmerie */}
-        {(() => {
-          const injuries = medical.filter(m => m.type === 'injury').sort((a, b) => b.date.localeCompare(a.date));
-          const activeInj = injuries.filter(m => m.status === 'active');
-          const accent = activeInj.length > 0 ? '#EF4444' : injuries.length > 0 ? '#F59E0B' : '#00E5A0';
-          return (
-            <Card accentColor={accent} style={{ cursor: 'pointer', height: '100%', minHeight: 320, display: 'flex', flexDirection: 'column' }} onClick={() => setPlayerTab('bilan')}>
-              <CardTitle icon={<Stethoscope size={12} style={{ color: accent }} />} mb={10} right={<ArrowRight size={13} style={{ color: '#475569' }} />}>Infirmerie</CardTitle>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  {[
-                    { label: 'Actives',      val: activeInj.length, col: activeInj.length > 0 ? '#EF4444' : '#475569', bg: activeInj.length > 0 ? 'rgba(239,68,68,0.1)' : '#1E2229' },
-                    { label: 'Cette saison', val: injuries.length,  col: injuries.length > 0 ? '#F59E0B' : '#475569',  bg: injuries.length > 0 ? 'rgba(245,158,11,0.1)' : '#1E2229' },
-                  ].map(k => (
-                    <div key={k.label} style={{ flex: 1, textAlign: 'center', backgroundColor: k.bg, borderRadius: 8, padding: '10px 8px' }}>
-                      <div style={{ color: '#475569', fontSize: '0.57rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{k.label}</div>
-                      <div style={{ color: k.col, fontWeight: 800, fontSize: '1.3rem', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{k.val}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  {injuries.length === 0
-                    ? <EmptyState message="Aucune blessure cette saison." size="sm" />
-                    : <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        {injuries.slice(0, 2).map(inj => (
-                          <div key={inj.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', backgroundColor: '#1E2229', borderRadius: 7 }}>
-                            <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: inj.status === 'active' ? '#EF4444' : '#475569', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ color: '#F1F5F9', fontSize: '0.75rem', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inj.description}</p>
-                              <p style={{ color: '#475569', fontSize: '0.63rem', margin: 0 }}>{fmtShortDate(inj.date)}{inj.severity ? ` · ${inj.severity}` : ''}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                  }
-                </div>
-              </div>
-            </Card>
-          );
-        })()}
-      </div>
-
-      {/* ── Actions ── */}
-      {(() => {
-        const nextAction = actions.find(a => a.status !== 'done');
-        const isAllDone  = actions.length > 0 && pendingActions === 0;
-        return (
-          <div
-            onClick={() => navigate('/actions', { state: { playerId } })}
-            style={{
-              cursor: 'pointer', borderRadius: 10, padding: '14px 16px', marginBottom: 14,
-              backgroundColor: isAllDone ? 'rgba(0,229,160,0.06)' : pendingActions > 0 ? 'rgba(245,158,11,0.06)' : '#161920',
-              border: `1px solid ${isAllDone ? 'rgba(0,229,160,0.35)' : pendingActions > 0 ? 'rgba(245,158,11,0.35)' : '#2A2F3A'}`,
-              borderLeft: `3px solid ${isAllDone ? '#00E5A0' : pendingActions > 0 ? '#F59E0B' : '#2A2F3A'}`,
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}
-          >
-            <CheckSquare size={14} style={{ color: isAllDone ? '#00E5A0' : pendingActions > 0 ? '#F59E0B' : '#475569', flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {isAllDone
-                ? <span style={{ color: '#00E5A0', fontWeight: 600, fontSize: '0.85rem' }}>Aucune action en attente</span>
-                : pendingActions === 0
-                  ? <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucune action en attente</span>
-                  : <span style={{ color: '#F59E0B', fontWeight: 700, fontSize: '0.85rem' }}>
-                      {pendingActions} action{pendingActions > 1 ? 's' : ''} en attente
-                      {nextAction && <span style={{ color: '#64748B', fontWeight: 400 }}> · {nextAction.title}</span>}
-                    </span>
-              }
-            </div>
-            <ArrowRight size={14} style={{ color: '#475569', flexShrink: 0 }} />
-          </div>
-        );
-      })()}
-
-      </>}
 
       {/* ── Dynamique (comparatif période vs saison) ── */}
       {playerTab === 'dynstat' && (
         <PlayerDynStatTab rpe={rpe} wellness={wellness} matchStats={matchStats} seasonStart={selected?.season.startDate} teamStatsMap={teamStatsMap} />
       )}
 
-      {/* ── Analyse croisée ── */}
-      {playerTab === 'dynamique' && (
-        <PlayerDynamiqueTab rpe={rpe} wellness={wellness} matchStats={matchStats} seasonStart={selected?.season.startDate} />
-      )}
-
-      {/* ── Bilan physique ── */}
-      {playerTab === 'bilan' && (
-        <PlayerBilanTab
-          rpe={rpe} wellness={wellness} medical={medical}
-          playerId={playerId}
-          playerName={`${player.firstName} ${player.lastName}`}
-          seasonStart={selected?.season.startDate}
-          onNavigate={(path, state) => navigate(path, state ? { state } : undefined)}
-        />
-      )}
 
       {/* ── Performance ── */}
       {playerTab === 'performance' && <>

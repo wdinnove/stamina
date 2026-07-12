@@ -30,5 +30,5 @@ export default function AnalyseIndividuellePage() {
 
   if (!id) return null;
 
-  return <PlayerProfile playerId={id} hideBackButton view="stats" playerSelect={playerSelect} />;
+  return <PlayerProfile playerId={id} hideBackButton playerSelect={playerSelect} />;
 }

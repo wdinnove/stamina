@@ -3,6 +3,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import type { RPEEntry } from '../data/types';
+import { computePmcSeries, tsbZone } from '../utils/rpe';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 const MS_DAY = 86400000;
@@ -28,12 +29,9 @@ function generateWeeks(from: Date, to: Date) {
 }
 
 interface WeekPoint { key: string; label: string; load: number; tsb: number | null; sessionCount: number; }
-interface DayMetric { date: string; atl: number; ctl: number; tsb: number; }
 
-const tsbZoneLabel = (tsb: number) =>
-  tsb <= -30 ? 'Surmenage' : tsb <= -10 ? 'Chargé' : tsb <= 5 ? 'Zone peak' : 'Frais';
-const tsbLineColor = (tsb: number) =>
-  tsb <= -30 ? '#EF4444' : tsb <= -10 ? '#F59E0B' : tsb <= 5 ? '#00E5A0' : '#60A5FA';
+const tsbZoneLabel = (tsb: number) => tsbZone(tsb).label;
+const tsbLineColor = (tsb: number) => tsbZone(tsb).color;
 
 function ChartTooltipContent({ active, payload }: { active?: boolean; payload?: { payload: WeekPoint }[] }) {
   if (!active || !payload?.length) return null;
@@ -94,28 +92,7 @@ export function ChargeFreshnessChart({ rpe, from, to }: { rpe: RPEEntry[]; from:
   });
 
   // PMC : ATL / CTL / TSB (modèle de Banister), calculé depuis toute l'historique RPE
-  const dailyLoadMap = new Map<string, number>();
-  rpe.forEach(r => {
-    const load = r.rpe * (r.actualDuration ?? r.plannedDuration);
-    dailyLoadMap.set(r.date, (dailyLoadMap.get(r.date) ?? 0) + load);
-  });
-  const pmcAllMetrics: DayMetric[] = [];
-  if (rpe.length > 0) {
-    const firstRpeDate = [...rpe.map(r => r.date)].sort()[0];
-    const pmcStart = new Date(firstRpeDate + 'T00:00:00');
-    const pmcEnd   = new Date(); pmcEnd.setHours(0, 0, 0, 0);
-    let atlV = 0, ctlV = 0;
-    const cur = new Date(pmcStart);
-    while (cur <= pmcEnd) {
-      const iso  = cur.toISOString().split('T')[0];
-      const load = dailyLoadMap.get(iso) ?? 0;
-      const tsb  = +(ctlV - atlV).toFixed(1);
-      atlV = atlV * (1 - 1 / 7)  + load * (1 / 7);
-      ctlV = ctlV * (1 - 1 / 42) + load * (1 / 42);
-      pmcAllMetrics.push({ date: iso, atl: +atlV.toFixed(1), ctl: +ctlV.toFixed(1), tsb });
-      cur.setDate(cur.getDate() + 1);
-    }
-  }
+  const pmcAllMetrics = computePmcSeries(rpe);
 
   weekData.forEach(w => {
     const sunIso = new Date(new Date(w.key + 'T00:00:00').getTime() + 6 * MS_DAY).toISOString().split('T')[0];

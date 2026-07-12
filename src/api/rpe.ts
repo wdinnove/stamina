@@ -35,6 +35,24 @@ function toEntry(row: Record<string, unknown>, session: TrainingSession): RPEEnt
 }
 
 export const rpeApi = {
+  // Toutes les entrées RPE d'une saison et/ou d'une joueuse, enrichies depuis la séance jointe
+  async list(filters: ListRpeFilters = {}): Promise<RPEEntry[]> {
+    let query = supabase
+      .from('rpe_entries')
+      .select('*, training_sessions!inner(*)');
+    if (filters.seasonId) query = query.eq('training_sessions.season_id', filters.seasonId);
+    if (filters.playerId) query = query.eq('player_id', filters.playerId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? [])
+      .map(row => {
+        const r = row as Record<string, unknown>;
+        const session = toSession(r.training_sessions as Record<string, unknown>);
+        return toEntry(r, session);
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  },
+
   // Find an existing session for a given team + season + date (there may be multiple; returns first)
   async findSession(teamId: string, seasonId: string, date: string): Promise<TrainingSession | null> {
     const { data, error } = await supabase

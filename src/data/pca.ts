@@ -1,5 +1,9 @@
 import { PCA } from 'ml-pca';
+import { pearson, hasVariance } from '../utils/correlation';
 import type { TeamMatchStat, MatchStat, Player } from './types';
+
+// Ré-export : WinFactorsList et PlayerImpactList l'importent depuis ce module
+export { impactLabel } from '../utils/correlation';
 
 export interface PCAPoint { x: number; y: number; win: boolean; label: string }
 export interface PCAVector { x: number; y: number; label: string }
@@ -10,7 +14,8 @@ export interface PlayerImpact { playerId: string; label: string; corr: number; n
 const MIN_MATCHES = 4;
 const PLAYER_MIN_MATCHES = 5;
 
-const VARIABLES: { key: string; label: string; longLabel: string; get: (m: TeamMatchStat) => number | null }[] = [
+/** Statistiques collectives par match — partagées avec le registre d'indicateurs de crossAnalysis.ts */
+export const VARIABLES: { key: string; label: string; longLabel: string; get: (m: TeamMatchStat) => number | null }[] = [
   { key: 'fg2Pct',     label: '2%',        longLabel: 'Réussite aux tirs à 2 points',                  get: m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null },
   { key: 'fg3Pct',     label: '3%',        longLabel: 'Réussite aux tirs à 3 points',                  get: m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null },
   { key: 'ftPct',      label: 'LF%',       longLabel: 'Réussite aux lancers francs',                   get: m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null },
@@ -33,35 +38,6 @@ const VARIABLES: { key: string; label: string; longLabel: string; get: (m: TeamM
   { key: 'opp_toPct',  label: 'Adv %BP',   longLabel: 'Pertes de balle forcées à l’adversaire',    get: m => m.opp_toPct },
   { key: 'opp_orebPct',label: 'Adv %OREB', longLabel: 'Rebonds offensifs concédés à l’adversaire', get: m => m.opp_orebPct },
 ];
-
-function hasVariance(values: number[]) {
-  return new Set(values.map(v => Math.round(v * 1000))).size > 1;
-}
-
-function strengthWord(absCorr: number): 'Majeur' | 'Fort' | 'Modéré' | 'Léger' {
-  if (absCorr >= 0.6) return 'Majeur';
-  if (absCorr >= 0.4) return 'Fort';
-  if (absCorr >= 0.25) return 'Modéré';
-  return 'Léger';
-}
-
-/** Libellé court pour une corrélation : « Impact fort », « Impact léger », etc. */
-export function impactLabel(corr: number): string {
-  return `Impact ${strengthWord(Math.abs(corr))}`;
-}
-
-function pearson(xs: number[], ys: number[]): number {
-  const n = xs.length;
-  const mx = xs.reduce((a, b) => a + b, 0) / n;
-  const my = ys.reduce((a, b) => a + b, 0) / n;
-  let num = 0, dx2 = 0, dy2 = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = xs[i] - mx, dy = ys[i] - my;
-    num += dx * dy; dx2 += dx * dx; dy2 += dy * dy;
-  }
-  const denom = Math.sqrt(dx2 * dy2);
-  return denom > 0 ? num / denom : 0;
-}
 
 /** Corrélation de chaque statistique avec la victoire, exprimée en langage simple pour un coach. */
 export function computeWinFactors(teamStats: TeamMatchStat[]): WinFactor[] {

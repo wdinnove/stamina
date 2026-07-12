@@ -58,3 +58,52 @@ export function acwrZone(acwr: number | null): { label: string; color: string } 
   if (acwr <= 1.5) return { label: 'Risque modéré',  color: '#F59E0B' };
   return { label: 'Risque élevé', color: '#EF4444' };
 }
+
+// ── PMC (modèle de Banister) : ATL / CTL / TSB ────────────────────────────────
+
+export interface PmcPoint { date: string; atl: number; ctl: number; tsb: number }
+
+/**
+ * Série PMC quotidienne (ATL décroissance 1/7, CTL décroissance 1/42), du premier
+ * RPE jusqu'à `endDate` (aujourd'hui par défaut). Le `tsb` d'un jour est la
+ * fraîcheur AVANT la charge de ce jour.
+ */
+export function computePmcSeries(history: LoadEntry[], endDate?: string): PmcPoint[] {
+  if (!history.length) return [];
+  const dailyLoad = new Map<string, number>();
+  history.forEach(e => {
+    const load = e.rpe * (e.actualDuration ?? e.plannedDuration);
+    dailyLoad.set(e.date, (dailyLoad.get(e.date) ?? 0) + load);
+  });
+  const firstDate = [...history.map(e => e.date)].sort()[0];
+  const end = endDate ?? new Date().toLocaleDateString('sv');
+  // Midi local : insensible aux décalages de fuseau et aux changements d'heure
+  const cur = new Date(firstDate + 'T12:00:00');
+  const series: PmcPoint[] = [];
+  let atl = 0, ctl = 0;
+  while (true) {
+    const iso = cur.toLocaleDateString('sv');
+    if (iso > end) break;
+    const load = dailyLoad.get(iso) ?? 0;
+    const tsb = Math.round((ctl - atl) * 10) / 10;
+    atl = atl * (1 - 1 / 7)  + load * (1 / 7);
+    ctl = ctl * (1 - 1 / 42) + load * (1 / 42);
+    series.push({ date: iso, atl: Math.round(atl * 10) / 10, ctl: Math.round(ctl * 10) / 10, tsb });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return series;
+}
+
+/** Fraîcheur (TSB) à ce jour — dernier point de la série PMC */
+export function computeTsb(history: LoadEntry[]): number | null {
+  const series = computePmcSeries(history);
+  return series.length ? series[series.length - 1].tsb : null;
+}
+
+/** Zone de fraîcheur associée à un TSB — libellés et couleurs unifiés pour toute l'app */
+export function tsbZone(tsb: number): { label: string; color: string } {
+  if (tsb <= -30) return { label: 'Surmenage', color: '#EF4444' };
+  if (tsb <= -10) return { label: 'Chargé',    color: '#F59E0B' };
+  if (tsb <=   5) return { label: 'Zone peak', color: '#00E5A0' };
+  return                 { label: 'Frais',     color: '#60A5FA' };
+}

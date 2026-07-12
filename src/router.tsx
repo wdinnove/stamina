@@ -30,12 +30,18 @@ import MatchesPage                 from './pages/MatchesPage';
 import MatchDetailPage             from './pages/MatchDetailPage';
 import AnalyseCollectivePage       from './pages/AnalyseCollectivePage';
 import AnalyseIndividuellePage     from './pages/AnalyseIndividuellePage';
-import AnalyseCroiseePage          from './pages/AnalyseCroiseePage';
+import PerformancePage, { PerformancePlayerPage } from './pages/PerformancePage';
 
 function PlayerProfileRoute() {
   const { id } = useParams<{ id: string }>();
   if (!id) return null;
   return <PlayerProfile playerId={id} />;
+}
+
+/** Ancienne route /cross-analyze/:id — redirige vers la page Performance joueuse */
+function CrossAnalyzeRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/player-performance/${id}` : '/player-performance'} replace />;
 }
 
 export const router = createBrowserRouter([
@@ -90,8 +96,11 @@ export const router = createBrowserRouter([
           { path: 'collective-analyze',      Component: AnalyseCollectivePage   },
           { path: 'individual-analyze',    Component: AnalyseIndividuellePage },
           { path: 'individual-analyze/:id', Component: AnalyseIndividuellePage },
-          { path: 'cross-analyze',         Component: AnalyseCroiseePage },
-          { path: 'cross-analyze/:id',     Component: AnalyseCroiseePage },
+          { path: 'team-performance',        Component: PerformancePage       },
+          { path: 'player-performance',      Component: PerformancePlayerPage },
+          { path: 'player-performance/:id',  Component: PerformancePlayerPage },
+          { path: 'cross-analyze',         element: <Navigate to="/player-performance" replace /> },
+          { path: 'cross-analyze/:id',     element: <CrossAnalyzeRedirect /> },
           { path: '*', element: <Navigate to="/dashboard" replace /> },
         ],
       },
