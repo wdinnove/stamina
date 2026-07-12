@@ -377,8 +377,8 @@ export default function AnalyseCollectivePage() {
             <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead><tr>
+                  <th onClick={() => setS1(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}><span style={{ color: thC('name', s1) }}>Joueur{si('name', s1)}</span></th>
                   <th style={{ ...TH, cursor: 'default' }}>#</th>
-                  <th onClick={() => setS1(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left' }}><span style={{ color: thC('name', s1) }}>Joueur{si('name', s1)}</span></th>
                   <th onClick={() => setS1(p => tog(p, 'mj'))}   style={{ ...TH, color: thC('mj', s1)   }}>MJ{si('mj', s1)}</th>
                   <th onClick={() => setS1(p => tog(p, 'tit'))}  style={{ ...TH, color: thC('tit', s1)  }}>Tit{si('tit', s1)}</th>
                   <th onClick={() => setS1(p => tog(p, 'min'))}  style={{ ...TH, color: normalize25 ? '#F59E0B' : thC('min', s1) }}>Min{si('min', s1)}{normalize25 ? ' ⟳' : ''}</th>
@@ -404,8 +404,8 @@ export default function AnalyseCollectivePage() {
                     const pmCol = avgPm > 0 ? '#00E5A0' : avgPm < 0 ? '#EF4444' : '#475569';
                     return (
                       <tr key={p.id} onClick={() => navigate(`/individual-analyze/${p.id}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
+                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{p.firstName} {p.lastName}</td>
                         <td style={{ ...TD, color: '#475569' }}>#{p.number}</td>
-                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600 }}>{p.firstName} {p.lastName}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                         <td style={TD}>{tit}</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#F1F5F9' }}>{avgMin}</td>
@@ -444,8 +444,8 @@ export default function AnalyseCollectivePage() {
                       ? Math.round(evalRows.reduce((a, r) => a + (r.evalAvg ?? 0), 0) / evalRows.length * 10) / 10 : null;
                     return (
                       <tr style={TOTALS}>
+                        <td style={{ ...TL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>Moy. équipe</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
-                        <td style={{ ...TL, textAlign: 'left' }}>Moy. équipe</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
                         <td style={TD}>—</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : undefined }}>{normalize25 ? 25 : tA(r => r.avgMin)}</td>
@@ -481,8 +481,8 @@ export default function AnalyseCollectivePage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead>
                   <tr>
+                    <th rowSpan={2} onClick={() => setS2(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}><span style={{ color: thC('name', s2) }}>Joueur{si('name', s2)}</span></th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>#</th>
-                    <th rowSpan={2} onClick={() => setS2(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle' }}><span style={{ color: thC('name', s2) }}>Joueur{si('name', s2)}</span></th>
                     <th rowSpan={2} onClick={() => setS2(p => tog(p, 'mj'))} style={{ ...TH, verticalAlign: 'middle', color: thC('mj', s2) }}>MJ{si('mj', s2)}</th>
                     <th rowSpan={2} onClick={() => setS2(p => tog(p, 'min'))} style={{ ...TH, verticalAlign: 'middle', color: normalize25 ? '#F59E0B' : thC('min', s2) }}>Min{si('min', s2)}{normalize25 ? ' ⟳' : ''}</th>
                     <th colSpan={5} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
@@ -507,8 +507,8 @@ export default function AnalyseCollectivePage() {
                 <tbody>
                   {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
                     <tr key={p.id} onClick={() => navigate(`/individual-analyze/${p.id}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
+                      <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{p.firstName} {p.lastName}</td>
                       <td style={{ ...TD, color: '#475569' }}>#{p.number}</td>
-                      <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600 }}>{p.firstName} {p.lastName}</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                       <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
                       <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
@@ -548,8 +548,8 @@ export default function AnalyseCollectivePage() {
             <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead><tr>
+                  <th onClick={() => setS4(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, color: thC('opp', s4), position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Adv{si('opp', s4)}</th>
                   <th onClick={() => setS4(p => tog(p, 'date'))} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, color: thC('date', s4) }}>Date{si('date', s4)}</th>
-                  <th onClick={() => setS4(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', color: thC('opp', s4) }}>Adv{si('opp', s4)}</th>
                   <th style={{ ...TH, cursor: 'default' }}>L/E</th>
                   <th style={{ ...TH, cursor: 'default' }}>Score</th>
                   <th onClick={() => setS4(p => tog(p, 'pts'))}  style={{ ...TH, color: thC('pts', s4) }}>Pts{si('pts', s4)}</th>
@@ -572,8 +572,8 @@ export default function AnalyseCollectivePage() {
                     const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                     return (
                       <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
+                        <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{m.opponent}</td>
                         <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
-                        <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left' }}>{m.opponent}</td>
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
@@ -603,7 +603,7 @@ export default function AnalyseCollectivePage() {
                     const tFtm = sortedPM.reduce((s, r) => s + r.ftm,  0), tFta = sortedPM.reduce((s, r) => s + r.fta,  0);
                     return (
                       <tr style={TOTALS}>
-                        <td style={{ ...TL, textAlign: 'left' }}>{N} matchs · {wins}V {N-wins}D</td>
+                        <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{N} matchs · {wins}V {N-wins}D</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
@@ -637,8 +637,8 @@ export default function AnalyseCollectivePage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead>
                   <tr>
+                    <th rowSpan={2} onClick={() => setS5(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, verticalAlign: 'middle', color: thC('opp', s5), position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Adv{si('opp', s5)}</th>
                     <th rowSpan={2} onClick={() => setS5(p => tog(p, 'date'))} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, verticalAlign: 'middle', color: thC('date', s5) }}>Date{si('date', s5)}</th>
-                    <th rowSpan={2} onClick={() => setS5(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', color: thC('opp', s5) }}>Adv{si('opp', s5)}</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>L/E</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>Score</th>
                     <th colSpan={5} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Attaque</th>
@@ -660,8 +660,8 @@ export default function AnalyseCollectivePage() {
                     const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                     return (
                       <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
+                        <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{m.opponent}</td>
                         <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
-                        <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left' }}>{m.opponent}</td>
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
@@ -685,7 +685,7 @@ export default function AnalyseCollectivePage() {
                     };
                     return (
                       <tr style={TOTALS}>
-                        <td style={{ ...TL, textAlign: 'left' }}>{N} matchs · {wins}V {N-wins}D</td>
+                        <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{N} matchs · {wins}V {N-wins}D</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>
                         <td style={{ ...TD, color: '#64748B' }}>—</td>

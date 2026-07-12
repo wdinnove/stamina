@@ -86,8 +86,8 @@ export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNorma
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <colgroup>
+            <col style={{ width: 150 }} />
             <col style={{ width: 28 }} />
-            <col />
             <col style={{ width: '9%' }} />
             <col style={{ width: '9%' }} />
             <col style={{ width: '7%' }} />
@@ -98,8 +98,8 @@ export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNorma
           </colgroup>
           <thead>
             <tr style={{ backgroundColor: '#1A1E26', position: 'sticky', top: 0, zIndex: 1 }}>
+              <th onClick={() => toggleSort('name')} style={{ ...thBase, color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>Nom{sortArrow('name')}</th>
               <th style={{ padding: '7px 8px', textAlign: 'left', color: '#475569', fontSize: '0.67rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, borderBottom: '1px solid #2A2F3A' }}>#</th>
-              <th onClick={() => toggleSort('name')} style={{ ...thBase, color: sortKey === 'name' ? '#94A3B8' : '#475569' }}>Nom{sortArrow('name')}</th>
               <th onClick={() => toggleSort('rpe')} style={{ ...thBase, color: sortKey === 'rpe' ? '#94A3B8' : '#475569' }}>RPE{sortArrow('rpe')}</th>
               <th onClick={() => toggleSort('diff')} style={{ ...thBase, color: sortKey === 'diff' ? '#94A3B8' : '#475569' }}>± 21j{sortArrow('diff')}</th>
               {([
@@ -133,8 +133,8 @@ export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNorma
                 <tr key={p.playerId} style={{ borderBottom: '1px solid #1E2229' }}
                   onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                   onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
+                  <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }}>{p.name}</td>
                   <td style={{ padding: '8px 8px', color: idx < 3 ? '#F59E0B' : '#334155', fontSize: '0.75rem', fontWeight: idx < 3 ? 700 : 400, fontFamily: 'JetBrains Mono, monospace' }}>{idx + 1}</td>
-                  <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0 }}>{p.name}</td>
                   <td style={{ padding: '8px 8px', color: rpeC, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{p.avgRpe}</td>
                   <td style={{ padding: '8px 8px' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4,

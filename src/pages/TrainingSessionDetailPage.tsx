@@ -1451,7 +1451,7 @@ export default function TrainingSessionDetailPage() {
                       </colgroup>
                       <thead>
                         <tr style={{ backgroundColor: '#1A1E26' }}>
-                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', ...groupSep }}>Joueuse</th>
+                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', ...groupSep }}>Joueuse</th>
                           <th colSpan={3} style={{ ...thGroup, ...groupSep }}>Avant séance</th>
                           <th colSpan={2} style={thGroup}>Après séance</th>
                         </tr>
@@ -1483,7 +1483,7 @@ export default function TrainingSessionDetailPage() {
                               style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>
-                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #1E2229' }}>{p.firstName.toUpperCase()} {p.lastName[0]}.</td>
+                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #1E2229', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{p.firstName.toUpperCase()} {p.lastName[0]}.</td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                                 {acwrTier ? tierBadge(acwrTier) : (
                                   <span title="Historique insuffisant (28 jours)" style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>

@@ -200,9 +200,9 @@ export default function MatchesPage() {
           <table className="matches-table sm:min-w-[420px]" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
-                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>J</th>
                 <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Adversaire</th>
+                <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>J</th>
+                <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
                 <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</th>
                 <th className="px-3 sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
                 <th className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Résultat</th>
@@ -228,16 +228,16 @@ export default function MatchesPage() {
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                       >
-                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, whiteSpace: 'nowrap' }}>
-                          <span style={{ color: '#475569', fontSize: '0.78rem', fontWeight: 600 }}>{dowAbbr} </span>
-                          <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
-                          <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>
+                          {match.opponent}
                         </td>
                         <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#475569', fontSize: '0.82rem' }}>
                           {match.gameNumber ? `J${match.gameNumber}` : '—'}
                         </td>
-                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>
-                          {match.opponent}
+                        <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, whiteSpace: 'nowrap' }}>
+                          <span style={{ color: '#475569', fontSize: '0.78rem', fontWeight: 600 }}>{dowAbbr} </span>
+                          <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
+                          <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
                         </td>
                         <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
                           <span style={{
