@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from 'recharts';
 import { Save, Check, Mail, X, Heart, TrendingUp, Users, Smile, Meh, Frown } from 'lucide-react';
 import { sendEmail } from '../api/email';
 import { playersApi } from '../api/players';
@@ -16,6 +16,10 @@ const dimensions = WELLNESS_DIMENSIONS;
 const scoreColor = wellnessScoreColor;
 const dimColor   = wellnessDimColor;
 const QUICK_ICONS = { frown: Frown, meh: Meh, smile: Smile };
+
+// Dimensions fixes du radar POMS (hauteur/marge partagées entre le conteneur et le RadarChart)
+const RADAR_HEIGHT = 340;
+const RADAR_MARGIN = 10;
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtDate(iso: string): string {
@@ -90,6 +94,8 @@ export default function WellnessPage() {
 
   const dateRange = useDateRange(selected?.season.startDate, 21, selected?.season.endDate);
   const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
+  // Courbes par dimension du graphique "Évolution › Global" : masquées par défaut, affichées au clic sur la légende
+  const [hiddenDimCurves, setHiddenDimCurves] = useState<Set<string>>(() => new Set(dimensions.map(d => d.key)));
 
   const [showLinkModal,    setShowLinkModal]    = useState(false);
   const [linkSelected,     setLinkSelected]     = useState<Set<string>>(new Set());
@@ -204,33 +210,29 @@ export default function WellnessPage() {
   const scoreAvg    = wellnessAvg(historyInRange.map(e => e.score));
   const radarColor  = scoreColor(scoreAvg ?? 5);
 
-  const radarData = dimensionSeries.map(dim => ({ dim: dim.label, value: dim.avg ?? 0, fullMark: 10 }));
-
-  // Série du score global (déjà "plus haut = mieux", pas d'inversion nécessaire)
-  const scoreSeries = historyAsc.map((e, i) => ({ idx: i, date: fmtDate(e.date), value: e.score }));
-
-  const tableData = [...historyInRange].sort((a, b) => b.date.localeCompare(a.date));
-
-  // ── KPI de la période : score global + les 6 dimensions, avec l'écart vs la moyenne de la saison ──
+  // ── Comparaison vs moyenne saison, réutilisée par le radar POMS et les KPI de période ──
   // Pas de comparaison quand le preset sélectionné est déjà "Saison" (l'écart serait toujours ~0).
   const seasonEntries = selected?.season.startDate
     ? sourceHistory.filter(e => e.date >= selected.season.startDate && (!selected.season.endDate || e.date <= selected.season.endDate))
     : sourceHistory;
   const seasonScoreAvg = wellnessAvg(seasonEntries.map(e => e.score));
   const showSeasonDiff = dateRange.preset !== 'saison';
+  const dimSeasonAvg = (key: string) =>
+    showSeasonDiff ? wellnessAvg(seasonEntries.map(e => e[key as keyof WellnessEntry] as number)) : null;
 
-  const periodKpis = [
-    {
-      key: 'score', emoji: '⚡', label: 'Score global', inverted: false,
-      value: scoreAvg,
-      prev:  showSeasonDiff ? seasonScoreAvg : null,
-    },
-    ...dimensionSeries.map(dim => ({
-      key: dim.key, emoji: dim.emoji, label: dim.shortLabel, inverted: dim.inverted,
-      value: dim.avg,
-      prev: showSeasonDiff ? wellnessAvg(seasonEntries.map(e => e[dim.key as keyof WellnessEntry] as number)) : null,
-    })),
-  ];
+  const radarData = dimensionSeries.map(dim => {
+    const prev = dimSeasonAvg(dim.key);
+    const diff = dim.avg !== null && prev !== null ? Math.round((dim.avg - prev) * 10) / 10 : null;
+    return { dim: dim.shortLabel, value: dim.avg ?? 0, avg: dim.avg, inverted: dim.inverted, diff, fullMark: 10 };
+  });
+
+  // Série du score global + les 6 dimensions (remises "plus haut = mieux" via wellnessRawValue, même sens que le score)
+  const scoreSeries = historyAsc.map((e, i) => ({
+    idx: i, date: fmtDate(e.date), value: e.score,
+    ...Object.fromEntries(dimensions.map(d => [d.key, wellnessRawValue(e[d.key as keyof WellnessEntry] as number, d.inverted)])),
+  }));
+
+  const tableData = [...historyInRange].sort((a, b) => b.date.localeCompare(a.date));
 
   // ── Résumé en langage naturel de la période, affiché sous le sélecteur de dates ──
   const goodDims = dimensionSeries.filter(d => d.avg !== null && wellnessStatus(d.avg, d.inverted) === 'good').map(d => d.shortLabel);
@@ -520,43 +522,60 @@ export default function WellnessPage() {
           ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* Ligne 0 : Résumé chiffré de la période */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7" style={{ gap: 10 }}>
-              {periodKpis.map((k, i) => {
-                const color = k.value !== null ? dimColor(k.value, k.inverted) : '#475569';
-                const diff  = k.value !== null && k.prev !== null ? Math.round((k.value - k.prev) * 10) / 10 : null;
-                const flat  = diff !== null && Math.abs(diff) < 0.05;
-                const better = diff !== null ? (k.inverted ? diff < 0 : diff > 0) : null;
-                return (
-                  <Card key={k.key} className={i === 0 ? 'col-span-2 sm:col-span-1' : undefined} accentColor={k.value !== null ? color : undefined} style={{ textAlign: 'center', padding: '10px 8px' }}>
-                    <div style={{ color: '#475569', fontSize: '0.62rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.emoji} {k.label}</div>
-                    <div style={{ color, fontSize: '1.2rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{k.value ?? '—'}</div>
-                    <div style={{ fontSize: '0.66rem', marginTop: 4, fontWeight: 600, color: diff === null ? '#334155' : flat ? '#475569' : better ? '#00E5A0' : '#EF4444' }}>
-                      {diff === null ? '—' : flat ? '=' : `${better ? '▲' : '▼'} ${diff > 0 ? '+' : ''}${diff}`}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-
             {/* Ligne 2 : POMS | Évolution */}
             <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
               <Card className="md:col-span-1" style={{ display: 'flex', flexDirection: 'column', alignSelf: 'start' }}>
                 <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={14}
                   right={<span style={{ color: '#475569', fontSize: '0.7rem' }}>{historyAsc.length} saisie{historyAsc.length > 1 ? 's' : ''}</span>}
                 >Profil POMS</CardTitle>
-                <div style={{ position: 'relative', height: 260 }}>
+                <div style={{ position: 'relative', height: RADAR_HEIGHT }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={radarData} outerRadius="68%" margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                    <RadarChart data={radarData} outerRadius="78%" margin={{ top: RADAR_MARGIN, right: RADAR_MARGIN, bottom: RADAR_MARGIN, left: RADAR_MARGIN }}>
                       <PolarGrid stroke="#2A2F3A" />
-                      <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                      <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 10 }} tickSize={16} />
                       <Radar name="Moy." dataKey="value" stroke={radarColor} fill={radarColor} fillOpacity={0.1} strokeWidth={2}
                         dot={(props: { cx: number; cy: number; index: number }) => {
-                          const dim = dimensions[props.index];
                           const dataPoint = radarData[props.index];
-                          if (!dim || !dataPoint) return <circle key={props.index} cx={props.cx} cy={props.cy} r={0} />;
-                          const color = dimColor(dataPoint.value, dim.inverted);
-                          return <circle key={props.index} cx={props.cx} cy={props.cy} r={6} fill={color} stroke="#161920" strokeWidth={2} />;
+                          if (!dataPoint) return <g key={props.index} />;
+                          const hasValue = dataPoint.avg !== null;
+                          const color    = hasValue ? dimColor(dataPoint.value, dataPoint.inverted) : '#475569';
+                          const diff     = dataPoint.diff;
+                          const hasEvo   = diff !== null;
+                          const flat     = hasEvo && Math.abs(diff!) < 0.05;
+                          const better   = hasEvo ? (dataPoint.inverted ? diff! < 0 : diff! > 0) : null;
+                          const evoColor = flat ? '#94A3B8' : better ? '#00E5A0' : '#EF4444';
+                          const valueStr = hasValue ? String(dataPoint.avg) : '—';
+
+                          // Flèche/tiret d'évolution dessiné en forme SVG (pas en caractère Unicode ▲▼) pour éviter
+                          // tout décalage de police de secours qui la ferait chevaucher le dernier chiffre.
+                          const CHAR_W   = 6.2;
+                          const ICON_W   = 8;
+                          const GAP      = 4;
+                          const PAD_X    = 7;
+                          const valueW   = valueStr.length * CHAR_W;
+                          const contentW = valueW + (hasEvo ? GAP + ICON_W : 0);
+                          const w = contentW + PAD_X * 2;
+                          const h = 16;
+                          const groupLeft = props.cx - contentW / 2;
+                          const iconCx    = groupLeft + valueW + GAP + ICON_W / 2;
+
+                          return (
+                            <g key={props.index}>
+                              <rect x={props.cx - w / 2} y={props.cy - h / 2} width={w} height={h} rx={4}
+                                fill="#161920" stroke={color} strokeWidth={1.5} />
+                              <text x={groupLeft} y={props.cy + 1} textAnchor="start" dominantBaseline="central" fill={color}
+                                style={{ fontSize: 10, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', pointerEvents: 'none' }}>
+                                {valueStr}
+                              </text>
+                              {hasEvo && (flat
+                                ? <rect x={iconCx - 3.5} y={props.cy - 1} width={7} height={2} rx={1} fill={evoColor} />
+                                : <polygon fill={evoColor} points={better
+                                    ? `${iconCx - 3.5},${props.cy + 2.5} ${iconCx + 3.5},${props.cy + 2.5} ${iconCx},${props.cy - 3}`
+                                    : `${iconCx - 3.5},${props.cy - 2.5} ${iconCx + 3.5},${props.cy - 2.5} ${iconCx},${props.cy + 3}`}
+                                  />
+                              )}
+                            </g>
+                          );
                         }}
                       />
                     </RadarChart>
@@ -582,13 +601,13 @@ export default function WellnessPage() {
                 >Évolution</CardTitle>
 
                 {evoTab === 'global' && (
-                  <div style={{ flex: 1, minHeight: 220 }}>
+                  <div style={{ height: RADAR_HEIGHT - 40 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={scoreSeries} margin={{ top: 5, right: 8, bottom: 0, left: 0 }}>
                         <defs>
-                          {/* y1/y2 approximés sur la zone de tracé typique une fois la card étirée à la hauteur de POMS,
-                              pour que le dégradé corresponde à l'échelle 0–10 affichée */}
-                          <linearGradient id="grad-score" gradientUnits="userSpaceOnUse" x1="0" y1={5} x2="0" y2={225}>
+                          {/* y1/y2 en % (pas en px) : le dégradé suit toujours la hauteur réelle du graphique,
+                              quelle que soit la taille de la card, et reste calé sur l'échelle 0–10 affichée */}
+                          <linearGradient id="grad-score" gradientUnits="userSpaceOnUse" x1="0%" y1="0%" x2="0%" y2="100%">
                             <stop offset="0%"   stopColor="#00E5A0" />
                             <stop offset="30%"  stopColor="#00E5A0" />
                             <stop offset="50%"  stopColor="#F59E0B" />
@@ -601,7 +620,34 @@ export default function WellnessPage() {
                           interval={Math.max(0, Math.ceil(scoreSeries.length / 10) - 1)}
                           tick={{ fill: '#475569', fontSize: 10 }} />
                         <YAxis domain={[0, 10]} ticks={[3, 6, 10]} width={28} tick={{ fill: '#475569', fontSize: 10 }} />
+                        {/* Seuils de coloration (wellnessScoreColor) : ≥7 bon, ≥5 moyen, sinon mauvais */}
+                        <ReferenceLine y={7} stroke="#00E5A0" strokeOpacity={0.4} strokeDasharray="4 4" />
+                        <ReferenceLine y={5} stroke="#F59E0B" strokeOpacity={0.4} strokeDasharray="4 4" />
                         <Tooltip content={<CustomTooltip />} />
+                        <Legend
+                          wrapperStyle={{ fontSize: '0.68rem' }}
+                          inactiveColor="#334155"
+                          payload={[
+                            { value: 'Score', dataKey: 'value', color: radarColor, type: 'line' },
+                            ...dimensions.map(dim => ({ value: dim.shortLabel, dataKey: dim.key, color: dim.color, type: 'line' as const, inactive: hiddenDimCurves.has(dim.key) })),
+                          ]}
+                          onClick={(entry: { dataKey?: string }) => {
+                            const key = entry.dataKey;
+                            if (typeof key !== 'string' || key === 'value') return;
+                            setHiddenDimCurves(prev => {
+                              const next = new Set(prev);
+                              if (next.has(key)) next.delete(key); else next.add(key);
+                              return next;
+                            });
+                          }}
+                          formatter={(value: string, entry: { inactive?: boolean; dataKey?: string }) => (
+                            <span style={{ color: entry.inactive ? '#334155' : '#94A3B8', cursor: entry.dataKey === 'value' ? 'default' : 'pointer' }}>{value}</span>
+                          )}
+                        />
+                        {dimensions.map(dim => (
+                          <Line key={dim.key} dataKey={dim.key} name={dim.shortLabel} stroke={dim.color} strokeWidth={1.25}
+                            strokeDasharray="4 3" hide={hiddenDimCurves.has(dim.key)} dot={false} isAnimationActive={false} />
+                        ))}
                         <Line dataKey="value" name="Score" stroke="url(#grad-score)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -610,34 +656,56 @@ export default function WellnessPage() {
 
                 {evoTab === 'detail' && (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 10 }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: 10 }}>
                       {dimensionSeries.map(dim => {
                         const boxColor = dim.avg !== null ? dimColor(dim.avg, dim.inverted) : '#1E2229';
+                        const prev   = dimSeasonAvg(dim.key);
+                        const diff   = dim.avg !== null && prev !== null ? Math.round((dim.avg - prev) * 10) / 10 : null;
+                        const flat   = diff !== null && Math.abs(diff) < 0.05;
+                        const better = diff !== null ? (dim.inverted ? diff < 0 : diff > 0) : null;
+                        const evoColor = flat ? '#94A3B8' : better ? '#00E5A0' : '#EF4444';
                         return (
                         <div key={dim.key} style={{ backgroundColor: '#0D0F14', border: `1px solid ${boxColor}50`, borderRadius: 8, padding: '10px 12px' }}>
-                          <div style={{ marginBottom: 8 }}>
-                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600 }}>{dim.emoji} {dim.shortLabel}</span>
+                          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dim.emoji} {dim.shortLabel}</span>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0,
+                              backgroundColor: '#161920', border: `1px solid ${boxColor}`, borderRadius: 4,
+                              padding: '1px 6px', fontSize: '0.7rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
+                              color: boxColor,
+                            }}>
+                              {dim.avg ?? '—'}
+                              {diff !== null && (
+                                <span style={{ color: evoColor, fontSize: '0.6rem' }}>{flat ? '=' : better ? '▲' : '▼'}</span>
+                              )}
+                            </span>
                           </div>
-                          <ResponsiveContainer width="100%" height={70}>
-                            <LineChart data={dim.series}>
-                              <defs>
-                                {/* Repères alignés sur les mêmes seuils que partout ailleurs dans l'app : ≥7 vert, ≥5 orange, sinon rouge (rouge plein dès ≤3 pour rester visible) */}
-                                <linearGradient id={`grad-${dim.key}`} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={70}>
-                                  <stop offset="0%"   stopColor="#00E5A0" />
-                                  <stop offset="30%"  stopColor="#00E5A0" />
-                                  <stop offset="50%"  stopColor="#F59E0B" />
-                                  <stop offset="70%"  stopColor="#EF4444" />
-                                  <stop offset="100%" stopColor="#EF4444" />
-                                </linearGradient>
-                              </defs>
-                              <YAxis domain={[0, 10]} reversed={dim.inverted} hide />
-                              <Tooltip content={<CustomTooltip />} />
-                              <Line
-                                dataKey="value" name={dim.label} stroke={`url(#grad-${dim.key})`} strokeWidth={2.5}
-                                dot={false} isAnimationActive={false}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
+                          <div className="h-[70px] sm:h-[100px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={dim.series}>
+                                <defs>
+                                  {/* y1/y2 en % : même principe que le graphique Global, le dégradé suit la hauteur réelle */}
+                                  <linearGradient id={`grad-${dim.key}`} gradientUnits="userSpaceOnUse" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%"   stopColor="#00E5A0" />
+                                    <stop offset="30%"  stopColor="#00E5A0" />
+                                    <stop offset="50%"  stopColor="#F59E0B" />
+                                    <stop offset="70%"  stopColor="#EF4444" />
+                                    <stop offset="100%" stopColor="#EF4444" />
+                                  </linearGradient>
+                                </defs>
+                                <YAxis domain={[0, 10]} reversed={dim.inverted} hide />
+                                {/* Seuils de coloration, mêmes seuils que partout ailleurs (≥7 bon / ≥5 moyen en sens "ressenti"),
+                                    ramenés à l'échelle brute stockée pour les dimensions inversées (fatigue/stress/douleurs) */}
+                                <ReferenceLine y={dim.inverted ? 4 : 7} stroke="#00E5A0" strokeOpacity={0.4} strokeDasharray="4 4" />
+                                <ReferenceLine y={dim.inverted ? 6 : 5} stroke="#F59E0B" strokeOpacity={0.4} strokeDasharray="4 4" />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Line
+                                  dataKey="value" name={dim.label} stroke={`url(#grad-${dim.key})`} strokeWidth={2.5}
+                                  dot={false} isAnimationActive={false}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
                         </div>
                         );
                       })}
@@ -646,7 +714,7 @@ export default function WellnessPage() {
                 )}
 
                 {evoTab === 'history' && (
-                  <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
+                  <div style={{ overflowX: 'auto', minHeight: RADAR_HEIGHT, border: '1px solid #2A2F3A', borderRadius: 8 }}>
                     <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, minWidth: 500 }}>
                       {['Date', ...dimensions.map(d => d.shortLabel), 'Score'].map(h => (
                         <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: h === 'Score' ? 'right' : 'left' }}>{h}</span>
