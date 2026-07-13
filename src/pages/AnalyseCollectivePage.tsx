@@ -186,14 +186,36 @@ export default function AnalyseCollectivePage() {
     };
   }), [pjAdvRows, normalize25]);
 
+  // Somme + nb de joueurs évalués par match (pour la colonne "Éval" du tableau "par match")
+  const matchEvalStatsMap = useMemo(() => {
+    const m = new Map<string, { sum: number; count: number }>();
+    for (const s of filteredAllStats) {
+      if (!s.matchId || s.eval === null) continue;
+      const cur = m.get(s.matchId) ?? { sum: 0, count: 0 };
+      cur.sum += s.eval;
+      cur.count += 1;
+      m.set(s.matchId, cur);
+    }
+    return m;
+  }, [filteredAllStats]);
+
+  // Couleur d'une éval d'équipe : seuils individuels appliqués à la moyenne par joueur ayant joué
+  const evalTeamColor = (sum: number | null, count: number) =>
+    sum !== null && count > 0 ? evalColor(sum / count, statThresholds) : '#475569';
+
   // ── Par match rows (from teamStats) ─────────────────────────────────────────
-  const pmRows = useMemo(() => filteredTeamStats.map(t => ({
-    ...t,
-    pts:    t.fg2m * 2 + t.fg3m * 3 + t.ftm,
-    fg2Pct: t.fg2a > 0 ? Math.round(t.fg2m / t.fg2a * 100) : null,
-    fg3Pct: t.fg3a > 0 ? Math.round(t.fg3m / t.fg3a * 100) : null,
-    ftPct:  t.fta  > 0 ? Math.round(t.ftm  / t.fta  * 100) : null,
-  })), [filteredTeamStats]);
+  const pmRows = useMemo(() => filteredTeamStats.map(t => {
+    const evalStats = t.matchId ? matchEvalStatsMap.get(t.matchId) : undefined;
+    return {
+      ...t,
+      pts:           t.fg2m * 2 + t.fg3m * 3 + t.ftm,
+      fg2Pct:        t.fg2a > 0 ? Math.round(t.fg2m / t.fg2a * 100) : null,
+      fg3Pct:        t.fg3a > 0 ? Math.round(t.fg3m / t.fg3a * 100) : null,
+      ftPct:         t.fta  > 0 ? Math.round(t.ftm  / t.fta  * 100) : null,
+      evalTeam:      evalStats ? evalStats.sum : null,
+      evalTeamCount: evalStats ? evalStats.count : 0,
+    };
+  }), [filteredTeamStats, matchEvalStatsMap]);
 
   const pcaResult     = useMemo(() => computeMatchPCA(filteredTeamStats),   [filteredTeamStats]);
   const winFactors    = useMemo(() => computeWinFactors(filteredTeamStats), [filteredTeamStats]);
@@ -405,7 +427,7 @@ export default function AnalyseCollectivePage() {
                     return (
                       <tr key={p.id} onClick={() => navigate(`/individual-analyze/${p.id}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
                         <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{p.firstName} {p.lastName}</td>
-                        <td style={{ ...TD, color: '#475569' }}>#{p.number}</td>
+                        <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                         <td style={TD}>{tit}</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#F1F5F9' }}>{avgMin}</td>
@@ -508,7 +530,7 @@ export default function AnalyseCollectivePage() {
                   {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
                     <tr key={p.id} onClick={() => navigate(`/individual-analyze/${p.id}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
                       <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{p.firstName} {p.lastName}</td>
-                      <td style={{ ...TD, color: '#475569' }}>#{p.number}</td>
+                      <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                       <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
                       <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
@@ -566,6 +588,7 @@ export default function AnalyseCollectivePage() {
                   <th onClick={() => setS4(p => tog(p, 'ct'))}   style={{ ...TH, color: thC('ct', s4) }}>Ct{si('ct', s4)}</th>
                   <th onClick={() => setS4(p => tog(p, 'int'))}  style={{ ...TH, color: thC('int', s4) }}>Int{si('int', s4)}</th>
                   <th onClick={() => setS4(p => tog(p, 'bp'))}   style={{ ...TH, color: thC('bp', s4) }}>Bp{si('bp', s4)}</th>
+                  <th style={{ ...TH, cursor: 'default' }}>Éval</th>
                 </tr></thead>
                 <tbody>
                   {sortedPM.map((m, i) => {
@@ -590,6 +613,7 @@ export default function AnalyseCollectivePage() {
                         <td style={TD}>{m.ct}</td>
                         <td style={TD}>{m.intercepts}</td>
                         <td style={TD}>{m.bp}</td>
+                        <td style={{ ...TD, color: evalTeamColor(m.evalTeam, m.evalTeamCount), fontWeight: m.evalTeam !== null ? 700 : 400 }}>{m.evalTeam ?? '—'}</td>
                       </tr>
                     );
                   })}
@@ -601,6 +625,11 @@ export default function AnalyseCollectivePage() {
                     const tF2m = sortedPM.reduce((s, r) => s + r.fg2m, 0), tF2a = sortedPM.reduce((s, r) => s + r.fg2a, 0);
                     const tF3m = sortedPM.reduce((s, r) => s + r.fg3m, 0), tF3a = sortedPM.reduce((s, r) => s + r.fg3a, 0);
                     const tFtm = sortedPM.reduce((s, r) => s + r.ftm,  0), tFta = sortedPM.reduce((s, r) => s + r.fta,  0);
+                    const evalTeamRows = sortedPM.filter(r => r.evalTeam !== null);
+                    const evalTeamAvg  = evalTeamRows.length > 0
+                      ? Math.round(evalTeamRows.reduce((s, r) => s + (r.evalTeam ?? 0), 0) / evalTeamRows.length * 10) / 10 : null;
+                    const evalTeamTotalSum   = evalTeamRows.reduce((s, r) => s + (r.evalTeam ?? 0), 0);
+                    const evalTeamTotalCount = evalTeamRows.reduce((s, r) => s + r.evalTeamCount, 0);
                     return (
                       <tr style={TOTALS}>
                         <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{N} matchs · {wins}V {N-wins}D</td>
@@ -621,6 +650,7 @@ export default function AnalyseCollectivePage() {
                         <td style={TD}>{a(r => r.ct)}</td>
                         <td style={TD}>{a(r => r.intercepts)}</td>
                         <td style={TD}>{a(r => r.bp)}</td>
+                        <td style={{ ...TD, color: evalTeamColor(evalTeamTotalSum, evalTeamTotalCount), fontWeight: evalTeamAvg !== null ? 700 : 400 }}>{evalTeamAvg ?? '—'}</td>
                       </tr>
                     );
                   })()}
