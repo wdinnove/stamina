@@ -11,6 +11,8 @@ import { fmtDate } from '../utils/dateFormat';
 import type { WellnessEntryMethod } from '../data/types';
 
 const DIMS = WELLNESS_DIMENSIONS;
+const NORMAL_DIMS = DIMS.filter(d => !d.inverted);
+const INVERTED_DIMS = DIMS.filter(d => d.inverted);
 
 // Même formule que la colonne générée wellness_entries.score (schema.sql) et wellnessGlobalScore
 function calcScore(v: Record<string, number>) {
@@ -202,50 +204,54 @@ export default function PlayerWellnessPublicPage() {
               </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
-              {DIMS.map(dim => {
-                const val   = values[dim.key];
-                const color = dimColor(val, dim.inverted);
-                const [lo, hi] = dim.desc.split(' ← → ');
-                return (
-                  <div key={dim.key}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                      <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 500 }}>
-                        {dim.emoji} {dim.label}
-                      </span>
-                      <span style={{ color, fontWeight: 700, fontSize: '1rem', minWidth: 20, textAlign: 'right' }}>{val}</span>
-                    </div>
-                    {entryMode === 'emoji' ? (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {WELLNESS_QUICK_SCALE.map(opt => {
-                          const raw = wellnessRawValue(opt.v, dim.inverted);
-                          const active = val === raw;
-                          const Icon = QUICK_ICONS[opt.icon];
-                          return (
-                            <button key={opt.v} type="button" onClick={() => setValues(prev => ({ ...prev, [dim.key]: raw }))}
-                              style={{ flex: 1, height: 44, borderRadius: 8, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#0D0F14', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Icon size={20} color={active ? opt.color : '#475569'} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <>
-                        <input
-                          type="range" min={1} max={10} step={1}
-                          value={val}
-                          onChange={e => setValues(prev => ({ ...prev, [dim.key]: Number(e.target.value) }))}
-                          style={{ width: '100%', accentColor: color, cursor: 'pointer' }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-                          <span style={{ color: '#475569', fontSize: '0.68rem' }}>{lo?.trim()}</span>
-                          <span style={{ color: '#475569', fontSize: '0.68rem' }}>{hi?.trim()}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 20, marginBottom: 24 }}>
+              {[NORMAL_DIMS, INVERTED_DIMS].map((group, groupIdx) => (
+                <div key={groupIdx} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {group.map(dim => {
+                    const val   = values[dim.key];
+                    const color = dimColor(val, dim.inverted);
+                    const [lo, hi] = dim.desc.split(' ← → ');
+                    return (
+                      <div key={dim.key}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                          <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 500 }}>
+                            {dim.emoji} {dim.label}
+                          </span>
+                          <span style={{ color, fontWeight: 700, fontSize: '1rem', minWidth: 20, textAlign: 'right' }}>{val}</span>
                         </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
+                        {entryMode === 'emoji' ? (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            {WELLNESS_QUICK_SCALE.map(opt => {
+                              const raw = wellnessRawValue(opt.v, dim.inverted);
+                              const active = val === raw;
+                              const Icon = QUICK_ICONS[opt.icon];
+                              return (
+                                <button key={opt.v} type="button" onClick={() => setValues(prev => ({ ...prev, [dim.key]: raw }))}
+                                  style={{ flex: 1, height: 44, borderRadius: 8, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#0D0F14', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Icon size={20} color={active ? opt.color : '#475569'} />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <>
+                            <input
+                              type="range" min={1} max={10} step={1}
+                              value={val}
+                              onChange={e => setValues(prev => ({ ...prev, [dim.key]: Number(e.target.value) }))}
+                              style={{ width: '100%', accentColor: color, cursor: 'pointer' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                              <span style={{ color: '#475569', fontSize: '0.68rem' }}>{lo?.trim()}</span>
+                              <span style={{ color: '#475569', fontSize: '0.68rem' }}>{hi?.trim()}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
 

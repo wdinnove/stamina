@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowRight, Clock, Users, Activity, Trophy, Zap, Heart, Dumbbell } from 'lucide-react';
-import { BarChart, Bar, Cell, XAxis, YAxis, ResponsiveContainer, Tooltip, LineChart, Line } from 'recharts';
-import { PlayerAvatar, Card, CardTitle, ChargeRpeComboChart, Badge } from '../components';
-import { categoryConfig } from '../data/config';
+import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare, ArrowRight } from 'lucide-react';
+import { Badge, StatusBadge, PlayerAvatar } from '../components';
 import { playersApi, medicalApi, actionsApi, wellnessApi, matchesApi, rpeApi, attendanceApi } from '../api';
 import { profileApi } from '../api/profile';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { Player, Action, MedicalRecord, Match } from '../data/types';
-import { rpeColor } from '../utils/rpe';
+import { usePerformanceData } from '../hooks/usePerformanceData';
+import type { PlayerCrossData } from '../data/crossAnalysis';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor } from '../utils/wellness';
+import type { Player, Action, MedicalRecord, Match, WellnessEntry } from '../data/types';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone } from '../utils/rpe';
 import { mondayIso } from '../utils/weeklyLoad';
 import { fmtDateShort } from '../utils/dateFormat';
 
@@ -29,75 +30,34 @@ type StatusLevel = 'injured' | 'rpe_overload' | 'wellness_bad' | 'limited' | 'rp
 const LEVEL_PRIORITY: Record<StatusLevel, number> = {
   injured: 0, rpe_overload: 1, wellness_bad: 2, limited: 3, rpe_medium: 4, wellness_medium: 5, ok: 6,
 };
-const LEVEL_COLOR: Record<StatusLevel, string> = {
-  injured: '#EF4444', rpe_overload: '#EF4444', wellness_bad: '#EF4444',
-  limited: '#F59E0B', rpe_medium: '#F59E0B', wellness_medium: '#F59E0B',
-  ok: '#00E5A0',
-};
 interface PlayerInfo { player: Player; level: StatusLevel; label: string; detail: string; }
 
+/**
+ * Détecte un seuil bien-être franchi (bas ou haut), sur le score global ou l'une des 6
+ * notes (redressée selon le sens de l'axe).
+ */
+function wellnessThresholdInfo(
+  entry: WellnessEntry | undefined,
+  compare: (v: number) => boolean,
+  qualifier: string,
+): { show: boolean; text: string; tooltip: string } {
+  if (!entry) return { show: false, text: '', tooltip: '' };
+  const dims = WELLNESS_DIMENSIONS.filter(dim => compare(dim.inverted ? 11 - entry[dim.key] : entry[dim.key]));
+  const globalMatch = compare(entry.score);
+  const count = dims.length + (globalMatch ? 1 : 0);
 
-// ── Mini bar chart inline ─────────────────────────────────────────────────────
-function WeekBars({ weeks, unit, fill }: { weeks: WeekStat[]; unit: string; fill?: boolean }) {
-  const maxVal = Math.max(...weeks.map(w => w.value ?? 0), 1);
-
-  const getColor = (value: number | null, idx: number): string => {
-    if (value === null) return '#2A2F3A';
-    if (unit !== 'UA') return value >= 7 ? '#00E5A0' : value >= 5 ? '#F59E0B' : '#EF4444';
-    // Charge : surcharge si sem. courante >> moyenne des sem. précédentes
-    if (idx === weeks.length - 1) {
-      const prevs = weeks.slice(0, -1).filter(w => w.value !== null);
-      if (prevs.length > 0) {
-        const prevAvg = prevs.reduce((s, w) => s + (w.value ?? 0), 0) / prevs.length;
-        if (prevAvg > 0 && value > prevAvg * 1.5) return '#EF4444';
-        if (prevAvg > 0 && value > prevAvg * 1.25) return '#F59E0B';
-      }
-    }
-    return '#3B82F6';
-  };
-
-  const lastColor = getColor(weeks.at(-1)?.value ?? null, weeks.length - 1);
-  const isOverload = unit === 'UA' && (lastColor === '#EF4444' || lastColor === '#F59E0B');
-
-  return (
-    <div style={fill ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
-      {isOverload && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.62rem', fontWeight: 700, color: lastColor, backgroundColor: `${lastColor}15`, border: `1px solid ${lastColor}30`, borderRadius: 4, padding: '2px 7px', marginBottom: 10 }}>
-          ⚠ Surcharge détectée
-        </span>
-      )}
-      <div style={{ display: 'flex', gap: 10, alignItems: fill ? 'stretch' : 'flex-end', flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}>
-        {weeks.map(({ label, value }, idx) => {
-          const pct   = value !== null ? Math.round(value / maxVal * 100) : 0;
-          const color = getColor(value, idx);
-          return (
-            <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <span style={{ color: value !== null ? color : '#334155', fontSize: '0.7rem', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
-                {value !== null
-                  ? unit === 'UA'
-                    ? value > 999 ? `${Math.round(value / 1000 * 10) / 10}k` : String(Math.round(value))
-                    : value.toFixed(1)
-                  : '—'}
-              </span>
-              <div style={{ width: '100%', flex: fill ? 1 : undefined, height: fill ? undefined : 32, minHeight: 0, backgroundColor: '#1E2229', borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'flex-end' }}>
-                <div style={{
-                  width: '100%', height: `${pct}%`, minHeight: value !== null && value > 0 ? 3 : 0,
-                  backgroundColor: color, borderRadius: 4, opacity: 0.75,
-                }} />
-              </div>
-              <span style={{ color: '#475569', fontSize: '0.62rem', whiteSpace: 'nowrap' }}>{label}</span>
-            </div>
-          );
-        })}
-        {!fill && (
-          <div style={{ flexShrink: 0, alignSelf: 'flex-end', paddingBottom: 18 }}>
-            <span style={{ color: '#2A2F3A', fontSize: '0.6rem' }}>{unit}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  if (count === 0) return { show: false, text: '', tooltip: '' };
+  if (count === 1 && dims.length === 1) {
+    const dim = dims[0];
+    return { show: true, text: dim.shortLabel, tooltip: `${dim.label} ${qualifier}` };
+  }
+  const tooltip = globalMatch && dims.length === 0
+    ? `Score global ${qualifier} (${entry.score.toFixed(1)}/10)`
+    : `Plusieurs notes ${qualifier}s : ${dims.map(d => d.shortLabel).join(', ')}${globalMatch ? ' + score global' : ''}`;
+  return { show: true, text: 'Bien-être', tooltip };
 }
+
+const wellnessAlertInfo = (entry: WellnessEntry | undefined) => wellnessThresholdInfo(entry, v => v < 5, 'basse');
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
   training: 'Entraînement', match: 'Match', gym: 'Gym', rest: 'Repos',
@@ -109,11 +69,31 @@ const SESSION_TYPE_COLORS: Record<string, string> = {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { selected, loading: teamLoading, thresholds } = useTeamSeason();
+  const { data: perfData } = usePerformanceData();
 
   const today = useMemo(() => localDate(0), []);
   const todayLabel = useMemo(() => new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   }), []);
+
+  // ACWR à la date du jour, par joueuse — dérivé de l'historique complet (perfData) pour
+  // un calcul correct même en tout début de saison.
+  const acwrByPlayer = useMemo(() => {
+    const map = new Map<string, number | null>();
+    if (!perfData) return map;
+    for (const pd of perfData.players) map.set(pd.player.id, computeAcwr(pd.rpe, today));
+    return map;
+  }, [perfData, today]);
+
+  // Dernière entrée bien-être par joueuse
+  const latestWellnessByPlayer = useMemo(() => {
+    const map = new Map<string, WellnessEntry | undefined>();
+    if (!perfData) return map;
+    for (const pd of perfData.players) {
+      map.set(pd.player.id, [...pd.wellness].sort((a, b) => b.date.localeCompare(a.date))[0]);
+    }
+    return map;
+  }, [perfData]);
 
   const [userName,        setUserName]        = useState('');
   const [players,         setPlayers]         = useState<Player[]>([]);
@@ -284,7 +264,7 @@ export default function DashboardPage() {
 
           // Alertes joueurs (basées sur 7j)
           const injuryMap = new Map(activeInjuries.map(inj => [inj.playerId, inj]));
-          const { lightMax, normalMax } = thresholds;
+          const { normalMax } = thresholds;
           const latestWellMap = new Map<string, { score: number; date: string }>();
           for (const w of wellnessEntries) {
             const ex = latestWellMap.get(w.playerId);
@@ -418,6 +398,33 @@ export default function DashboardPage() {
     ...actions.filter(a => a.dueDate >= today),
   ].slice(0, 3);
 
+  // Infirmerie — comptes pour la carte "hero"
+  const injuredCount     = players.filter(p => p.status === 'injured').length;
+  const limitedCount     = players.filter(p => p.status === 'limited').length;
+  const inTreatmentCount = injuries.filter(inj => !!inj.treatment?.trim()).length;
+  const availablePct = players.length > 0 ? Math.round((players.length - injuredCount) / players.length * 100) : null;
+  const availableColor = availablePct === null ? '#475569'
+    : availablePct >= 90 ? '#00E5A0'
+    : availablePct >= 75 ? '#F59E0B' : '#EF4444';
+
+  // Bien-être équipe — carte "hero"
+  const teamWellnessNow = weeklyWellness.at(-1)?.value ?? null;
+  const wellnessAlertCount = players.filter(p => wellnessAlertInfo(latestWellnessByPlayer.get(p.id)).show).length;
+  const teamWellnessColor = teamWellnessNow === null ? '#475569' : wellnessScoreColor(teamWellnessNow);
+
+  // Charge physique équipe — carte "hero" (mêmes seuils que le bandeau KPI)
+  const teamLoadNow = kpiStats?.avgLoad ?? null;
+  const teamRpeNow  = kpiStats?.avgRpe ?? null;
+  const teamLoadColor = teamLoadNow === null ? '#475569'
+    : teamLoadNow > thresholds.normalMax ? '#EF4444'
+    : teamLoadNow > thresholds.normalMax * 2 / 3 ? '#F97316'
+    : teamLoadNow > thresholds.normalMax / 3 ? '#EAB308' : '#00E5A0';
+  const teamLoadLabel = teamLoadNow === null ? '—'
+    : teamLoadNow > thresholds.normalMax ? 'Surcharge'
+    : teamLoadNow > thresholds.normalMax * 2 / 3 ? 'Élevée'
+    : teamLoadNow > thresholds.normalMax / 3 ? 'Soutenu' : 'Normal';
+  const highRiskAcwrCount = players.filter(p => acwrZone(acwrByPlayer.get(p.id) ?? null)?.label === 'Risque élevé').length;
+
   if (teamLoading) return <div style={{ padding: 24, color: '#94A3B8', fontSize: '0.85rem' }}>Chargement…</div>;
   if (!selected) return (
     <div style={{ padding: 24 }}>
@@ -434,265 +441,409 @@ export default function DashboardPage() {
         <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>{todayLabel} · {selected.team.name}</p>
       </div>
 
-      {/* KPI saison */}
-      {kpiStats && (() => {
-        const { active, injured, limited, attendanceRate, wins, losses, avgLoad, avgRpe } = kpiStats;
-        const { normalMax } = thresholds;
-        const loadColor = avgLoad === null ? '#475569'
-          : avgLoad > normalMax ? '#EF4444'
-          : avgLoad > normalMax * 2 / 3 ? '#F97316'
-          : avgLoad > normalMax / 3 ? '#EAB308' : '#00E5A0';
-        const loadLabel = avgLoad === null ? null
-          : avgLoad > normalMax ? 'Surcharge'
-          : avgLoad > normalMax * 2 / 3 ? 'Élevée'
-          : avgLoad > normalMax / 3 ? 'Soutenu' : 'Normal';
-        const attColor = attendanceRate === null ? '#475569'
-          : attendanceRate >= 80 ? '#00E5A0' : attendanceRate >= 60 ? '#F59E0B' : '#EF4444';
-        const activeColor = active >= 10 ? '#00E5A0' : active >= 8 ? '#F59E0B' : '#EF4444';
-        const kpis = [
-          {
-            label: 'Effectif',
-            value: <span style={{ color: activeColor, fontFamily: 'JetBrains Mono, monospace' }}>{active}</span>,
-            sub: <>{injured > 0 && <span style={{ color: '#EF4444' }}>{injured} blessé{injured > 1 ? 's' : ''}</span>}{injured > 0 && limited > 0 && ' · '}{limited > 0 && <span style={{ color: '#F59E0B' }}>{limited} limité{limited > 1 ? 's' : ''}</span>}{injured === 0 && limited === 0 && <span style={{ color: '#00E5A0' }}>Tous disponibles</span>}</>,
-            accent: activeColor,
-            href: '/roster',
-          },
-          {
-            label: 'Bilan matchs',
-            value: <span style={{ fontFamily: 'JetBrains Mono, monospace' }}><span style={{ color: '#00E5A0' }}>{wins}V</span><span style={{ color: '#475569', margin: '0 4px' }}>·</span><span style={{ color: '#EF4444' }}>{losses}D</span></span>,
-            sub: <span style={{ color: '#475569' }}>{wins + losses} match{wins + losses > 1 ? 's' : ''}</span>,
-            accent: wins > losses ? '#00E5A0' : wins < losses ? '#EF4444' : '#475569',
-            href: '/matches',
-          },
-          {
-            label: 'Charge moy / semaine',
-            value: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-              <span style={{ color: loadColor, fontFamily: 'JetBrains Mono, monospace' }}>{avgLoad !== null ? avgLoad.toLocaleString('fr') : '—'}</span>
-              {loadLabel && <Badge color={loadColor} label={loadLabel} size="sm" style={{ fontSize: '0.58rem', padding: '2px 6px' }} />}
-            </span>,
-            sub: <span style={{ color: '#475569' }}>UA · saison</span>,
-            accent: loadColor,
-            href: '/rpe',
-          },
-          {
-            label: 'RPE moyen',
-            value: <span style={{ color: avgRpe !== null ? rpeColor(avgRpe) : '#475569', fontFamily: 'JetBrains Mono, monospace' }}>{avgRpe !== null ? avgRpe : '—'}</span>,
-            sub: <span style={{ color: '#475569' }}>/ 10 · saison</span>,
-            accent: avgRpe !== null ? rpeColor(avgRpe) : '#475569',
-            href: '/rpe',
-          },
-        ];
-        return (
-          <div className="grid grid-cols-2 sm:grid-cols-4" style={{ gap: 8, marginBottom: 12 }}>
-            {kpis.map(({ label, value, sub, accent, href }) => (
-              <div key={label} onClick={() => navigate(href)} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 14px', cursor: 'pointer' }}
-                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1A1E26'}
-                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#161920'}
-              >
-                <p style={{ color: '#475569', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>{label}</p>
-                <p style={{ color: '#F1F5F9', fontSize: '1.5rem', fontWeight: 800, margin: '0 0 4px', lineHeight: 1 }}>{value}</p>
-                <p style={{ margin: 0, fontSize: '0.68rem' }}>{sub}</p>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
+      {/* 6 cartes "hero" — Matchs / Entraînements / Actions / Infirmerie / Charge physique / Bien-être */}
+      <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 12, marginBottom: 16 }}>
+        <MatchCarouselCard matches={last3Matches} wins={kpiStats?.wins ?? 0} losses={kpiStats?.losses ?? 0} onOpen={() => navigate('/matches')} />
+        <SessionCarouselCard sessions={last3Sessions.filter(s => s.type !== 'match')} onOpen={() => navigate('/sessions')} />
+        <ActionCarouselCard actions={topActions} players={players} today={today} onOpen={() => navigate('/actions')} />
+        <HeroCard
+          icon={<Stethoscope size={20} color="#EF4444" />}
+          iconBg="#EF444422"
+          title="Infirmerie"
+          ctaLabel="Voir l'infirmerie"
+          headerRight={availablePct !== null && <Badge color={availableColor} label={`${availablePct}% dispo`} size="sm" style={{ flexShrink: 0 }} />}
+          borderColor={availableColor}
+          stats={[
+            { value: injuredCount, label: `Blessée${injuredCount > 1 ? 's' : ''}`, color: '#EF4444' },
+            { value: limitedCount, label: `Limitée${limitedCount > 1 ? 's' : ''}`, color: '#F59E0B' },
+            { value: inTreatmentCount, label: 'En traitement', color: '#3B82F6' },
+          ]}
+          onOpen={() => navigate('/medical/infirmary')}
+        />
+        <HeroCard
+          icon={<Activity size={20} color="#8B5CF6" />}
+          iconBg="#8B5CF622"
+          title="Charge physique"
+          ctaLabel="Voir le RPE"
+          headerRight={<Badge color={teamLoadColor} label={teamLoadLabel} size="sm" style={{ flexShrink: 0 }} />}
+          borderColor={teamLoadColor}
+          stats={[
+            { value: teamLoadNow ?? 0, label: 'UA / semaine', color: teamLoadColor },
+            { value: teamRpeNow ?? 0, label: 'RPE moyen /10', color: teamRpeNow === null ? '#475569' : rpeColor(teamRpeNow) },
+            { value: highRiskAcwrCount, label: 'Risque blessures', color: '#EF4444' },
+          ]}
+          onOpen={() => navigate('/rpe')}
+        />
+        <HeroCard
+          icon={<Heart size={20} color="#EC4899" />}
+          iconBg="#EC489922"
+          title="Bien-être équipe"
+          ctaLabel="Voir le bien-être"
+          borderColor={teamWellnessColor}
+          stats={[
+            { value: teamWellnessNow ?? 0, label: 'Score moyen /10', color: teamWellnessColor },
+            { value: wellnessAlertCount, label: `Joueuse${wellnessAlertCount > 1 ? 's' : ''} en alerte`, color: '#EF4444' },
+          ]}
+          onOpen={() => navigate('/wellness/team')}
+        />
+      </div>
 
-      {/* Ligne 1 : Effectif */}
-      {!loading && playerInfos.length > 0 && (() => {
-        const alertCount = playerInfos.filter(i => i.level !== 'ok').length;
-        return (
-          <Card style={{ marginBottom: 12 }}>
-            <CardTitle
-              icon={<Users size={12} color="#3B82F6" />}
-              mb={12}
-              right={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {alertCount > 0 && (
-                    <span style={{ color: '#F59E0B', fontSize: '0.68rem', fontWeight: 600 }}>
-                      {alertCount} alerte{alertCount > 1 ? 's' : ''}
-                    </span>
-                  )}
-                  <button onClick={() => navigate('/roster')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>
-                    Voir tout <ArrowRight size={10} />
-                  </button>
-                </div>
-              }
-            >Effectif</CardTitle>
-            <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4" style={{ gap: 4 }}>
-              {playerInfos.map(({ player, level, label, detail }) => {
-                const col      = LEVEL_COLOR[level];
-                const isOk     = level === 'ok';
-                const isAlert  = level === 'injured' || level === 'rpe_overload' || level === 'wellness_bad';
-                const isWarn   = level === 'limited' || level === 'rpe_medium' || level === 'wellness_medium';
-                const border   = isAlert || isWarn
-                  ? `${isAlert ? 2 : 1.5}px solid ${col}60`
-                  : '1px solid #3A4150';
-                return (
-                  <div key={player.id} onClick={() => navigate(`/players/${player.id}`, { state: { from: '/dashboard' } })}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', border, borderRadius: 5, cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1E2229'}
-                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent'}
-                  >
-                    <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: col, flexShrink: 0, opacity: isOk ? 0.25 : 1 }} />
-                    <PlayerAvatar player={player} size={24} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
-                        {player.firstName ?? '?'} {player.lastName?.[0] ?? '?'}.
-                      </p>
-                    </div>
-                    {!isOk && (
-                      <span style={{ color: col, fontSize: '0.62rem', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '45%' }}>
-                        {label}{detail ? ` · ${detail}` : ''}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        );
-      })()}
-
-      {/* Ligne 2 : Séances | Matchs | Actions */}
-      {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 12, marginBottom: 12 }}>
-
-          {/* 3 dernières séances */}
-          <Card>
-            <CardTitle
-              icon={<Dumbbell size={12} color="#00E5A0" />}
-              mb={12}
-              right={<button onClick={() => navigate('/sessions')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>Voir tout <ArrowRight size={10} /></button>}
-            >Séances récentes</CardTitle>
-            {last3Sessions.length === 0 ? (
-              <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune séance récente.</p>
-            ) : (
-              last3Sessions.map((s, idx) => {
-                const typeColor = SESSION_TYPE_COLORS[s.type] ?? '#475569';
-                const rpeCol    = s.avgRpe !== null ? rpeColor(s.avgRpe) : '#334155';
-                return (
-                  <div key={s.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: idx < last3Sessions.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '0.7'}
-                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
-                    onClick={() => navigate(`/sessions/${s.id}`)}
-                  >
-                    <div style={{ width: 3, height: 32, borderRadius: 2, backgroundColor: typeColor, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: '0 0 2px', whiteSpace: 'nowrap' }}>
-                        {fmtWeekday(s.date)} {fmtDateShort(s.date)}
-                        {s.date === today && <span style={{ color: '#00E5A0', fontSize: '0.6rem', marginLeft: 5, fontWeight: 700 }}>Auj.</span>}
-                      </p>
-                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ color: typeColor, fontSize: '0.62rem', fontWeight: 700 }}>{SESSION_TYPE_LABELS[s.type] ?? s.type}</span>
-                        <span style={{ color: '#2A2F3A', fontSize: '0.6rem' }}>·</span>
-                        <span style={{ color: '#334155', fontSize: '0.62rem' }}>{s.duration} min</span>
-                      </p>
-                    </div>
-                    {s.avgRpe !== null ? (
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ color: rpeCol, fontSize: '1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
-                          {s.avgRpe.toFixed(1)}
-                        </div>
-                        <div style={{ color: '#334155', fontSize: '0.58rem', marginTop: 2 }}>RPE /10</div>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#2A2F3A', fontSize: '0.72rem' }}>—</span>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </Card>
-
-          {/* 3 derniers matchs */}
-          <Card>
-            <CardTitle
-              icon={<Trophy size={12} color="#F59E0B" />}
-              mb={12}
-              right={<button onClick={() => navigate('/matches')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>Voir tout <ArrowRight size={10} /></button>}
-            >Derniers matchs</CardTitle>
-            {last3Matches.length === 0 ? (
-              <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucun match enregistré.</p>
-            ) : (
-              last3Matches.map((match, idx) => {
-                const win = match.result === 'win';
-                const matchColor = win ? '#00E5A0' : '#EF4444';
-                return (
-                  <div key={match.id} onClick={() => navigate(`/matches/${match.id}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: idx < last3Matches.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '0.7'}
-                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
-                  >
-                    <div style={{ width: 3, height: 32, borderRadius: 2, backgroundColor: matchColor, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        vs {match.opponent}
-                      </p>
-                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ color: matchColor, fontSize: '0.62rem', fontWeight: 700 }}>{win ? 'Victoire' : 'Défaite'}</span>
-                        <span style={{ color: '#2A2F3A', fontSize: '0.6rem' }}>·</span>
-                        <span style={{ color: '#334155', fontSize: '0.62rem' }}>{match.homeAway === 'home' ? 'Dom.' : 'Ext.'} · {fmtDateShort(match.date)}</span>
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ color: '#F1F5F9', fontSize: '1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
-                        {match.scoreUs}–{match.scoreThem}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </Card>
-
-          {/* Actions — 3 items max */}
-          <Card>
-            <CardTitle
-              icon={<Clock size={12} color="#fb923c" />}
-              mb={12}
-              right={<button onClick={() => navigate('/actions')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}>Voir tout <ArrowRight size={10} /></button>}
-            >Tâches</CardTitle>
-            {topActions.length === 0 ? (
-              <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune tâche en cours.</p>
-            ) : (
-              topActions.map((action, idx) => {
-                const player  = players.find(p => p.id === action.playerId);
-                const cat     = categoryConfig[action.category];
-                const overdue = action.dueDate < today;
-                const barColor = overdue ? '#EF4444' : cat.color;
-                return (
-                  <div key={action.id} onClick={() => navigate('/actions')}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: idx < topActions.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '0.7'}
-                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
-                  >
-                    <div style={{ width: 3, height: 32, borderRadius: 2, backgroundColor: barColor, flexShrink: 0 }} />
-                    {player && <PlayerAvatar player={player} size={22} />}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: '#CBD5E1', fontSize: '0.78rem', fontWeight: 500, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {action.title}
-                      </p>
-                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ color: cat.color, fontSize: '0.62rem', fontWeight: 700 }}>{cat.label}</span>
-                        {overdue && <>
-                          <span style={{ color: '#2A2F3A', fontSize: '0.6rem' }}>·</span>
-                          <span style={{ color: '#EF4444', fontSize: '0.62rem', fontWeight: 700 }}>En retard</span>
-                        </>}
-                      </p>
-                    </div>
-                    <span style={{ color: overdue ? '#EF4444' : '#334155', fontSize: '0.65rem', flexShrink: 0, fontWeight: overdue ? 700 : 400 }}>
-                      {action.dueDate.slice(5).replace('-', '/')}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </Card>
-        </div>
+      {/* Tableau par joueuse — vue d'ensemble à 6 notions */}
+      {perfData && (
+        <PlayerOverviewTable
+          players={perfData.players}
+          acwrByPlayer={acwrByPlayer}
+          latestWellnessByPlayer={latestWellnessByPlayer}
+          onOpenPlayer={id => navigate(`/players/${id}`)}
+        />
       )}
 
+    </div>
+  );
+}
+
+/**
+ * Coque partagée des cartes "hero" : icône ronde + titre, liseré latéral neutre (blanc),
+ * contenu libre au milieu, flèche + libellé en bas à droite vers la page liée.
+ * La couleur reste sur l'icône/les badges, pas sur le cadre de la carte.
+ * Pensée pour occuper 1/3 d'une grille à 3 colonnes.
+ */
+function HeroCardShell({ icon, iconBg, title, ctaLabel, onOpen, children, footerLeft, headerRight, borderColor = '#475569' }: {
+  icon: ReactNode; iconBg: string; title: string;
+  ctaLabel: string; onOpen: () => void; children: ReactNode;
+  /** Contenu optionnel affiché à gauche de la dernière ligne (ex. points du carrousel). */
+  footerLeft?: ReactNode;
+  /** Contenu optionnel affiché en haut à droite (ex. badge V/D). */
+  headerRight?: ReactNode;
+  /** Couleur du liseré latéral, reflétant l'état des données de la carte. */
+  borderColor?: string;
+}) {
+  return (
+    <div
+      style={{
+        backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${borderColor}`,
+        borderRadius: 10, padding: '18px 20px', minHeight: 160,
+        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: '50%', backgroundColor: iconBg, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {icon}
+          </div>
+          <p style={{ color: '#F1F5F9', fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>{title}</p>
+        </div>
+        {headerRight}
+      </div>
+
+      {children}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 6 }}>{footerLeft}</div>
+        <div onClick={onOpen}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', padding: '4px 0 4px 12px', marginRight: -4 }}
+          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '0.7'}
+          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
+        >
+          <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 500 }}>{ctaLabel}</span>
+          <ArrowRight size={14} color="#475569" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Variante "stats" — N gros chiffres (ou libellés courts) côte à côte (ex. Infirmerie). */
+function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerRight, borderColor }: {
+  icon: ReactNode; iconBg: string; title: string;
+  stats: { value: number | string; label: string; color: string }[];
+  ctaLabel: string; onOpen: () => void;
+  headerRight?: ReactNode;
+  borderColor?: string;
+}) {
+  return (
+    <HeroCardShell icon={icon} iconBg={iconBg} title={title} ctaLabel={ctaLabel} onOpen={onOpen} headerRight={headerRight} borderColor={borderColor}>
+      <div style={{ display: 'flex', gap: 24 }}>
+        {stats.map(s => {
+          const isNumber = typeof s.value === 'number';
+          return (
+            <div key={s.label}>
+              <div style={{
+                color: isNumber && s.value === 0 ? '#475569' : s.color,
+                fontSize: isNumber ? '1.7rem' : '1.1rem', fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap',
+                fontFamily: isNumber ? 'JetBrains Mono, monospace' : undefined,
+              }}>
+                {s.value}
+              </div>
+              <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5, whiteSpace: 'nowrap' }}>{s.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </HeroCardShell>
+  );
+}
+
+/** Navigation au doigt/souris (pointer events) pour les cartes carrousel — swipe gauche/droite. */
+function useSwipeCarousel(count: number, index: number, setIndex: (i: number) => void) {
+  const startX = useRef<number | null>(null);
+  return {
+    onPointerDown: (e: PointerEvent) => { startX.current = e.clientX; },
+    onPointerUp: (e: PointerEvent) => {
+      if (startX.current === null || count <= 1) return;
+      const delta = e.clientX - startX.current;
+      startX.current = null;
+      if (Math.abs(delta) < 30) return;
+      setIndex(delta < 0 ? (index + 1) % count : (index - 1 + count) % count);
+    },
+    style: { touchAction: 'pan-y' as const, userSelect: 'none' as const },
+  };
+}
+
+/** Points de navigation partagés par les cartes carrousel (Matchs, Entraînements, Actions). */
+function CarouselDots({ count, index, onSelect }: { count: number; index: number; onSelect: (i: number) => void }) {
+  if (count <= 1) return null;
+  return (
+    <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+      {Array.from({ length: count }, (_, i) => (
+        <button key={i} onClick={() => onSelect(i)} aria-label={`Élément ${i + 1}`}
+          style={{
+            width: 6, height: 6, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer',
+            backgroundColor: i === index ? '#CBD5E1' : '#2A2F3A',
+          }} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Piste défilante partagée par les cartes carrousel — anime le passage d'un élément à
+ * l'autre (slide) au lieu d'un remplacement instantané, et gère nativement le swipe.
+ */
+function SlideCarousel<T>({ items, index, setIndex, renderItem }: {
+  items: T[]; index: number; setIndex: (i: number) => void; renderItem: (item: T) => ReactNode;
+}) {
+  const swipe = useSwipeCarousel(items.length, index, setIndex);
+  const clamped = Math.min(index, Math.max(items.length - 1, 0));
+  return (
+    <div style={{ overflow: 'hidden' }} onPointerDown={swipe.onPointerDown} onPointerUp={swipe.onPointerUp}>
+      <div style={{ display: 'flex', transform: `translateX(-${clamped * 100}%)`, transition: 'transform 0.3s ease', ...swipe.style }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ flex: '0 0 100%', minWidth: 0 }}>
+            {renderItem(item)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MatchCarouselCard({ matches, wins, losses, onOpen }: {
+  matches: Match[]; wins: number; losses: number; onOpen: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const recordColor = wins > losses ? '#00E5A0' : losses > wins ? '#EF4444' : '#94A3B8';
+
+  return (
+    <HeroCardShell icon={<Trophy size={20} color="#F59E0B" />} iconBg="#F59E0B22" title="Matchs"
+      ctaLabel="Voir les matchs" onOpen={onOpen}
+      footerLeft={<CarouselDots count={matches.length} index={index} onSelect={setIndex} />}
+      headerRight={<Badge color={recordColor} label={`${wins}-${losses}`} size="sm" style={{ flexShrink: 0 }} />}
+      borderColor={recordColor}>
+      {matches.length > 0 ? (
+        <SlideCarousel items={matches} index={index} setIndex={setIndex} renderItem={mm => {
+          const w = mm.result === 'win';
+          const c = w ? '#00E5A0' : '#EF4444';
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ color: c, fontSize: '1.9rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
+                  {mm.scoreUs}–{mm.scoreThem}
+                </span>
+                <span style={{ color: c, fontSize: '0.72rem', fontWeight: 700 }}>{w ? 'Victoire' : 'Défaite'}</span>
+              </div>
+              <p style={{ color: '#475569', fontSize: '0.68rem', margin: '5px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                vs {mm.opponent} · {mm.homeAway === 'home' ? 'Domicile' : 'Extérieur'}
+              </p>
+            </div>
+          );
+        }} />
+      ) : (
+        <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucun match enregistré.</p>
+      )}
+    </HeroCardShell>
+  );
+}
+
+function SessionCarouselCard({ sessions, onOpen }: { sessions: SessionSummary[]; onOpen: () => void }) {
+  const [index, setIndex] = useState(0);
+  const latestRpe = sessions[0]?.avgRpe ?? null;
+
+  return (
+    <HeroCardShell icon={<Dumbbell size={20} color="#00E5A0" />} iconBg="#00E5A022" title="Entraînements"
+      ctaLabel="Voir les séances" onOpen={onOpen}
+      footerLeft={<CarouselDots count={sessions.length} index={index} onSelect={setIndex} />}
+      borderColor={latestRpe !== null ? rpeColor(latestRpe) : '#475569'}>
+      {sessions.length > 0 ? (
+        <SlideCarousel items={sessions} index={index} setIndex={setIndex} renderItem={ss => {
+          const col = ss.avgRpe != null ? rpeColor(ss.avgRpe) : '#475569';
+          const lbl = ss.avgRpe != null ? rpeLabel(Math.round(ss.avgRpe)) : '';
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ color: col, fontSize: '1.9rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
+                  {ss.avgRpe != null ? ss.avgRpe.toFixed(1) : '—'}
+                </span>
+                {lbl && <span style={{ color: col, fontSize: '0.72rem', fontWeight: 700 }}>{lbl}</span>}
+              </div>
+              <p style={{ color: '#475569', fontSize: '0.68rem', margin: '5px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {fmtWeekday(ss.date)} {fmtDateShort(ss.date)} · {SESSION_TYPE_LABELS[ss.type] ?? ss.type} · {ss.duration} min
+              </p>
+            </div>
+          );
+        }} />
+      ) : (
+        <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune séance récente.</p>
+      )}
+    </HeroCardShell>
+  );
+}
+
+function ActionCarouselCard({ actions, players, today, onOpen }: {
+  actions: Action[]; players: Player[]; today: string; onOpen: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const hasOverdue = actions.some(a => a.dueDate < today);
+  const actionsBorderColor = actions.length === 0 ? '#475569' : hasOverdue ? '#EF4444' : '#00E5A0';
+
+  return (
+    <HeroCardShell icon={<CheckSquare size={20} color="#3B82F6" />} iconBg="#3B82F622" title="Actions"
+      ctaLabel="Voir les tâches" onOpen={onOpen}
+      footerLeft={<CarouselDots count={actions.length} index={index} onSelect={setIndex} />}
+      borderColor={actionsBorderColor}>
+      {actions.length > 0 ? (
+        <SlideCarousel items={actions} index={index} setIndex={setIndex} renderItem={aa => {
+          const isOverdue = aa.dueDate < today;
+          const color = isOverdue ? '#EF4444' : '#00E5A0';
+          const player = players.find(p => p.id === aa.playerId);
+          return (
+            <div>
+              <p style={{ color: '#CBD5E1', fontSize: '0.82rem', fontWeight: 600, margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {aa.title}{player ? ` · ${player.firstName} ${player.lastName[0]}.` : ''}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ color, fontSize: '1.3rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
+                  {aa.dueDate.slice(5).replace('-', '/')}
+                </span>
+                <span style={{ color, fontSize: '0.72rem', fontWeight: 700 }}>
+                  {isOverdue ? 'En retard' : 'À faire'}
+                </span>
+              </div>
+            </div>
+          );
+        }} />
+      ) : (
+        <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune tâche en cours.</p>
+      )}
+    </HeroCardShell>
+  );
+}
+
+const thBase = {
+  padding: '10px 14px', textAlign: 'center' as const, color: '#475569', fontSize: '0.67rem',
+  textTransform: 'uppercase' as const, letterSpacing: '0.05em', fontWeight: 600,
+  borderBottom: '1px solid #2A2F3A', backgroundColor: '#161920',
+};
+const tdBase = { padding: '10px 14px', textAlign: 'center' as const, fontSize: '0.8rem' };
+
+/**
+ * Tableau par joueuse (6 notions + identité) — statut, risque blessure (ACWR), bien-être,
+ * charge récente (RPE 14j), assiduité (30j), stats matchs. Colonne joueuse fixe au scroll
+ * horizontal, comme les autres tableaux de l'app.
+ */
+function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, onOpenPlayer }: {
+  players: PlayerCrossData[];
+  acwrByPlayer: Map<string, number | null>;
+  latestWellnessByPlayer: Map<string, WellnessEntry | undefined>;
+  onOpenPlayer: (id: string) => void;
+}) {
+  const from14 = localDate(-13);
+  const from30 = localDate(-29);
+
+  return (
+    <div style={{ border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+          <thead>
+            <tr>
+              <th style={{ ...thBase, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Joueuse</th>
+              <th style={thBase}>Statut</th>
+              <th style={thBase}>Risque blessure</th>
+              <th style={thBase}>Bien-être</th>
+              <th style={thBase}>Charge (14j)</th>
+              <th style={thBase}>Assiduité (30j)</th>
+              <th style={thBase}>Stats matchs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {players.map((pd, i) => {
+              const p = pd.player;
+              const zone = acwrZone(acwrByPlayer.get(p.id) ?? null);
+              const w = latestWellnessByPlayer.get(p.id);
+              const wellnessColor = w ? wellnessScoreColor(w.score) : '#475569';
+
+              const recentRpe = pd.rpe.filter(e => e.date >= from14);
+              const avgRpe = recentRpe.length
+                ? Math.round(recentRpe.reduce((s, e) => s + e.rpe, 0) / recentRpe.length * 10) / 10 : null;
+
+              const recentAtt = pd.attendance.filter(a => a.date >= from30);
+              const presentPct = recentAtt.length
+                ? Math.round(recentAtt.filter(a => a.status === 'present').length / recentAtt.length * 100) : null;
+              const attColor = presentPct === null ? '#475569'
+                : presentPct >= 90 ? '#00E5A0' : presentPct >= 75 ? '#F59E0B' : '#EF4444';
+
+              const evalVals = pd.matchStats.map(m => m.eval).filter((v): v is number => v !== null);
+              const evalAvg = evalVals.length
+                ? Math.round(evalVals.reduce((s, v) => s + v, 0) / evalVals.length * 10) / 10 : null;
+
+              const rowBg = i % 2 === 0 ? '#161920' : '#1A1E26';
+
+              return (
+                <tr key={p.id} onClick={() => onOpenPlayer(p.id)}
+                  style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
+                  className="hover:!bg-white/5"
+                >
+                  <td style={{ ...tdBase, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: rowBg, borderRight: '1px solid #2A2F3A' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <PlayerAvatar player={p} size={22} />
+                      <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{p.firstName} {p.lastName}</span>
+                    </span>
+                  </td>
+                  <td style={tdBase}><StatusBadge status={p.status} size="sm" /></td>
+                  <td style={tdBase}>
+                    {zone ? <Badge color={zone.color} label={zone.label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
+                  </td>
+                  <td style={{ ...tdBase, color: wellnessColor, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {w ? `${w.score.toFixed(1)}/10` : '—'}
+                  </td>
+                  <td style={{ ...tdBase, color: avgRpe === null ? '#334155' : rpeColor(avgRpe), fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {avgRpe ?? '—'}
+                  </td>
+                  <td style={{ ...tdBase, color: attColor, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {presentPct !== null ? `${presentPct}%` : '—'}
+                  </td>
+                  <td style={{ ...tdBase, color: '#CBD5E1' }}>
+                    {pd.matchStats.length > 0 ? `${pd.matchStats.length} MJ · éval ${evalAvg ?? '—'}` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

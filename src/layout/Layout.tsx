@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Sidebar } from './Sidebar';
@@ -6,10 +6,23 @@ import { TopBar, MobileSidebar } from './TopBar';
 import { TeamSeasonProvider } from '../contexts/TeamSeasonContext';
 import { NotificationProvider } from '../contexts/NotificationContext';
 import { NotificationCenter } from '../components/NotificationCenter';
+import { CommandPalette } from '../components/CommandPalette';
 
 export function Layout() {
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
+  const [searchOpen,  setSearchOpen]  = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <TeamSeasonProvider>
@@ -29,12 +42,13 @@ export function Layout() {
 
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <TopBar onMenuOpen={() => setMobileOpen(v => !v)} />
+        <TopBar onMenuOpen={() => setMobileOpen(v => !v)} onOpenSearch={() => setSearchOpen(true)} />
         <main style={{ flex: 1, overflowY: 'auto' }}>
           <Outlet />
         </main>
       </div>
       <NotificationCenter />
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
     </NotificationProvider>
     </TeamSeasonProvider>

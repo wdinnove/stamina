@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, X, AlertCircle, BookOpen, Bold, Italic, List, ListOrdered, Image as ImageIcon, FileText, Video } from 'lucide-react';
+import { Plus, Search, X, AlertCircle, Bold, Italic, List, ListOrdered, Image as ImageIcon, FileText, Video } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
@@ -466,11 +466,10 @@ export default function ExercisesPage() {
       {error && <div style={{ color: '#EF4444', fontSize: '0.85rem', marginBottom: 16 }}>{error}</div>}
 
       {!loading && filtered.length === 0 && (
-        <div style={{ border: '1px dashed #2A2F3A', borderRadius: 10, padding: '40px 20px', textAlign: 'center' }}>
-          <BookOpen size={32} color="#2A2F3A" style={{ marginBottom: 10 }} />
-          <div style={{ color: '#475569', fontSize: '0.85rem' }}>
-            {search ? 'Aucun exercice trouvé' : 'Aucun exercice — cliquer sur Ajouter pour commencer'}
-          </div>
+        <div
+          onClick={search ? undefined : () => setShowModal(true)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed #2A2F3A', borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: '#475569', fontSize: '0.85rem', cursor: search ? 'default' : 'pointer' }}>
+          {search ? 'Aucun exercice trouvé' : (<><Plus size={15} /> Cliquer pour ajouter un exercice</>)}
         </div>
       )}
 

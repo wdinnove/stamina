@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ChevronDown, Menu, Check, X, ArrowLeft, Settings } from 'lucide-react';
+import { ChevronDown, Menu, Check, X, ArrowLeft, Settings, Search } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { navGroups, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
@@ -7,9 +7,9 @@ import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonCont
 import { supabase } from '../api/client';
 import { NotificationBell } from '../components/NotificationCenter';
 
-interface TopBarProps { onMenuOpen: () => void; }
+interface TopBarProps { onMenuOpen: () => void; onOpenSearch: () => void; }
 
-export function TopBar({ onMenuOpen }: TopBarProps) {
+export function TopBar({ onMenuOpen, onOpenSearch }: TopBarProps) {
   const { options, selected, setSelected, loading } = useTeamSeason();
   const [dropOpen, setDropOpen]   = useState(false);
   const [initials, setInitials]   = useState('');
@@ -125,6 +125,24 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
         )}
       </div>
 
+      {/* Desktop: recherche globale */}
+      <button
+        onClick={onOpenSearch}
+        className="hidden md:flex"
+        style={{
+          alignItems: 'center', gap: 10, flex: 1, maxWidth: 380,
+          backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6,
+          padding: '7px 12px', color: '#475569', fontSize: '0.8rem', cursor: 'pointer',
+        }}
+      >
+        <Search size={14} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, textAlign: 'left' }}>Rechercher…</span>
+        <span style={{ display: 'flex', gap: 3, fontFamily: 'monospace', fontSize: '0.65rem' }}>
+          <kbd style={{ background: '#262B35', border: '1px solid #323847', borderRadius: 4, padding: '1px 5px', color: '#94A3B8' }}>⌘</kbd>
+          <kbd style={{ background: '#262B35', border: '1px solid #323847', borderRadius: 4, padding: '1px 5px', color: '#94A3B8' }}>K</kbd>
+        </span>
+      </button>
+
       {/* Mobile: back | logo | avatar */}
       <div className="flex md:hidden" style={{ flex: 1, alignItems: 'center' }}>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
@@ -142,7 +160,11 @@ export function TopBar({ onMenuOpen }: TopBarProps) {
             <div style={{ color: '#00E5A080', fontSize: '0.52rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Management App</div>
           </div>
         </div>
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+          <button onClick={onOpenSearch} title="Rechercher"
+            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}>
+            <Search size={20} />
+          </button>
           <button onClick={onMenuOpen}
             style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}>
             <Menu size={22} />

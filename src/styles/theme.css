@@ -165,3 +165,44 @@
   .rich-display strong { font-weight: 600; }
   .rich-display em { font-style: italic; }
 }
+
+/* Recherche globale (Cmd+K) — cmdk est unstyled, seul le positionnement du
+   dialog/overlay doit passer par des classes (le reste utilise des styles inline). */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 12, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 500;
+}
+.cmdk-content {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 92vw);
+  background: #161920;
+  border: 1px solid #2A2F3A;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  z-index: 501;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cmdk-content { animation: cmdk-rise 0.14s ease-out; }
+}
+@keyframes cmdk-rise {
+  from { transform: translateX(-50%) translateY(-6px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+.cmdk-content [cmdk-group-heading] {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5B6472;
+  font-weight: 700;
+  padding: 10px 8px 4px;
+}
+.cmdk-content [cmdk-item][data-selected="true"] {
+  background: #1E2229;
+}
