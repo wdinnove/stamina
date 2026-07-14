@@ -8,7 +8,7 @@ export interface TeamSeasonOption {
   season: Season;
 }
 
-interface LoadThresholds {
+export interface LoadThresholds {
   lightMax:        number;
   normalMax:       number;
   sessionsPerWeek: number;

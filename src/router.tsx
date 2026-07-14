@@ -3,10 +3,18 @@ import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { Layout }      from './layout/Layout';
 import { RequireAuth } from './components';
 
-/** Ancienne route /cross-analyze/:id — redirige vers la page Performance joueuse */
+/** Anciennes routes Analyse/Performance — redirigent vers Performance collective/individuelle */
 function CrossAnalyzeRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={id ? `/player-performance/${id}` : '/player-performance'} replace />;
+  return <Navigate to={id ? `/performance-individuelle/${id}/vue-ensemble` : '/performance-individuelle'} replace />;
+}
+function AnalyseIndividuelleRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/performance-individuelle/${id}/statistiques` : '/performance-individuelle'} replace />;
+}
+function PlayerPerformanceRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/performance-individuelle/${id}/vue-ensemble` : '/performance-individuelle'} replace />;
 }
 
 export const router = createBrowserRouter([
@@ -63,13 +71,19 @@ export const router = createBrowserRouter([
           { path: 'configuration',  lazy: () => import('./pages/ConfigurationPage').then(m => ({ Component: m.default })) },
           { path: 'matches',        lazy: () => import('./pages/MatchesPage').then(m => ({ Component: m.default })) },
           { path: 'matches/:id',   lazy: () => import('./pages/MatchDetailPage').then(m => ({ Component: m.default })) },
-          { path: 'collective-analyze',      lazy: () => import('./pages/AnalyseCollectivePage').then(m => ({ Component: m.default })) },
-          { path: 'individual-analyze',    lazy: () => import('./pages/AnalyseIndividuellePage').then(m => ({ Component: m.default })) },
-          { path: 'individual-analyze/:id', lazy: () => import('./pages/AnalyseIndividuellePage').then(m => ({ Component: m.default })) },
-          { path: 'team-performance',        lazy: () => import('./pages/PerformancePage').then(m => ({ Component: m.default })) },
-          { path: 'player-performance',      lazy: () => import('./pages/PerformancePage').then(m => ({ Component: m.PerformancePlayerPage })) },
-          { path: 'player-performance/:id',  lazy: () => import('./pages/PerformancePage').then(m => ({ Component: m.PerformancePlayerPage })) },
-          { path: 'cross-analyze',         element: <Navigate to="/player-performance" replace /> },
+          { path: 'performance-collective',            lazy: () => import('./pages/PerformanceCollectivePage').then(m => ({ Component: m.default })) },
+          { path: 'performance-collective/:tab',       lazy: () => import('./pages/PerformanceCollectivePage').then(m => ({ Component: m.default })) },
+          { path: 'performance-individuelle',          lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },
+          { path: 'performance-individuelle/:id',      lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },
+          { path: 'performance-individuelle/:id/:tab', lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },
+          // Anciennes routes Analyse/Performance — conservées en redirection pour ne pas casser les liens/favoris
+          { path: 'collective-analyze',     element: <Navigate to="/performance-collective/vue-ensemble" replace /> },
+          { path: 'individual-analyze',     element: <Navigate to="/performance-individuelle" replace /> },
+          { path: 'individual-analyze/:id', element: <AnalyseIndividuelleRedirect /> },
+          { path: 'team-performance',       element: <Navigate to="/performance-collective/vue-ensemble" replace /> },
+          { path: 'player-performance',     element: <Navigate to="/performance-individuelle" replace /> },
+          { path: 'player-performance/:id', element: <PlayerPerformanceRedirect /> },
+          { path: 'cross-analyze',         element: <Navigate to="/performance-individuelle" replace /> },
           { path: 'cross-analyze/:id',     element: <CrossAnalyzeRedirect /> },
           { path: '*', element: <Navigate to="/dashboard" replace /> },
         ],

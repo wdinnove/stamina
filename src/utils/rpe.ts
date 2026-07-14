@@ -1,3 +1,11 @@
+/** Config visuelle (libellé, couleurs) par type de séance — partagée entre les pages/composants RPE */
+export const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
+  training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
+  match:    { label: 'Match',        color: '#F59E0B', bg: '#F59E0B22' },
+  gym:      { label: 'Salle',        color: '#A855F7', bg: '#A855F722' },
+  rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
+};
+
 /** Sous-ensemble de champs requis pour les calculs de charge (ACWR, TSB…) — RPEEntry le satisfait déjà */
 export interface LoadEntry {
   date: string;

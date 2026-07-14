@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Settings, Trophy, BarChart2, UserSearch, GitCompare, TrendingUp,
+  CheckSquare, LogOut, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Settings, Trophy, BarChart2, UserSearch,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { authApi } from '../api';
@@ -31,10 +31,8 @@ export const navGroups = [
   {
     title: 'Analyse',
     items: [
-      { path: '/collective-analyze',  icon: BarChart2,   label: 'Statistiques collectives' },
-      { path: '/individual-analyze',  icon: UserSearch,  label: 'Statistiques individuelles' },
-      { path: '/team-performance',    icon: TrendingUp,  label: 'Performance équipe'  },
-      { path: '/player-performance',  icon: GitCompare,  label: 'Performance joueuse' },
+      { path: '/performance-collective/vue-ensemble', icon: BarChart2,  label: 'Performance collective'  },
+      { path: '/performance-individuelle',             icon: UserSearch, label: 'Performance individuelle' },
     ],
   },
   {

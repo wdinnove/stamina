@@ -1,3 +1,5 @@
+import type { WellnessEntry } from '../data/types';
+
 export interface WellnessDimension {
   key: 'fatigue' | 'mood' | 'stress' | 'motivation' | 'sleep' | 'soreness';
   label: string;
@@ -31,6 +33,25 @@ export function wellnessStatus(v: number, inverted: boolean): WellnessStatus {
 
 export function wellnessAvg(values: number[]): number | null {
   return values.length > 0 ? Math.round(values.reduce((s, v) => s + v, 0) / values.length * 10) / 10 : null;
+}
+
+// Agrégat quotidien de l'équipe : moyenne de chaque dimension entre tous les joueurs ayant saisi ce jour-là.
+export function aggregateTeamWellnessDaily(teamHistory: WellnessEntry[]): WellnessEntry[] {
+  const byDate = new Map<string, WellnessEntry[]>();
+  teamHistory.forEach(e => {
+    const arr = byDate.get(e.date);
+    if (arr) arr.push(e); else byDate.set(e.date, [e]);
+  });
+  return [...byDate.entries()].map(([date, entries]) => ({
+    id: date, playerId: 'team', date,
+    fatigue:    wellnessAvg(entries.map(e => e.fatigue))    ?? 0,
+    mood:       wellnessAvg(entries.map(e => e.mood))       ?? 0,
+    stress:     wellnessAvg(entries.map(e => e.stress))     ?? 0,
+    motivation: wellnessAvg(entries.map(e => e.motivation)) ?? 0,
+    sleep:      wellnessAvg(entries.map(e => e.sleep))      ?? 0,
+    soreness:   wellnessAvg(entries.map(e => e.soreness))   ?? 0,
+    score:      wellnessAvg(entries.map(e => e.score))      ?? 0,
+  }));
 }
 
 // Même formule que la colonne générée `wellness_entries.score` en base (schema.sql) : à garder synchronisée.

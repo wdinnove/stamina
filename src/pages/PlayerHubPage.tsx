@@ -170,7 +170,7 @@ export default function PlayerHubPage() {
 
       <PlayerHero player={player} marginBottom={20} />
 
-      <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => navigate(`/individual-analyze/${id}`)}>
+      <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => navigate(`/performance-individuelle/${id}/statistiques`)}>
         <CardTitle icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
           right={<ArrowRight size={13} style={{ color: '#475569' }} />}>
           Statistiques — saison par saison
@@ -238,7 +238,7 @@ export default function PlayerHubPage() {
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12, marginBottom: 12 }}>
-        <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => navigate(`/rpe/individual/${id}`, { state: { from: `/roster/${id}`, playerName } })}>
+        <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => navigate(`/performance-individuelle/${id}/charge-physique`)}>
           <CardTitle icon={<Activity size={12} style={{ color: '#3B82F6' }} />}
             right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {rpeAvg !== null && <span style={{ color: rpeColor(rpeAvg), fontWeight: 700, fontSize: '0.78rem' }}>RPE moy. {rpeAvg}</span>}
@@ -262,7 +262,7 @@ export default function PlayerHubPage() {
           )}
         </Card>
 
-        <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => navigate(`/wellness/individual/${id}`)}>
+        <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => navigate(`/performance-individuelle/${id}/bien-etre`)}>
           <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />}
             right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#475569', fontSize: '0.7rem' }}>{wellness45.length} saisie{wellness45.length > 1 ? 's' : ''}</span>
@@ -297,7 +297,7 @@ export default function PlayerHubPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
-        <Card style={{ cursor: 'pointer' }} onClick={() => navigate(`/medical/record/${id}`)}>
+        <Card style={{ cursor: 'pointer' }} onClick={() => navigate(`/performance-individuelle/${id}/medical`)}>
           <CardTitle icon={<Stethoscope size={12} style={{ color: '#EF4444' }} />}
             right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {acwrZ && <span style={{ color: acwrZ.color, fontWeight: 700, fontSize: '0.78rem' }}>ACWR {acwr} · {acwrZ.label}</span>}
