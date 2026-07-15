@@ -181,6 +181,10 @@
   left: 50%;
   transform: translateX(-50%);
   width: min(560px, 92vw);
+  max-height: 76vh;
+  max-height: min(560px, 76dvh);
+  display: flex;
+  flex-direction: column;
   background: #161920;
   border: 1px solid #2A2F3A;
   border-radius: 12px;

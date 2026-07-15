@@ -312,7 +312,7 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
   }
 
   return (
-    <Modal onClose={onClose} maxWidth={520} maxHeight="80vh" zIndex={1000} overlayOpacity={0.65} scrollOverlay={false} style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+    <Modal onClose={onClose} maxWidth={520} maxHeight="80vh" zIndex={1000} overlayOpacity={0.65} style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
           <div>
             <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>Ajouter à l'effectif</div>

@@ -127,7 +127,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       overlayClassName="cmdk-overlay"
       contentClassName="cmdk-content"
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #21252E' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #21252E', flexShrink: 0 }}>
         <Search size={16} style={{ color: '#5B6472', flexShrink: 0 }} />
         <Command.Input
           autoFocus
@@ -141,7 +141,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         </span>
       </div>
 
-      <Command.List style={{ maxHeight: 420, overflowY: 'auto', padding: 8 }}>
+      <Command.List style={{ flex: 1, overflowY: 'auto', padding: 8, minHeight: 0 }}>
         <Command.Empty style={{ padding: '30px 16px', textAlign: 'center', color: '#5B6472', fontSize: '0.8rem' }}>
           Aucun résultat.
         </Command.Empty>

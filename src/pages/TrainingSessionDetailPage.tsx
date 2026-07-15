@@ -736,7 +736,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
       {viewExercise && (
         <div
           onClick={() => setViewExercise(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', zIndex: 1000, padding: 16 }}>
           <style>{`
             .ex-view-desc { color:#94A3B8; font-size:0.88rem; line-height:1.6; }
             .ex-view-desc p { margin:0 0 8px; }
@@ -748,7 +748,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
           `}</style>
           <div
             onClick={e => e.stopPropagation()}
-            style={{ position: 'relative', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 24, maxWidth: 720, width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
+            style={{ position: 'relative', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 24, maxWidth: 720, width: '100%', maxHeight: '85vh', overflowY: 'auto', margin: 'auto' }}>
             <button onClick={() => setViewExercise(null)}
               style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
               onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
