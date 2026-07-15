@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Plus, X, AlertCircle, Trash2 } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { EmptyState, Modal } from '../components';
+import { Modal, DropzoneEmptyState } from '../components';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { Match } from '../data/types';
 
@@ -194,7 +194,7 @@ export default function MatchesPage() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : matches.length === 0 ? (
-        <EmptyState message="Aucun match enregistré pour cette saison." size="lg" />
+        <DropzoneEmptyState label="Cliquer pour ajouter un match" onClick={openAdd} />
       ) : (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflowX: 'auto' }}>
           <table className="matches-table sm:min-w-[420px]" style={{ width: '100%', borderCollapse: 'collapse' }}>

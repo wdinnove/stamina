@@ -345,7 +345,7 @@ export interface TeamSessionRow {
   type: SessionType;
   duration: number;
   nbPlayers: number;
-  /** Identifiants des joueuses ayant loggué un RPE pour cette séance — sert à calculer
+  /** Identifiants des joueurs ayant loggué un RPE pour cette séance — sert à calculer
    *  l'effectif distinct réellement actif sur une semaine (pas une moyenne par séance). */
   playerIds: string[];
   avg: number;

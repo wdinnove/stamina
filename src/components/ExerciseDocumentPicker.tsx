@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { ExternalLink, FileText, Upload, X } from 'lucide-react';
+import { DropzoneEmptyState } from './DropzoneEmptyState';
 
 export function ExerciseDocumentPicker({
   fileName, fileUrl, onSelect, onRemove, disabled,
@@ -43,13 +44,13 @@ export function ExerciseDocumentPicker({
           </button>
         </div>
       ) : (
-        <button type="button" onClick={() => ref.current?.click()} disabled={disabled}
-          style={{ width: '100%', padding: '14px', background: '#1E2229', border: '2px dashed #2A2F3A', borderRadius: 8, color: '#475569', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
-          onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLElement).style.borderColor = '#3A4049'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; }}>
-          <Upload size={18} />
-          <span style={{ fontSize: '0.78rem' }}>Cliquer pour choisir un PDF</span>
-        </button>
+        <DropzoneEmptyState
+          icon={<Upload size={18} />}
+          label="Cliquer pour choisir un PDF"
+          onClick={() => ref.current?.click()}
+          disabled={disabled}
+          style={{ flexDirection: 'column', padding: '14px' }}
+        />
       )}
     </div>
   );

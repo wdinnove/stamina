@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, X, AlertCircle, Calendar, Clock, ChevronRight } from 'lucide-react';
+import { Plus, X, AlertCircle, Clock, ChevronRight } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
-import { Modal } from '../components';
+import { Modal, DropzoneEmptyState } from '../components';
 import { MONTHS_ABBR3, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { StaffMeeting } from '../data/types';
 
@@ -102,10 +102,7 @@ export default function MeetingsPage() {
 
       {selected && (
         meetings.length === 0 ? (
-          <div style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '28px', textAlign: 'center' }}>
-            <Calendar size={22} style={{ color: '#2A2F3A', display: 'block', margin: '0 auto 8px' }} />
-            <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucune réunion planifiée.</p>
-          </div>
+          <DropzoneEmptyState label="Cliquer pour ajouter une réunion" onClick={() => setShowMeetForm(true)} />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[...upcomingMeetings, ...pastMeetings].map(m => {

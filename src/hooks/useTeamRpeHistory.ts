@@ -4,6 +4,7 @@ import { computeAcwr, computeTsb } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
 import { fmtDateShort } from '../utils/dateFormat';
+import { playerNameShort } from '../utils/playerName';
 import type { Player, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
 
 export interface TeamChartDay {
@@ -217,7 +218,7 @@ export function useTeamRpeHistory(
         const ns3w    = data.sessions3w.size;
         return {
           playerId,
-          name:       player ? `${player.lastName} ${player.firstName[0]}.` : '—',
+          name:       player ? playerNameShort(player) : '—',
           nbSessions: data.sessions.size,
           avgRpe:     Math.round(avg * 10) / 10,
           maxRpe:     Math.max(...data.rpes),

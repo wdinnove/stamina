@@ -56,7 +56,7 @@ export function TeamSessionHistoryTable({
       return {
         dateFrom: sorted[0], dateTo: sorted[sorted.length - 1],
         avgRpe:   rpes.length ? Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 : 0,
-        // Charge/joueuse ramenée à l'effectif DISTINCT de la semaine (pas la moyenne d'effectif par séance)
+        // Charge/joueur ramenée à l'effectif DISTINCT de la semaine (pas la moyenne d'effectif par séance)
         avgUa:    players.size > 0 ? Math.round(totalLoad / players.size) : 0,
         totalDur, avgPlayers,
       };

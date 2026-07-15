@@ -6,6 +6,7 @@ export { EmptyState }    from './EmptyState';
 export { RequireAuth }   from './RequireAuth';
 export { StatusBadge }   from './StatusBadge';
 export { PlayerAvatar }  from './PlayerAvatar';
+export { PlayerEditModal } from './PlayerEditModal';
 export { PlayerHero, playerStatusLabel, playerStatusColor } from './PlayerHero';
 export { TeamStatsHero } from './TeamStatsHero';
 export { PlayerSelect }  from './PlayerSelect';

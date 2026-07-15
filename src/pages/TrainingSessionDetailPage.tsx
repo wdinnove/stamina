@@ -18,6 +18,7 @@ import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateFull } from '../utils/dateFormat';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage, WellnessEntry } from '../data/types';
 
@@ -73,7 +74,7 @@ function PlayerChip({ player, status }: { player: Player; status?: TrainingAtten
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, cursor: 'grab', userSelect: 'none' }}>
       <PlayerAvatar player={player} size={22} />
       <span style={{ color: '#F1F5F9', fontSize: '0.8rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {player.firstName.toUpperCase()} {player.lastName[0]}.
+        {playerNameShort(player)}
       </span>
       {cfg && <span title={cfg.label} style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: cfg.color, flexShrink: 0 }} />}
     </div>
@@ -918,17 +919,15 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
           ))}
 
           {!uploading && (
-            <div
+            <DropzoneEmptyState
+              label="Ajouter un document"
+              onClick={() => fileRef.current?.click()}
+              onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
               onDragOver={e => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-              onClick={() => fileRef.current?.click()}
-              style={{ border: `1px dashed ${dragOver ? '#00E5A0' : '#1E2229'}`, borderRadius: 6, padding: '8px', textAlign: 'center', color: '#2A2F3A', fontSize: '0.74rem', cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = '#475569'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = '#2A2F3A'; }}
-            >
-              + Ajouter un document
-            </div>
+              dragOver={dragOver}
+              style={{ padding: '8px', minHeight: 'auto', fontSize: '0.74rem' }}
+            />
           )}
         </div>
       )}
@@ -1028,7 +1027,7 @@ export default function TrainingSessionDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Charge l'historique RPE + bien-être de chaque joueuse concernée (ACWR, charge 7j, bien-être 7j)
+  // Charge l'historique RPE + bien-être de chaque joueur concerné (ACWR, charge 7j, bien-être 7j)
   // Chargé dès l'arrivée sur la page (pas seulement à l'ouverture du bloc) pour alimenter le compteur d'alertes dans le titre
   useEffect(() => {
     if (acwrLoaded || !session) return;
@@ -1218,20 +1217,20 @@ export default function TrainingSessionDetailPage() {
     .filter(p => knownIds.has(p.id))
     .sort((a, b) => a.lastName.localeCompare(b.lastName));
 
-  // Équipes du jour : seules les joueuses présentes ou en retard sont sélectionnables
+  // Équipes du jour : seuls les joueurs présents ou en retard sont sélectionnables
   const eligiblePlayers = rosterPlayers.filter(p => attMap[p.id] === 'present' || attMap[p.id] === 'late');
 
   function renderPlayerItem(player: Player) {
     const attStatus = attMap[player.id] as TrainingAttendance['status'] | undefined;
     const statusCfg = attStatus === 'late' ? STATUS_CFG[attStatus] : null;
     return (
-      <div key={player.id} onClick={() => navigate(`/players/${player.id}`)}
+      <div key={player.id} onClick={() => navigate(`/performance-individuelle/${player.id}/vue-ensemble`)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8, padding: '8px 10px', cursor: 'pointer' }}>
         <span className="hidden sm:block">
           <PlayerAvatar player={player} size={26} />
         </span>
         <span style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {player.firstName.toUpperCase()} {player.lastName[0]}.
+          {playerNameShort(player)}
         </span>
         {statusCfg && (
           <span style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
@@ -1265,9 +1264,15 @@ export default function TrainingSessionDetailPage() {
           style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
           <ArrowLeft size={14} /> Toutes les séances
         </button>
-        <button onClick={openEdit} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Edit size={13} /> Modifier
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+            style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
+            Saisir le RPE
+          </button>
+          <button onClick={openEdit} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Edit size={13} /> Modifier
+          </button>
+        </div>
       </div>
 
       {/* Header */}
@@ -1437,7 +1442,7 @@ export default function TrainingSessionDetailPage() {
               return (
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
                   <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26' }}>
-                    <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Détail par joueuse</p>
+                    <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Détail par joueur</p>
                   </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -1451,7 +1456,7 @@ export default function TrainingSessionDetailPage() {
                       </colgroup>
                       <thead>
                         <tr style={{ backgroundColor: '#1A1E26' }}>
-                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', ...groupSep }}>Joueuse</th>
+                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', ...groupSep }}>Joueur</th>
                           <th colSpan={3} style={{ ...thGroup, ...groupSep }}>Avant séance</th>
                           <th colSpan={2} style={thGroup}>Après séance</th>
                         </tr>
@@ -1479,11 +1484,11 @@ export default function TrainingSessionDetailPage() {
                           const highRisk = acwrTier?.label === 'Risque élevé';
                           const rowBg    = highRisk ? 'rgba(239,68,68,0.05)' : 'transparent';
                           return (
-                            <tr key={p.id} onClick={() => navigate(`/rpe/individual/${p.id}`, { state: { from: `/sessions/${session.id}`, playerName: `${p.firstName} ${p.lastName}` } })}
+                            <tr key={p.id} onClick={() => navigate(`/rpe/individual/${p.id}`, { state: { from: `/sessions/${session.id}`, playerName: playerNameFull(p) } })}
                               style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>
-                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #1E2229', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{p.firstName.toUpperCase()} {p.lastName[0]}.</td>
+                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #1E2229', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{playerNameShort(p)}</td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                                 {acwrTier ? tierBadge(acwrTier) : (
                                   <span title="Historique insuffisant (28 jours)" style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
@@ -1524,7 +1529,7 @@ export default function TrainingSessionDetailPage() {
         {!teamsCollapsed && (
         <>
         <p style={{ color: '#475569', fontSize: '0.75rem', margin: '0 0 14px' }}>
-          Glissez-déposez les joueuses depuis « Effectif » vers les colonnes d'équipe. Un groupe = une répartition indépendante (ex. 3x3 puis 5x5).
+          Glissez-déposez les joueurs depuis « Effectif » vers les colonnes d'équipe. Un groupe = une répartition indépendante (ex. 3x3 puis 5x5).
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -1556,7 +1561,7 @@ export default function TrainingSessionDetailPage() {
 
                 <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
 
-                  {/* Colonne effectif (joueuses non assignées dans ce bloc) */}
+                  {/* Colonne effectif (joueurs non assignés dans ce bloc) */}
                   <div
                     onDragOver={e => { e.preventDefault(); setDragOver({ block: block.localId, col: '__pool' }); }}
                     onDragLeave={() => setDragOver(cur => (cur?.block === block.localId && cur.col === '__pool') ? null : cur)}
@@ -1600,7 +1605,7 @@ export default function TrainingSessionDetailPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                           {members.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} />)}
                           {members.length === 0 && (
-                            <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Déposez des joueuses ici</span>
+                            <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Déposez des joueurs ici</span>
                           )}
                         </div>
                       </div>
@@ -1735,7 +1740,7 @@ export default function TrainingSessionDetailPage() {
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderBottom: '1px solid #1E2229' }}>
                   <PlayerAvatar player={p} size={30} />
                   <span style={{ flex: 1, minWidth: 0, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.lastName} {p.firstName}
+                    {playerNameFull(p)}
                   </span>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                     {(['present', 'absent', 'late'] as const).map(s => {

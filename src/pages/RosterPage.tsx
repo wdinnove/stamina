@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { StatusBadge, PlayerAvatar, EmptyState } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { playerNameFull } from '../utils/playerName';
 import type { Player } from '../data/types';
 
 export default function RosterPage() {
@@ -102,14 +103,13 @@ export default function RosterPage() {
           {!loading && filtered.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
               {filtered.map(player => (
-                <div key={player.id} onClick={() => navigate(`/roster/${player.id}`)}
+                <div key={player.id} onClick={() => navigate(`/performance-individuelle/${player.id}/vue-ensemble`)}
                   style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'border-color 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A066')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
                   <PlayerAvatar player={player} size={48} />
                   <div style={{ textAlign: 'center' }}>
-                    <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>{player.lastName}</p>
-                    <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '2px 0' }}>{player.firstName}</p>
+                    <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.82rem', margin: 0 }}>{playerNameFull(player)}</p>
                     <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>#{player.number} · {player.position.split(' ')[0]}</p>
                   </div>
                   <StatusBadge status={player.status} size="sm" />

@@ -5,11 +5,11 @@ import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from './RichTextEditor';
-import { EmptyState } from './EmptyState';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { InjuryRecordCard } from './InjuryRecordCard';
 import { typeLabels, severityConfig } from './MedicalCard';
+import { playerNameFull } from '../utils/playerName';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
 
 const TODAY = new Date().toISOString().split('T')[0];
@@ -98,7 +98,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
       };
       if (editingRecord) {
         await medicalApi.update(editingRecord.id, payload);
-        notifyOrg('medical_updated', `${typeLabels[formType] ?? formType} modifié${player ? ` — ${player.firstName} ${player.lastName}` : ''}`, undefined, 'player', playerId);
+        notifyOrg('medical_updated', `${typeLabels[formType] ?? formType} modifié${player ? ` — ${playerNameFull(player)}` : ''}`, undefined, 'player', playerId);
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
         let notifBody: string | undefined;
@@ -110,7 +110,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
         } else {
           notifBody = fDesc || undefined;
         }
-        notifyOrg('medical_added', `${typeLabels[formType] ?? formType}${player ? ` — ${player.firstName} ${player.lastName}` : ''}`, notifBody, 'player', playerId);
+        notifyOrg('medical_added', `${typeLabels[formType] ?? formType}${player ? ` — ${playerNameFull(player)}` : ''}`, notifBody, 'player', playerId);
       }
       if (formType === 'injury' || formType === 'treatment') {
         await playersApi.update(playerId, { status: fPlayerStatus });
@@ -131,7 +131,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
     try {
       await medicalApi.update(closeModal.recordId, { status: 'resolved', resolvedDate: closeModal.date });
       await playersApi.update(playerId, { status: closeModal.playerStatus });
-      notifyOrg('medical_resolved', `Blessure clôturée${player ? ` — ${player.firstName} ${player.lastName}` : ''}`, undefined, 'player', playerId);
+      notifyOrg('medical_resolved', `Blessure clôturée${player ? ` — ${playerNameFull(player)}` : ''}`, undefined, 'player', playerId);
       setCloseModal(null);
       setVersion(v => v + 1);
       onUpdated?.();
@@ -151,12 +151,12 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
       {/* 3 colonnes : Blessures / Traitements / Bilans — pleine largeur, empilées en mobile */}
       <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 12 }}>
         {([
-          { key: 'injury',    title: 'Blessures',    color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée.'  },
-          { key: 'treatment', title: 'Traitements',  color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré.' },
-          { key: 'checkup',   title: 'Bilans santé', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré.'     },
+          { key: 'injury',    title: 'Blessures',    color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée'  },
+          { key: 'treatment', title: 'Traitements',  color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré' },
+          { key: 'checkup',   title: 'Bilans santé', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré'     },
         ]).map(section => (
           <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: section.records.length > 0 ? 14 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
                 {section.title}
               </h4>
@@ -165,7 +165,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
               )}
             </div>
             {section.records.length === 0
-              ? <EmptyState message={section.emptyMsg} size="sm" />
+              ? <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ {section.emptyMsg}</p>
               : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[...section.records]

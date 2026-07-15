@@ -1,17 +1,23 @@
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, LogOut, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Building2 as Building2Icon, Settings, Trophy, BarChart2, UserSearch,
+  CheckSquare, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Trophy, BarChart2, UserSearch,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
-import { authApi } from '../api';
-import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
 export const navGroups = [
   {
     title: undefined,
     items: [
       { path: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard'    },
+    ],
+  },
+  {
+    title: 'Staff',
+    items: [
+      { path: '/roster',            icon: ClipboardList,   label: 'Effectif'     },
+      { path: '/meetings',          icon: Calendar,        label: 'Réunions'     },
+      { path: '/actions',           icon: CheckSquare,     label: 'Tâches'       },
     ],
   },
   {
@@ -29,26 +35,18 @@ export const navGroups = [
     ],
   },
   {
-    title: 'Analyse',
+    title: 'Charge physique',
     items: [
-      { path: '/performance-collective/vue-ensemble', icon: BarChart2,  label: 'Performance collective'  },
-      { path: '/performance-individuelle',             icon: UserSearch, label: 'Performance individuelle' },
-    ],
-  },
-  {
-    title: 'Joueurs',
-    items: [
-      { path: '/roster',            icon: ClipboardList,   label: 'Effectif'            },
       { path: '/rpe/new',           icon: Activity,        label: 'RPE'                 },
       { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'           },
       { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'             },
     ],
   },
   {
-    title: 'Organisation',
+    title: 'Analyse',
     items: [
-      { path: '/meetings',          icon: Calendar,        label: 'Réunions'     },
-      { path: '/actions',           icon: CheckSquare,     label: 'Tâches'       },
+      { path: '/performance-collective/vue-ensemble', icon: BarChart2,  label: 'Analyse collective'  },
+      { path: '/performance-individuelle',             icon: UserSearch, label: 'Analyse individuelle' },
     ],
   },
 ];
@@ -66,9 +64,7 @@ export function isNavActive(itemPath: string, currentPath: string): boolean {
 }
 
 export function Sidebar({ collapsed }: SidebarProps) {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { orgRole } = useTeamSeason();
 
   return (
     <aside style={{
@@ -131,40 +127,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
           );
         })()}
       </nav>
-
-      {/* Configuration + Logout */}
-      <div style={{ padding: collapsed ? '8px 0' : '8px 0' }}>
-        {orgRole === 'admin' && (() => {
-          const active = location.pathname.startsWith('/configuration');
-          return (
-            <Link to="/configuration" title={collapsed ? 'Configuration' : undefined}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: collapsed ? '10px 0' : '10px 16px',
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                color: active ? '#00E5A0' : '#94A3B8',
-                backgroundColor: active ? 'rgba(0,229,160,0.08)' : 'transparent',
-                borderLeft: active ? '2px solid #00E5A0' : '2px solid transparent',
-                textDecoration: 'none', fontSize: '0.85rem',
-                fontWeight: active ? 600 : 400, transition: 'all 0.15s',
-                whiteSpace: 'nowrap', overflow: 'hidden',
-              }}>
-              <Settings size={18} style={{ flexShrink: 0 }} />
-              {!collapsed && 'Configuration'}
-            </Link>
-          );
-        })()}
-        <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
-
-        <div style={{ padding: collapsed ? '4px 0' : '4px 16px' }}>
-        <button
-          onClick={async () => { await authApi.signOut(); navigate('/login', { replace: true }); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: collapsed ? 'center' : 'flex-start', width: '100%', padding: '8px 0', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.82rem' }}>
-          <LogOut size={16} />
-          {!collapsed && 'Déconnexion'}
-        </button>
-        </div>
-      </div>
     </aside>
   );
 }

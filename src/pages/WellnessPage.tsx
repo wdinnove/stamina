@@ -10,6 +10,7 @@ import { DateRangeCard, useDateRange, PlayerSelect, Modal } from '../components'
 import { WellnessPomsPanel } from '../components/WellnessPomsPanel';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor, wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues, aggregateTeamWellnessDaily } from '../utils/wellness';
+import { playerNameFull } from '../utils/playerName';
 import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
 
 const dimensions = WELLNESS_DIMENSIONS;
@@ -179,7 +180,7 @@ export default function WellnessPage() {
     let sent = 0;
     const toSend = roster.filter(p => linkSelected.has(p.id));
     for (const player of toSend) {
-      const name = `${player.firstName} ${player.lastName}`;
+      const name = playerNameFull(player);
       if (!player.email) { skipped.push(name); continue; }
       try {
         const url = `${window.location.origin}/player/${player.id}/wellness`;
@@ -213,7 +214,7 @@ export default function WellnessPage() {
       setHistoryVersion(v => v + 1);
       setTimeout(() => setSaved(false), 2500);
       const player = roster.find(p => p.id === selectedPlayerId);
-      const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+      const playerName = player ? playerNameFull(player) : undefined;
       notifyOrg('wellness_added', `Bien-être saisi${playerName ? ` — ${playerName}` : ''}`, entryDate, 'player', selectedPlayerId ?? undefined);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Erreur inconnue');
@@ -409,7 +410,7 @@ export default function WellnessPage() {
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>Chargement…</div>
           ) : historyInRange.length === 0 ? (
             <div style={{ color: '#475569', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-              Aucune donnée bien-être {isTeamView ? "pour l'équipe" : selectedPlayer ? `pour ${selectedPlayer.firstName} ${selectedPlayer.lastName}` : ''} sur la période sélectionnée.
+              Aucune donnée bien-être {isTeamView ? "pour l'équipe" : selectedPlayer ? `pour ${playerNameFull(selectedPlayer)}` : ''} sur la période sélectionnée.
             </div>
           ) : (
             <WellnessPomsPanel
@@ -488,7 +489,7 @@ export default function WellnessPage() {
                         })}
                         style={{ accentColor: '#00E5A0', width: 15, height: 15 }} />
                       <span style={{ flex: 1, color: '#F1F5F9', fontSize: '0.85rem' }}>
-                        {player.firstName} {player.lastName}
+                        {playerNameFull(player)}
                       </span>
                       {hasEmail
                         ? <span style={{ color: '#475569', fontSize: '0.72rem' }}>{player.email}</span>

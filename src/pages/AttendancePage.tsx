@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
-import { EmptyState, Modal } from '../components';
+import { EmptyState, Modal, DropzoneEmptyState } from '../components';
 import { attendanceApi, playersApi, rpeApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
+import { playerNameShort } from '../utils/playerName';
 import type { Player, TrainingSession, TrainingAttendance } from '../data/types';
 
 type AttendanceStatus = TrainingAttendance['status'];
@@ -331,7 +332,7 @@ export default function AttendancePage() {
       )}
 
       {selected && !loading && sessions.length === 0 && (
-        <EmptyState message="Aucune séance enregistrée." size="lg" />
+        <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAddForm(true)} />
       )}
 
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
@@ -422,7 +423,7 @@ export default function AttendancePage() {
                         {p.firstName[0]}{p.lastName[0]}
                       </div>
                       <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500 }}>
-                        {p.lastName}<span className="hidden md:inline"> {p.firstName}</span>
+                        {playerNameShort(p)}
                       </span>
                     </div>
                   </td>

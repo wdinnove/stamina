@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { PlayerAvatar } from './PlayerAvatar';
+import { playerNameShort } from '../utils/playerName';
 import type { IndicatorDef } from '../data/crossAnalysis';
 import type { Player } from '../data/types';
 
@@ -40,7 +41,7 @@ function fmtValue(def: IndicatorDef, v: number): string {
   return String(Math.round(v * 10) / 10);
 }
 
-/** Comparaison des joueuses sur les deux indicateurs croisés + progression d'éval + alertes */
+/** Comparaison des joueurs sur les deux indicateurs croisés + progression d'éval + alertes */
 export function PlayerComparisonTable({ rows, aDef, bDef, onOpenPlayer }: PlayerComparisonTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('alerts');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -64,7 +65,7 @@ export function PlayerComparisonTable({ rows, aDef, bDef, onOpenPlayer }: Player
   const arrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
   if (!rows.length) {
-    return <p style={{ color: '#64748B', fontSize: '0.8rem', margin: 0 }}>Aucune joueuse sur ce filtre.</p>;
+    return <p style={{ color: '#64748B', fontSize: '0.8rem', margin: 0 }}>Aucun joueur sur ce filtre.</p>;
   }
 
   return (
@@ -72,7 +73,7 @@ export function PlayerComparisonTable({ rows, aDef, bDef, onOpenPlayer }: Player
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }} onClick={() => toggleSort('name')}>Joueuse{arrow('name')}</th>
+            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>
             <th style={{ ...thStyle, color: aDef.color }} onClick={() => toggleSort('a')}>
               {aDef.shortLabel}{aDef.unit ? ` (${aDef.unit})` : ''}{arrow('a')}
             </th>
@@ -96,7 +97,7 @@ export function PlayerComparisonTable({ rows, aDef, bDef, onOpenPlayer }: Player
                 <td style={{ ...tdStyle, textAlign: 'left', fontFamily: 'inherit', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     <PlayerAvatar player={r.player} size={22} />
-                    <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{r.player.firstName} {r.player.lastName}</span>
+                    <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(r.player)}</span>
                     <span style={{ color: '#475569', fontSize: '0.68rem' }}>{r.player.position}</span>
                   </span>
                 </td>

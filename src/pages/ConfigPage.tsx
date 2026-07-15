@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, Users, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart } from 'lucide-react';
+import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart } from 'lucide-react';
 import { teamsApi } from '../api';
 import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
 import { playersApi } from '../api/players';
@@ -8,7 +8,8 @@ import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
-import { Card, CardTitle, StatusBadge, Modal } from '../components';
+import { Card, CardTitle, StatusBadge, Modal, PlayerEditModal, PlayerAvatar } from '../components';
+import { playerNameFull } from '../utils/playerName';
 import type { ExerciseCategory, Player, StaffMember, WellnessEntryMethod } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
@@ -235,7 +236,7 @@ type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'categories
 
 const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'info',       label: 'Informations', icon: Shield },
-  { key: 'roster',     label: 'Effectif',     icon: Users },
+  { key: 'roster',     label: 'Effectif',     icon: ClipboardList },
   { key: 'staff',      label: 'Staff',        icon: UserCheck },
   { key: 'thresholds', label: 'Seuils',       icon: Sliders },
   { key: 'wellness',   label: 'Bien-être',    icon: Heart },
@@ -249,9 +250,8 @@ const thStyle: React.CSSProperties = {
 
 const tdStyle: React.CSSProperties = { padding: '10px 14px', color: '#F1F5F9', fontSize: '0.85rem' };
 
-function iconBtnStyle2(color: string): React.CSSProperties {
-  return { background: 'none', border: 'none', color, cursor: 'pointer', padding: 5, display: 'flex' };
-}
+// Colonnes partagées avec la table Joueurs (ClubPage.tsx) — mêmes largeurs, seule la colonne Actions diffère.
+const ROSTER_COL_WIDTHS = { player: '34%', position: '20%', number: '10%', status: '16%', actions: '20%' };
 
 // ── Modale d'ajout de joueur à l'effectif ───────────────────────────────────
 interface RosterAddModalProps {
@@ -303,7 +303,7 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
     try {
       await playersApi.linkToSeason(Array.from(selected), seasonId);
       onSaved();
-      const names = allPlayers.filter(p => selected.has(p.id)).map(p => `${p.firstName} ${p.lastName}`).join(', ');
+      const names = allPlayers.filter(p => selected.has(p.id)).map(p => playerNameFull(p)).join(', ');
       notifyOrg('player_added', `${selected.size} joueur${selected.size > 1 ? 's' : ''} ajouté${selected.size > 1 ? 's' : ''} à l'effectif`, names || undefined, 'player');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
@@ -356,7 +356,7 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600 }}>
-                    {player.lastName.toUpperCase()} <span style={{ color: '#94A3B8', fontWeight: 400 }}>{player.firstName}</span>
+                    {playerNameFull(player)}
                   </div>
                   <div style={{ color: '#475569', fontSize: '0.75rem' }}>{player.position}</div>
                 </div>
@@ -389,6 +389,7 @@ function RosterTab() {
   const [error, setError]         = useState('');
   const [search, setSearch]       = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [unlinkTarget, setUnlinkTarget] = useState<Player | null>(null);
   const [removing, setRemoving]         = useState(false);
   const [removeError, setRemoveError]   = useState('');
@@ -435,7 +436,7 @@ function RosterTab() {
   return (
     <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
       <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<Users size={14} color="#00E5A0" />}>Effectif</CardTitle>
+        <CardTitle icon={<ClipboardList size={14} color="#00E5A0" />}>Effectif</CardTitle>
       </div>
 
       <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 14 }}>
@@ -458,27 +459,46 @@ function RosterTab() {
 
       {!loading && filtered.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: ROSTER_COL_WIDTHS.player }} />
+              <col style={{ width: ROSTER_COL_WIDTHS.position }} />
+              <col style={{ width: ROSTER_COL_WIDTHS.number }} />
+              <col style={{ width: ROSTER_COL_WIDTHS.status }} />
+              <col style={{ width: ROSTER_COL_WIDTHS.actions }} />
+            </colgroup>
             <thead>
               <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th style={thStyle}>Nom</th>
-                <th style={thStyle}>Prénom</th>
-                <th style={thStyle}>N°</th>
+                <th style={thStyle}>Joueur</th>
                 <th style={thStyle}>Poste</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>N°</th>
                 <th style={thStyle}>Statut</th>
-                <th style={{ ...thStyle, width: 70 }}></th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((p, i) => (
                 <tr key={p.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #1E2229' : 'none' }}>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{p.lastName}</td>
-                  <td style={tdStyle}>{p.firstName}</td>
-                  <td style={tdStyle}>{p.number}</td>
-                  <td style={tdStyle}>{p.position}</td>
-                  <td style={tdStyle}><StatusBadge status={p.status} size="sm" /></td>
                   <td style={tdStyle}>
-                    <button onClick={() => { setUnlinkTarget(p); setRemoveError(''); }} title="Retirer de l'effectif" style={iconBtnStyle2('#EF4444')}><Trash2 size={13} /></button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <PlayerAvatar player={p} size={30} />
+                      <div style={{ fontWeight: 600 }}>{playerNameFull(p)}</div>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>{p.position}</td>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>#{p.number}</td>
+                  <td style={tdStyle}><StatusBadge status={p.status} size="sm" /></td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button onClick={() => setEditingPlayer(p)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem' }}>
+                        <Pencil size={11} /> Modifier
+                      </button>
+                      <button onClick={() => { setUnlinkTarget(p); setRemoveError(''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', backgroundColor: 'transparent', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, color: '#EF4444', cursor: 'pointer', fontSize: '0.72rem' }}>
+                        <Trash2 size={11} /> Délier
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -498,11 +518,22 @@ function RosterTab() {
         />
       )}
 
+      {editingPlayer && (
+        <PlayerEditModal
+          player={editingPlayer}
+          onClose={() => setEditingPlayer(null)}
+          onSaved={updated => {
+            setPlayers(prev => prev.map(p => p.id === updated.id ? updated : p));
+            setEditingPlayer(null);
+          }}
+        />
+      )}
+
       {unlinkTarget && (
         <Modal onClose={() => setUnlinkTarget(null)} maxWidth={380} zIndex={110} overlayOpacity={0.7} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Retirer de l'effectif ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-              <strong style={{ color: '#F1F5F9' }}>{unlinkTarget.firstName} {unlinkTarget.lastName}</strong> sera retiré de l'effectif de cette saison.
+              <strong style={{ color: '#F1F5F9' }}>{playerNameFull(unlinkTarget)}</strong> sera retiré de l'effectif de cette saison.
             </p>
             <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 16px' }}>
               Son profil et ses statistiques ne sont pas supprimés.

@@ -5,7 +5,7 @@ import type { RiskAlert } from '../data/crossAnalysis';
 interface RiskAlertsListProps {
   alerts: RiskAlert[];
   onOpenPlayer?: (playerId: string) => void;
-  /** Masquer le nom de la joueuse (vue individuelle : contexte déjà connu) */
+  /** Masquer le nom du joueur (vue individuelle : contexte déjà connu) */
   hidePlayerName?: boolean;
 }
 

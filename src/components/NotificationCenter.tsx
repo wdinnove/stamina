@@ -208,10 +208,10 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
   );
 }
 
-/* ── NotificationCenter (FAB mobile + modale) ── */
+/* ── NotificationCenter (modale) ── */
 
 export function NotificationCenter() {
-  const { notifications, unreadCount, isOpen, openCenter, closeCenter } = useNotifications();
+  const { notifications, isOpen, closeCenter } = useNotifications();
   const navigate = useNavigate();
 
   function handleNavigate(url: string) {
@@ -221,27 +221,6 @@ export function NotificationCenter() {
 
   return (
     <>
-      {/* Mobile FAB */}
-      <div className="md:hidden" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 40 }}>
-        <button
-          onClick={openCenter}
-          title="Notifications"
-          style={{
-            width: 52, height: 52, borderRadius: '50%',
-            backgroundColor: '#1E2229',
-            border: '1px solid #2A2F3A',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
-            color: unreadCount > 0 ? '#00E5A0' : '#94A3B8',
-            cursor: 'pointer', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.15s',
-          }}
-        >
-          <Bell size={22} />
-          <UnreadBadge count={unreadCount} large />
-        </button>
-      </div>
-
       {/* Modale */}
       {isOpen && (
         <Modal

@@ -10,6 +10,7 @@ import { EmptyState, Modal } from '../components';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
+import { playerNameShort } from '../utils/playerName';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const DAYS_FR   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -412,8 +413,8 @@ export default function MatchDetailPage() {
                           {sortedStats.map((s, i) => {
                             const player = playerById.get(s.playerId);
                             return (
-                              <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: player ? 'pointer' : undefined }} onClick={() => player && navigate(`/players/${player.id}`)}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                              <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: player ? 'pointer' : undefined }} onClick={() => player && navigate(`/performance-individuelle/${player.id}/vue-ensemble`)}>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={TD}>{fmt1(s.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{s.pts}</td>
@@ -593,7 +594,7 @@ export default function MatchDetailPage() {
                             const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{player.lastName} {player.firstName[0]}.</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
                                 <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
@@ -826,7 +827,7 @@ export default function MatchDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
                     <span style={{ fontSize: '0.72rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Joueur A</span>
                     <select value={playerA} onChange={e => setPlayerA(e.target.value)} style={{ ...selStyle, flex: 'unset', width: '100%' }}>
-                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${p.lastName} ${p.firstName[0]}.` : s.playerId.slice(0,8)}</option>; })}
+                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${playerNameShort(p)}` : s.playerId.slice(0,8)}</option>; })}
                     </select>
                     {pA && <span style={{ fontSize: '0.72rem', color: '#475569' }}>{pA.position} · #{pA.number}</span>}
                   </div>
@@ -834,7 +835,7 @@ export default function MatchDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                     <span style={{ fontSize: '0.72rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Joueur B</span>
                     <select value={playerB} onChange={e => setPlayerB(e.target.value)} style={{ ...selStyle, flex: 'unset', width: '100%', textAlign: 'right' }}>
-                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${p.lastName} ${p.firstName[0]}.` : s.playerId.slice(0,8)}</option>; })}
+                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${playerNameShort(p)}` : s.playerId.slice(0,8)}</option>; })}
                     </select>
                     {pB && <span style={{ fontSize: '0.72rem', color: '#475569' }}>{pB.position} · #{pB.number}</span>}
                   </div>
@@ -845,9 +846,9 @@ export default function MatchDetailPage() {
                     <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 360 }}>
                       <thead>
                         <tr>
-                          <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>{pA ? `${pA.lastName} ${pA.firstName[0]}.` : '—'}</th>
+                          <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>{pA ? `${playerNameShort(pA)}` : '—'}</th>
                           <th style={{ ...TH, width: 90 }}>STAT</th>
-                          <th style={{ ...TH, textAlign: 'left', minWidth: 110, color: '#94A3B8' }}>{pB ? `${pB.lastName} ${pB.firstName[0]}.` : '—'}</th>
+                          <th style={{ ...TH, textAlign: 'left', minWidth: 110, color: '#94A3B8' }}>{pB ? `${playerNameShort(pB)}` : '—'}</th>
                         </tr>
                       </thead>
                       <tbody>
