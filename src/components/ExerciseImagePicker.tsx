@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { Upload, X } from 'lucide-react';
+import { DropzoneEmptyState } from './DropzoneEmptyState';
 
 const MAX_EXERCISE_IMAGES = 3;
 
@@ -39,15 +40,13 @@ export function ExerciseImagePicker({
           </div>
         ))}
         {remaining > 0 && (
-          <button type="button" onClick={() => ref.current?.click()} disabled={disabled}
-            style={{ flex: '1 1 0', minWidth: 0, height: 150, background: '#1E2229', border: '2px dashed #2A2F3A', borderRadius: 8, color: '#475569', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-            onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLElement).style.borderColor = '#3A4049'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; }}>
-            <Upload size={20} />
-            <span style={{ fontSize: '0.75rem', textAlign: 'center', padding: '0 6px' }}>
-              {items.length === 0 ? 'Ajouter des images' : `Ajouter (${remaining} max)`}
-            </span>
-          </button>
+          <DropzoneEmptyState
+            icon={<Upload size={20} />}
+            label={items.length === 0 ? 'Ajouter des images' : `Ajouter (${remaining} max)`}
+            onClick={() => ref.current?.click()}
+            disabled={disabled}
+            style={{ flex: '1 1 0', minWidth: 0, height: 150, flexDirection: 'column' }}
+          />
         )}
       </div>
       {remaining === 0 && (

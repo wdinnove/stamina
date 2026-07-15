@@ -12,6 +12,7 @@ import type { PlayerMedicalViewHandle } from '../components';
 import { computeAcwr, acwrZone } from '../utils/rpe';
 import { fmtDate } from '../utils/dateFormat';
 import { sanitizeHtml } from '../utils/sanitize';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { MedicalRecord, Player, RPEEntry, PlayerStatus } from '../data/types';
 
 const severityConfig = {
@@ -240,13 +241,13 @@ export default function MedicalPage() {
         await medicalApi.update(editingRecord.id, payload);
         const typeLabel = typeLabels[formType] ?? formType;
         const updPlayer = teamPlayers.find(p => p.id === fPlayerId);
-        const updName = updPlayer ? `${updPlayer.firstName} ${updPlayer.lastName}` : undefined;
+        const updName = updPlayer ? playerNameFull(updPlayer) : undefined;
         notifyOrg('medical_updated', `${typeLabel} modifié${updName ? ` — ${updName}` : ''}`, undefined, 'player', fPlayerId);
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
         const typeLabel = typeLabels[formType] ?? formType;
         const player = teamPlayers.find(p => p.id === fPlayerId);
-        const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+        const playerName = player ? playerNameFull(player) : undefined;
         let notifBody: string | undefined;
         if (formType === 'injury') {
           const parts: string[] = [severityConfig[fSeverity].label];
@@ -278,7 +279,7 @@ export default function MedicalPage() {
       await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
       await playersApi.update(playerId, { status: closeModal.playerStatus });
       const player = teamPlayers.find(p => p.id === playerId);
-      const playerName = player ? `${player.firstName} ${player.lastName}` : undefined;
+      const playerName = player ? playerNameFull(player) : undefined;
       notifyOrg('medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, undefined, 'player', playerId);
       setCloseModal(null);
       setVersion(v => v + 1);
@@ -396,7 +397,7 @@ export default function MedicalPage() {
                   Traitements en cours {activeTreatmentsList.length > 0 ? `(${activeTreatmentsList.length})` : ''}
                 </CardTitle>
                 {activeTreatmentsList.length === 0 ? (
-                  <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Aucun traitement en cours</p>
+                  <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucun traitement en cours</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {activeTreatmentsList.map(renderRecord)}
@@ -410,10 +411,8 @@ export default function MedicalPage() {
 
       {/* ── TEAM TAB ── */}
       {activeTab === 'team' && (() => {
-        const totalPlayers   = teamPlayers.length;
         const injuredIds     = new Set(teamInjuries.map(r => r.playerId));
-        const availablePlayers = teamPlayers.filter(p => p.status === 'active').length;
-        const availPct       = totalPlayers > 0 ? Math.round((availablePlayers / totalPlayers) * 100) : 0;
+        const limitedPlayers = teamPlayers.filter(p => p.status === 'limited').length;
 
         const severityCounts = { mild: 0, moderate: 0, severe: 0 };
         teamSeasonInjuries.forEach(r => { if (r.severity) severityCounts[r.severity]++; });
@@ -438,25 +437,25 @@ export default function MedicalPage() {
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 10 }}>
               <RpeKpiCard
-                accent={availPct >= 80 ? '#00E5A0' : availPct >= 60 ? '#F59E0B' : '#EF4444'}
-                label="Disponibilité"
-                value={`${availPct}%`}
-                sub={`${availablePlayers}/${totalPlayers} joueurs`}
-              />
-              <RpeKpiCard
                 accent={teamInjuries.length > 0 ? '#EF4444' : '#00E5A0'}
                 label="Blessés actifs"
                 value={String(teamInjuries.length)}
                 sub={`${new Set(teamInjuries.map(r => r.playerId)).size} joueurs`}
               />
               <RpeKpiCard
-                accent="#F59E0B"
+                accent={limitedPlayers > 0 ? '#F59E0B' : '#00E5A0'}
+                label="Limités actifs"
+                value={String(limitedPlayers)}
+                sub={`${limitedPlayers} joueur${limitedPlayers > 1 ? 's' : ''}`}
+              />
+              <RpeKpiCard
+                accent={seasonCount > 0 ? '#F59E0B' : '#00E5A0'}
                 label="Blessures saison"
                 value={String(seasonCount)}
                 sub={`${seasonPlayers} joueurs touchés`}
               />
               <RpeKpiCard
-                accent="#3B82F6"
+                accent={seasonDays > 0 ? '#3B82F6' : '#00E5A0'}
                 label="Jours d'absence"
                 value={seasonDays > 0 ? `${seasonDays}j` : '—'}
                 sub="cumulés saison"
@@ -478,9 +477,9 @@ export default function MedicalPage() {
                         const p = playerById(r.playerId);
                         if (!p) return null;
                         return (
-                          <div key={r.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                          <div key={r.id} onClick={() => navigate(`/performance-individuelle/${p.id}/vue-ensemble`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                             <PlayerAvatar player={p} size={26} />
-                            <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>{p.lastName} {p.firstName[0]}.</span>
+                            <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>{playerNameShort(p)}</span>
                             <span style={{
                               color: playerStatusColor[p.status], backgroundColor: `${playerStatusColor[p.status]}18`,
                               fontSize: '0.66rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
@@ -501,7 +500,7 @@ export default function MedicalPage() {
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px' }}>
                   <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Répartition par gravité</h3>
                   {seasonCount === 0
-                    ? <EmptyState message="Aucune blessure cette saison." size="sm" />
+                    ? <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucune blessure</p>
                     : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {([
@@ -532,16 +531,16 @@ export default function MedicalPage() {
                 <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '18px 20px', flex: 1 }}>
                   <h3 style={{ color: '#94A3B8', margin: '0 0 12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joueurs les plus touchés</h3>
                   {topInjuredPlayers.length === 0
-                    ? <EmptyState message="Aucune donnée." size="sm" />
+                    ? <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucune blessure</p>
                     : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {topInjuredPlayers.map(({ player: p, count }) => {
                           if (!p) return null;
                           const pct = Math.round((count / seasonCount) * 100);
                           return (
-                            <div key={p.id} onClick={() => navigate(`/players/${p.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                            <div key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/vue-ensemble`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                               <PlayerAvatar player={p} size={26} />
-                              <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flex: 1 }}>{p.lastName}</span>
+                              <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flex: 1 }}>{playerNameShort(p)}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <div style={{ width: 60, height: 5, backgroundColor: '#1E2229', borderRadius: 3, overflow: 'hidden' }}>
                                   <div style={{ height: '100%', width: `${pct}%`, backgroundColor: '#EF4444', borderRadius: 3 }} />
@@ -643,7 +642,7 @@ export default function MedicalPage() {
                       className="w-full sm:w-auto"
                       style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapPlayerFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box', flex: '0 1 140px' }}>
                       <option value="">Tous joueurs</option>
-                      {teamPlayers.map(p => <option key={p.id} value={p.id}>{p.lastName} {p.firstName[0]}.</option>)}
+                      {teamPlayers.map(p => <option key={p.id} value={p.id}>{playerNameShort(p)}</option>)}
                     </select>
                     <select value={recapStatusFilter} onChange={e => setRecapStatusFilter(e.target.value)}
                       className="w-full sm:w-auto"
@@ -698,7 +697,7 @@ export default function MedicalPage() {
                                     <td style={{ padding: '8px 8px', overflow: 'hidden' }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         {p && <PlayerAvatar player={p} size={18} />}
-                                        <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? `${p.lastName} ${p.firstName[0]}.` : '—'}</span>
+                                        <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? `${playerNameShort(p)}` : '—'}</span>
                                       </div>
                                     </td>
                                     <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', textDecoration: r.status === 'resolved' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -743,20 +742,8 @@ export default function MedicalPage() {
                     ? '-'
                     : (selectedPlayer.status === 'injured' || selectedPlayer.status === 'limited')
                       ? (activePlayerInjury?.description ?? '-')
-                      : `${selectedPlayer.firstName} ${selectedPlayer.lastName}`
+                      : playerNameFull(selectedPlayer)
                 }
-              />
-              <RpeKpiCard
-                accent={playerSeasonDays > 0 ? '#3B82F6' : '#00E5A0'}
-                label="Jours d'absence"
-                value={playerSeasonDays > 0 ? `${playerSeasonDays}j` : '—'}
-                sub="cumulés saison"
-              />
-              <RpeKpiCard
-                accent={playerSeasonInjuries.length > 0 ? '#F59E0B' : '#00E5A0'}
-                label="Blessures saison"
-                value={String(playerSeasonInjuries.length)}
-                sub="cette saison"
               />
               <RpeKpiCard
                 accent={playerAcwrZone ? playerAcwrZone.color : '#334155'}
@@ -765,6 +752,18 @@ export default function MedicalPage() {
                 sub={playerAcwrZone
                   ? <Badge color={playerAcwrZone.color} size="sm" label={playerAcwrZone.label} style={{ fontSize: '0.62rem' }} />
                   : 'Historique insuffisant (28j)'}
+              />
+              <RpeKpiCard
+                accent={playerSeasonInjuries.length > 0 ? '#F59E0B' : '#00E5A0'}
+                label="Blessures saison"
+                value={String(playerSeasonInjuries.length)}
+                sub="cette saison"
+              />
+              <RpeKpiCard
+                accent={playerSeasonDays > 0 ? '#3B82F6' : '#00E5A0'}
+                label="Jours d'absence"
+                value={playerSeasonDays > 0 ? `${playerSeasonDays}j` : '—'}
+                sub="cumulés saison"
               />
             </div>
           )}
@@ -805,7 +804,7 @@ export default function MedicalPage() {
               {/* Grille de détails */}
               <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 14 }}>
                 {([
-                  { label: 'Joueur',   value: p ? `${p.firstName} ${p.lastName}` : '—' },
+                  { label: 'Joueur',   value: p ? playerNameFull(p) : '—' },
                   { label: 'Date',     value: `${fmtDate(detailRecord.date)} ${detailRecord.date.slice(0,4)}` },
                   { label: 'Statut',   value: detailRecord.status === 'active' ? 'En cours' : 'Clôturé', color: detailRecord.status === 'active' ? '#F59E0B' : '#00E5A0' },
                   ...(sev ? [{ label: 'Gravité', value: sev.label, color: sev.color }] : []),

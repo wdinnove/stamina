@@ -1,23 +1,34 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Activity, Stethoscope } from 'lucide-react';
-import { rpeApi, wellnessApi, statsApi } from '../api';
+import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from 'recharts';
+import { Activity, Stethoscope, BarChart2, Heart, CheckSquare, ArrowRight } from 'lucide-react';
+import { rpeApi, wellnessApi, statsApi, actionsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
-  IndicatorSelect, CrossTimelineChart, CorrelationCard, RiskAlertsList,
+  IndicatorSelect, CrossTimelineChart, CorrelationCard, RiskAlertsList, ChargeRpeComboChart,
 } from '../components';
 import { MedCard, daysBetween, rtpDaysLeft } from '../components/MedicalCard';
-import { computeTsb, tsbZone, rpeColor } from '../utils/rpe';
-import { wellnessScoreColor } from '../utils/wellness';
+import { computeTsb, tsbZone, rpeColor, computeAcwr, acwrZone } from '../utils/rpe';
+import { wellnessScoreColor, WELLNESS_DIMENSIONS, wellnessDimColor, wellnessAvg } from '../utils/wellness';
+import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
+import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
+import { priorityConfig } from '../data/config';
 import { evalColor } from '../data';
+import { playerNameFull } from '../utils/playerName';
 import {
   playerViewIndicators, indicatorByKey, getSeries, correlateIndicators, detectRiskAlerts, injuryEpisodes,
   type CrossScope, type PlayerCrossData, type IndicatorDef, type LagMode,
 } from '../data/crossAnalysis';
-import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat } from '../data/types';
+import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat, Action } from '../data/types';
+
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toLocaleDateString('sv');
+}
 
 const avg = (vals: number[]): number | null =>
   vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
@@ -76,14 +87,11 @@ const TAB_SLUGS: Record<string, Tab> = {
   'correlations':    'correlations',
   'medical':         'medical',
 };
-const TABS: { key: Tab; slug: string; label: string }[] = [
-  { key: 'overview',     slug: 'vue-ensemble',    label: "Vue d'ensemble" },
-  { key: 'stats',        slug: 'statistiques',    label: 'Statistiques' },
-  { key: 'dynamic',      slug: 'dynamique',       label: 'Dynamique' },
-  { key: 'load',         slug: 'charge-physique', label: 'Charge physique' },
-  { key: 'wellness',     slug: 'bien-etre',       label: 'Bien-être' },
-  { key: 'correlations', slug: 'correlations',    label: 'Corrélations' },
-  { key: 'medical',      slug: 'medical',         label: 'Médical / Risques' },
+const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
+  { tabs: [{ key: 'overview', slug: 'vue-ensemble', label: "Vue d'ensemble" }] },
+  { label: 'Stats',      tabs: [{ key: 'stats', slug: 'statistiques', label: 'Statistiques' }, { key: 'dynamic', slug: 'dynamique', label: 'Dynamique' }] },
+  { label: 'Charge & bien-être', tabs: [{ key: 'load', slug: 'charge-physique', label: 'Charge physique' }, { key: 'wellness', slug: 'bien-etre', label: 'Bien-être' }] },
+  { label: 'Analyse',    tabs: [{ key: 'correlations', slug: 'correlations', label: 'Corrélations' }, { key: 'medical', slug: 'medical', label: 'Médical / Risques' }] },
 ];
 
 export default function PerformanceIndividuellePage() {
@@ -105,21 +113,25 @@ export default function PerformanceIndividuellePage() {
     }
   }, [loading, id, roster.length]);
 
-  // ── Données joueuse all-time (dynamique / charge physique / bien-être / statistiques) ──
+  // ── Données joueur all-time (dynamique / charge physique / bien-être / statistiques) ──
   const [rpe, setRpe] = useState<RPEEntry[]>([]);
   const [wellness, setWellness] = useState<WellnessEntry[]>([]);
   const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]>([]);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, TeamMatchStat>>(new Map());
+  const [actions, setActions] = useState<Action[]>([]);
+  const [comboView, setComboView] = useState<'session' | 'week'>('session');
 
   useEffect(() => {
     if (!id) return;
     Promise.all([
       rpeApi.listPlayerHistory(id),
       wellnessApi.getByPlayer(id),
-    ]).then(([rpeData, wellnessData]) => {
+      actionsApi.getByPlayer(id),
+    ]).then(([rpeData, wellnessData, actionsData]) => {
       setRpe(rpeData);
       setWellness(wellnessData);
+      setActions(actionsData);
     });
     statsApi.getPlayerStatsGroupedBySeason(id).then(setSeasonGroupedStats);
   }, [id]);
@@ -184,7 +196,7 @@ export default function PerformanceIndividuellePage() {
   );
   const injuries = useMemo(() => pd ? injuryEpisodes(pd.medical, from, to) : [], [pd, from, to]);
 
-  // ── Vue d'ensemble : KPIs joueuse (ex-PerformancePlayerPage) ──────────────
+  // ── Vue d'ensemble : KPIs joueur (ex-PerformancePlayerPage) ──────────────
   const inRange = (d: string) => d >= from && d <= to;
   const tsbNow = pd ? computeTsb(pd.rpe) : null;
   const tsbNowZone = tsbNow !== null ? tsbZone(tsbNow) : null;
@@ -204,6 +216,93 @@ export default function PerformanceIndividuellePage() {
   const activeInj = medInRange.filter(m => m.type === 'injury' && m.status === 'active');
   const accentInj = activeInj.length > 0 ? '#EF4444' : medInRange.some(m => m.type === 'injury') ? '#F59E0B' : '#00E5A0';
 
+  // ── Vue d'ensemble : cards résumé (ex-PlayerHubPage) ──────────────────────
+  const thStyle: React.CSSProperties = { padding: '6px 8px', color: '#475569', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' };
+  const tdStyle: React.CSSProperties = { padding: '7px 8px', color: '#94A3B8', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' };
+
+  const seasonRows = useMemo(() => [...seasonGroupedStats]
+    .sort((a, b) => b.seasonLabel.localeCompare(a.seasonLabel))
+    .map(g => {
+      const ss = g.stats;
+      const n  = ss.length;
+      const sum = (k: keyof MatchStat) => ss.reduce((a, m) => a + (((m[k] as number) || 0)), 0);
+      const avgK = (k: keyof MatchStat) => n > 0 ? Math.round((sum(k) / n) * 10) / 10 : 0;
+      const withEval = ss.filter(s => s.eval !== null);
+      const evalAvgS  = withEval.length > 0 ? Math.round(withEval.reduce((a, s) => a + (s.eval ?? 0), 0) / withEval.length * 10) / 10 : null;
+      const withPm = ss.filter(s => s.plusMinus !== null);
+      const pmAvg  = withPm.length > 0 ? Math.round(withPm.reduce((a, s) => a + (s.plusMinus ?? 0), 0) / withPm.length * 10) / 10 : null;
+      const fg2m = sum('fg2m'), fg2a = sum('fg2a');
+      const fg3m = sum('fg3m'), fg3a = sum('fg3a');
+      const ftm  = sum('ftm'),  fta  = sum('fta');
+      const ro   = sum('ro'),   rd   = sum('rd');
+      return {
+        seasonId: g.seasonId, seasonLabel: g.seasonLabel, teamName: g.teamName, n,
+        starters: ss.filter(s => s.starter).length,
+        avgMin: avgK('min'), avgPts: avgK('pts'),
+        fg2m, fg2a, fg2Pct: fg2a > 0 ? Math.round((fg2m / fg2a) * 100) : null,
+        fg3m, fg3a, fg3Pct: fg3a > 0 ? Math.round((fg3m / fg3a) * 100) : null,
+        ftm, fta, ftPct: fta > 0 ? Math.round((ftm / fta) * 100) : null,
+        avgRo: avgK('ro'), avgRd: avgK('rd'), avgRt: n > 0 ? Math.round((ro + rd) / n * 10) / 10 : 0,
+        avgPd: avgK('pd'), avgCt: avgK('ct'),
+        avgInt: avgK('intercepts'), avgBp: avgK('bp'),
+        evalAvg: evalAvgS, pmAvg,
+      };
+    }), [seasonGroupedStats]);
+
+  const weekComboMap = new Map<string, { load: number; rpes: number[] }>();
+  rpeFiltered.forEach(e => {
+    const k = getWeekMonday(e.date);
+    if (!weekComboMap.has(k)) weekComboMap.set(k, { load: 0, rpes: [] });
+    const w = weekComboMap.get(k)!;
+    w.load += e.rpe * (e.actualDuration ?? e.plannedDuration);
+    w.rpes.push(e.rpe);
+  });
+  const weekCombo = [...weekComboMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([d, { load, rpes }]) => ({
+      date: fmtDateWithDay(d),
+      load: Math.round(load),
+      rpe:  Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10,
+    }));
+  const sessionCombo = [...rpeFiltered]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(e => ({
+      date: fmtDateWithDay(e.date),
+      load: Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
+      rpe:  e.rpe,
+    }));
+  const comboData = comboView === 'session' ? sessionCombo : weekCombo;
+  const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
+  const comboHigh = comboView === 'session' ? sessionLoadNormal : thresholds.normalMax;
+
+  const wellnessScoreAvgP = wellnessAvg(wellnessInRange.map(e => e.score));
+  const radarColor = wellnessScoreColor(wellnessScoreAvgP ?? 5);
+  const radarData = WELLNESS_DIMENSIONS.map(dim => {
+    const vals = wellnessInRange.map(e => e[dim.key] as number);
+    const avgV  = vals.length > 0 ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length * 10) / 10 : 0;
+    return { dim: dim.shortLabel, value: avgV, fullMark: 10, inverted: dim.inverted };
+  });
+
+  const allInjuries = pd ? [...pd.medical].filter(m => m.type === 'injury').sort((a, b) => b.date.localeCompare(a.date)) : [];
+  const currentInjury = allInjuries.find(m => m.status === 'active') ?? null;
+  const previousInjury = allInjuries.find(m => m.id !== currentInjury?.id) ?? null;
+  const seasonInjuryCount = selected?.season.startDate
+    ? allInjuries.filter(m => m.date >= selected.season.startDate).length
+    : allInjuries.length;
+  const acwr = computeAcwr(rpe);
+  const acwrZ = acwrZone(acwr);
+
+  const today = isoDaysAgo(0);
+  const openActions = actions.filter(a => a.status !== 'done').length;
+  const upcomingTasks = [...actions]
+    .filter(a => a.status !== 'done' && a.dueDate >= today)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 3);
+  const pastTasks = [...actions]
+    .filter(a => a.status === 'done' || a.dueDate < today)
+    .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
+    .slice(0, 3);
+
   const playerSelect = (
     <PlayerSelect
       players={roster.map(p => p.player)}
@@ -217,7 +316,7 @@ export default function PerformanceIndividuellePage() {
     return (
       <div className="p-4 md:p-6">
         <h1 style={{ color: '#F1F5F9', margin: '0 0 20px' }}>Performance individuelle</h1>
-        <Card><EmptyState message="Aucune joueuse dans l'effectif de cette saison." /></Card>
+        <Card><EmptyState message="Aucun joueur dans l'effectif de cette saison." /></Card>
       </div>
     );
   }
@@ -232,29 +331,54 @@ export default function PerformanceIndividuellePage() {
 
       <PlayerHero player={pd.player} />
 
-      {/* ── Barre d'onglets ── */}
-      <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, marginBottom: 14, overflowX: 'auto' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.slug)}
-            style={{ flex: 1, padding: '6px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap',
-              backgroundColor: activeTab === t.key ? '#1E2229' : 'transparent',
-              color: activeTab === t.key ? '#F1F5F9' : '#94A3B8', fontWeight: activeTab === t.key ? 600 : 400, transition: 'all 0.15s' }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col lg:flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
 
-      {activeTab !== 'dynamic' && (
-        <DateRangeCard
-          from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-          onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
-          onFrom={dateRange.setFrom} onTo={dateRange.setTo}
-        />
-      )}
+        {/* ── Menu vertical d'onglets ── */}
+        <nav className="w-full lg:w-[200px]" style={{ flexShrink: 0, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 6 }}>
+          <div className="flex lg:flex-col" style={{ gap: 14, overflowX: 'auto' }}>
+            {TAB_GROUPS.map((group, gi) => (
+              <div key={gi} style={{ flexShrink: 0 }}>
+                {group.label && (
+                  <div style={{ padding: '6px 10px 4px', color: '#475569', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                    {group.label}
+                  </div>
+                )}
+                <div className="flex lg:flex-col" style={{ gap: 2 }}>
+                  {group.tabs.map(t => (
+                    <button key={t.key} onClick={() => setActiveTab(t.slug)}
+                      style={{
+                        textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        fontSize: '0.83rem', whiteSpace: 'nowrap', flexShrink: 0,
+                        backgroundColor: activeTab === t.key ? 'rgba(0,229,160,0.08)' : 'transparent',
+                        color: activeTab === t.key ? '#00E5A0' : '#94A3B8',
+                        fontWeight: activeTab === t.key ? 600 : 400,
+                        borderLeft: activeTab === t.key ? '2px solid #00E5A0' : '2px solid transparent',
+                        transition: 'all 0.15s',
+                      }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </nav>
 
-      {/* ══ VUE D'ENSEMBLE ══════════════════════════════════════════════════ */}
+        {/* ── Contenu de l'onglet ── */}
+        <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+
+          {activeTab !== 'dynamic' && (
+            <DateRangeCard
+              from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
+              onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
+              onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+            />
+          )}
+
+          {/* ══ VUE D'ENSEMBLE ══════════════════════════════════════════════════ */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-2 lg:grid-cols-5" style={{ gap: 10 }}>
+        <>
+        <div className="grid grid-cols-2 lg:grid-cols-5" style={{ gap: 10, marginBottom: 12 }}>
           <MiniKpi title="État actuel" sub="TSB · fraîcheur du jour"
             value={tsbNow !== null ? `${tsbNow > 0 ? '+' : ''}${tsbNow}` : null}
             color={tsbNowZone?.color ?? '#94A3B8'} />
@@ -271,6 +395,218 @@ export default function PerformanceIndividuellePage() {
             value={presencePct} unit="%"
             color={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#94A3B8'} />
         </div>
+
+        <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => setActiveTab('statistiques')}>
+          <CardTitle icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
+            right={<ArrowRight size={13} style={{ color: '#475569' }} />}>
+            Statistiques — saison par saison
+          </CardTitle>
+          {seasonRows.length === 0 ? (
+            <EmptyState message="Aucune statistique enregistrée." size="sm" />
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                    <th style={{ ...thStyle, textAlign: 'left' }}>Saison</th>
+                    <th style={{ ...thStyle, textAlign: 'left' }}>Équipe</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>MJ</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Tit</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Min</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Pts</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>2PT</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>2PT%</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>3PT</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>3PT%</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>LF</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>LF%</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>RO</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>RD</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>RT</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Pd</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Ct</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Int</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Bp</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Éval</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>±</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {seasonRows.map(r => (
+                    <tr key={r.seasonId} style={{ borderBottom: '1px solid #1E2229' }}>
+                      <td style={{ ...tdStyle, fontFamily: 'inherit', color: '#F1F5F9', fontWeight: 600 }}>{r.seasonLabel}</td>
+                      <td style={{ ...tdStyle, fontFamily: 'inherit' }}>{r.teamName || '—'}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#F1F5F9', fontWeight: 700 }}>{r.n}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.starters}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgMin}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#F1F5F9', fontWeight: 800 }}>{r.avgPts}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.fg2m}/{r.fg2a}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.fg2Pct !== null ? `${r.fg2Pct}%` : '—'}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.fg3m}/{r.fg3a}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.fg3Pct !== null ? `${r.fg3Pct}%` : '—'}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.ftm}/{r.fta}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.ftPct  !== null ? `${r.ftPct}%`  : '—'}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgRo}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgRd}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: '#F1F5F9' }}>{r.avgRt}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgPd}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgCt}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgInt}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{r.avgBp}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: r.evalAvg !== null ? 700 : 400, color: r.evalAvg !== null ? evalColor(r.evalAvg, statThresholds) : '#475569' }}>{r.evalAvg ?? '—'}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: r.pmAvg === null ? '#475569' : r.pmAvg > 0 ? '#00E5A0' : r.pmAvg < 0 ? '#EF4444' : '#94A3B8' }}>{r.pmAvg !== null ? (r.pmAvg > 0 ? `+${r.pmAvg}` : r.pmAvg) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12, marginBottom: 12 }}>
+          <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => setActiveTab('charge-physique')}>
+            <CardTitle icon={<Activity size={12} style={{ color: '#3B82F6' }} />}
+              right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {rpeAvgP !== null && <span style={{ color: rpeColor(rpeAvgP), fontWeight: 700, fontSize: '0.78rem' }}>RPE moy. {rpeAvgP}</span>}
+                <ArrowRight size={13} style={{ color: '#475569' }} />
+              </div>}>
+              RPE — période sélectionnée
+            </CardTitle>
+            {rpeFiltered.length === 0 ? (
+              <EmptyState message="Aucune donnée RPE sur la période." size="sm" />
+            ) : (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                <ChargeRpeComboChart
+                  data={comboData}
+                  view={comboView}
+                  onViewChange={setComboView}
+                  high={comboHigh}
+                  title="Charge et RPE"
+                  height={220}
+                />
+              </div>
+            )}
+          </Card>
+
+          <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => setActiveTab('bien-etre')}>
+            <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />}
+              right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#475569', fontSize: '0.7rem' }}>{wellnessInRange.length} saisie{wellnessInRange.length > 1 ? 's' : ''}</span>
+                <ArrowRight size={13} style={{ color: '#475569' }} />
+              </div>}>
+              Bien-être — POMS
+            </CardTitle>
+            {wellnessInRange.length === 0 ? (
+              <EmptyState message="Aucune saisie bien-être sur la période." size="sm" />
+            ) : (
+              <div style={{ position: 'relative', flex: '1 1 220px', minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={radarData} outerRadius="68%" margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                    <PolarGrid stroke="#2A2F3A" />
+                    <PolarAngleAxis dataKey="dim" tick={{ fill: '#94A3B8', fontSize: 10 }} />
+                    <Radar name="Moy." dataKey="value" stroke={radarColor} fill={radarColor} fillOpacity={0.1} strokeWidth={2}
+                      dot={(props: { cx: number; cy: number; index: number }) => {
+                        const point = radarData[props.index];
+                        if (!point) return <circle key={props.index} cx={props.cx} cy={props.cy} r={0} />;
+                        const color = wellnessDimColor(point.value, point.inverted);
+                        return <circle key={props.index} cx={props.cx} cy={props.cy} r={6} fill={color} stroke="#161920" strokeWidth={2} />;
+                      }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
+                  <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{wellnessScoreAvgP ?? '—'}</div>
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
+          <Card style={{ cursor: 'pointer' }} onClick={() => setActiveTab('medical')}>
+            <CardTitle icon={<Stethoscope size={12} style={{ color: '#EF4444' }} />}
+              right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {acwrZ && <span style={{ color: acwrZ.color, fontWeight: 700, fontSize: '0.78rem' }}>ACWR {acwr} · {acwrZ.label}</span>}
+                <ArrowRight size={13} style={{ color: '#475569' }} />
+              </div>}>
+              Médical
+            </CardTitle>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>Blessure en cours</span>
+                {currentInjury ? (
+                  <span style={{ color: '#EF4444', fontWeight: 700, fontSize: '0.8rem', textAlign: 'right' }}>{currentInjury.location || currentInjury.description}</span>
+                ) : (
+                  <span style={{ color: '#00E5A0', fontWeight: 600, fontSize: '0.8rem' }}>Aucune</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>Dernière blessure</span>
+                {previousInjury ? (
+                  <span style={{ color: '#F1F5F9', fontSize: '0.8rem', textAlign: 'right' }}>{previousInjury.location || previousInjury.description} · {fmtDate(previousInjury.date)}</span>
+                ) : (
+                  <span style={{ color: '#475569', fontSize: '0.8rem' }}>—</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>Blessures cette saison</span>
+                <span style={{ color: seasonInjuryCount === 0 ? '#00E5A0' : seasonInjuryCount === 1 ? '#F59E0B' : '#EF4444', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{seasonInjuryCount}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>ACWR (risque de blessure)</span>
+                <span style={{ color: acwrZ?.color ?? '#475569', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{acwr !== null ? acwr : '—'}</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card style={{ cursor: 'pointer' }} onClick={() => navigate('/actions', { state: { playerId: id, playerName: playerNameFull(pd.player), from: `/performance-individuelle/${id}/vue-ensemble` } })}>
+            <CardTitle icon={<CheckSquare size={12} style={{ color: '#F59E0B' }} />}
+              right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: openActions === 0 ? '#00E5A0' : '#F59E0B', fontWeight: 700, fontSize: '0.78rem' }}>{openActions} en cours</span>
+                <ArrowRight size={13} style={{ color: '#475569' }} />
+              </div>}>
+              Tâches
+            </CardTitle>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 14 }}>
+              <div>
+                <div style={{ color: '#475569', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>À venir</div>
+                {upcomingTasks.length === 0 ? (
+                  <span style={{ color: '#334155', fontSize: '0.78rem' }}>Aucune tâche à venir</span>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {upcomingTasks.map(t => (
+                      <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: priorityConfig[t.priority].color, flexShrink: 0 }} />
+                        <span style={{ color: '#F1F5F9', fontSize: '0.78rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                        <span style={{ color: '#475569', fontSize: '0.7rem', flexShrink: 0 }}>{fmtDate(t.dueDate)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ color: '#475569', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Passées</div>
+                {pastTasks.length === 0 ? (
+                  <span style={{ color: '#334155', fontSize: '0.78rem' }}>Aucune tâche passée</span>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {pastTasks.map(t => (
+                      <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: t.status === 'done' ? '#00E5A0' : '#EF4444', flexShrink: 0 }} />
+                        <span style={{ color: t.status === 'done' ? '#94A3B8' : '#F1F5F9', fontSize: '0.78rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</span>
+                        <span style={{ color: '#475569', fontSize: '0.7rem', flexShrink: 0 }}>{fmtDate(t.dueDate)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+        </>
       )}
 
       {/* ══ STATISTIQUES ════════════════════════════════════════════════════ */}
@@ -297,14 +633,14 @@ export default function PerformanceIndividuellePage() {
       {/* ══ CHARGE PHYSIQUE ═════════════════════════════════════════════════ */}
       {activeTab === 'load' && (
         rpe.length === 0
-          ? <EmptyState message={`Aucune donnée RPE pour ${pd.player.firstName} ${pd.player.lastName}.`} />
+          ? <EmptyState message={`Aucune donnée RPE pour ${playerNameFull(pd.player)}.`} />
           : <PlayerLoadPanel history={rpe} filtered={rpeFiltered} thresholds={thresholds} showSeasonDiff={showSeasonDiff} />
       )}
 
       {/* ══ BIEN-ÊTRE ═══════════════════════════════════════════════════════ */}
       {activeTab === 'wellness' && (
         wellnessInRange.length === 0 ? (
-          <EmptyState message={`Aucune saisie bien-être pour ${pd.player.firstName} ${pd.player.lastName} sur la période sélectionnée.`} />
+          <EmptyState message={`Aucune saisie bien-être pour ${playerNameFull(pd.player)} sur la période sélectionnée.`} />
         ) : (
           <WellnessPomsPanel
             entries={wellnessInRange}
@@ -373,6 +709,9 @@ export default function PerformanceIndividuellePage() {
           </Card>
         </div>
       )}
+
+        </div>
+      </div>
     </div>
   );
 }

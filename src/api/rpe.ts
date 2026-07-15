@@ -53,7 +53,7 @@ export const rpeApi = {
     }));
   },
 
-  // RPE détaillées (rpe, durée réelle, joueuse, séance) pour un lot de séances — agrégations client (moyennes, charge…)
+  // RPE détaillées (rpe, durée réelle, joueur, séance) pour un lot de séances — agrégations client (moyennes, charge…)
   async listRpeDetailsBySessionIds(sessionIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; playerId: string; sessionId: string }>> {
     if (!sessionIds.length) return [];
     const { data, error } = await supabase
@@ -67,7 +67,7 @@ export const rpeApi = {
     }));
   },
 
-  // Historique RPE complet (avec date/durée planifiée de la séance jointe) pour un lot de joueuses — ACWR/TSB
+  // Historique RPE complet (avec date/durée planifiée de la séance jointe) pour un lot de joueurs — ACWR/TSB
   async listRpeWithSessionByPlayerIds(playerIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; playerId: string; date: string; plannedDuration: number }>> {
     if (!playerIds.length) return [];
     const { data, error } = await supabase
@@ -82,7 +82,7 @@ export const rpeApi = {
       }));
   },
 
-  // Toutes les entrées RPE d'une saison et/ou d'une joueuse, enrichies depuis la séance jointe
+  // Toutes les entrées RPE d'une saison et/ou d'un joueur, enrichies depuis la séance jointe
   async list(filters: ListRpeFilters = {}): Promise<RPEEntry[]> {
     let query = supabase
       .from('rpe_entries')

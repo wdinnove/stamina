@@ -4,7 +4,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { isoToday } from '../components/DateRangeCard';
 import type { TeamCrossData } from '../data/crossAnalysis';
 
-/** Charge toutes les données de la saison sélectionnée, fusionnées par joueuse (croisement multi-domaines). */
+/** Charge toutes les données de la saison sélectionnée, fusionnées par joueur (croisement multi-domaines). */
 export function usePerformanceData() {
   const { selected } = useTeamSeason();
   const [data, setData] = useState<TeamCrossData | null>(null);

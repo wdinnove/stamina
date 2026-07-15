@@ -3,6 +3,7 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { StatusBadge } from './StatusBadge';
 import { Badge } from './Badge';
 import { statusConfig } from '../data/config';
+import { playerNameFull } from '../utils/playerName';
 import type { MedicalRecord, Player } from '../data/types';
 
 const MONTHS_LONG = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -57,7 +58,7 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
 
         {showAvatarColumn && (player ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, width: 60 }}>
-            <div onClick={() => navigate(`/players/${player.id}`)} style={{ cursor: 'pointer' }}>
+            <div onClick={() => navigate(`/performance-individuelle/${player.id}/vue-ensemble`)} style={{ cursor: 'pointer' }}>
               <PlayerAvatar player={player} size={32} />
             </div>
             <div style={{ transform: 'scale(0.8)' }}>
@@ -74,8 +75,8 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
           {/* 1 : nom */}
           {showAvatarColumn && player && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span onClick={() => navigate(`/players/${player.id}`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
-                {player.firstName} {player.lastName}
+              <span onClick={() => navigate(`/performance-individuelle/${player.id}/vue-ensemble`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
+                {playerNameFull(player)}
               </span>
             </div>
           )}

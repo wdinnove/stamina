@@ -16,6 +16,11 @@ function PlayerPerformanceRedirect() {
   const { id } = useParams<{ id: string }>();
   return <Navigate to={id ? `/performance-individuelle/${id}/vue-ensemble` : '/performance-individuelle'} replace />;
 }
+/** Ancienne fiche joueur (hub) — redirige vers la vue d'ensemble de Performance individuelle */
+function RosterPlayerRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/performance-individuelle/${id}/vue-ensemble` : '/performance-individuelle'} replace />;
+}
 
 export const router = createBrowserRouter([
   {
@@ -38,16 +43,6 @@ export const router = createBrowserRouter([
           { path: 'teams',          lazy: () => import('./pages/TeamsPage').then(m => ({ Component: m.default })) },
           { path: 'teams/:id',      lazy: () => import('./pages/TeamsPage').then(m => ({ Component: m.default })) },
           { path: 'players',        lazy: () => import('./pages/PlayersPage').then(m => ({ Component: m.default })) },
-          {
-            path: 'players/:id',
-            lazy: () => import('./pages/PlayersPage').then(m => ({
-              Component: function PlayerProfileRoute() {
-                const { id } = useParams<{ id: string }>();
-                if (!id) return null;
-                return <m.PlayerProfile playerId={id} />;
-              },
-            })),
-          },
           { path: 'rpe',             lazy: () => import('./pages/RPEPage').then(m => ({ Component: m.default })) },
           { path: 'rpe/:tab',        lazy: () => import('./pages/RPEPage').then(m => ({ Component: m.default })) },
           { path: 'rpe/:tab/:id',    lazy: () => import('./pages/RPEPage').then(m => ({ Component: m.default })) },
@@ -59,7 +54,7 @@ export const router = createBrowserRouter([
           { path: 'medical/:tab/:id',    lazy: () => import('./pages/MedicalPage').then(m => ({ Component: m.default })) },
           { path: 'actions',        lazy: () => import('./pages/ActionsPage').then(m => ({ Component: m.default })) },
           { path: 'roster',          lazy: () => import('./pages/RosterPage').then(m => ({ Component: m.default })) },
-          { path: 'roster/:id',      lazy: () => import('./pages/PlayerHubPage').then(m => ({ Component: m.default })) },
+          { path: 'roster/:id',      element: <RosterPlayerRedirect /> },
           { path: 'meetings',            lazy: () => import('./pages/MeetingsPage').then(m => ({ Component: m.default })) },
           { path: 'meetings/:id',        lazy: () => import('./pages/MeetingDetailPage').then(m => ({ Component: m.default })) },
           { path: 'attendance',      lazy: () => import('./pages/AttendancePage').then(m => ({ Component: m.default })) },

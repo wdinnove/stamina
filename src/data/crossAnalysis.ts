@@ -28,6 +28,7 @@ import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor } from '../u
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor } from '../utils/wellness';
 import { correlatePairs, MIN_CORRELATION_PAIRS, type CorrelationPair, type CorrelationResult } from '../utils/correlation';
+import { playerNameFull } from '../utils/playerName';
 
 // ── Données d'entrée ──────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ export interface PlayerCrossData {
   rpe: RPEEntry[];
   wellness: WellnessEntry[];
   medical: MedicalRecord[];
-  /** Présence par séance (date de la séance + statut de la joueuse) */
+  /** Présence par séance (date de la séance + statut du joueur) */
   attendance: { date: string; status: TrainingAttendance['status'] }[];
   /** Stats collectives par matchId — requises pour les stats avancées individuelles (usage%, %PD…) */
   teamStatsByMatchId?: Map<string, TeamMatchStat>;
@@ -48,7 +49,7 @@ export interface TeamCrossData {
   teamMatchStats: TeamMatchStat[];
 }
 
-/** Périmètre d'une analyse : une joueuse OU une équipe */
+/** Périmètre d'une analyse : un joueur OU une équipe */
 export interface CrossScope {
   player?: PlayerCrossData;
   team?: TeamCrossData;
@@ -118,9 +119,9 @@ export interface IndicatorDef {
   weeklyAgg: 'mean' | 'sum';
   /** Couleur d'une valeur (zones de risque) — tableau comparatif */
   valueColor?: (v: number) => string;
-  /** Série individuelle (absent = indisponible en vue joueuse) */
+  /** Série individuelle (absent = indisponible en vue joueur) */
   playerSeries?: (d: PlayerCrossData, from: string, to: string) => SeriesPoint[];
-  /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueuses */
+  /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueurs */
   teamSeries?: (d: TeamCrossData, from: string, to: string) => SeriesPoint[];
 }
 
@@ -219,7 +220,7 @@ function playerAdvStat(
 const TEAM_COLORS = ['#60A5FA', '#00E5A0', '#F59E0B', '#EC4899', '#8B5CF6', '#38BDF8', '#F97316', '#EAB308', '#2DD4BF', '#A78BFA'];
 
 const INDICATORS: IndicatorDef[] = [
-  // ── Match — Statistiques brutes (joueuse ; en vue équipe = moyenne des joueuses) ──
+  // ── Match — Statistiques brutes (joueur ; en vue équipe = moyenne des joueurs) ──
   playerMatchStat('eval',      'Évaluation',       'Éval', '#60A5FA', '',    m => m.eval),
   playerMatchStat('plusMinus', '+/-',              '+/-',  '#3B82F6', '',    m => m.plusMinus),
   playerMatchStat('min',       'Minutes',          'Min',  '#94A3B8', 'min', m => m.min),
@@ -332,7 +333,7 @@ const INDICATORS: IndicatorDef[] = [
 
 export const teamIndicators   = () => INDICATORS.filter(i => i.teamSeries || i.playerSeries);
 /**
- * Vue joueuse : ses indicateurs individuels + les collectifs de match (ORtg, DRtg,
+ * Vue joueur : ses indicateurs individuels + les collectifs de match (ORtg, DRtg,
  * points encaissés…) pour croiser par ex. sa charge avec la performance de l'équipe.
  * Nécessite un scope { player, team }.
  */
@@ -341,7 +342,7 @@ export const indicatorByKey   = (key: string) => INDICATORS.find(i => i.key === 
 
 // ── Extraction de séries ──────────────────────────────────────────────────────
 
-/** Moyenne, par date, des séries individuelles des joueuses disposant d'une valeur ce jour-là */
+/** Moyenne, par date, des séries individuelles des joueurs disposant d'une valeur ce jour-là */
 function aggregatePlayerSeries(players: PlayerCrossData[], def: IndicatorDef, from: string, to: string): SeriesPoint[] {
   const byDate = new Map<string, number[]>();
   players.forEach(p => {
@@ -355,7 +356,7 @@ function aggregatePlayerSeries(players: PlayerCrossData[], def: IndicatorDef, fr
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Série d'un indicateur sur le périmètre donné (joueuse ou équipe) */
+/** Série d'un indicateur sur le périmètre donné (joueur ou équipe) */
 export function getSeries(def: IndicatorDef, scope: CrossScope, from: string, to: string): SeriesPoint[] {
   if (scope.player && def.playerSeries) return def.playerSeries(scope.player, from, to);
   if (scope.team) {
@@ -489,7 +490,7 @@ export interface RiskAlert {
  * R2 — pic de charge/fraîcheur suivi sous 10 jours d'une éval nettement sous la moyenne perso ;
  * R3 — blessure survenue dans les 14 jours après un pic de charge/fraîcheur ;
  * R4 — chute du score bien-être ≥ 2 pts d'une semaine à l'autre pendant une semaine « Élevée/Surcharge ».
- * Une alerte par règle et par joueuse (l'épisode le plus récent).
+ * Une alerte par règle et par joueur (l'épisode le plus récent).
  */
 export function detectRiskAlerts(
   players: PlayerCrossData[],
@@ -503,7 +504,7 @@ export function detectRiskAlerts(
 
   for (const p of players) {
     if (!p.rpe.length) continue; // toutes les règles reposent sur la charge
-    const playerName = `${p.player.firstName} ${p.player.lastName}`;
+    const playerName = playerNameFull(p.player);
 
     const acwrByDay = new Map<string, number>();
     for (const d of eachDay(extFrom, to)) {
@@ -567,7 +568,7 @@ export function detectRiskAlerts(
           title: 'Blessure précédée d\'un pic de charge',
           detail: `${rec.location || rec.description || 'Blessure'} le ${fmtDayMonth(rec.date)} — ACWR/fraîcheur en zone rouge dans les 14 jours précédents`,
         });
-        break; // une seule alerte blessure par joueuse
+        break; // une seule alerte blessure par joueur
       }
     }
 
@@ -619,7 +620,7 @@ export function detectRiskAlerts(
 
 export interface InjuryEpisode { from: string; to: string; label: string }
 
-/** Blessures d'une joueuse converties en intervalles [début, fin] bornés à la période */
+/** Blessures d'un joueur converties en intervalles [début, fin] bornés à la période */
 export function injuryEpisodes(medical: MedicalRecord[], from: string, to: string): InjuryEpisode[] {
   return medical
     .filter(m => m.type === 'injury')

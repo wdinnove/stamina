@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle, User, Lock, Save } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { AlertCircle, CheckCircle, User, Lock, Save, LogOut } from 'lucide-react';
 import { profileApi } from '../api/profile';
+import { authApi } from '../api';
 import { Card, CardTitle } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
@@ -17,6 +19,7 @@ const readonlyStyle: React.CSSProperties = {
 };
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const { orgRole } = useTeamSeason();
   const [email,     setEmail]     = useState('');
   const [orgName,   setOrgName]   = useState('');
@@ -84,11 +87,27 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleSignOut() {
+    await authApi.signOut();
+    navigate('/login', { replace: true });
+  }
+
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
 
   return (
     <div className="p-4 md:p-6">
-      <h1 style={{ color: '#F1F5F9', margin: '0 0 28px' }}>Mon profil</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Mon profil</h1>
+        <button
+          onClick={handleSignOut}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#FFFFFF', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#DC2626')}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#EF4444')}
+        >
+          <LogOut size={14} />
+          Déconnexion
+        </button>
+      </div>
 
       {/* Avatar + email */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>

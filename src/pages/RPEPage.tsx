@@ -19,6 +19,7 @@ import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, ChargeRpeComboChar
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Player, RPEEntry, SessionType } from '../data/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -208,7 +209,7 @@ export default function RPEPage() {
 
   // ── Team saison derived values
   // Charge hebdo ramenée à l'effectif DISTINCT ayant réellement loggué cette semaine (union des
-  // joueuses de toutes les séances de la semaine) — pas une moyenne d'effectif par séance, qui
+  // joueurs de toutes les séances de la semaine) — pas une moyenne d'effectif par séance, qui
   // se déforme dès qu'une semaine mélange des séances à effectifs très différents (sous-groupe +
   // effectif complet, par ex.).
   const teamWeeklyChargePerPlayerData = (() => {
@@ -531,17 +532,17 @@ export default function RPEPage() {
               ) : (
                 <>
                   <style>{`
-                    @media (max-width: 767px) {
+                    @media (max-width: 1023px) {
                       .rpe-row { flex-wrap: wrap !important; padding: 10px 12px !important; }
-                      .rpe-player-col { width: auto !important; flex: 1 !important; }
-                      .rpe-value-col { display: none !important; }
-                      .rpe-buttons { width: 100% !important; flex: none !important; margin-top: 6px !important; }
+                      .rpe-player-col { width: auto !important; flex: 1 !important; order: 1 !important; }
+                      .rpe-value-col { order: 2 !important; }
+                      .rpe-buttons { width: 100% !important; flex: none !important; margin-top: 6px !important; order: 3 !important; }
                       .rpe-buttons > button { flex: 1 !important; }
                     }
                   `}</style>
                   <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
                     <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'flex', gap: 12 }}>
-                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 150, flexShrink: 0 }}>Joueur</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 220, flexShrink: 0 }}>Joueur</span>
                       <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>RPE</span>
                       <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 130, textAlign: 'right', flexShrink: 0 }}>Valeur</span>
                     </div>
@@ -556,11 +557,11 @@ export default function RPEPage() {
                       );
                       return (
                         <div key={player.id} className="rpe-row" style={{ borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
-                          <div className="rpe-player-col" onClick={() => navigate(`/players/${player.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: 150, flexShrink: 0, cursor: 'pointer' }}>
-                            <div className="hidden md:block"><PlayerAvatar player={player} size={26} /></div>
-                            <div style={{ minWidth: 0 }}>
-                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.lastName} {player.firstName[0]}.</span>
-                              <div style={{ marginTop: 1 }}><StatusBadge status={player.status} size="sm" /></div>
+                          <div className="rpe-player-col" style={{ display: 'flex', alignItems: 'center', gap: 8, width: 220, flexShrink: 0 }}>
+                            <PlayerAvatar player={player} size={26} />
+                            <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playerNameShort(player)}</span>
+                              <StatusBadge status={player.status} size="sm" />
                             </div>
                           </div>
                           <div className="rpe-buttons" style={{ flex: 1, display: 'flex', gap: 4, minWidth: 0, overflow: 'hidden' }}>
@@ -609,7 +610,7 @@ export default function RPEPage() {
           {loadingHistory ? (
             <EmptyState message="Chargement…" />
           ) : history.length === 0 && selectedPlayerId ? (
-            <EmptyState message={`Aucune donnée RPE pour ${selectedPlayer?.firstName} ${selectedPlayer?.lastName}.`} />
+            <EmptyState message={`Aucune donnée RPE pour ${selectedPlayer ? playerNameFull(selectedPlayer) : ''}.`} />
           ) : filtered.length === 0 && history.length > 0 ? (
             <EmptyState message="Aucune donnée RPE sur la période sélectionnée." />
           ) : history.length > 0 ? (
@@ -635,13 +636,13 @@ export default function RPEPage() {
             onFrom={dateRange.setFrom} onTo={dateRange.setTo} />
 
           {loadingTeamHistory ? (
-            <EmptyState message="Chargement…" size="lg" />
+            <EmptyState message="Chargement…" />
           ) : teamHistoryError ? (
             <div style={{ backgroundColor: '#1E1215', border: '1px solid #EF444440', borderRadius: 8, padding: '20px 24px', color: '#EF4444', fontSize: '0.85rem' }}>
               Erreur lors du chargement : {teamHistoryError}
             </div>
           ) : !teamKpis || teamKpis.sessions === 0 ? (
-            <EmptyState message="Aucune séance RPE enregistrée sur cette période." size="lg" />
+            <EmptyState message="Aucune séance RPE enregistrée sur cette période." />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 

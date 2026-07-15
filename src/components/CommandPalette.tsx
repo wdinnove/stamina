@@ -6,6 +6,7 @@ import { navGroups } from '../layout/Sidebar';
 import { playersApi, attendanceApi, matchesApi } from '../api';
 import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar } from './PlayerAvatar';
+import { playerNameFull } from '../utils/playerName';
 import { fmtDate, fmtDateShort, fmtDateWithDay, fmtDateFull } from '../utils/dateFormat';
 import type { Player, TrainingSession, Match, Team, Season } from '../data/types';
 
@@ -33,8 +34,8 @@ function dateKeywords(iso: string): string[] {
 }
 
 /**
- * Une joueuse retrouvée sur plusieurs saisons d'une même équipe ne doit apparaître qu'une
- * fois (la saison la plus récente) ; si elle est sur plusieurs équipes, une ligne par
+ * Un joueur retrouvé sur plusieurs saisons d'une même équipe ne doit apparaître qu'une
+ * fois (la saison la plus récente) ; s'il est sur plusieurs équipes, une ligne par
  * équipe, chacune sur sa saison la plus récente.
  */
 function dedupeLatestPerTeam(hits: PlayerHit[]): PlayerHit[] {
@@ -82,8 +83,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       .then(list => setMatches([...list].sort((a, b) => b.date.localeCompare(a.date))))
       .catch(() => setMatches([]));
 
-    // Joueuses des autres équipes/saisons (y compris les années précédentes, y compris
-    // les saisons passées de l'équipe active) — pour retrouver une joueuse qui n'est plus
+    // Joueurs des autres équipes/saisons (y compris les années précédentes, y compris
+    // les saisons passées de l'équipe active) — pour retrouver un joueur qui n'est plus
     // dans l'effectif actuel et basculer directement sur le bon contexte équipe/saison.
     const otherOptions = options.filter(o => !(o.team.id === team.id && o.season.id === season.id));
     Promise.all(otherOptions.map(o =>
@@ -104,11 +105,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     window.location.reload();
   };
 
-  // Joueuse d'une autre équipe : bascule d'équipe/saison puis atterrit directement sur sa fiche.
+  // Joueur d'une autre équipe : bascule d'équipe/saison puis atterrit directement sur sa fiche.
   const openCrossTeamPlayer = (hit: PlayerHit) => {
     onOpenChange(false);
     setSelected({ team: hit.team, season: hit.season });
-    window.location.href = `/players/${hit.player.id}`;
+    window.location.href = `/performance-individuelle/${hit.player.id}/vue-ensemble`;
   };
 
   // Séances et matchs ne s'affichent qu'une fois une recherche tapée (sinon ils noient
@@ -132,7 +133,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           autoFocus
           value={query}
           onValueChange={setQuery}
-          placeholder="Rechercher une joueuse, un match, une date, une page…"
+          placeholder="Rechercher un joueur, un match, une date, une page…"
           style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#E6E9EF', fontSize: 15 }}
         />
         <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: '#5B6472', border: '1px solid #262B35', borderRadius: 4, padding: '1px 5px' }}>
@@ -146,16 +147,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         </Command.Empty>
 
         {(players.length > 0 || (showTemporal && otherSeasonPlayers.length > 0)) && (
-          <Command.Group heading="Joueuses" style={groupStyle}>
+          <Command.Group heading="Joueurs" style={groupStyle}>
             {players.map(p => (
               <Command.Item
                 key={p.id}
                 value={`${p.firstName} ${p.lastName}`}
-                onSelect={() => go(`/players/${p.id}`)}
+                onSelect={() => go(`/performance-individuelle/${p.id}/vue-ensemble`)}
                 style={itemStyle}
               >
                 <PlayerAvatar player={p} size={22} />
-                <span>{p.firstName} {p.lastName}</span>
+                <span>{playerNameFull(p)}</span>
               </Command.Item>
             ))}
             {/* Autres équipes/saisons (dont les années précédentes) : seulement une fois une
@@ -169,7 +170,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 style={itemStyle}
               >
                 <PlayerAvatar player={p} size={22} />
-                <span style={{ flex: 1 }}>{p.firstName} {p.lastName}</span>
+                <span style={{ flex: 1 }}>{playerNameFull(p)}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#475569', fontSize: '0.68rem' }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: team.color, flexShrink: 0 }} />
                   {team.name} · {season.label}

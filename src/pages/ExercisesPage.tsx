@@ -8,7 +8,7 @@ import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge } from '../components';
+import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge, DropzoneEmptyState } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
@@ -466,11 +466,11 @@ export default function ExercisesPage() {
       {error && <div style={{ color: '#EF4444', fontSize: '0.85rem', marginBottom: 16 }}>{error}</div>}
 
       {!loading && filtered.length === 0 && (
-        <div
+        <DropzoneEmptyState
+          label={search ? 'Aucun exercice trouvé' : 'Cliquer pour ajouter un exercice'}
+          icon={search ? null : undefined}
           onClick={search ? undefined : () => setShowModal(true)}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed #2A2F3A', borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: '#475569', fontSize: '0.85rem', cursor: search ? 'default' : 'pointer' }}>
-          {search ? 'Aucun exercice trouvé' : (<><Plus size={15} /> Cliquer pour ajouter un exercice</>)}
-        </div>
+        />
       )}
 
       {/* Table */}

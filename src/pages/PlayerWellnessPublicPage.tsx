@@ -8,6 +8,7 @@ import {
   wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues,
 } from '../utils/wellness';
 import { fmtDate } from '../utils/dateFormat';
+import { playerNameFull } from '../utils/playerName';
 import type { WellnessEntryMethod } from '../data/types';
 
 const DIMS = WELLNESS_DIMENSIONS;
@@ -56,7 +57,7 @@ export default function PlayerWellnessPublicPage() {
       .then(info => {
         if (!info) { setNotFound(true); }
         else {
-          setPlayerName(`${info.firstName} ${info.lastName}`);
+          setPlayerName(playerNameFull(info));
           setEntryMode(info.publicWellnessMethod ?? 'detailed');
         }
         setLoading(false);

@@ -1,5 +1,6 @@
 import { PlayerAvatar } from './PlayerAvatar';
 import { getAge, formatDate } from '../data';
+import { playerNameFull } from '../utils/playerName';
 import type { Player } from '../data/types';
 
 const flagEmoji: Record<string, string> = { FR: '🇫🇷', ES: '🇪🇸', CI: '🇨🇮', MA: '🇲🇦', IT: '🇮🇹' };
@@ -19,7 +20,7 @@ export function PlayerHero({ player, marginBottom = 14 }: { player: Player; marg
       <PlayerAvatar player={player} size={44} />
       <div style={{ flex: 1, minWidth: 160 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>{player.firstName} {player.lastName}</span>
+          <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>{playerNameFull(player)}</span>
           <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '1rem' }}>#{player.number} · {player.position}</span>
         </div>
         <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>

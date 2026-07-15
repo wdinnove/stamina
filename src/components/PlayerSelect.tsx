@@ -1,4 +1,5 @@
 import { User, ChevronDown } from 'lucide-react';
+import { playerNameFull } from '../utils/playerName';
 
 interface PlayerSelectOption {
   id: string;
@@ -30,7 +31,7 @@ export function PlayerSelect({ players, value, onChange, style, disabled }: Play
         }}
       >
         {players.map(p => (
-          <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
+          <option key={p.id} value={p.id}>{playerNameFull(p)}</option>
         ))}
       </select>
       <ChevronDown size={15} style={{ position: 'absolute', right: 8, color: '#475569', pointerEvents: 'none' }} />

@@ -1,5 +1,6 @@
 import { PCA } from 'ml-pca';
 import { pearson, hasVariance } from '../utils/correlation';
+import { playerNameFull } from '../utils/playerName';
 import type { TeamMatchStat, MatchStat, Player } from './types';
 
 // Ré-export : WinFactorsList et PlayerImpactList l'importent depuis ce module
@@ -80,7 +81,7 @@ export function computePlayerImpact(players: Player[], allStats: MatchStat[]): P
       if (!hasVariance(xs)) return null;
       const ys = ss.map(s => s.result === 'win' ? 1 : 0);
       return {
-        playerId: p.id, label: `${p.firstName} ${p.lastName}`,
+        playerId: p.id, label: playerNameFull(p),
         corr: pearson(xs, ys), n: ss.length,
         avgEval: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 10) / 10,
       };

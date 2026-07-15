@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ChevronDown, Menu, Check, X, ArrowLeft, Settings, Search } from 'lucide-react';
+import { ChevronDown, Check, X, ArrowLeft, Settings, Search } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { navGroups, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
@@ -7,10 +7,10 @@ import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonCont
 import { supabase } from '../api/client';
 import { NotificationBell } from '../components/NotificationCenter';
 
-interface TopBarProps { onMenuOpen: () => void; onOpenSearch: () => void; }
+interface TopBarProps { onOpenSearch: () => void; }
 
-export function TopBar({ onMenuOpen, onOpenSearch }: TopBarProps) {
-  const { options, selected, setSelected, loading } = useTeamSeason();
+export function TopBar({ onOpenSearch }: TopBarProps) {
+  const { options, selected, setSelected, loading, orgRole } = useTeamSeason();
   const [dropOpen, setDropOpen]   = useState(false);
   const [initials, setInitials]   = useState('');
   const dropRef  = useRef<HTMLDivElement>(null);
@@ -125,12 +125,13 @@ export function TopBar({ onMenuOpen, onOpenSearch }: TopBarProps) {
         )}
       </div>
 
-      {/* Desktop: recherche globale */}
+      {/* Desktop: recherche globale — centrée */}
       <button
         onClick={onOpenSearch}
         className="hidden md:flex"
         style={{
-          alignItems: 'center', gap: 10, flex: 1, maxWidth: 380,
+          position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+          alignItems: 'center', gap: 10, width: 420,
           backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6,
           padding: '7px 12px', color: '#475569', fontSize: '0.8rem', cursor: 'pointer',
         }}
@@ -160,23 +161,32 @@ export function TopBar({ onMenuOpen, onOpenSearch }: TopBarProps) {
             <div style={{ color: '#00E5A080', fontSize: '0.52rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Management App</div>
           </div>
         </div>
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-          <button onClick={onOpenSearch} title="Rechercher"
-            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}>
-            <Search size={20} />
-          </button>
-          <button onClick={onMenuOpen}
-            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}>
-            <Menu size={22} />
-          </button>
-        </div>
+        <div style={{ flex: 1 }} />
       </div>
 
-      {/* Desktop right: notifications + avatar */}
+      {/* Desktop right: notifications + configuration + avatar */}
       <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <NotificationBell />
+        {orgRole === 'admin' && (
+          <button onClick={() => navigate('/configuration')} title="Configuration"
+            style={{
+              width: 34, height: 34, borderRadius: '50%',
+              backgroundColor: location.pathname.startsWith('/configuration') ? 'rgba(0,229,160,0.08)' : '#1E2229',
+              border: `1px solid ${location.pathname.startsWith('/configuration') ? '#00E5A0' : '#2A2F3A'}`,
+              color: location.pathname.startsWith('/configuration') ? '#00E5A0' : '#94A3B8',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+            <Settings size={16} />
+          </button>
+        )}
         <button onClick={() => navigate('/profile')} title="Mon profil"
-          style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', color: '#00E5A0', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          style={{
+            width: 34, height: 34, borderRadius: '50%',
+            backgroundColor: location.pathname.startsWith('/profile') ? 'rgba(0,229,160,0.08)' : '#1E2229',
+            border: `1px solid ${location.pathname.startsWith('/profile') ? '#00E5A0' : '#2A2F3A'}`,
+            color: '#00E5A0', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
           {initials || '?'}
         </button>
       </div>

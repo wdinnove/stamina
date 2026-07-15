@@ -16,6 +16,7 @@ import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import { computeMatchPCA, computeWinFactors, computePlayerImpact } from '../data/pca';
 import { computeTsb, tsbZone, rpeColor } from '../utils/rpe';
 import { wellnessScoreColor } from '../utils/wellness';
+import { playerNameShort } from '../utils/playerName';
 import {
   teamIndicators, indicatorByKey, getSeries, correlateIndicators, detectRiskAlerts,
   type CrossScope, type IndicatorDef, type LagMode,
@@ -107,7 +108,8 @@ type Tab = 'overview' | 'players' | 'matches' | 'impact' | 'pca' | 'load' | 'wel
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':   'overview',
-  'stats-joueuses': 'players',
+  'stats-joueurs':  'players',
+  'stats-joueuses': 'players', // ancien slug — conservé pour ne pas casser les liens existants
   'stats-matchs':   'matches',
   'impact':         'impact',
   'acp':            'pca',
@@ -119,7 +121,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 
 const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
   { tabs: [{ key: 'overview', slug: 'vue-ensemble', label: "Vue d'ensemble" }] },
-  { label: 'Stats',      tabs: [{ key: 'players', slug: 'stats-joueuses', label: 'Joueuses' }, { key: 'matches', slug: 'stats-matchs', label: 'Matchs' }] },
+  { label: 'Stats',      tabs: [{ key: 'players', slug: 'stats-joueurs', label: 'Joueurs' }, { key: 'matches', slug: 'stats-matchs', label: 'Matchs' }] },
   { label: 'Avancé',     tabs: [{ key: 'impact', slug: 'impact', label: 'Impact' }, { key: 'pca', slug: 'acp', label: 'ACP' }] },
   { label: 'Charge & bien-être', tabs: [{ key: 'load', slug: 'charge-physique', label: 'Charge physique' }, { key: 'wellness', slug: 'bien-etre', label: 'Bien-être' }] },
   { label: 'Comparer',   tabs: [{ key: 'correlations', slug: 'correlations', label: 'Corrélations' }, { key: 'comparison', slug: 'comparaison', label: 'Comparaison' }] },
@@ -170,7 +172,7 @@ export default function PerformanceCollectivePage() {
   const presentP = attP.filter(a => a.status === 'present' || a.status === 'late').length;
   const presencePct = attP.length ? Math.round(presentP / attP.length * 100) : null;
 
-  // ── Statistiques joueuses / matchs (ex-AnalyseCollectivePage) ─────────────
+  // ── Statistiques joueurs / matchs (ex-AnalyseCollectivePage) ─────────────
   const [normalize25, setNormalize25] = useState(false);
   const [playersView, setPlayersView] = useState<'basic' | 'advanced'>('basic');
   const [matchesView, setMatchesView] = useState<'basic' | 'advanced'>('basic');
@@ -431,7 +433,7 @@ export default function PerformanceCollectivePage() {
     [scope, aDef, bDef, from, to, lagDays],
   );
 
-  // ── Comparaison joueuses ───────────────────────────────────────────────────
+  // ── Comparaison joueurs ───────────────────────────────────────────────────
   const rows: ComparisonRow[] = useMemo(() => (data?.players ?? []).map(p => {
     const pScope: CrossScope = { player: p };
     const meanOf = (def: IndicatorDef) => {
@@ -459,7 +461,7 @@ export default function PerformanceCollectivePage() {
     return (
       <div className="p-4 md:p-6">
         <h1 style={{ color: '#F1F5F9', margin: '0 0 20px' }}>Performance collective</h1>
-        <Card><EmptyState message="Aucune joueuse dans l'effectif de cette saison." /></Card>
+        <Card><EmptyState message="Aucun joueur dans l'effectif de cette saison." /></Card>
       </div>
     );
   }
@@ -468,40 +470,56 @@ export default function PerformanceCollectivePage() {
     <div className="p-4 md:p-6">
       <h1 style={{ color: '#F1F5F9', margin: '0 0 16px' }}>Performance collective</h1>
 
-      {/* ── Barre d'onglets groupée ── */}
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
-        {TAB_GROUPS.map((group, gi) => (
-          <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {group.label && (
-              <span style={{ color: '#334155', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.label}</span>
-            )}
-            <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
-              {group.tabs.map(t => (
-                <button key={t.key} onClick={() => setActiveTab(t.slug)}
-                  style={{ padding: '6px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap',
-                    backgroundColor: activeTab === t.key ? '#1E2229' : 'transparent',
-                    color: activeTab === t.key ? '#F1F5F9' : '#94A3B8', fontWeight: activeTab === t.key ? 600 : 400, transition: 'all 0.15s' }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <DateRangeCard
-        from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-        onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
-        onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+      <TeamStatsHero
+        teamName={selected.team.name} category={selected.team.category} seasonLabel={selected.season.label}
+        teamStats={filteredTeamStats} statThresholds={statThresholds}
       />
 
-      {/* ══ VUE D'ENSEMBLE ══════════════════════════════════════════════════ */}
+      <div className="flex flex-col lg:flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
+
+        {/* ── Menu vertical d'onglets ── */}
+        <nav className="w-full lg:w-[200px]" style={{ flexShrink: 0, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 6 }}>
+          <div className="flex lg:flex-col" style={{ gap: 14, overflowX: 'auto' }}>
+            {TAB_GROUPS.map((group, gi) => (
+              <div key={gi} style={{ flexShrink: 0 }}>
+                {group.label && (
+                  <div style={{ padding: '6px 10px 4px', color: '#475569', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                    {group.label}
+                  </div>
+                )}
+                <div className="flex lg:flex-col" style={{ gap: 2 }}>
+                  {group.tabs.map(t => (
+                    <button key={t.key} onClick={() => setActiveTab(t.slug)}
+                      style={{
+                        textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        fontSize: '0.83rem', whiteSpace: 'nowrap',
+                        backgroundColor: activeTab === t.key ? 'rgba(0,229,160,0.08)' : 'transparent',
+                        color: activeTab === t.key ? '#00E5A0' : '#94A3B8',
+                        fontWeight: activeTab === t.key ? 600 : 400,
+                        borderLeft: activeTab === t.key ? '2px solid #00E5A0' : '2px solid transparent',
+                        transition: 'all 0.15s',
+                      }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </nav>
+
+        {/* ── Contenu de l'onglet ── */}
+        <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+
+          <DateRangeCard
+            from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
+            onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
+            onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+          />
+
+          {/* ══ VUE D'ENSEMBLE ══════════════════════════════════════════════════ */}
       {activeTab === 'overview' && (
         <>
-          <TeamStatsHero
-            teamName={selected.team.name} category={selected.team.category} seasonLabel={selected.season.label}
-            teamStats={filteredTeamStats} statThresholds={statThresholds}
-          />
           <div className="grid grid-cols-2 lg:grid-cols-5" style={{ gap: 10 }}>
             <MiniKpi title="État actuel" sub="TSB · fraîcheur moyenne"
               value={tsbNow !== null ? `${tsbNow > 0 ? '+' : ''}${tsbNow}` : null}
@@ -522,7 +540,7 @@ export default function PerformanceCollectivePage() {
         </>
       )}
 
-      {/* ══ STATISTIQUES JOUEUSES ═══════════════════════════════════════════ */}
+      {/* ══ STATISTIQUES JOUEURS ════════════════════════════════════════════ */}
       {activeTab === 'players' && (
         <Card>
           <CardTitle icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />} mb={18}
@@ -544,7 +562,7 @@ export default function PerformanceCollectivePage() {
                 </div>
               </div>
             }
-          >Statistiques joueuses</CardTitle>
+          >Statistiques joueurs</CardTitle>
 
           {playersView === 'basic' ? (
             sortedPJ.length === 0 ? <EmptyState message="Aucune statistique pour cette période." /> : (
@@ -578,7 +596,7 @@ export default function PerformanceCollectivePage() {
                       const pmCol = avgPm > 0 ? '#00E5A0' : avgPm < 0 ? '#EF4444' : '#475569';
                       return (
                         <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
-                          <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{p.firstName} {p.lastName}</td>
+                          <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{playerNameShort(p)}</td>
                           <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                           <td style={TD}>{tit}</td>
@@ -638,7 +656,7 @@ export default function PerformanceCollectivePage() {
                   <tbody>
                     {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
                       <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
-                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{p.firstName} {p.lastName}</td>
+                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{playerNameShort(p)}</td>
                         <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
@@ -789,7 +807,7 @@ export default function PerformanceCollectivePage() {
         </Card>
       )}
 
-      {/* ══ IMPACT JOUEUSES ═════════════════════════════════════════════════ */}
+      {/* ══ IMPACT JOUEURS ══════════════════════════════════════════════════ */}
       {activeTab === 'impact' && (
         <Card>
           <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Qui fait la différence sur le terrain ?</h3>
@@ -878,16 +896,19 @@ export default function PerformanceCollectivePage() {
         </>
       )}
 
-      {/* ══ COMPARAISON JOUEUSES ════════════════════════════════════════════ */}
+      {/* ══ COMPARAISON JOUEURS ═════════════════════════════════════════════ */}
       {activeTab === 'comparison' && (
         <Card>
           <CardTitle icon={<TrendingUp size={12} style={{ color: '#00E5A0' }} />} mb={10}
-            info={`${rows.length} joueuse${rows.length > 1 ? 's' : ''} · moyennes sur la période`}>
-            Comparaison des joueuses
+            info={`${rows.length} joueur${rows.length > 1 ? 's' : ''} · moyennes sur la période`}>
+            Comparaison des joueurs
           </CardTitle>
           <PlayerComparisonTable rows={rows} aDef={aDef} bDef={bDef} onOpenPlayer={openPlayer} />
         </Card>
       )}
+
+        </div>
+      </div>
     </div>
   );
 }
