@@ -28,7 +28,7 @@ export function Layout() {
   return (
     <TeamSeasonProvider>
     <NotificationProvider>
-    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#0D0F14', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', position: 'fixed', inset: 0, backgroundColor: '#0D0F14', overflow: 'hidden' }}>
       {/* Desktop sidebar */}
       <div className="hidden md:flex" style={{ position: 'relative' }}>
         <Sidebar collapsed={collapsed} />
