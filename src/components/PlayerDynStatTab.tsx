@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { DateRangeCard, useDateRange } from './DateRangeCard';
+import { MetricRow, SubLabel, Block, createSignalCollector, AnalyticalSummary } from './TrendBlocks';
 import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import type { PlayerAdvancedStats } from '../data/playerAdvanced';
@@ -219,157 +220,19 @@ function avgAdv(ms: MatchStat[], map: Map<string, TeamMatchStat> | undefined, ke
   return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : null;
 }
 
-function deltaPct(period: number | null, season: number | null): number | null {
-  if (period === null || season === null || season === 0) return null;
-  return +((period - season) / Math.abs(season) * 100).toFixed(1);
-}
-
-function fmt(v: number | null, dec = 1): string {
-  if (v === null) return '—';
-  return v.toFixed(dec);
-}
-
-function zoneColor(pct: number, hib: boolean): string {
-  const ok = hib ? pct > 0 : pct < 0;
-  if (Math.abs(pct) >= 15) return ok ? '#00E5A0' : '#EF4444';
-  if (Math.abs(pct) >= 7)  return ok ? '#4ADE80' : '#F87171';
-  return ok ? '#6EE7B7' : '#FCA5A5';
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-interface MetricRowProps {
-  label: string;
-  period: number | null;
-  season: number | null;
-  unit?: string;
-  higherIsBetter?: boolean;
-  dec?: number;
-  sign?: boolean;
-  muted?: boolean; // stat secondaire / contexte
-}
-
-// Colonnes droites à largeur fixe pour alignement parfait sur toutes les lignes
-const COL = { period: 56, arrow: 22, season: 56, evo: 18 } as const;
-
-function MetricRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false }: MetricRowProps) {
-  const pct = deltaPct(period, season);
-  const significant = !muted && pct !== null && Math.abs(pct) >= 3;
-  const periodColor = muted
-    ? '#475569'
-    : significant ? zoneColor(pct!, higherIsBetter) : '#94A3B8';
-  const evoColor = significant ? zoneColor(pct!, higherIsBetter) : pct !== null && !muted ? '#334155' : 'transparent';
-
-  // % et " UA" s'affichent dans le chiffre, les autres unités vont dans le label
-  const unitInNumber = unit === '%' || unit === ' UA';
-  const unitSuffix = unitInNumber ? unit : '';
-  const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmt(period, dec)}${unitSuffix}` : '—';
-  const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmt(season, dec)}${unitSuffix}` : '—';
-  const evoStr    = pct === null || muted ? '' : significant ? (pct > 0 ? '↑' : '↓') : '=';
-  const unitLabel = unit && !unitInNumber ? unit.trim() : '';
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderBottom: '1px solid #1A1F28' }}>
-      {/* Label + unité si pertinente */}
-      <span style={{ flex: 1, fontSize: '0.7rem', color: muted ? '#3E4756' : '#64748B', lineHeight: 1.2 }}>
-        {label}{unitLabel && <span style={{ color: '#334155', fontSize: '0.6rem', marginLeft: 3 }}>{unitLabel}</span>}
-      </span>
-
-      {/* Valeur période — largeur fixe, alignée à droite */}
-      <span style={{ width: COL.period, flexShrink: 0, textAlign: 'right', fontSize: muted ? '0.78rem' : '0.88rem', fontWeight: 700, color: periodColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-        {periodStr}
-      </span>
-
-      {/* Flèche — largeur fixe, centrée */}
-      <span style={{ width: COL.arrow, flexShrink: 0, textAlign: 'center', fontSize: '0.65rem', color: '#334155' }}>
-        →
-      </span>
-
-      {/* Valeur saison — largeur fixe, alignée à gauche, blanche */}
-      <span style={{ width: COL.season, flexShrink: 0, textAlign: 'left', fontSize: muted ? '0.78rem' : '0.88rem', fontWeight: 600, color: muted ? '#334155' : '#E2E8F0', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-        {seasonStr}
-      </span>
-
-      {/* Évolution — largeur fixe, alignée à droite */}
-      <span style={{ width: COL.evo, flexShrink: 0, textAlign: 'right', fontSize: '0.62rem', fontWeight: 700, color: evoColor, whiteSpace: 'nowrap' }}>
-        {evoStr}
-      </span>
-    </div>
-  );
-}
-
-function Divider() {
-  return <div style={{ height: 1, backgroundColor: '#252A35', margin: '5px 0' }} />;
-}
-
-function SubLabel({ children }: { children: string }) {
-  return (
-    <div style={{ fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#334155', fontWeight: 600, margin: '6px 0 3px' }}>
-      {children}
-    </div>
-  );
-}
-
 // Hauteurs fixes du contenu de chaque bloc (px) — identiques données/vide
 const BH = { perf: 204, scoring: 415, play: 357, def: 174, reb: 233, rpe: 115, well: 263 } as const;
-
-function NoMatch({ message = 'Aucun match sur cette période' }: { message?: string }) {
-  return (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ fontSize: '0.72rem', color: '#334155', fontStyle: 'italic' }}>{message}</span>
-    </div>
-  );
-}
-
-interface BadgeProps { period: number | null; season: number | null; higherIsBetter?: boolean; }
-function TrendBadge({ period, season, higherIsBetter = true }: BadgeProps) {
-  const pct = deltaPct(period, season);
-  const significant = pct !== null && Math.abs(pct) >= 3;
-  const improved = significant && (higherIsBetter ? pct! > 0 : pct! < 0);
-  const declined = significant && (higherIsBetter ? pct! < 0 : pct! > 0);
-  const bg    = improved ? '#00E5A018' : declined ? '#EF444418' : '#1E2229';
-  const color = improved ? '#00E5A0'   : declined ? '#EF4444'   : '#475569';
-  const icon  = improved ? '↑'         : declined ? '↓'         : '=';
-  return (
-    <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: bg, border: `1px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <span style={{ fontSize: '0.65rem', fontWeight: 700, color, lineHeight: 1 }}>{icon}</span>
-    </div>
-  );
-}
-
-interface BlockProps { title: string; subtitle?: string; children: React.ReactNode; badge?: BadgeProps; contentHeight?: number; }
-function Block({ title, subtitle, children, badge, contentHeight }: BlockProps) {
-  return (
-    <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 14px', ...(contentHeight !== undefined ? { height: contentHeight, display: 'flex', flexDirection: 'column' } : {}) }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexShrink: 0 }}>
-        {badge && <TrendBadge {...badge} />}
-        <span style={{ flex: 1, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#475569', fontWeight: 700 }}>{title}</span>
-        {subtitle && <span style={{ fontSize: '0.62rem', color: '#334155' }}>{subtitle}</span>}
-      </div>
-      <div style={contentHeight !== undefined ? { flex: 1, minHeight: 0, overflow: 'hidden' } : {}}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-interface Signal { label: string; pct: number; hib: boolean; pVal: number; sVal: number; unit: string; dec: number; }
-// "en hausse/baisse" = direction réelle du chiffre (pas de la performance)
-function toSentence(s: Signal): string {
-  const dir = s.pct > 0 ? 'en hausse' : 'en baisse';
-  return `${s.label} ${dir} de ${Math.abs(s.pct)}% · ${s.pVal.toFixed(s.dec)}${s.unit} vs ${s.sVal.toFixed(s.dec)}${s.unit} saison`;
-}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seasonEnd, teamStatsMap }: Props) {
-  const dateRange = useDateRange(seasonStart, 21, seasonEnd);
+  const dateRange = useDateRange(seasonStart, 'saison', seasonEnd);
   const didInit = useRef(false);
 
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
-    dateRange.applyPreset(21);
+    dateRange.applyPreset('saison');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -468,12 +331,7 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seaso
 
   // ── Résumé analytique ─────────────────────────────────────────────────────
 
-  const signals: Signal[] = [];
-  function add(label: string, pv: number | null, sv: number | null, unit: string, dec = 1, hib = true, thr = 5) {
-    const pct = deltaPct(pv, sv);
-    if (pv === null || sv === null || pct === null || Math.abs(pct) < thr) return;
-    signals.push({ label, pct, hib, pVal: pv, sVal: sv, unit, dec });
-  }
+  const { signals, add } = createSignalCollector();
 
   add('Points',             p('pts'),  s('pts'),  '');
   add('Temps de jeu',       p('min'),  s('min'),  'min');
@@ -504,11 +362,6 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seaso
   add('Stress',             pStr,      sStr,      '', 1, false);
   add('Motivation',         pMot,      sMot,      '');
 
-  signals.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-  const improved = signals.filter(s => s.hib ? s.pct > 0 : s.pct < 0);
-  const declined = signals.filter(s => s.hib ? s.pct < 0 : s.pct > 0);
-
-  const noData   = matchP.length === 0 && rpeP.length === 0 && wellP.length === 0;
   const mSub     = matchP.length ? `${matchP.length} match${matchP.length > 1 ? 's' : ''}` : undefined;
 
   return (
@@ -520,51 +373,39 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seaso
         style={{ marginBottom: 0 }}
       />
 
-      {noData ? (
-        <div style={{ textAlign: 'center', padding: '48px 20px', color: '#475569', fontSize: '0.85rem' }}>
-          Aucune donnée sur cette période.
-        </div>
-      ) : (
-        <>
           <div className="grid grid-cols-1 lg:grid-cols-3" style={{ gap: 12 }}>
 
             {/* ── Col 1 : Performance + Charge + Bien-être ────────────── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
               <Block title="Performance globale" subtitle={mSub} badge={{ period: evalP, season: evalS }} contentHeight={BH.perf}>
-                {matchP.length === 0 ? <NoMatch /> : (
-                  <>
-                    <MetricRow label="Temps de jeu"    period={p('min')} season={s('min')} />
-                    <MetricRow label="Points"           period={p('pts')} season={s('pts')} />
-                    <MetricRow label="Évaluation"       period={evalP}    season={evalS} />
-                    <MetricRow label="+/-"              period={pmP}      season={pmS}      sign />
-                    <MetricRow label="Offensive Rating" period={pOrtg}    season={sOrtg}    dec={1} />
-                  </>
-                )}
+                <>
+                  <MetricRow label="Temps de jeu"    period={p('min')} season={s('min')} />
+                  <MetricRow label="Points"           period={p('pts')} season={s('pts')} />
+                  <MetricRow label="Évaluation"       period={evalP}    season={evalS} />
+                  <MetricRow label="+/-"              period={pmP}      season={pmS}      sign />
+                  <MetricRow label="Offensive Rating" period={pOrtg}    season={sOrtg}    dec={1} />
+                </>
               </Block>
 
               <Block title="Charge physique" subtitle={rpeP.length ? `${rpeP.length} séance${rpeP.length > 1 ? 's' : ''}` : undefined} badge={{ period: pLoadWk !== null ? +pLoadWk : null, season: sLoadWk !== null ? +sLoadWk : null, higherIsBetter: false }} contentHeight={BH.rpe}>
-                {rpeP.length === 0 ? <NoMatch message="Aucune séance sur cette période" /> : (
-                  <>
-                    <MetricRow label="RPE moyen"    period={pRpe}     season={sRpe}     higherIsBetter={false} />
-                    <MetricRow label="Charge hebdo." period={pLoadWk !== null ? +pLoadWk : null} season={sLoadWk !== null ? +sLoadWk : null} unit=" UA" dec={0} higherIsBetter={false} />
-                  </>
-                )}
+                <>
+                  <MetricRow label="RPE moyen"    period={pRpe}     season={sRpe}     higherIsBetter={false} />
+                  <MetricRow label="Charge hebdo." period={pLoadWk !== null ? +pLoadWk : null} season={sLoadWk !== null ? +sLoadWk : null} unit=" UA" dec={0} higherIsBetter={false} />
+                </>
               </Block>
 
               <div style={{ marginTop: 'auto' }}>
               <Block title="Bien-être" subtitle={wellP.length ? `${wellP.length} entrée${wellP.length > 1 ? 's' : ''}` : undefined} badge={{ period: pSco, season: sSco }} contentHeight={BH.well}>
-                {wellP.length === 0 ? <NoMatch message="Aucune entrée sur cette période" /> : (
-                  <>
-                    <MetricRow label="Score global" period={pSco} season={sSco} />
-                    <MetricRow label="Sommeil"       period={pSlp} season={sSlp} />
-                    <MetricRow label="Fatigue"       period={pFat} season={sFat} higherIsBetter={false} />
-                    <MetricRow label="Humeur"        period={pMod} season={sMod} />
-                    <MetricRow label="Motivation"    period={pMot} season={sMot} />
-                    <MetricRow label="Stress"        period={pStr} season={sStr} higherIsBetter={false} />
-                    <MetricRow label="Douleurs"      period={pSor} season={sSor} higherIsBetter={false} />
-                  </>
-                )}
+                <>
+                  <MetricRow label="Score global" period={pSco} season={sSco} />
+                  <MetricRow label="Sommeil"       period={pSlp} season={sSlp} />
+                  <MetricRow label="Fatigue"       period={pFat} season={sFat} higherIsBetter={false} />
+                  <MetricRow label="Humeur"        period={pMod} season={sMod} />
+                  <MetricRow label="Motivation"    period={pMot} season={sMot} />
+                  <MetricRow label="Stress"        period={pStr} season={sStr} higherIsBetter={false} />
+                  <MetricRow label="Douleurs"      period={pSor} season={sSor} higherIsBetter={false} />
+                </>
               </Block>
               </div>
             </div>
@@ -573,35 +414,31 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seaso
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
               <Block title="Scoring" badge={{ period: pEfg, season: sEfg }} contentHeight={BH.scoring}>
-                {matchP.length === 0 ? <NoMatch /> : (
-                  <>
-                    <MetricRow label="eFG%"    period={pEfg}      season={sEfg}      unit="%" />
-                    <SubLabel>2 pts</SubLabel>
-                    <MetricRow label="Tentés"  period={p('fg2a')} season={s('fg2a')} dec={1} />
-                    <MetricRow label="Réussis" period={p('fg2m')} season={s('fg2m')} dec={1} />
-                    <MetricRow label="%"       period={pFg2}      season={sFg2}      unit="%" />
-                    <SubLabel>3 pts</SubLabel>
-                    <MetricRow label="Tentés"  period={p('fg3a')} season={s('fg3a')} dec={1} />
-                    <MetricRow label="Réussis" period={p('fg3m')} season={s('fg3m')} dec={1} />
-                    <MetricRow label="%"       period={pFg3}      season={sFg3}      unit="%" />
-                    <SubLabel>Lancers francs</SubLabel>
-                    <MetricRow label="Tentés"  period={p('fta')}  season={s('fta')}  dec={1} />
-                    <MetricRow label="Réussis" period={p('ftm')}  season={s('ftm')}  dec={1} />
-                    <MetricRow label="%"       period={pFt}       season={sFt}       unit="%" />
-                  </>
-                )}
+                <>
+                  <MetricRow label="eFG%"    period={pEfg}      season={sEfg}      unit="%" />
+                  <SubLabel>2 pts</SubLabel>
+                  <MetricRow label="Tentés"  period={p('fg2a')} season={s('fg2a')} dec={1} />
+                  <MetricRow label="Réussis" period={p('fg2m')} season={s('fg2m')} dec={1} />
+                  <MetricRow label="%"       period={pFg2}      season={sFg2}      unit="%" />
+                  <SubLabel>3 pts</SubLabel>
+                  <MetricRow label="Tentés"  period={p('fg3a')} season={s('fg3a')} dec={1} />
+                  <MetricRow label="Réussis" period={p('fg3m')} season={s('fg3m')} dec={1} />
+                  <MetricRow label="%"       period={pFg3}      season={sFg3}      unit="%" />
+                  <SubLabel>Lancers francs</SubLabel>
+                  <MetricRow label="Tentés"  period={p('fta')}  season={s('fta')}  dec={1} />
+                  <MetricRow label="Réussis" period={p('ftm')}  season={s('ftm')}  dec={1} />
+                  <MetricRow label="%"       period={pFt}       season={sFt}       unit="%" />
+                </>
               </Block>
 
               <div style={{ marginTop: 'auto' }}>
               <Block title="Défense" badge={{ period: p('intercepts'), season: s('intercepts') }} contentHeight={BH.def}>
-                {matchP.length === 0 ? <NoMatch /> : (
-                  <>
-                    <MetricRow label="Contres"             period={p('ct')}         season={s('ct')} />
-                    <MetricRow label="Interceptions"       period={p('intercepts')} season={s('intercepts')} />
-                    <MetricRow label="Reb. défensifs"      period={p('rd')}         season={s('rd')}         dec={1} />
-                    <MetricRow label="Fautes personnelles" period={p('fpr')}        season={s('fpr')}        higherIsBetter={false} />
-                  </>
-                )}
+                <>
+                  <MetricRow label="Contres"             period={p('ct')}         season={s('ct')} />
+                  <MetricRow label="Interceptions"       period={p('intercepts')} season={s('intercepts')} />
+                  <MetricRow label="Reb. défensifs"      period={p('rd')}         season={s('rd')}         dec={1} />
+                  <MetricRow label="Fautes personnelles" period={p('fpr')}        season={s('fpr')}        higherIsBetter={false} />
+                </>
               </Block>
               </div>
             </div>
@@ -610,128 +447,36 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seaso
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
               <Block title="Playmaking" badge={{ period: pPtsG, season: sPtsG }} contentHeight={BH.play}>
-                {matchP.length === 0 ? <NoMatch /> : (
-                  <>
-                    <MetricRow label="Possessions"       period={pPoss}    season={sPoss}    dec={1} />
-                    <MetricRow label="% Usage"           period={pUsg}     season={sUsg}     unit="%" />
-                    <MetricRow label="Points générés"    period={pPtsG}    season={sPtsG}    dec={1} />
-                    <MetricRow label="Points"            period={p('pts')} season={s('pts')} dec={1} />
-                    <MetricRow label="Passes décisives"  period={p('pd')}  season={s('pd')}  dec={1} />
-                    <MetricRow label="% PD"              period={pAstR}    season={sAstR}    unit="%" />
-                    <MetricRow label="Ballons perdus"    period={p('bp')}  season={s('bp')}  dec={1} higherIsBetter={false} />
-                    <MetricRow label="% BP"              period={pTovR}    season={sTovR}    unit="%" higherIsBetter={false} />
-                    <MetricRow label="Fautes provoquées" period={p('fte')} season={s('fte')} dec={1} />
-                    <MetricRow label="FT Rate"           period={pFtr}     season={sFtr}     unit="%" />
-                  </>
-                )}
+                <>
+                  <MetricRow label="Possessions"       period={pPoss}    season={sPoss}    dec={1} />
+                  <MetricRow label="% Usage"           period={pUsg}     season={sUsg}     unit="%" />
+                  <MetricRow label="Points générés"    period={pPtsG}    season={sPtsG}    dec={1} />
+                  <MetricRow label="Points"            period={p('pts')} season={s('pts')} dec={1} />
+                  <MetricRow label="Passes décisives"  period={p('pd')}  season={s('pd')}  dec={1} />
+                  <MetricRow label="% PD"              period={pAstR}    season={sAstR}    unit="%" />
+                  <MetricRow label="Ballons perdus"    period={p('bp')}  season={s('bp')}  dec={1} higherIsBetter={false} />
+                  <MetricRow label="% BP"              period={pTovR}    season={sTovR}    unit="%" higherIsBetter={false} />
+                  <MetricRow label="Fautes provoquées" period={p('fte')} season={s('fte')} dec={1} />
+                  <MetricRow label="FT Rate"           period={pFtr}     season={sFtr}     unit="%" />
+                </>
               </Block>
 
               <div style={{ marginTop: 'auto' }}>
               <Block title="Rebonds" badge={{ period: rebP, season: rebS }} contentHeight={BH.reb}>
-                {matchP.length === 0 ? <NoMatch /> : (
-                  <>
-                    <MetricRow label="Totaux"      period={rebP}     season={rebS}     dec={1} />
-                    <MetricRow label="% Totaux"    period={pTrebPct} season={sTrebPct} unit="%" />
-                    <MetricRow label="Défensifs"   period={p('rd')}  season={s('rd')}  dec={1} />
-                    <MetricRow label="% défensifs" period={pRdSh}    season={sRdSh}    unit="%" />
-                    <MetricRow label="Offensifs"   period={p('ro')}  season={s('ro')}  dec={1} />
-                    <MetricRow label="% offensifs" period={pRoSh}    season={sRoSh}    unit="%" />
-                  </>
-                )}
+                <>
+                  <MetricRow label="Totaux"      period={rebP}     season={rebS}     dec={1} />
+                  <MetricRow label="% Totaux"    period={pTrebPct} season={sTrebPct} unit="%" />
+                  <MetricRow label="Défensifs"   period={p('rd')}  season={s('rd')}  dec={1} />
+                  <MetricRow label="% défensifs" period={pRdSh}    season={sRdSh}    unit="%" />
+                  <MetricRow label="Offensifs"   period={p('ro')}  season={s('ro')}  dec={1} />
+                  <MetricRow label="% offensifs" period={pRoSh}    season={sRoSh}    unit="%" />
+                </>
               </Block>
               </div>
             </div>
           </div>
 
-          {/* ── Résumé analytique ──────────────────────────────────────── */}
-          {signals.length > 0 && (
-            <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px' }}>
-              <div style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#475569', fontWeight: 700, marginBottom: 14 }}>
-                Résumé analytique
-              </div>
-
-              {/* ── Mobile : 1 colonne ── */}
-              <div className="flex flex-col gap-5 lg:hidden">
-                {improved.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.63rem', color: '#00E5A0', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>↑ En progression</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {improved.map((sig, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
-                          <span style={{ color: '#00E5A0', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↑</span>
-                          <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {declined.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.63rem', color: '#EF4444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>↓ À surveiller</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {declined.map((sig, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
-                          <span style={{ color: '#EF4444', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↓</span>
-                          <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Desktop : 4 colonnes (2 ↑ + 2 ↓) ── */}
-              <div className="hidden lg:grid" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px 20px' }}>
-                {([0, 1] as const).map(colIdx => {
-                  const half = Math.ceil(improved.length / 2);
-                  const items = colIdx === 0 ? improved.slice(0, half) : improved.slice(half);
-                  return (
-                    <div key={`imp-${colIdx}`}>
-                      {colIdx === 0 && improved.length > 0 && (
-                        <div style={{ fontSize: '0.63rem', color: '#00E5A0', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>↑ En progression</div>
-                      )}
-                      {colIdx === 1 && improved.length > 0 && (
-                        <div style={{ fontSize: '0.63rem', color: 'transparent', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>·</div>
-                      )}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        {items.map((sig, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
-                            <span style={{ color: '#00E5A0', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↑</span>
-                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {([0, 1] as const).map(colIdx => {
-                  const half = Math.ceil(declined.length / 2);
-                  const items = colIdx === 0 ? declined.slice(0, half) : declined.slice(half);
-                  return (
-                    <div key={`dec-${colIdx}`}>
-                      {colIdx === 0 && declined.length > 0 && (
-                        <div style={{ fontSize: '0.63rem', color: '#EF4444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>↓ À surveiller</div>
-                      )}
-                      {colIdx === 1 && declined.length > 0 && (
-                        <div style={{ fontSize: '0.63rem', color: 'transparent', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>·</div>
-                      )}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        {items.map((sig, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
-                            <span style={{ color: '#EF4444', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↓</span>
-                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-            </div>
-          )}
-        </>
-      )}
+          <AnalyticalSummary signals={signals} />
     </div>
   );
 }

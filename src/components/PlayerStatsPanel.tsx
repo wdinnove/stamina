@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { BarChart2, Users } from 'lucide-react';
-import { Card, CardTitle, EmptyState, DateRangeCard, useDateRange } from '../components';
+import React, { useMemo, useState } from 'react';
+import { BarChart2, Filter } from 'lucide-react';
+import { Card, CardTitle, EmptyState } from '../components';
+import { FilterField, filterControlStyle } from './FilterField';
 import { evalColor, ortgColor, shotPct } from '../data';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
@@ -12,71 +13,99 @@ function fmtShortDate(iso: string) {
   return `${d} ${MONTHS[m - 1]}`;
 }
 
+const ALL_SEASONS = 'all';
+const ALL_TEAMS = 'all';
+
+type SeasonGroup = { seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] };
+
 interface PlayerStatsPanelProps {
-  perfRange:           ReturnType<typeof useDateRange>;
-  seasonStartDate?:    string;
-  seasonEndDate?:      string;
-  seasonGroupedStats:  { seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[];
-  matchStats:          MatchStat[];
-  multiTeamSeason:     boolean;
-  combinedSeasonStats: MatchStat[];
+  view:                'basic' | 'advanced';
+  seasonGroupedStats:  SeasonGroup[];
+  currentSeasonLabel?: string;
+  currentTeamId?:      string;
   teamStatsMap:        Map<string, TeamMatchStat>;
   statThresholds:      StatThresholds;
 }
 
 export function PlayerStatsPanel({
-  perfRange, seasonStartDate, seasonEndDate, seasonGroupedStats, matchStats,
-  multiTeamSeason, combinedSeasonStats, teamStatsMap, statThresholds,
+  view: statsView, seasonGroupedStats, currentSeasonLabel, currentTeamId, teamStatsMap, statThresholds,
 }: PlayerStatsPanelProps) {
-  const [statsView, setStatsView] = useState<'basic' | 'advanced' | 'season'>('basic');
-  const [allTeamsSeason, setAllTeamsSeason] = useState(false);
+  const [seasonFilter, setSeasonFilter] = useState<string>(currentSeasonLabel ?? ALL_SEASONS);
+  const [teamFilter, setTeamFilter] = useState<string>(currentTeamId ?? ALL_TEAMS);
   const [basicSort, setBasicSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [seasonSort, setSeasonSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'season', dir: 'desc' });
 
-  const effectiveMatchStats = allTeamsSeason && multiTeamSeason ? combinedSeasonStats : matchStats;
-  const perfFilteredStats = perfRange.from
-    ? effectiveMatchStats.filter(s => s.date >= perfRange.from && s.date <= perfRange.to)
-    : effectiveMatchStats;
+  const seasonLabels = useMemo(() => {
+    const seen = new Set<string>();
+    const labels: string[] = [];
+    for (const g of seasonGroupedStats) if (!seen.has(g.seasonLabel)) { seen.add(g.seasonLabel); labels.push(g.seasonLabel); }
+    return labels.sort((a, b) => b.localeCompare(a));
+  }, [seasonGroupedStats]);
+
+  const groupsForSeason = useMemo(
+    () => seasonFilter === ALL_SEASONS ? [] : seasonGroupedStats.filter(g => g.seasonLabel === seasonFilter),
+    [seasonGroupedStats, seasonFilter],
+  );
+  const multiTeam = groupsForSeason.length > 1;
+  const teamSelectApplicable = seasonFilter !== ALL_SEASONS && multiTeam;
+
+  const effectiveMatchStats = useMemo(() => {
+    if (seasonFilter === ALL_SEASONS) return [];
+    if (teamFilter === ALL_TEAMS) return groupsForSeason.flatMap(g => g.stats);
+    return groupsForSeason.find(g => g.teamId === teamFilter)?.stats ?? groupsForSeason.flatMap(g => g.stats);
+  }, [groupsForSeason, teamFilter, seasonFilter]);
+
+  const handleSeasonChange = (label: string) => {
+    setSeasonFilter(label);
+    if (label === ALL_SEASONS) { setTeamFilter(ALL_TEAMS); return; }
+    const newGroups = seasonGroupedStats.filter(g => g.seasonLabel === label);
+    const hasCurrentTeam = !!currentTeamId && newGroups.some(g => g.teamId === currentTeamId);
+    setTeamFilter(hasCurrentTeam ? currentTeamId! : newGroups.length === 1 ? newGroups[0].teamId : ALL_TEAMS);
+  };
 
   return <>
 
-      <DateRangeCard
-        from={perfRange.from} to={perfRange.to} preset={perfRange.preset}
-        onPreset={p => perfRange.applyPreset(p, seasonStartDate, seasonEndDate)}
-        onFrom={perfRange.setFrom} onTo={perfRange.setTo}
-      />
+      {/* ── Filtres saison / équipe ── */}
+      <Card style={{ marginBottom: 14 }}>
+        <CardTitle
+          icon={<Filter size={12} style={{ color: '#3B82F6' }} />}
+          mb={0}
+          right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <FilterField legend="Saison" width={160}>
+                <select value={seasonFilter} onChange={e => handleSeasonChange(e.target.value)} style={filterControlStyle}>
+                  {seasonLabels.map(label => <option key={label} value={label}>{label}</option>)}
+                  <option value={ALL_SEASONS}>Toutes les saisons</option>
+                </select>
+              </FilterField>
+              <FilterField legend="Équipe" width={160} disabled={!teamSelectApplicable}>
+                <select
+                  value={teamFilter}
+                  onChange={e => setTeamFilter(e.target.value)}
+                  disabled={!teamSelectApplicable}
+                  style={{ ...filterControlStyle, cursor: teamSelectApplicable ? 'pointer' : 'not-allowed' }}
+                >
+                  {teamSelectApplicable && <option value={ALL_TEAMS}>Toutes les équipes</option>}
+                  {teamSelectApplicable && groupsForSeason.map(g => <option key={g.teamId} value={g.teamId}>{g.teamName || '—'}</option>)}
+                </select>
+              </FilterField>
+            </div>
+          }
+        >Filtres</CardTitle>
+      </Card>
 
       {/* ── Ligne 5 : Statistiques par match ── */}
       <Card style={{ marginBottom: 14 }}>
         <CardTitle
           icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
           mb={14}
-          info={statsView !== 'season' && perfFilteredStats.length > 0
-            ? `${perfFilteredStats.length} match${perfFilteredStats.length > 1 ? 's' : ''}`
+          info={seasonFilter !== ALL_SEASONS && effectiveMatchStats.length > 0
+            ? `${effectiveMatchStats.length} match${effectiveMatchStats.length > 1 ? 's' : ''}`
             : undefined}
-          right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {statsView !== 'season' && multiTeamSeason && (
-                <button type="button" onClick={e => { e.stopPropagation(); setAllTeamsSeason(v => !v); }}
-                  title="Inclut les matchs joués avec les autres équipes du club sur cette même saison"
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: allTeamsSeason ? 700 : 400, backgroundColor: allTeamsSeason ? 'rgba(0,229,160,0.12)' : 'transparent', color: allTeamsSeason ? '#00E5A0' : '#475569' }}>
-                  <Users size={11} /> Toutes les équipes
-                </button>
-              )}
-              <div style={{ display: 'flex', backgroundColor: '#0D0F14', borderRadius: 6, padding: 2, gap: 2 }}>
-                {([['basic', 'Brutes'], ['advanced', 'Avancées'], ['season', 'Par saison']] as const).map(([v, label]) => (
-                  <button key={v} type="button" onClick={e => { e.stopPropagation(); setStatsView(v); }}
-                    style={{ padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: statsView === v ? 700 : 400, backgroundColor: statsView === v ? '#1E2229' : 'transparent', color: statsView === v ? '#00E5A0' : '#475569' }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          }
         >Statistiques saison</CardTitle>
 
-        {statsView === 'season' ? (
+        {seasonFilter === ALL_SEASONS ? (
           seasonGroupedStats.length === 0 ? (
             <EmptyState message="Aucune statistique disponible." />
           ) : (() => {
@@ -90,6 +119,8 @@ export function PlayerStatsPanel({
             const TD: React.CSSProperties = {
               padding: '7px 10px', color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap',
             };
+            const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
+            const fmt = (v: number | null, suffix = '') => v !== null ? `${v}${suffix}` : '—';
             const si = (col: string) =>
               seasonSort.col === col ? (seasonSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
             const thC = (col: string) =>
@@ -109,6 +140,11 @@ export function PlayerStatsPanel({
               const pmAvg = withPm.length > 0
                 ? Math.round(withPm.reduce((a, s) => a + (s.plusMinus ?? 0), 0) / withPm.length * 10) / 10
                 : null;
+              const advList = ss.map(m => calcPlayerAdvanced(m, teamStatsMap.get(m.matchId ?? '')));
+              const avgAdv = (key: string) => {
+                const vals = advList.map(a => (a as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
+                return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
+              };
               return {
                 seasonId, seasonLabel, teamName: teamName || '', n,
                 fg2m: sum('fg2m'), fg2a: sum('fg2a'),
@@ -119,6 +155,9 @@ export function PlayerStatsPanel({
                 avgRo: avg('ro'), avgRd: avg('rd'),
                 avgPd: avg('pd'), avgCt: avg('ct'),
                 avgInt: avg('intercepts'), avgBp: avg('bp'),
+                avgUsg: avgAdv('usagePct'), avgOrtg: avgAdv('offRating'), avgEfg: avgAdv('efgPct'), avgFtr: avgAdv('ftRate'),
+                avgPprod: avgAdv('ptsProd'), avgAst: avgAdv('astPct'), avgTov: avgAdv('tovPct'), avgBppos: avgAdv('bpPerPoss'),
+                avgTreb: avgAdv('trebPct'), avgDreb: avgAdv('drebPct'), avgOreb: avgAdv('orebPct'),
               };
             });
             const sorted = [...computed].sort((a, b) => {
@@ -139,11 +178,23 @@ export function PlayerStatsPanel({
                 case 'bp':     return m * (a.avgBp - b.avgBp);
                 case 'eval':   return m * ((a.evalAvg ?? -99) - (b.evalAvg ?? -99));
                 case 'pm':     return m * ((a.pmAvg ?? -99) - (b.pmAvg ?? -99));
+                case 'usg':    return m * ((a.avgUsg ?? -1) - (b.avgUsg ?? -1));
+                case 'ortg':   return m * ((a.avgOrtg ?? -1) - (b.avgOrtg ?? -1));
+                case 'efg':    return m * ((a.avgEfg ?? -1) - (b.avgEfg ?? -1));
+                case 'ftr':    return m * ((a.avgFtr ?? -1) - (b.avgFtr ?? -1));
+                case 'pprod':  return m * ((a.avgPprod ?? -1) - (b.avgPprod ?? -1));
+                case 'ast':    return m * ((a.avgAst ?? -1) - (b.avgAst ?? -1));
+                case 'tov':    return m * ((a.avgTov ?? -1) - (b.avgTov ?? -1));
+                case 'bppos':  return m * ((a.avgBppos ?? -1) - (b.avgBppos ?? -1));
+                case 'treb':   return m * ((a.avgTreb ?? -1) - (b.avgTreb ?? -1));
+                case 'dreb':   return m * ((a.avgDreb ?? -1) - (b.avgDreb ?? -1));
+                case 'oreb':   return m * ((a.avgOreb ?? -1) - (b.avgOreb ?? -1));
                 default:       return 0;
               }
             });
             return (
               <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
+                {statsView === 'basic' ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr>
@@ -203,13 +254,62 @@ export function PlayerStatsPanel({
                     })}
                   </tbody>
                 </table>
+                ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+                  <thead>
+                    <tr>
+                      <th rowSpan={2} onClick={() => toggle('season')} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', color: thC('season') }}>Saison{si('season')}</th>
+                      <th rowSpan={2} style={{ ...TH, cursor: 'default', textAlign: 'left', verticalAlign: 'middle' }}>Équipe</th>
+                      <th rowSpan={2} onClick={() => toggle('mj')} style={{ ...TH, verticalAlign: 'middle', color: thC('mj') }}>MJ{si('mj')}</th>
+                      <th colSpan={5} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
+                      <th colSpan={4} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Playmaking</th>
+                      <th colSpan={3} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Rebonds</th>
+                    </tr>
+                    <tr>
+                      <th onClick={() => toggle('pts')}   style={{ ...TH, ...SEP, color: thC('pts') }}>Pts{si('pts')}</th>
+                      <th onClick={() => toggle('usg')}   style={{ ...TH, color: thC('usg') }}>USG%{si('usg')}</th>
+                      <th onClick={() => toggle('ortg')}  style={{ ...TH, color: thC('ortg') }}>ORtg{si('ortg')}</th>
+                      <th onClick={() => toggle('efg')}   style={{ ...TH, color: thC('efg') }}>eFG%{si('efg')}</th>
+                      <th onClick={() => toggle('ftr')}   style={{ ...TH, color: thC('ftr') }}>FT Rate{si('ftr')}</th>
+                      <th onClick={() => toggle('pprod')} style={{ ...TH, ...SEP, color: thC('pprod') }}>Pts générés{si('pprod')}</th>
+                      <th onClick={() => toggle('ast')}   style={{ ...TH, color: thC('ast') }}>%PD{si('ast')}</th>
+                      <th onClick={() => toggle('tov')}   style={{ ...TH, color: thC('tov') }}>%BP{si('tov')}</th>
+                      <th onClick={() => toggle('bppos')} style={{ ...TH, color: thC('bppos') }}>BP/poss{si('bppos')}</th>
+                      <th onClick={() => toggle('treb')}  style={{ ...TH, ...SEP, color: thC('treb') }}>%TREB{si('treb')}</th>
+                      <th onClick={() => toggle('dreb')}  style={{ ...TH, color: thC('dreb') }}>%DREB{si('dreb')}</th>
+                      <th onClick={() => toggle('oreb')}  style={{ ...TH, color: thC('oreb') }}>%OREB{si('oreb')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map(({ seasonId, seasonLabel, teamName, n, avgPts, avgUsg, avgOrtg, avgEfg, avgFtr, avgPprod, avgAst, avgTov, avgBppos, avgTreb, avgDreb, avgOreb }, i) => (
+                      <tr key={seasonId} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                        <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{seasonLabel}</td>
+                        <td style={{ ...TD, textAlign: 'left' }}>{teamName || '—'}</td>
+                        <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
+                        <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
+                        <td style={TD}>{fmt(avgUsg, '%')}</td>
+                        <td style={{ ...TD, color: avgOrtg === null ? '#475569' : ortgColor(avgOrtg, statThresholds) }}>{fmt(avgOrtg)}</td>
+                        <td style={TD}>{fmt(avgEfg, '%')}</td>
+                        <td style={TD}>{fmt(avgFtr)}</td>
+                        <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgPprod)}</td>
+                        <td style={TD}>{fmt(avgAst, '%')}</td>
+                        <td style={TD}>{fmt(avgTov, '%')}</td>
+                        <td style={TD}>{fmt(avgBppos)}</td>
+                        <td style={{ ...TD, ...SEP }}>{fmt(avgTreb, '%')}</td>
+                        <td style={TD}>{fmt(avgDreb, '%')}</td>
+                        <td style={TD}>{fmt(avgOreb, '%')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                )}
               </div>
             );
           })()
-        ) : perfFilteredStats.length === 0 ? (
-          <EmptyState message="Aucune statistique pour cette période." />
+        ) : effectiveMatchStats.length === 0 ? (
+          <EmptyState message="Aucune statistique pour cette sélection." />
         ) : (() => {
-          const rows = perfFilteredStats;
+          const rows = effectiveMatchStats;
           const TH: React.CSSProperties = {
             padding: '7px 10px', color: '#475569', fontSize: '0.68rem', fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center',

@@ -10,3 +10,8 @@ export { actionsApi }  from './actions';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
 export { matchesApi }   from './matches';
+export {
+  NotificationService, isPushSupported, getNotificationPermission,
+  getExistingSubscription, subscribeToPush, unsubscribeFromPush,
+} from './pushNotifications';
+export type { PushNotificationPayload, PushSendResult } from './pushNotifications';

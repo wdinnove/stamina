@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Search, Pill, Ambulance, Users } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
-import { rpeApi } from '../api/rpe';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -10,11 +9,9 @@ import { useNavigate, useParams } from 'react-router';
 import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, MedicalRecordDetailModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
 import type { PlayerMedicalViewHandle } from '../components';
 import { rtpDaysLeft } from '../components/MedicalCard';
-import { computeAcwr, acwrZone } from '../utils/rpe';
-import { isoToday } from '../components/DateRangeCard';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { MedicalRecord, Player, RPEEntry, PlayerStatus } from '../data/types';
+import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
 
 const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
@@ -64,7 +61,6 @@ export default function MedicalPage() {
   const [seasonInjuries, setSeasonInjuries]   = useState<MedicalRecord[]>([]);
   const [seasonAllRecords, setSeasonAllRecords] = useState<MedicalRecord[]>([]);
   const [playerRecords, setPlayerRecords]     = useState<MedicalRecord[]>([]);
-  const [playerRpe, setPlayerRpe]             = useState<RPEEntry[]>([]);
 
   // Recap filters + detail modal
   const [recapSearch,       setRecapSearch]       = useState('');
@@ -137,12 +133,6 @@ export default function MedicalPage() {
     medicalApi.getByPlayer(selectedPlayerId).then(setPlayerRecords);
   }, [selectedPlayerId, version]);
 
-  // Load RPE history for selected player (ACWR)
-  useEffect(() => {
-    if (!selectedPlayerId) { setPlayerRpe([]); return; }
-    rpeApi.listPlayerHistory(selectedPlayerId).then(setPlayerRpe);
-  }, [selectedPlayerId, version]);
-
   const teamPlayerIds      = new Set(teamPlayers.map(p => p.id));
   const teamInjuries       = activeInjuries.filter(r => teamPlayerIds.has(r.playerId));
   const teamSeasonInjuries = seasonInjuries.filter(r => teamPlayerIds.has(r.playerId));
@@ -153,6 +143,7 @@ export default function MedicalPage() {
   const recTreatments = playerRecords.filter(r => r.type === 'treatment');
   const allCheckups   = playerRecords.filter(r => r.type === 'checkup');
   const activePlayerInjury = [...recInjuries].sort((a, b) => b.date.localeCompare(a.date)).find(r => r.status === 'active') ?? null;
+  const lastPlayerInjury    = [...recInjuries].sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
   const selectedPlayer     = teamPlayers.find(p => p.id === selectedPlayerId);
   const playerById         = (id: string) => teamPlayers.find(p => p.id === id);
 
@@ -186,8 +177,6 @@ export default function MedicalPage() {
     (!selected?.season.endDate   || r.date <= selected.season.endDate)
   );
   const playerSeasonDays  = playerSeasonInjuries.reduce((s, r) => s + injuryDaysSeason(r), 0);
-  const playerAcwr        = computeAcwr(playerRpe, isoToday());
-  const playerAcwrZone    = acwrZone(playerAcwr);
 
   const openForm = (prePlayerId?: string) => {
     setEditingRecord(null);
@@ -342,6 +331,12 @@ export default function MedicalPage() {
 
         {activeTab === 'record' && selectedPlayerId && (
           <button onClick={() => playerMedicalViewRef.current?.openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
+          </button>
+        )}
+
+        {activeTab === 'team' && (
+          <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
           </button>
         )}
@@ -749,12 +744,10 @@ export default function MedicalPage() {
                 }
               />
               <RpeKpiCard
-                accent={playerAcwrZone ? playerAcwrZone.color : '#334155'}
-                label="ACWR — risque de blessure"
-                value={playerAcwr !== null ? playerAcwr.toFixed(2) : '—'}
-                sub={playerAcwrZone
-                  ? <Badge color={playerAcwrZone.color} size="sm" label={playerAcwrZone.label} style={{ fontSize: '0.62rem' }} />
-                  : 'Historique insuffisant (28j)'}
+                accent={lastPlayerInjury ? '#EF4444' : '#475569'}
+                label="Dernière blessure"
+                value={lastPlayerInjury ? lastPlayerInjury.description : '—'}
+                sub={lastPlayerInjury ? fmtDate(lastPlayerInjury.date) : 'Aucune blessure enregistrée'}
               />
               <RpeKpiCard
                 accent={playerSeasonInjuries.length > 0 ? '#F59E0B' : '#00E5A0'}

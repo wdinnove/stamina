@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from 'recharts';
-import { Activity, Stethoscope, BarChart2, Heart, CheckSquare, ArrowRight } from 'lucide-react';
+import { Activity, Stethoscope, ShieldAlert, BarChart2, Heart, CheckSquare, ArrowRight, Menu, ChevronDown, X } from 'lucide-react';
 import { rpeApi, wellnessApi, statsApi, actionsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import {
-  Card, CardTitle, EmptyState, PlayerSelect, PlayerHero,
+  Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, Modal, Badge, RpeKpiCard,
+  playerStatusColor, playerStatusLabel, PlayerMedicalView,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
   IndicatorSelect, CrossTimelineChart, CorrelationCard, RiskAlertsList, ChargeRpeComboChart,
 } from '../components';
-import { MedCard, daysBetween, rtpDaysLeft } from '../components/MedicalCard';
+import { daysBetween } from '../components/MedicalCard';
 import { computeTsb, tsbZone, rpeColor, computeAcwr, acwrZone } from '../utils/rpe';
 import { wellnessScoreColor, WELLNESS_DIMENSIONS, wellnessDimColor, wellnessAvg } from '../utils/wellness';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
@@ -77,23 +78,72 @@ function IndicatorControls({ indicators, aKey, bKey, onA, onB }: {
   );
 }
 
-type Tab = 'overview' | 'stats' | 'dynamic' | 'load' | 'wellness' | 'correlations' | 'medical';
+type Tab = 'overview' | 'stats-basic' | 'stats-advanced' | 'dynamic' | 'load' | 'wellness' | 'medical' | 'risk' | 'correlations';
 
 const TAB_SLUGS: Record<string, Tab> = {
-  'vue-ensemble':    'overview',
-  'statistiques':    'stats',
-  'dynamique':       'dynamic',
-  'charge-physique': 'load',
-  'bien-etre':       'wellness',
-  'correlations':    'correlations',
-  'medical':         'medical',
+  'vue-ensemble':           'overview',
+  'statistiques':           'stats-basic',
+  'statistiques-brutes':    'stats-basic',
+  'statistiques-avancees':  'stats-advanced',
+  'statistiques-par-saison':'stats-basic',
+  'dynamique':              'dynamic',
+  'tendances':              'dynamic',
+  'charge-physique':        'load',
+  'bien-etre':              'wellness',
+  'correlations':           'correlations',
+  'medical':                'medical',
+  'risque-blessure':        'risk',
 };
 const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
   { tabs: [{ key: 'overview', slug: 'vue-ensemble', label: "Vue d'ensemble" }] },
-  { label: 'Stats',      tabs: [{ key: 'stats', slug: 'statistiques', label: 'Statistiques' }, { key: 'dynamic', slug: 'dynamique', label: 'Dynamique' }] },
-  { label: 'Charge & bien-être', tabs: [{ key: 'load', slug: 'charge-physique', label: 'Charge physique' }, { key: 'wellness', slug: 'bien-etre', label: 'Bien-être' }] },
-  { label: 'Analyse',    tabs: [{ key: 'correlations', slug: 'correlations', label: 'Corrélations' }, { key: 'medical', slug: 'medical', label: 'Médical / Risques' }] },
+  { label: 'Statistiques', tabs: [
+    { key: 'stats-basic',    slug: 'statistiques-brutes',   label: 'Brutes' },
+    { key: 'stats-advanced', slug: 'statistiques-avancees', label: 'Avancées' },
+  ] },
+  { label: 'Suivi athlète', tabs: [
+    { key: 'load',     slug: 'charge-physique',  label: 'Charge physique' },
+    { key: 'wellness', slug: 'bien-etre',        label: 'Bien-être' },
+    { key: 'medical',  slug: 'medical',          label: 'Médical' },
+    { key: 'risk',     slug: 'risque-blessure',  label: 'Risque blessure' },
+  ] },
+  { label: 'Analyse', tabs: [
+    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
+    { key: 'dynamic',      slug: 'tendances',     label: 'Tendances' },
+  ] },
 ];
+
+/** Liste verticale des sections/onglets — partagée entre la sidebar desktop et la modale mobile. */
+function TabNavList({ activeTab, onSelect }: { activeTab: Tab; onSelect: (slug: string) => void }) {
+  return (
+    <div className="flex flex-col" style={{ gap: 14 }}>
+      {TAB_GROUPS.map((group, gi) => (
+        <div key={gi}>
+          {group.label && (
+            <div style={{ padding: '6px 10px 4px', color: '#475569', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+              {group.label}
+            </div>
+          )}
+          <div className="flex flex-col" style={{ gap: 2 }}>
+            {group.tabs.map(t => (
+              <button key={t.key} onClick={() => onSelect(t.slug)}
+                style={{
+                  textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  fontSize: '0.83rem', whiteSpace: 'nowrap',
+                  backgroundColor: activeTab === t.key ? 'rgba(0,229,160,0.08)' : 'transparent',
+                  color: activeTab === t.key ? '#00E5A0' : '#94A3B8',
+                  fontWeight: activeTab === t.key ? 600 : 400,
+                  borderLeft: activeTab === t.key ? '2px solid #00E5A0' : '2px solid transparent',
+                  transition: 'all 0.15s',
+                }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PerformanceIndividuellePage() {
   const { id, tab: tabSlug } = useParams<{ id?: string; tab?: string }>();
@@ -122,6 +172,7 @@ export default function PerformanceIndividuellePage() {
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, TeamMatchStat>>(new Map());
   const [actions, setActions] = useState<Action[]>([]);
   const [comboView, setComboView] = useState<'session' | 'week'>('session');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -143,19 +194,12 @@ export default function PerformanceIndividuellePage() {
     statsApi.getPlayerStatsBySeason(id, selected.season.id).then(setMatchStats);
   }, [id, selected]);
 
-  const siblingSeasons = useMemo(
-    () => selected ? seasonGroupedStats.filter(g => g.seasonLabel === selected.season.label) : [],
-    [seasonGroupedStats, selected?.season.label],
-  );
-  const multiTeamSeason = siblingSeasons.length > 1;
-  const combinedSeasonStats = useMemo(() => siblingSeasons.flatMap(g => g.stats), [siblingSeasons]);
-  // Fetch systématiquement la superset (toutes équipes) dès que la saison est multi-équipes,
-  // pour que teamStatsMap couvre les entrées nécessaires quel que soit le toggle "Toutes les
-  // équipes" interne à PlayerStatsPanel.
-  const effectiveMatchStats = multiTeamSeason ? combinedSeasonStats : matchStats;
+  // Fetch sur tout l'historique du joueur (toutes saisons/équipes confondues), pour que
+  // teamStatsMap couvre les entrées nécessaires quel que soit le sélecteur saison/équipe
+  // choisi dans PlayerStatsPanel (Brutes/Avancées).
   const matchIdsKey = useMemo(
-    () => effectiveMatchStats.map(s => s.matchId).filter((mid): mid is string => !!mid).sort().join(','),
-    [effectiveMatchStats],
+    () => seasonGroupedStats.flatMap(g => g.stats).map(s => s.matchId).filter((mid): mid is string => !!mid).sort().join(','),
+    [seasonGroupedStats],
   );
   useEffect(() => {
     if (!matchIdsKey) { setTeamStatsMap(new Map()); return; }
@@ -212,12 +256,6 @@ export default function PerformanceIndividuellePage() {
   const attP = pd ? pd.attendance.filter(a => inRange(a.date)) : [];
   const presentP = attP.filter(a => a.status === 'present' || a.status === 'late').length;
   const presencePct = attP.length ? Math.round(presentP / attP.length * 100) : null;
-
-  // ── Infirmerie (ex-PerformancePlayerPage) ─────────────────────────────────
-  const medInRange = pd ? pd.medical.filter(m => inRange(m.date)) : [];
-  const medSorted = [...medInRange].sort((x, y) => y.date.localeCompare(x.date));
-  const activeInj = medInRange.filter(m => m.type === 'injury' && m.status === 'active');
-  const accentInj = activeInj.length > 0 ? '#EF4444' : medInRange.some(m => m.type === 'injury') ? '#F59E0B' : '#00E5A0';
 
   // ── Vue d'ensemble : cards résumé (ex-PlayerHubPage) ──────────────────────
   const thStyle: React.CSSProperties = { padding: '6px 8px', color: '#475569', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' };
@@ -288,11 +326,16 @@ export default function PerformanceIndividuellePage() {
   const allInjuries = pd ? [...pd.medical].filter(m => m.type === 'injury').sort((a, b) => b.date.localeCompare(a.date)) : [];
   const currentInjury = allInjuries.find(m => m.status === 'active') ?? null;
   const previousInjury = allInjuries.find(m => m.id !== currentInjury?.id) ?? null;
+  const lastInjury = allInjuries[0] ?? null;
   const seasonInjuryCount = selected?.season.startDate
     ? allInjuries.filter(m => m.date >= selected.season.startDate).length
     : allInjuries.length;
+  const seasonInjuryDays = allInjuries
+    .filter(m => (!selected?.season.startDate || m.date >= selected.season.startDate) && (!selected?.season.endDate || m.date <= selected.season.endDate))
+    .reduce((s, m) => s + (m.rtpDate ? daysBetween(m.date, m.rtpDate) : 0), 0);
   const acwr = computeAcwr(rpe, isoDaysAgo(0));
   const acwrZ = acwrZone(acwr);
+  const atRiskNow = !!currentInjury || acwrZ?.label === 'Risque modéré' || acwrZ?.label === 'Risque élevé' || alerts.some(a => a.level === 'red');
 
   const today = isoDaysAgo(0);
   const openActions = actions.filter(a => a.status !== 'done').length;
@@ -312,6 +355,8 @@ export default function PerformanceIndividuellePage() {
       onChange={pid => navigate(`/performance-individuelle/${pid}/${tabSlug ?? 'vue-ensemble'}`)}
     />
   );
+  const activeTabLabel = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.key === activeTab)?.label ?? '';
+  const selectTabAndClose = (slug: string) => { setActiveTab(slug); setMobileNavOpen(false); };
 
   if (loading) return <div className="p-4 md:p-6" style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>;
   if (!roster.length) {
@@ -335,41 +380,44 @@ export default function PerformanceIndividuellePage() {
 
       <div className="flex flex-col lg:flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
 
-        {/* ── Menu vertical d'onglets ── */}
-        <nav className="w-full lg:w-[200px]" style={{ flexShrink: 0, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 6 }}>
-          <div className="flex lg:flex-col" style={{ gap: 14, overflowX: 'auto' }}>
-            {TAB_GROUPS.map((group, gi) => (
-              <div key={gi} style={{ flexShrink: 0 }}>
-                {group.label && (
-                  <div style={{ padding: '6px 10px 4px', color: '#475569', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
-                    {group.label}
-                  </div>
-                )}
-                <div className="flex lg:flex-col" style={{ gap: 2 }}>
-                  {group.tabs.map(t => (
-                    <button key={t.key} onClick={() => setActiveTab(t.slug)}
-                      style={{
-                        textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                        fontSize: '0.83rem', whiteSpace: 'nowrap', flexShrink: 0,
-                        backgroundColor: activeTab === t.key ? 'rgba(0,229,160,0.08)' : 'transparent',
-                        color: activeTab === t.key ? '#00E5A0' : '#94A3B8',
-                        fontWeight: activeTab === t.key ? 600 : 400,
-                        borderLeft: activeTab === t.key ? '2px solid #00E5A0' : '2px solid transparent',
-                        transition: 'all 0.15s',
-                      }}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
+        {/* ── Sous-menu mobile : bouton → modale de sélection ── */}
+        <div className="w-full lg:hidden">
+          <button onClick={() => setMobileNavOpen(true)} style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px', borderRadius: 8, border: '1px solid #2A2F3A', backgroundColor: '#161920',
+            color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Menu size={16} style={{ color: '#00E5A0' }} />
+              {activeTabLabel}
+            </span>
+            <ChevronDown size={16} style={{ color: '#64748B' }} />
+          </button>
+        </div>
+
+        {mobileNavOpen && (
+          <Modal onClose={() => setMobileNavOpen(false)} closeOnBackdropClick maxWidth={300} align="flex-start" style={{ marginTop: 60 }}>
+            <div style={{ padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.9rem' }}>Sections</span>
+                <button onClick={() => setMobileNavOpen(false)} style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 4 }}>
+                  <X size={18} />
+                </button>
               </div>
-            ))}
-          </div>
+              <TabNavList activeTab={activeTab} onSelect={selectTabAndClose} />
+            </div>
+          </Modal>
+        )}
+
+        {/* ── Menu vertical d'onglets (desktop) ── */}
+        <nav className="hidden lg:block lg:w-[200px]" style={{ flexShrink: 0, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 6 }}>
+          <TabNavList activeTab={activeTab} onSelect={setActiveTab} />
         </nav>
 
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && (
+          {activeTab !== 'dynamic' && activeTab !== 'stats-basic' && activeTab !== 'stats-advanced' && activeTab !== 'medical' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
@@ -398,7 +446,7 @@ export default function PerformanceIndividuellePage() {
             color={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#94A3B8'} />
         </div>
 
-        <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => setActiveTab('statistiques')}>
+        <Card style={{ marginBottom: 12, cursor: 'pointer' }} onClick={() => setActiveTab('statistiques-brutes')}>
           <CardTitle icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
             right={<ArrowRight size={13} style={{ color: '#475569' }} />}>
             Statistiques — saison par saison
@@ -612,16 +660,13 @@ export default function PerformanceIndividuellePage() {
       )}
 
       {/* ══ STATISTIQUES ════════════════════════════════════════════════════ */}
-      {activeTab === 'stats' && (
+      {(activeTab === 'stats-basic' || activeTab === 'stats-advanced') && (
         <PlayerStatsPanel
           key={`${id}-${selected?.season.id ?? ''}`}
-          perfRange={dateRange}
-          seasonStartDate={selected?.season.startDate}
-          seasonEndDate={selected?.season.endDate}
+          view={activeTab === 'stats-basic' ? 'basic' : 'advanced'}
           seasonGroupedStats={seasonGroupedStats}
-          matchStats={matchStats}
-          multiTeamSeason={multiTeamSeason}
-          combinedSeasonStats={combinedSeasonStats}
+          currentSeasonLabel={selected?.season.label}
+          currentTeamId={selected?.team.id}
           teamStatsMap={teamStatsMap}
           statThresholds={statThresholds}
         />
@@ -670,45 +715,79 @@ export default function PerformanceIndividuellePage() {
         </>
       )}
 
-      {/* ══ MÉDICAL / RISQUES ═══════════════════════════════════════════════ */}
+      {/* ══ MÉDICAL ══════════════════════════════════════════════════════════ */}
       {activeTab === 'medical' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 14, alignItems: 'start' }}>
-          <RiskAlertsList alerts={alerts} hidePlayerName />
+        <div>
+          <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 10, marginBottom: 14 }}>
+            <RpeKpiCard
+              accent={playerStatusColor[pd.player.status]}
+              label="Statut"
+              value={playerStatusLabel[pd.player.status]}
+              sub={pd.player.status === 'active' ? '-' : (currentInjury?.description ?? '-')}
+            />
+            <RpeKpiCard
+              accent={lastInjury ? '#EF4444' : '#475569'}
+              label="Dernière blessure"
+              value={lastInjury ? lastInjury.description : '—'}
+              sub={lastInjury ? fmtDate(lastInjury.date) : 'Aucune blessure enregistrée'}
+            />
+            <RpeKpiCard
+              accent={seasonInjuryCount > 0 ? '#F59E0B' : '#00E5A0'}
+              label="Blessures saison"
+              value={String(seasonInjuryCount)}
+              sub="cette saison"
+            />
+            <RpeKpiCard
+              accent={seasonInjuryDays > 0 ? '#3B82F6' : '#00E5A0'}
+              label="Jours blessés"
+              value={seasonInjuryDays > 0 ? `${seasonInjuryDays}j` : '—'}
+              sub="cumulés saison"
+            />
+          </div>
+          <PlayerMedicalView key={pd.player.id} playerId={pd.player.id} />
+        </div>
+      )}
 
-          <Card accentColor={accentInj}>
-            <CardTitle icon={<Stethoscope size={12} style={{ color: accentInj }} />} mb={14}
-              info={medSorted.length > 0 ? `${medSorted.length}` : undefined}>
-              Infirmerie
-            </CardTitle>
-            {medSorted.length === 0
-              ? <EmptyState message="Aucun événement médical sur cette période." size="sm" />
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {medSorted.map(record => {
-                    const isActive = record.status === 'active';
-                    const days = record.rtpDate
-                      ? (isActive ? rtpDaysLeft(record.rtpDate) : daysBetween(record.date, record.rtpDate))
-                      : null;
-                    const rtpLabel = record.type === 'injury' ? 'RTP' : 'Fin';
-                    const daysLabel = days !== null && days > 0
-                      ? (isActive ? `${rtpLabel} J+${days}` : `${days}j`)
-                      : null;
-                    return (
-                      <MedCard
-                        key={record.id}
-                        record={record}
-                        showTypeBadge
-                        daysLabel={daysLabel}
-                        daysColor={isActive && days !== null && days <= 3 ? '#00E5A0' : isActive ? '#F59E0B' : '#475569'}
-                        onEdit={() => navigate(`/medical/record/${pd.player.id}`)}
-                        onDetail={() => navigate(`/medical/record/${pd.player.id}`)}
-                      />
-                    );
-                  })}
+      {/* ══ RISQUE BLESSURE ═══════════════════════════════════════════════════ */}
+      {activeTab === 'risk' && (
+        <div>
+          <Card accentColor={atRiskNow ? '#EF4444' : '#00E5A0'} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{
+                width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+                backgroundColor: atRiskNow ? 'rgba(239,68,68,0.12)' : 'rgba(0,229,160,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <ShieldAlert size={22} style={{ color: atRiskNow ? '#EF4444' : '#00E5A0' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: '0.68rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: 3 }}>
+                  Risque de blessure — maintenant
                 </div>
-              )
-            }
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: atRiskNow ? '#EF4444' : '#00E5A0' }}>
+                  {atRiskNow ? 'À risque' : 'Pas de risque identifié'}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: 4 }}>
+                  {[
+                    currentInjury ? 'Blessure active en cours' : null,
+                    (acwrZ?.label === 'Risque modéré' || acwrZ?.label === 'Risque élevé') ? `Charge ACWR en ${acwrZ.label.toLowerCase()}` : null,
+                    alerts.some(a => a.level === 'red') ? 'Alerte récente de niveau élevé' : null,
+                  ].filter(Boolean).join(' · ') || 'Charge et indicateurs dans les normes.'}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.68rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: 3 }}>
+                  ACWR actuel
+                </div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: acwrZ?.color ?? '#94A3B8', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {acwr !== null ? acwr.toFixed(2) : '—'}
+                </div>
+                {acwrZ && <Badge color={acwrZ.color} size="sm" label={acwrZ.label} style={{ fontSize: '0.62rem', marginTop: 4 }} />}
+              </div>
+            </div>
           </Card>
+
+          <RiskAlertsList alerts={alerts} hidePlayerName />
         </div>
       )}
 

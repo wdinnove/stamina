@@ -157,7 +157,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
           { key: 'treatment', title: 'Traitements',  color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré' },
           { key: 'checkup',   title: 'Bilans santé', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré'     },
         ]).map(section => (
-          <div key={section.key} style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '16px 20px' }}>
+          <div key={section.key}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
                 {section.title}

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
-import { AlertCircle, CheckCircle, User, Lock, Save, LogOut } from 'lucide-react';
+import { useNavigate, Link } from 'react-router';
+import { AlertCircle, CheckCircle, User, Lock, Save, LogOut, Bell } from 'lucide-react';
 import { profileApi } from '../api/profile';
-import { authApi } from '../api';
+import { authApi, isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush } from '../api';
 import { Card, CardTitle } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
@@ -90,6 +90,39 @@ export default function ProfilePage() {
   async function handleSignOut() {
     await authApi.signOut();
     navigate('/login', { replace: true });
+  }
+
+  const [pushSupported, setPushSupported] = useState(true);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(true);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
+  const [pushErr, setPushErr] = useState('');
+
+  useEffect(() => {
+    if (!isPushSupported()) { setPushSupported(false); setPushLoading(false); return; }
+    getExistingSubscription().then(sub => { setPushSubscribed(!!sub); setPushLoading(false); });
+  }, []);
+
+  async function handleTogglePush() {
+    setPushBusy(true);
+    setPushErr('');
+    setPushMsg('');
+    try {
+      if (pushSubscribed) {
+        await unsubscribeFromPush();
+        setPushSubscribed(false);
+        setPushMsg('Notifications désactivées sur cet appareil.');
+      } else {
+        await subscribeToPush();
+        setPushSubscribed(true);
+        setPushMsg('Notifications activées sur cet appareil.');
+      }
+    } catch (err: unknown) {
+      setPushErr(err instanceof Error ? err.message : 'Erreur.');
+    } finally {
+      setPushBusy(false);
+    }
   }
 
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
@@ -239,6 +272,60 @@ export default function ProfilePage() {
       </Card>
 
       </div>{/* fin grille 2 cards */}
+
+      <Card style={{ padding: '20px 24px', borderRadius: 10, marginTop: 20 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
+          <CardTitle icon={<Bell size={14} color="#00E5A0" />}>Notifications</CardTitle>
+        </div>
+
+        {pushMsg && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.25)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+            <CheckCircle size={13} style={{ color: '#00E5A0', flexShrink: 0 }} />
+            <span style={{ color: '#00E5A0', fontSize: '0.8rem' }}>{pushMsg}</span>
+          </div>
+        )}
+        {pushErr && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+            <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+            <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{pushErr}</span>
+          </div>
+        )}
+
+        {!pushSupported ? (
+          <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>
+            Les notifications push ne sont pas supportées par ce navigateur.
+          </p>
+        ) : pushLoading ? (
+          <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Vérification du statut…</p>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: pushSubscribed ? '#00E5A0' : '#475569', flexShrink: 0 }} />
+              <span style={{ color: pushSubscribed ? '#00E5A0' : '#94A3B8', fontSize: '0.85rem', fontWeight: 600 }}>
+                {pushSubscribed ? 'Notifications activées' : 'Notifications désactivées'}
+              </span>
+            </div>
+            <button
+              onClick={handleTogglePush} disabled={pushBusy}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', borderRadius: 6,
+                border: pushSubscribed ? '1px solid #2A2F3A' : 'none',
+                backgroundColor: pushBusy ? '#1E2229' : pushSubscribed ? 'transparent' : '#00E5A0',
+                color: pushBusy ? '#475569' : pushSubscribed ? '#94A3B8' : '#0D0F14',
+                cursor: pushBusy ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem',
+              }}
+            >
+              {pushBusy ? 'Patientez…' : pushSubscribed ? 'Désactiver' : 'Activer'}
+            </button>
+          </div>
+        )}
+
+        <p style={{ margin: '14px 0 0' }}>
+          <Link to="/notifications/test" style={{ color: '#3B82F6', fontSize: '0.8rem', textDecoration: 'none' }}>
+            Page de test avancée →
+          </Link>
+        </p>
+      </Card>
     </div>
   );
 }

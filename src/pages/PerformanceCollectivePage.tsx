@@ -9,6 +9,7 @@ import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList,
   PlayerComparisonTable, IndicatorSelect, CrossTimelineChart, CorrelationCard, WellnessPomsPanel,
+  TeamDynStatTab,
 } from '../components';
 import type { ComparisonRow } from '../components/PlayerComparisonTable';
 import { evalColor, ortgColor, drtgColor } from '../data';
@@ -105,7 +106,7 @@ function IndicatorControls({ indicators, aKey, bKey, onA, onB }: {
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'players' | 'matches' | 'impact' | 'pca' | 'load' | 'wellness' | 'correlations' | 'comparison';
+type Tab = 'overview' | 'players' | 'matches' | 'impact' | 'pca' | 'load' | 'wellness' | 'correlations' | 'comparison' | 'trends';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':   'overview',
@@ -118,6 +119,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'bien-etre':      'wellness',
   'correlations':   'correlations',
   'comparaison':    'comparison',
+  'tendances':      'trends',
 };
 
 const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
@@ -125,7 +127,11 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Stats',      tabs: [{ key: 'players', slug: 'stats-joueurs', label: 'Joueurs' }, { key: 'matches', slug: 'stats-matchs', label: 'Matchs' }] },
   { label: 'Avancé',     tabs: [{ key: 'impact', slug: 'impact', label: 'Impact' }, { key: 'pca', slug: 'acp', label: 'ACP' }] },
   { label: 'Charge & bien-être', tabs: [{ key: 'load', slug: 'charge-physique', label: 'Charge physique' }, { key: 'wellness', slug: 'bien-etre', label: 'Bien-être' }] },
-  { label: 'Comparer',   tabs: [{ key: 'correlations', slug: 'correlations', label: 'Corrélations' }, { key: 'comparison', slug: 'comparaison', label: 'Comparaison' }] },
+  { label: 'Comparer',   tabs: [
+    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
+    { key: 'comparison',   slug: 'comparaison',  label: 'Comparaison' },
+    { key: 'trends',       slug: 'tendances',    label: 'Tendances' },
+  ] },
 ];
 
 export default function PerformanceCollectivePage() {
@@ -910,6 +916,20 @@ export default function PerformanceCollectivePage() {
           </CardTitle>
           <PlayerComparisonTable rows={rows} aDef={aDef} bDef={bDef} onOpenPlayer={openPlayer} />
         </Card>
+      )}
+
+      {/* ══ TENDANCES ÉQUIPE ════════════════════════════════════════════════ */}
+      {activeTab === 'trends' && (
+        <TeamDynStatTab
+          periodStats={filteredTeamStats}
+          seasonStats={teamStats}
+          periodLabel={`${filteredTeamStats.length} match${filteredTeamStats.length > 1 ? 's' : ''}`}
+          periodRpe={allRpe.filter(e => inRangeTeam(e.date))}
+          seasonRpe={allRpe}
+          periodWellness={allWellness.filter(w => inRangeTeam(w.date))}
+          seasonWellness={allWellness}
+          evalAvgP={evalAvgP} evalAvgAll={evalAvgAll}
+        />
       )}
 
         </div>

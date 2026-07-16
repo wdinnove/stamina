@@ -51,6 +51,9 @@ export default defineConfig({
         // Ne jamais faire passer les appels API (Supabase, /api/*) par le fallback SPA —
         // seul le shell de l'app (JS/CSS/images) est précaché, les données restent toujours en direct.
         navigateFallbackDenylist: [/^\/api\//],
+        // Gestion des notifications push (listeners push/notificationclick) — fichier séparé pour
+        // ne pas mélanger la logique métier avec le SW généré par Workbox.
+        importScripts: ['push-sw.js'],
       },
     }),
   ],

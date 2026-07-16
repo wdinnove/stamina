@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Card } from './Card';
+import { Filter, ChevronDown, X } from 'lucide-react';
+import { Card, CardTitle } from './Card';
+import { Modal } from './Modal';
+import { FilterField, filterControlStyle } from './FilterField';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export const isoToday  = () => new Date().toISOString().split('T')[0];
@@ -81,63 +84,100 @@ interface DateRangeCardProps {
   style?:       React.CSSProperties;
 }
 
-const btnStyle = (active: boolean): React.CSSProperties => ({
-  padding: '5px 12px', borderRadius: 5, border: '1px solid', cursor: 'pointer',
-  borderColor: active ? '#00E5A0' : '#2A2F3A',
-  backgroundColor: active ? '#00E5A018' : 'transparent',
-  color: active ? '#00E5A0' : '#64748B',
-  fontSize: '0.78rem', fontWeight: active ? 600 : 400,
-});
+const CUSTOM = 'custom';
 
-const inputStyle: React.CSSProperties = {
-  padding: '5px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
-  borderRadius: 5, color: '#F1F5F9', fontSize: '0.78rem', outline: 'none',
-  colorScheme: 'dark', minWidth: 0,
-};
+function fmtShort(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
 
-export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style }: DateRangeCardProps) {
-  return (
-    <Card style={{ padding: '10px 14px', marginBottom: 14, ...style }}>
+/** Contenu commun (select preset + inputs de dates) — utilisé dans la barre desktop et dans la modale mobile. */
+function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, layout }: DateRangeCardProps & { layout: 'row' | 'stacked' }) {
+  const selectValue = preset === null ? CUSTOM : String(preset);
+  const handlePresetSelect = (v: string) => {
+    if (v === CUSTOM) return;
+    const found = DATE_PRESETS.find(p => String(p.value) === v);
+    if (found) onPreset(found.value);
+  };
 
-      {/* ── Mobile : 3 lignes pleine largeur (4 presets / 3 presets / 2 dates) ── */}
-      <div className="flex flex-col gap-2 md:hidden w-full">
-        <div className="flex gap-1.5 w-full">
-          {DATE_PRESETS.slice(0, 4).map(p => (
-            <button key={String(p.value)} onClick={() => onPreset(p.value)}
-              className="flex-1" style={{ ...btnStyle(preset === p.value), padding: '5px 0' }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1.5 w-full">
-          {DATE_PRESETS.slice(4).map(p => (
-            <button key={String(p.value)} onClick={() => onPreset(p.value)}
-              className="flex-1" style={{ ...btnStyle(preset === p.value), padding: '5px 0' }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+  const presetField = (
+    <FilterField legend="Période">
+      <select value={selectValue} onChange={e => handlePresetSelect(e.target.value)} style={filterControlStyle}>
+        {DATE_PRESETS.map(p => <option key={String(p.value)} value={String(p.value)}>{p.label}</option>)}
+        {preset === null && <option value={CUSTOM}>Personnalisé</option>}
+      </select>
+    </FilterField>
+  );
+
+  if (layout === 'stacked') {
+    return (
+      <div className="flex flex-col gap-2 w-full">
+        {presetField}
         <div className="flex items-center gap-2 w-full">
-          <input type="date" value={from} onChange={e => onFrom(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
           <span style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>→</span>
-          <input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={{ ...inputStyle, flex: 1 }} />
+          <FilterField legend="Au"><input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
         </div>
       </div>
+    );
+  }
+  return (
+    <div className="flex items-center" style={{ gap: 10 }}>
+      {presetField}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
+        <span style={{ color: '#475569', fontSize: '0.75rem' }}>→</span>
+        <FilterField legend="Au"><input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
+      </div>
+    </div>
+  );
+}
 
-      {/* ── Desktop : boutons groupés à gauche, dates à droite ── */}
-      <div className="hidden md:flex md:items-center md:justify-between">
-        <div className="flex items-center gap-1.5">
-          {DATE_PRESETS.map(p => (
-            <button key={String(p.value)} onClick={() => onPreset(p.value)} style={btnStyle(preset === p.value)}>
-              {p.label}
+export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style }: DateRangeCardProps) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const activePreset = DATE_PRESETS.find(p => p.value === preset);
+  const summary = activePreset ? activePreset.label : (from && to ? `${fmtShort(from)} → ${fmtShort(to)}` : 'Personnalisé');
+
+  return (
+    <Card style={{ marginBottom: 14, ...style }}>
+
+      {/* ── Mobile : titre + bouton résumé qui ouvre une modale ── */}
+      <div className="flex md:hidden">
+        <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
+          right={
+            <button onClick={() => setMobileOpen(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 5,
+              border: '1px solid #2A2F3A', backgroundColor: '#1E2229', color: '#F1F5F9',
+              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+            }}>
+              {summary} <ChevronDown size={14} style={{ color: '#64748B' }} />
             </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="date" value={from} onChange={e => onFrom(e.target.value)} style={inputStyle} />
-          <span style={{ color: '#475569', fontSize: '0.75rem' }}>→</span>
-          <input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={inputStyle} />
-        </div>
+          }
+        >Filtres</CardTitle>
+      </div>
+
+      {mobileOpen && (
+        <Modal onClose={() => setMobileOpen(false)} closeOnBackdropClick maxWidth={340}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Filter size={14} style={{ color: '#3B82F6' }} />
+                <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.9rem' }}>Filtres</span>
+              </div>
+              <button onClick={() => setMobileOpen(false)} style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 4 }}>
+                <X size={18} />
+              </button>
+            </div>
+            <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} layout="stacked" />
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Desktop : titre à gauche, champs à droite ── */}
+      <div className="hidden md:block">
+        <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
+          right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} layout="row" />}
+        >Filtres</CardTitle>
       </div>
 
     </Card>

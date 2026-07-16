@@ -1666,3 +1666,23 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 --   LIMIT 1;
 -- $$;
 -- GRANT EXECUTE ON FUNCTION get_player_public_info(UUID) TO anon;
+
+-- Notifications Push Web (VAPID / Web Push API) — un utilisateur peut avoir plusieurs appareils.
+-- Écrite/lue depuis les fonctions serverless api/push/* via la service role key (RLS quand même
+-- posée en défense en profondeur, au cas où un accès direct depuis le client serait ajouté plus tard).
+CREATE TABLE push_subscriptions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions (user_id);
+
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "push_subscriptions_user_own" ON push_subscriptions
+  FOR ALL TO authenticated
+  USING      (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());

@@ -63,6 +63,7 @@ export const router = createBrowserRouter([
           { path: 'exercises',       lazy: () => import('./pages/ExercisesPage').then(m => ({ Component: m.default })) },
           { path: 'exercises/:id',   lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
           { path: 'profile',         lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },
+          { path: 'notifications/test', lazy: () => import('./pages/PushNotificationTestPage').then(m => ({ Component: m.default })) },
           { path: 'configuration',  lazy: () => import('./pages/ConfigurationPage').then(m => ({ Component: m.default })) },
           { path: 'matches',        lazy: () => import('./pages/MatchesPage').then(m => ({ Component: m.default })) },
           { path: 'matches/:id',   lazy: () => import('./pages/MatchDetailPage').then(m => ({ Component: m.default })) },

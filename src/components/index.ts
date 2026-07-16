@@ -25,6 +25,7 @@ export type { PlayerMedicalViewHandle } from './PlayerMedicalView';
 export { InjuryRecordCard }    from './InjuryRecordCard';
 export { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 export { PlayerDynStatTab }    from './PlayerDynStatTab';
+export { TeamDynStatTab }      from './TeamDynStatTab';
 export { IndicatorSelect }       from './IndicatorSelect';
 export { CrossTimelineChart }    from './CrossTimelineChart';
 export { CorrelationCard }       from './CorrelationCard';

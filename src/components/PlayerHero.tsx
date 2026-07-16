@@ -22,6 +22,10 @@ export function PlayerHero({ player, marginBottom = 14 }: { player: Player; marg
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>{playerNameFull(player)}</span>
           <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '1rem' }}>#{player.number} · {player.position}</span>
+          <span style={{
+            color, backgroundColor: `${color}18`, border: `1px solid ${color}40`,
+            fontWeight: 700, fontSize: '0.82rem', borderRadius: 20, padding: '5px 14px', flexShrink: 0,
+          }}>{playerStatusLabel[player.status]}</span>
         </div>
         <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>
           {flagEmoji[player.nationality] ?? ''}
@@ -29,18 +33,6 @@ export function PlayerHero({ player, marginBottom = 14 }: { player: Player; marg
           {player.height && player.weight ? ` · ${player.height} cm / ${player.weight} kg` : ''}
           {player.contractEnd ? ` · Contrat → ${formatDate(player.contractEnd)}` : ''}
         </p>
-      </div>
-
-      <div className="flex items-stretch gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-[#2A2F3A]">
-        <div style={{ display: 'flex', alignItems: 'center', paddingRight: 20 }}>
-          <div style={{
-            color,
-            backgroundColor: `${color}18`,
-            border: `1px solid ${color}40`,
-            fontWeight: 700, fontSize: '0.82rem',
-            borderRadius: 20, padding: '5px 14px',
-          }}>{playerStatusLabel[player.status]}</div>
-        </div>
       </div>
     </div>
   );

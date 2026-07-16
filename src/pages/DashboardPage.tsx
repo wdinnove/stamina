@@ -6,7 +6,8 @@ import { playersApi, medicalApi, actionsApi, matchesApi, rpeApi } from '../api';
 import { profileApi } from '../api/profile';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
-import type { PlayerCrossData } from '../data/crossAnalysis';
+import { detectRiskAlerts, type PlayerCrossData } from '../data/crossAnalysis';
+import type { LoadThresholds } from '../contexts/TeamSeasonContext';
 import { wellnessAvg, aggregateTeamWellnessDaily, wellnessTier, worstWellnessAxis, type WellnessAxisAlert } from '../utils/wellness';
 import { playerNameShort, playerNameFull } from '../utils/playerName';
 import type { Player, Action, MedicalRecord, Match } from '../data/types';
@@ -343,6 +344,7 @@ export default function DashboardPage() {
           acwrByPlayer={acwrByPlayer}
           wellnessStatsByPlayer={wellnessStatsByPlayer}
           range={range}
+          thresholds={thresholds}
           onOpenPlayer={id => navigate(`/performance-individuelle/${id}/vue-ensemble`)}
         />
       )}
@@ -664,11 +666,12 @@ const ACWR_LABEL_BIS: Record<string, string> = {
 type OverviewSortKey = 'name' | 'status' | 'risk' | 'rpe' | 'wellness' | 'attention' | 'eval';
 type SortDir = 'asc' | 'desc';
 
-function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, range, onOpenPlayer }: {
+function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, range, thresholds, onOpenPlayer }: {
   players: PlayerCrossData[];
   acwrByPlayer: Map<string, number | null>;
   wellnessStatsByPlayer: Map<string, { avgScore: number | null; worstDim: WellnessAxisAlert | null }>;
   range: DateRange;
+  thresholds: LoadThresholds;
   onOpenPlayer: (id: string) => void;
 }) {
   const cutoff = range === '21j' ? localDate(-21) : null;
@@ -680,6 +683,17 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, ran
     else { setSortKey(key); setSortDir('asc'); }
   };
   const arrow = (key: OverviewSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+
+  // Statut "à risque maintenant" — plus lisible que la seule zone ACWR : combine blessure active,
+  // zone de charge à risque et alertes rouges récentes (mêmes règles que RiskAlertsList).
+  const recentAlerts = useMemo(
+    () => detectRiskAlerts(players, localDate(-14), localDate(0), thresholds),
+    [players, thresholds],
+  );
+  const redAlertPlayerIds = useMemo(
+    () => new Set(recentAlerts.filter(a => a.level === 'red').map(a => a.playerId)),
+    [recentAlerts],
+  );
 
   const rows = players.map(pd => {
     const p = pd.player;
@@ -699,7 +713,12 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, ran
     const evalAvg = evalVals.length
       ? Math.round(evalVals.reduce((s, v) => s + v, 0) / evalVals.length * 10) / 10 : null;
 
-    return { p, acwr, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg };
+    const hasActiveInjury = pd.medical.some(m => m.type === 'injury' && m.status === 'active');
+    const atRiskNow = hasActiveInjury
+      || zone?.label === 'Risque modéré' || zone?.label === 'Risque élevé'
+      || redAlertPlayerIds.has(p.id);
+
+    return { p, acwr, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg, atRiskNow };
   });
 
   const dir = sortDir === 'asc' ? 1 : -1;
@@ -740,7 +759,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, ran
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ p, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg }, i) => {
+            {sorted.map(({ p, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg, atRiskNow }, i) => {
               const rowBg = i % 2 === 0 ? '#161920' : '#1A1E26';
 
               return (
@@ -757,7 +776,14 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, ran
                   </td>
                   <td style={tdBase}><StatusBadge status={p.status} size="sm" /></td>
                   <td style={tdBase}>
-                    {zone ? <Badge color={zone.color} label={ACWR_LABEL_BIS[zone.label] ?? zone.label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span title={atRiskNow ? 'À risque maintenant' : 'Pas de risque identifié maintenant'} style={{
+                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                        backgroundColor: atRiskNow ? '#EF4444' : '#00E5A0',
+                        boxShadow: atRiskNow ? '0 0 0 3px rgba(239,68,68,0.15)' : 'none',
+                      }} />
+                      {zone ? <Badge color={zone.color} label={ACWR_LABEL_BIS[zone.label] ?? zone.label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
+                    </span>
                   </td>
                   <td style={{ ...tdBase, color: avgRpe === null ? '#334155' : rpeColor(avgRpe), fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
                     {fmt1(avgRpe)}
