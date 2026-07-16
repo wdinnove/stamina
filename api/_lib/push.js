@@ -8,7 +8,10 @@ export function configureWebPush() {
   const publicKey  = process.env.VAPID_PUBLIC_KEY
   const privateKey = process.env.VAPID_PRIVATE_KEY
   const subject     = process.env.VAPID_SUBJECT || 'mailto:contact@example.com'
-  if (!publicKey || !privateKey) throw new Error('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY manquantes')
+  const missing = []
+  if (!publicKey) missing.push('VAPID_PUBLIC_KEY')
+  if (!privateKey) missing.push('VAPID_PRIVATE_KEY')
+  if (missing.length) throw new Error(`Variable(s) manquante(s) côté serveur : ${missing.join(', ')}`)
   webpush.setVapidDetails(subject, publicKey, privateKey)
   configured = true
 }

@@ -36,7 +36,8 @@ export default async function handler(req, res) {
     configureWebPush()
   } catch (err) {
     console.error('[push/send] configuration VAPID manquante', err)
-    return res.status(500).json({ error: 'Configuration serveur incomplète' })
+    const detail = err instanceof Error ? err.message : String(err)
+    return res.status(500).json({ error: `Configuration serveur incomplète : ${detail}` })
   }
 
   const admin = getSupabaseAdmin()
