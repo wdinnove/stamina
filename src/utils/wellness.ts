@@ -31,8 +31,40 @@ export function wellnessStatus(v: number, inverted: boolean): WellnessStatus {
   return n >= 7 ? 'good' : n >= 5 ? 'mid' : 'bad';
 }
 
+const WELLNESS_TIER_LABELS: Record<WellnessStatus, string> = { good: 'Bon', mid: 'Moyen', bad: 'Faible' };
+export interface WellnessTier { status: WellnessStatus; color: string; label: string }
+
+/**
+ * Couleur + statut + libellé (Bon/Moyen/Faible) pour une valeur, en un seul appel — fusionne
+ * wellnessScoreColor/wellnessDimColor/wellnessStatus. Nouveau point d'entrée à privilégier ;
+ * les 3 fonctions ci-dessus restent pour compat le temps de migrer tous les appelants.
+ */
+export function wellnessTier(v: number, inverted = false): WellnessTier {
+  const status = wellnessStatus(v, inverted);
+  return { status, color: wellnessDimColor(v, inverted), label: WELLNESS_TIER_LABELS[status] };
+}
+
 export function wellnessAvg(values: number[]): number | null {
   return values.length > 0 ? Math.round(values.reduce((s, v) => s + v, 0) / values.length * 10) / 10 : null;
+}
+
+export interface WellnessAxisAlert { label: string; felt: number; color: string }
+
+/**
+ * Axe le plus dégradé (valeur "ressentie" la plus basse) trouvé sur un ensemble d'entrées,
+ * uniquement si sous `threshold` — sert à l'alerte bien-être (carte équipe, tableau joueur).
+ */
+export function worstWellnessAxis(entries: WellnessEntry[], threshold = 5): WellnessAxisAlert | null {
+  let worst: WellnessAxisAlert | null = null;
+  for (const entry of entries) {
+    for (const dim of WELLNESS_DIMENSIONS) {
+      const felt = wellnessRawValue(entry[dim.key], dim.inverted);
+      if (felt < threshold && (!worst || felt < worst.felt)) {
+        worst = { label: dim.shortLabel, felt, color: wellnessScoreColor(felt) };
+      }
+    }
+  }
+  return worst;
 }
 
 // Agrégat quotidien de l'équipe : moyenne de chaque dimension entre tous les joueurs ayant saisi ce jour-là.
@@ -68,7 +100,12 @@ export function wellnessGlobalScore(values: { fatigue: number; mood: number; str
 // qu'un ressenti global "plus haut = mieux" ; il faut le reconvertir par axe avant stockage,
 // sans quoi les axes inversés et non-inversés s'annulent et le score calculé tombe à 5.5 pile.
 
-/** 1-10 "ressenti" (plus haut = mieux) → valeur brute stockée pour un axe donné. */
+/**
+ * Convertit entre valeur brute stockée et valeur "ressentie" (plus haut = mieux) pour un
+ * axe donné — formule symétrique (involution : `f(f(v)) === v`), donc utilisable dans les
+ * deux sens indifféremment : ressenti → brut (saisies rapides) ou brut → ressenti (alertes,
+ * séries d'affichage). Le paramètre `v` peut être l'une ou l'autre selon l'appelant.
+ */
 export function wellnessRawValue(v: number, inverted: boolean): number {
   return inverted ? 11 - v : v;
 }

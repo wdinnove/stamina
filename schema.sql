@@ -487,10 +487,10 @@ FROM medical_records;
 
 CREATE TABLE player_actions (
   id           UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
-  player_id    UUID            NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  player_id    UUID            REFERENCES players(id) ON DELETE CASCADE,
   title        TEXT            NOT NULL,
   description  TEXT,
-  category     action_category NOT NULL,
+  category     action_category,
   priority     action_priority NOT NULL DEFAULT 'normal',
   due_date     DATE            NOT NULL,
   assigned_to  UUID            REFERENCES staff(id) ON DELETE SET NULL,
@@ -1098,18 +1098,21 @@ CREATE POLICY "medical_access" ON medical_records
     )
   );
 
--- Actions joueurs
+-- Actions joueurs (player_id et team_id sont tous deux optionnels : l'accès est
+-- autorisé si l'un OU l'autre pointe vers l'organisation/équipe de l'utilisateur)
 CREATE POLICY "action_access" ON player_actions
   FOR ALL TO authenticated
   USING (
-    player_id IN (
+    (player_id IS NOT NULL AND player_id IN (
       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
-    )
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
   )
   WITH CHECK (
-    player_id IN (
+    (player_id IS NOT NULL AND player_id IN (
       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
-    )
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
 -- Matches

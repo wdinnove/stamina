@@ -18,6 +18,7 @@ import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { priorityConfig } from '../data/config';
 import { evalColor } from '../data';
 import { playerNameFull } from '../utils/playerName';
+import { fmt1 } from '../utils/format';
 import {
   playerViewIndicators, indicatorByKey, getSeries, correlateIndicators, detectRiskAlerts, injuryEpisodes,
   type CrossScope, type PlayerCrossData, type IndicatorDef, type LagMode,
@@ -35,7 +36,7 @@ const avg = (vals: number[]): number | null =>
 
 function MiniKpi({ title, sub, value, base, unit, color }: {
   title: string; sub: string; value: number | string | null;
-  base?: number | null; unit?: string; color: string;
+  base?: number | string | null; unit?: string; color: string;
 }) {
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 14px' }}>
@@ -198,12 +199,14 @@ export default function PerformanceIndividuellePage() {
 
   // ── Vue d'ensemble : KPIs joueur (ex-PerformancePlayerPage) ──────────────
   const inRange = (d: string) => d >= from && d <= to;
-  const tsbNow = pd ? computeTsb(pd.rpe) : null;
+  // allTimeRpe (pas pd.rpe, borné à la saison) : le TSB a besoin de tout l'historique pour
+  // être fiable en tout début de saison.
+  const tsbNow = pd ? computeTsb(pd.allTimeRpe) : null;
   const tsbNowZone = tsbNow !== null ? tsbZone(tsbNow) : null;
   const rpeAvgP   = pd ? avg(pd.rpe.filter(e => inRange(e.date)).map(e => e.rpe)) : null;
   const rpeAvgAll = pd ? avg(pd.rpe.map(e => e.rpe)) : null;
-  const wellAvgP   = pd ? avg(pd.wellness.filter(w => inRange(w.date)).map(w => Number(w.score))) : null;
-  const wellAvgAll = pd ? avg(pd.wellness.map(w => Number(w.score))) : null;
+  const wellAvgP   = pd ? wellnessAvg(pd.wellness.filter(w => inRange(w.date)).map(w => Number(w.score))) : null;
+  const wellAvgAll = pd ? wellnessAvg(pd.wellness.map(w => Number(w.score))) : null;
   const evalAvgP   = pd ? avg(pd.matchStats.filter(m => m.eval !== null && inRange(m.date)).map(m => Number(m.eval))) : null;
   const evalAvgAll = pd ? avg(pd.matchStats.filter(m => m.eval !== null).map(m => Number(m.eval))) : null;
   const attP = pd ? pd.attendance.filter(a => inRange(a.date)) : [];
@@ -278,8 +281,7 @@ export default function PerformanceIndividuellePage() {
   const wellnessScoreAvgP = wellnessAvg(wellnessInRange.map(e => e.score));
   const radarColor = wellnessScoreColor(wellnessScoreAvgP ?? 5);
   const radarData = WELLNESS_DIMENSIONS.map(dim => {
-    const vals = wellnessInRange.map(e => e[dim.key] as number);
-    const avgV  = vals.length > 0 ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length * 10) / 10 : 0;
+    const avgV = wellnessAvg(wellnessInRange.map(e => e[dim.key] as number)) ?? 0;
     return { dim: dim.shortLabel, value: avgV, fullMark: 10, inverted: dim.inverted };
   });
 
@@ -289,7 +291,7 @@ export default function PerformanceIndividuellePage() {
   const seasonInjuryCount = selected?.season.startDate
     ? allInjuries.filter(m => m.date >= selected.season.startDate).length
     : allInjuries.length;
-  const acwr = computeAcwr(rpe);
+  const acwr = computeAcwr(rpe, isoDaysAgo(0));
   const acwrZ = acwrZone(acwr);
 
   const today = isoDaysAgo(0);
@@ -383,10 +385,10 @@ export default function PerformanceIndividuellePage() {
             value={tsbNow !== null ? `${tsbNow > 0 ? '+' : ''}${tsbNow}` : null}
             color={tsbNowZone?.color ?? '#94A3B8'} />
           <MiniKpi title="RPE moyen" sub="Période sélectionnée"
-            value={rpeAvgP} base={rpeAvgAll} unit="/10"
+            value={rpeAvgP !== null ? fmt1(rpeAvgP) : null} base={rpeAvgAll !== null ? fmt1(rpeAvgAll) : null} unit="/10"
             color={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#94A3B8'} />
           <MiniKpi title="Bien-être" sub="Période sélectionnée"
-            value={wellAvgP} base={wellAvgAll} unit="/10"
+            value={wellAvgP !== null ? fmt1(wellAvgP) : null} base={wellAvgAll !== null ? fmt1(wellAvgAll) : null} unit="/10"
             color={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#94A3B8'} />
           <MiniKpi title="Éval. match" sub="Période sélectionnée"
             value={evalAvgP} base={evalAvgAll}
@@ -467,7 +469,7 @@ export default function PerformanceIndividuellePage() {
           <Card style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }} onClick={() => setActiveTab('charge-physique')}>
             <CardTitle icon={<Activity size={12} style={{ color: '#3B82F6' }} />}
               right={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {rpeAvgP !== null && <span style={{ color: rpeColor(rpeAvgP), fontWeight: 700, fontSize: '0.78rem' }}>RPE moy. {rpeAvgP}</span>}
+                {rpeAvgP !== null && <span style={{ color: rpeColor(rpeAvgP), fontWeight: 700, fontSize: '0.78rem' }}>RPE moy. {fmt1(rpeAvgP)}</span>}
                 <ArrowRight size={13} style={{ color: '#475569' }} />
               </div>}>
               RPE — période sélectionnée
@@ -515,7 +517,7 @@ export default function PerformanceIndividuellePage() {
                   </RadarChart>
                 </ResponsiveContainer>
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
-                  <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{wellnessScoreAvgP ?? '—'}</div>
+                  <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{fmt1(wellnessScoreAvgP)}</div>
                 </div>
               </div>
             )}

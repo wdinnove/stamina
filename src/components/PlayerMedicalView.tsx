@@ -8,6 +8,7 @@ import RichTextEditor from './RichTextEditor';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { InjuryRecordCard } from './InjuryRecordCard';
+import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { typeLabels, severityConfig } from './MedicalCard';
 import { playerNameFull } from '../utils/playerName';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
@@ -28,6 +29,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
 
   const [closeModal, setCloseModal] = useState<{ recordId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
   const [closeSaving, setCloseSaving] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<MedicalRecord | null>(null);
 
   const [showForm, setShowForm]         = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
@@ -104,7 +106,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
         let notifBody: string | undefined;
         if (formType === 'injury') {
           const parts: string[] = [severityConfig[fSeverity].label];
-          if (fDays) parts.push(`${fDays}j d'absence`);
+          if (fDays) parts.push(`${fDays}j blessé`);
           if (fDesc) parts.push(fDesc);
           notifBody = parts.join(' · ');
         } else {
@@ -183,6 +185,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
                         onClose={record.status === 'active' && record.type !== 'checkup'
                           ? () => setCloseModal({ recordId: record.id, date: TODAY, playerStatus: 'active' })
                           : undefined}
+                        onClick={() => setDetailRecord(record)}
                         navigate={navigate}
                       />
                     ))
@@ -193,6 +196,19 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
           </div>
         ))}
       </div>
+
+      {/* ── DETAIL MODAL ── */}
+      {detailRecord && (
+        <MedicalRecordDetailModal
+          record={detailRecord}
+          player={player ?? undefined}
+          onClose={() => setDetailRecord(null)}
+          onEdit={() => { const r = detailRecord; setDetailRecord(null); openEdit(r); }}
+          onCloseRecord={detailRecord.status === 'active' && detailRecord.type !== 'checkup'
+            ? () => { const r = detailRecord; setDetailRecord(null); setCloseModal({ recordId: r.id, date: TODAY, playerStatus: 'active' }); }
+            : undefined}
+        />
+      )}
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
@@ -332,7 +348,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
                   </div>
                   <div className="med-form-days-rtp" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
-                      <label style={labelStyle}>Jours d'absence estimés</label>
+                      <label style={labelStyle}>Jours blessés (estimés)</label>
                       <input
                         type="number" min="0" value={fDays}
                         onChange={e => {

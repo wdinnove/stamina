@@ -4,10 +4,10 @@ import { BarChart2, ChevronDown, ChevronRight, TrendingUp, Activity, LineChart a
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
-import { aggregateTeamWellnessDaily } from '../utils/wellness';
+import { aggregateTeamWellnessDaily, wellnessAvg } from '../utils/wellness';
 import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero,
-  PCABiplot, WinFactorsList, PlayerImpactList, PlayerRankingTable, RiskAlertsList,
+  PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList,
   PlayerComparisonTable, IndicatorSelect, CrossTimelineChart, CorrelationCard, WellnessPomsPanel,
 } from '../components';
 import type { ComparisonRow } from '../components/PlayerComparisonTable';
@@ -17,6 +17,7 @@ import { computeMatchPCA, computeWinFactors, computePlayerImpact } from '../data
 import { computeTsb, tsbZone, rpeColor } from '../utils/rpe';
 import { wellnessScoreColor } from '../utils/wellness';
 import { playerNameShort } from '../utils/playerName';
+import { fmt1 } from '../utils/format';
 import {
   teamIndicators, indicatorByKey, getSeries, correlateIndicators, detectRiskAlerts,
   type CrossScope, type IndicatorDef, type LagMode,
@@ -61,7 +62,7 @@ const avg = (vals: number[]): number | null =>
 
 function MiniKpi({ title, sub, value, base, unit, color }: {
   title: string; sub: string; value: number | string | null;
-  base?: number | null; unit?: string; color: string;
+  base?: number | string | null; unit?: string; color: string;
 }) {
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 14px' }}>
@@ -159,13 +160,17 @@ export default function PerformanceCollectivePage() {
   const allWellness = allPd.flatMap(p => p.wellness);
   const allMatchStats = allPd.flatMap(p => p.matchStats);
   const allAttendance = allPd.flatMap(p => p.attendance);
-  const tsbValues = allPd.map(p => computeTsb(p.rpe)).filter((v): v is number => v !== null);
+  // allTimeRpe (pas p.rpe, borné à la saison) : le TSB a besoin de tout l'historique pour
+  // être fiable en tout début de saison — même convention que useTeamRpeHistory/Dashboard.
+  const tsbValues = allPd.map(p => computeTsb(p.allTimeRpe)).filter((v): v is number => v !== null);
   const tsbNow = tsbValues.length ? Math.round(tsbValues.reduce((s, v) => s + v, 0) / tsbValues.length * 10) / 10 : null;
   const tsbNowZone = tsbNow !== null ? tsbZone(tsbNow) : null;
   const rpeAvgP   = avg(allRpe.filter(e => inRangeTeam(e.date)).map(e => e.rpe));
   const rpeAvgAll = avg(allRpe.map(e => e.rpe));
-  const wellAvgP   = avg(allWellness.filter(w => inRangeTeam(w.date)).map(w => Number(w.score)));
-  const wellAvgAll = avg(allWellness.map(w => Number(w.score)));
+  // Agrégat quotidien équipe (moyenne des joueuses ayant loggué ce jour-là) avant de moyenner
+  // sur la période — sinon une joueuse qui logge plus souvent pèse plus lourd dans la moyenne.
+  const wellAvgP   = wellnessAvg(aggregateTeamWellnessDaily(allWellness.filter(w => inRangeTeam(w.date))).map(e => e.score));
+  const wellAvgAll = wellnessAvg(aggregateTeamWellnessDaily(allWellness).map(e => e.score));
   const evalAvgP   = avg(allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)).map(m => Number(m.eval)));
   const evalAvgAll = avg(allMatchStats.filter(m => m.eval !== null).map(m => Number(m.eval)));
   const attP = allAttendance.filter(a => inRangeTeam(a.date));
@@ -525,10 +530,10 @@ export default function PerformanceCollectivePage() {
               value={tsbNow !== null ? `${tsbNow > 0 ? '+' : ''}${tsbNow}` : null}
               color={tsbNowZone?.color ?? '#94A3B8'} />
             <MiniKpi title="RPE moyen" sub="Période sélectionnée"
-              value={rpeAvgP} base={rpeAvgAll} unit="/10"
+              value={rpeAvgP !== null ? fmt1(rpeAvgP) : null} base={rpeAvgAll !== null ? fmt1(rpeAvgAll) : null} unit="/10"
               color={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#94A3B8'} />
             <MiniKpi title="Bien-être" sub="Période sélectionnée"
-              value={wellAvgP} base={wellAvgAll} unit="/10"
+              value={wellAvgP !== null ? fmt1(wellAvgP) : null} base={wellAvgAll !== null ? fmt1(wellAvgAll) : null} unit="/10"
               color={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#94A3B8'} />
             <MiniKpi title="Éval. match" sub="Période sélectionnée"
               value={evalAvgP} base={evalAvgAll}
@@ -569,7 +574,7 @@ export default function PerformanceCollectivePage() {
               <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead><tr>
-                    <th onClick={() => setS1(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}><span style={{ color: thC('name', s1) }}>Joueur{si('name', s1)}</span></th>
+                    <th onClick={() => setS1(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }}><span style={{ color: thC('name', s1) }}>Joueur{si('name', s1)}</span></th>
                     <th style={{ ...TH, cursor: 'default' }}>#</th>
                     <th onClick={() => setS1(p => tog(p, 'mj'))}   style={{ ...TH, color: thC('mj', s1)   }}>MJ{si('mj', s1)}</th>
                     <th onClick={() => setS1(p => tog(p, 'tit'))}  style={{ ...TH, color: thC('tit', s1)  }}>Tit{si('tit', s1)}</th>
@@ -596,7 +601,7 @@ export default function PerformanceCollectivePage() {
                       const pmCol = avgPm > 0 ? '#00E5A0' : avgPm < 0 ? '#EF4444' : '#475569';
                       return (
                         <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
-                          <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{playerNameShort(p)}</td>
+                          <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{playerNameShort(p)}</td>
                           <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                           <td style={TD}>{tit}</td>
@@ -630,7 +635,7 @@ export default function PerformanceCollectivePage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr>
-                      <th rowSpan={2} onClick={() => setS2(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}><span style={{ color: thC('name', s2) }}>Joueur{si('name', s2)}</span></th>
+                      <th rowSpan={2} onClick={() => setS2(p => tog(p, 'name'))} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2 }}><span style={{ color: thC('name', s2) }}>Joueur{si('name', s2)}</span></th>
                       <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>#</th>
                       <th rowSpan={2} onClick={() => setS2(p => tog(p, 'mj'))} style={{ ...TH, verticalAlign: 'middle', color: thC('mj', s2) }}>MJ{si('mj', s2)}</th>
                       <th rowSpan={2} onClick={() => setS2(p => tog(p, 'min'))} style={{ ...TH, verticalAlign: 'middle', color: normalize25 ? '#F59E0B' : thC('min', s2) }}>Min{si('min', s2)}{normalize25 ? ' ⟳' : ''}</th>
@@ -656,7 +661,7 @@ export default function PerformanceCollectivePage() {
                   <tbody>
                     {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
                       <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
-                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{playerNameShort(p)}</td>
+                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{playerNameShort(p)}</td>
                         <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
@@ -704,7 +709,7 @@ export default function PerformanceCollectivePage() {
               <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead><tr>
-                    <th onClick={() => setS4(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, color: thC('opp', s4), position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Adv{si('opp', s4)}</th>
+                    <th onClick={() => setS4(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, color: thC('opp', s4), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', s4)}</th>
                     <th onClick={() => setS4(p => tog(p, 'date'))} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, color: thC('date', s4) }}>Date{si('date', s4)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>L/E</th>
                     <th style={{ ...TH, cursor: 'default' }}>Score</th>
@@ -729,7 +734,7 @@ export default function PerformanceCollectivePage() {
                       const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                       return (
                         <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
-                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{m.opponent}</td>
+                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                           <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                           <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
@@ -761,7 +766,7 @@ export default function PerformanceCollectivePage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr>
-                      <th rowSpan={2} onClick={() => setS5(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, verticalAlign: 'middle', color: thC('opp', s5), position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Adv{si('opp', s5)}</th>
+                      <th rowSpan={2} onClick={() => setS5(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, verticalAlign: 'middle', color: thC('opp', s5), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', s5)}</th>
                       <th rowSpan={2} onClick={() => setS5(p => tog(p, 'date'))} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, verticalAlign: 'middle', color: thC('date', s5) }}>Date{si('date', s5)}</th>
                       <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>L/E</th>
                       <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>Score</th>
@@ -784,7 +789,7 @@ export default function PerformanceCollectivePage() {
                       const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                       return (
                         <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
-                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{m.opponent}</td>
+                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                           <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                           <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
@@ -862,7 +867,7 @@ export default function PerformanceCollectivePage() {
               info={rpeTeamKpis ? `${rpeTeamKpis.sessions} séance${rpeTeamKpis.sessions > 1 ? 's' : ''}` : undefined}>
               Classement charge RPE
             </CardTitle>
-            <PlayerRankingTable players={playerRanking} sessionLoadLight={sessionLoadLight} sessionLoadNormal={sessionLoadNormal} lightMax={thresholds.lightMax} normalMax={thresholds.normalMax} />
+            <RPEPlayerRankingTable players={playerRanking} sessionLoadLight={sessionLoadLight} sessionLoadNormal={sessionLoadNormal} lightMax={thresholds.lightMax} normalMax={thresholds.normalMax} />
           </Card>
           <RiskAlertsList alerts={alerts} onOpenPlayer={openPlayer} />
         </div>

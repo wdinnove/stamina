@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { rpeApi } from '../api/rpe';
-import { computeAcwr, computeTsb } from '../utils/rpe';
+import { computeAcwr, computeTsb, avgRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
-import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
+import { mondayIso as getWeekMonday, averageWeeklyLoad } from '../utils/weeklyLoad';
 import { fmtDateShort } from '../utils/dateFormat';
 import { playerNameShort } from '../utils/playerName';
 import type { Player, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
@@ -131,7 +131,6 @@ export function useTeamRpeHistory(
         .map(s => {
           const entries = entriesBySession.get(s.id) ?? [];
           const vals = entries.map(e => e.rpe);
-          const avg  = vals.reduce((a, b) => a + b, 0) / vals.length;
           return {
             id:         s.id,
             date:       s.date,
@@ -139,7 +138,7 @@ export function useTeamRpeHistory(
             duration:   s.plannedDuration,
             nbPlayers:  vals.length,
             playerIds:  entries.map(e => e.playerId),
-            avg:        Math.round(avg * 10) / 10,
+            avg:        avgRpe(vals) ?? 0,
             max:        Math.max(...vals),
             min:        Math.min(...vals),
             // Charge par joueur (actual_duration si saisie, sinon durée prévue) — pas une simple
@@ -154,7 +153,7 @@ export function useTeamRpeHistory(
       const globalLoad = sessionRows.reduce((s, r) => s + r.totalLoad, 0);
       setTeamKpis({
         sessions:  sessionRows.length,
-        avg:       allVals.length ? Math.round(allVals.reduce((s, v) => s + v, 0) / allVals.length * 10) / 10 : 0,
+        avg:       avgRpe(allVals) ?? 0,
         max:       allVals.length ? Math.max(...allVals) : 0,
         min:       allVals.length ? Math.min(...allVals) : 0,
         totalLoad: globalLoad,
@@ -175,7 +174,7 @@ export function useTeamRpeHistory(
         return {
           label: fmtDateShort(dateStr),
           date:  dateStr,
-          avg:   vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length * 10) / 10 : 0,
+          avg:   avgRpe(vals) ?? 0,
           max:   vals.length ? Math.max(...vals) : null,
           min:   vals.length ? Math.min(...vals) : null,
         };
@@ -188,10 +187,10 @@ export function useTeamRpeHistory(
       _3wAgo.setDate(_3wAgo.getDate() - 21);
       const _3wAgoStr = _3wAgo.toLocaleDateString('sv');
 
-      const playerMap = new Map<string, { rpes: number[]; sessions: Set<string>; load: number; rpes3w: number[]; load3w: number; sessions3w: Set<string> }>();
+      const playerMap = new Map<string, { rpes: number[]; sessions: Set<string>; load: number; rpes3w: number[] }>();
       const playerWeekLoadMap = new Map<string, Map<string, number>>();
       rpeRows.forEach(r => {
-        if (!playerMap.has(r.playerId)) playerMap.set(r.playerId, { rpes: [], sessions: new Set(), load: 0, rpes3w: [], load3w: 0, sessions3w: new Set() });
+        if (!playerMap.has(r.playerId)) playerMap.set(r.playerId, { rpes: [], sessions: new Set(), load: 0, rpes3w: [] });
         const p    = playerMap.get(r.playerId)!;
         const sess = sessionMap.get(r.sessionId);
         const dur  = sess?.plannedDuration ?? 0;
@@ -200,8 +199,6 @@ export function useTeamRpeHistory(
         p.load += r.rpe * dur;
         if (sess && sess.date >= _3wAgoStr) {
           p.rpes3w.push(r.rpe);
-          p.load3w += r.rpe * dur;
-          p.sessions3w.add(r.sessionId);
         }
         if (sess) {
           const wk = getWeekMonday(sess.date);
@@ -213,18 +210,14 @@ export function useTeamRpeHistory(
 
       const ranking: PlayerRank[] = Array.from(playerMap.entries()).map(([playerId, data]) => {
         const player  = rosterRef.current.find(p => p.id === playerId);
-        const avg     = data.rpes.reduce((s, v) => s + v, 0) / data.rpes.length;
-        const avg3w   = data.rpes3w.length ? data.rpes3w.reduce((s, v) => s + v, 0) / data.rpes3w.length : null;
-        const ns3w    = data.sessions3w.size;
         return {
           playerId,
           name:       player ? playerNameShort(player) : '—',
           nbSessions: data.sessions.size,
-          avgRpe:     Math.round(avg * 10) / 10,
+          avgRpe:     avgRpe(data.rpes) ?? 0,
           maxRpe:     Math.max(...data.rpes),
           totalLoad:  Math.round(data.load),
-          rpe3w:      avg3w !== null ? Math.round(avg3w * 10) / 10 : null,
-          load3w:     ns3w > 0 ? Math.round(data.load3w / ns3w) : null,
+          rpe3w:      avgRpe(data.rpes3w),
           weekLoads:  [...(playerWeekLoadMap.get(playerId)?.values() ?? [])],
         };
       }).sort((a, b) => b.avgRpe - a.avgRpe);
@@ -249,7 +242,7 @@ export function useTeamRpeHistory(
       typeMap.forEach((v, k) => {
         typeResult[k] = {
           count:     v.count,
-          avgRpe:    v.rpes.length ? Math.round(v.rpes.reduce((s, r) => s + r, 0) / v.rpes.length * 10) / 10 : 0,
+          avgRpe:    avgRpe(v.rpes) ?? 0,
           totalLoad: v.totalLoad,
         };
       });
@@ -268,33 +261,17 @@ export function useTeamRpeHistory(
         if (!ids.length) { setTeamSeasonAvgRpe(null); setTeamSeasonAvgWeeklyLoad(null); return; }
         const rows = await rpeApi.listRpeDetailsBySessionIds(ids);
         if (!rows.length) { setTeamSeasonAvgRpe(null); setTeamSeasonAvgWeeklyLoad(null); return; }
-        setTeamSeasonAvgRpe(Math.round(rows.reduce((s, r) => s + r.rpe, 0) / rows.length * 10) / 10);
+        setTeamSeasonAvgRpe(avgRpe(rows.map(r => r.rpe)));
 
-        // Charge par séance (tous joueurs confondus), puis moyenne hebdo ramenée à l'effectif
-        // réellement présent chaque semaine — même méthode que le graphique et que "Semaines
-        // surcharge", pour rester cohérent (voir avgWeeklyLoadTeam plus bas dans le composant).
-        const bySession = new Map<string, { load: number; players: Set<string> }>();
-        rows.forEach(r => {
-          if (!bySession.has(r.sessionId)) bySession.set(r.sessionId, { load: 0, players: new Set() });
-          const b   = bySession.get(r.sessionId)!;
-          const dur = r.actualDuration ?? sessionById.get(r.sessionId)?.plannedDuration ?? 0;
-          b.load += r.rpe * dur;
-          b.players.add(r.playerId);
-        });
-        const weekMap = new Map<string, { load: number; players: Set<string> }>();
-        bySession.forEach((b, sessionId) => {
-          const date = sessionById.get(sessionId)?.date;
-          if (!date) return;
-          const k = getWeekMonday(date);
-          if (!weekMap.has(k)) weekMap.set(k, { load: 0, players: new Set() });
-          const w = weekMap.get(k)!;
-          w.load += b.load;
-          b.players.forEach(id => w.players.add(id));
-        });
-        const perPlayerWeeklyLoads = [...weekMap.values()].map(w => w.load / Math.max(w.players.size, 1));
-        setTeamSeasonAvgWeeklyLoad(perPlayerWeeklyLoads.length
-          ? Math.round(perPlayerWeeklyLoads.reduce((a, b) => a + b, 0) / perPlayerWeeklyLoads.length)
-          : null);
+        // Même fonction que le graphique et que "Semaines surcharge" (averageWeeklyLoad),
+        // pour rester cohérent partout dans l'app.
+        setTeamSeasonAvgWeeklyLoad(averageWeeklyLoad(rows.map(r => ({
+          date: sessionById.get(r.sessionId)?.date ?? '',
+          playerId: r.playerId,
+          rpe: r.rpe,
+          actualDuration: r.actualDuration,
+          plannedDuration: sessionById.get(r.sessionId)?.plannedDuration ?? 0,
+        })).filter(r => r.date)));
       }, () => {});
   }, [teamId, seasonId]);
 

@@ -7,12 +7,13 @@ import { profileApi } from '../api/profile';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import type { PlayerCrossData } from '../data/crossAnalysis';
-import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessRawValue } from '../utils/wellness';
+import { wellnessAvg, aggregateTeamWellnessDaily, wellnessTier, worstWellnessAxis, type WellnessAxisAlert } from '../utils/wellness';
 import { playerNameShort, playerNameFull } from '../utils/playerName';
-import type { Player, Action, MedicalRecord, Match, WellnessEntry } from '../data/types';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone } from '../utils/rpe';
-import { mondayIso } from '../utils/weeklyLoad';
+import type { Player, Action, MedicalRecord, Match } from '../data/types';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, avgRpe } from '../utils/rpe';
+import { averageWeeklyLoad } from '../utils/weeklyLoad';
 import { fmtDateShort } from '../utils/dateFormat';
+import { fmt1 } from '../utils/format';
 import { evalColor } from '../data';
 
 type DateRange = '21j' | 'season';
@@ -29,33 +30,6 @@ function fmtWeekday(dateStr: string): string {
 interface TrainingSession { id: string; date: string; planned_duration: number; session_type?: string }
 interface SessionSummary  { id: string; date: string; duration: number; load: number | null; avgRpe: number | null; nbPlayers: number; type: string }
 
-/**
- * Détecte un seuil bien-être franchi (bas ou haut), sur le score global ou l'une des 6
- * notes (redressée selon le sens de l'axe).
- */
-function wellnessThresholdInfo(
-  entry: WellnessEntry | undefined,
-  compare: (v: number) => boolean,
-  qualifier: string,
-): { show: boolean; text: string; tooltip: string } {
-  if (!entry) return { show: false, text: '', tooltip: '' };
-  const dims = WELLNESS_DIMENSIONS.filter(dim => compare(dim.inverted ? 11 - entry[dim.key] : entry[dim.key]));
-  const globalMatch = compare(entry.score);
-  const count = dims.length + (globalMatch ? 1 : 0);
-
-  if (count === 0) return { show: false, text: '', tooltip: '' };
-  if (count === 1 && dims.length === 1) {
-    const dim = dims[0];
-    return { show: true, text: dim.shortLabel, tooltip: `${dim.label} ${qualifier}` };
-  }
-  const tooltip = globalMatch && dims.length === 0
-    ? `Score global ${qualifier} (${entry.score.toFixed(1)}/10)`
-    : `Plusieurs notes ${qualifier}s : ${dims.map(d => d.shortLabel).join(', ')}${globalMatch ? ' + score global' : ''}`;
-  return { show: true, text: 'Bien-être', tooltip };
-}
-
-const wellnessAlertInfo = (entry: WellnessEntry | undefined) => wellnessThresholdInfo(entry, v => v < 5, 'basse');
-
 const SESSION_TYPE_LABELS: Record<string, string> = {
   training: 'Entraînement', match: 'Match', gym: 'Gym', rest: 'Repos',
 };
@@ -66,7 +40,7 @@ const SESSION_TYPE_COLORS: Record<string, string> = {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { selected, loading: teamLoading, thresholds } = useTeamSeason();
-  const { data: perfData } = usePerformanceData();
+  const { data: perfData, loading: perfLoading } = usePerformanceData();
 
   const today = useMemo(() => localDate(0), []);
   const todayLabel = useMemo(() => new Date().toLocaleDateString('fr-FR', {
@@ -76,42 +50,44 @@ export default function DashboardPage() {
   // Plage de dates affichée sur les cartes/tableau sensibles (Charge physique, Bien-être,
   // colonnes RPE/Assiduité/Éval du tableau) — Matchs/Entraînements/Actions/Infirmerie et le
   // risque blessure (ACWR) ne sont eux jamais impactés par ce sélecteur.
-  const [range, setRange] = useState<DateRange>('season');
+  const [range, setRange] = useState<DateRange>('21j');
 
-  // ACWR à la date du jour, par joueur — dérivé de l'historique complet (perfData) pour
-  // un calcul correct même en tout début de saison. Indépendant de `range`.
+  // ACWR à la date du jour, par joueur — dérivé de l'historique RPE toutes saisons confondues
+  // (allTimeRpe) pour un calcul correct même en tout début de saison. Indépendant de `range`.
   const acwrByPlayer = useMemo(() => {
     const map = new Map<string, number | null>();
     if (!perfData) return map;
-    for (const pd of perfData.players) map.set(pd.player.id, computeAcwr(pd.rpe, today));
+    for (const pd of perfData.players) map.set(pd.player.id, computeAcwr(pd.allTimeRpe, today));
     return map;
   }, [perfData, today]);
 
-  // Dernière entrée bien-être par joueur — bornée aux 21 derniers jours glissants si
-  // `range === '21j'`, sinon toute la saison (perfData est déjà borné à la saison).
-  const latestWellnessByPlayer = useMemo(() => {
-    const map = new Map<string, WellnessEntry | undefined>();
+  // Bien-être par joueur sur la période sélectionnée (21j glissants ou saison entière) :
+  // score moyen de TOUTES les entrées de la période (pas juste la dernière saisie — sinon
+  // le sélecteur 21j/saison n'a souvent aucun effet visible, la dernière entrée tombant déjà
+  // dans les deux fenêtres), et le pire écart d'axe (< 5, "ressenti") observé sur la période.
+  const wellnessStatsByPlayer = useMemo(() => {
+    const map = new Map<string, { avgScore: number | null; worstDim: WellnessAxisAlert | null }>();
     if (!perfData) return map;
-    const cutoff = range === '21j' ? localDate(-20) : null;
+    const cutoff = range === '21j' ? localDate(-21) : null;
     for (const pd of perfData.players) {
       const pool = cutoff ? pd.wellness.filter(w => w.date >= cutoff) : pd.wellness;
-      map.set(pd.player.id, [...pool].sort((a, b) => b.date.localeCompare(a.date))[0]);
+      map.set(pd.player.id, {
+        avgScore: wellnessAvg(pool.map(w => w.score)),
+        worstDim: worstWellnessAxis(pool),
+      });
     }
     return map;
   }, [perfData, range]);
 
-  // Bien-être équipe — moyenne des scores de tous les joueurs, sur 21j ou sur la saison.
-  const teamWellness21d = useMemo(() => {
+  // Bien-être équipe — mêmes fonctions que la page Bien-être / Historique équipe
+  // (agrégat quotidien puis moyenne des jours) pour rester cohérent avec cette page.
+  const teamWellnessNow = useMemo(() => {
     if (!perfData) return null;
-    const from21 = localDate(-20);
-    const vals = perfData.players.flatMap(pd => pd.wellness.filter(w => w.date >= from21).map(w => w.score));
-    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
-  }, [perfData]);
-  const teamWellnessSeason = useMemo(() => {
-    if (!perfData) return null;
-    const vals = perfData.players.flatMap(pd => pd.wellness.map(w => w.score));
-    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
-  }, [perfData]);
+    const cutoff = range === '21j' ? localDate(-21) : null;
+    const allEntries = perfData.players.flatMap(pd => cutoff ? pd.wellness.filter(w => w.date >= cutoff) : pd.wellness);
+    const daily = aggregateTeamWellnessDaily(allEntries);
+    return wellnessAvg(daily.map(e => e.score));
+  }, [perfData, range]);
 
   const [userName,        setUserName]        = useState('');
   const [players,         setPlayers]         = useState<Player[]>([]);
@@ -141,7 +117,7 @@ export default function DashboardPage() {
     setKpiStats(null);
 
     const from30 = localDate(-30);
-    const from21 = localDate(-20); // fenêtre 21 jours glissants
+    const from21 = localDate(-21); // fenêtre 21 jours glissants
 
     Promise.all([
       playersApi.listBySeason(selected.season.id),
@@ -162,7 +138,7 @@ export default function DashboardPage() {
 
         setActions(
           allActions
-            .filter(a => a.status !== 'done' && seasonPlayerIds.has(a.playerId))
+            .filter(a => a.status !== 'done' && (!a.playerId || seasonPlayerIds.has(a.playerId)))
             .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
         );
 
@@ -214,43 +190,28 @@ export default function DashboardPage() {
           rpe: r.rpe, actual_duration: r.actualDuration ?? null, player_id: r.playerId, session_id: r.sessionId,
         }));
 
-        // 21 jours glissants : par joueur ayant réellement loggué sur la période, ramené à
-        // une moyenne PAR SEMAINE (÷3) pour rester comparable aux seuils (calibrés sur une
-        // charge hebdomadaire).
+        // 21 jours glissants — même fonction averageWeeklyLoad (bucket semaine réel, ÷ joueurs
+        // distincts, moyenne sur les semaines actives) que la vue "Saison" et que RPEPage/
+        // useTeamRpeHistory/PlayerLoadPanel, pour rester cohérent partout dans l'app.
         const rows21d = seasonRpeRows.filter(r => (dateMap2.get(r.session_id) ?? '') >= from21);
-        const playerLoad21d = new Map<string, number>();
-        for (const r of rows21d) {
-          const dur = r.actual_duration ?? durMap2.get(r.session_id) ?? 0;
-          playerLoad21d.set(r.player_id, (playerLoad21d.get(r.player_id) ?? 0) + r.rpe * dur);
-        }
-        const load21dValues = [...playerLoad21d.values()];
-        const avgLoad21d = load21dValues.length
-          ? Math.round(load21dValues.reduce((a, b) => a + b, 0) / load21dValues.length / 3)
-          : null;
-        const avgRpe21d = rows21d.length
-          ? Math.round(rows21d.reduce((s, r) => s + r.rpe, 0) / rows21d.length * 10) / 10
-          : null;
+        const avgLoad21d = averageWeeklyLoad(rows21d.map(r => ({
+          date: dateMap2.get(r.session_id) ?? '',
+          playerId: r.player_id,
+          rpe: r.rpe,
+          actualDuration: r.actual_duration ?? undefined,
+          plannedDuration: durMap2.get(r.session_id) ?? 0,
+        })).filter(r => r.date));
+        const avgRpe21d = avgRpe(rows21d.map(r => r.rpe));
 
-        // Saison entière : charge hebdomadaire (lundi = clé) moyennée sur toutes les semaines
-        // loggées — ramenée à l'effectif ayant réellement loggué cette semaine-là.
-        const weekLoadMap = new Map<string, { load: number; players: Set<string> }>();
-        for (const r of seasonRpeRows) {
-          const d = dateMap2.get(r.session_id);
-          if (!d) continue;
-          const wk = mondayIso(d);
-          const dur = r.actual_duration ?? durMap2.get(r.session_id) ?? 0;
-          if (!weekLoadMap.has(wk)) weekLoadMap.set(wk, { load: 0, players: new Set() });
-          const w = weekLoadMap.get(wk)!;
-          w.load += r.rpe * dur;
-          w.players.add(r.player_id);
-        }
-        const weeklyPerPlayerLoads = [...weekLoadMap.values()].map(w => w.load / Math.max(w.players.size, 1));
-        const avgLoadSeason = weeklyPerPlayerLoads.length
-          ? Math.round(weeklyPerPlayerLoads.reduce((a, b) => a + b, 0) / weeklyPerPlayerLoads.length)
-          : null;
-        const avgRpeSeason = seasonRpeRows.length > 0
-          ? Math.round(seasonRpeRows.reduce((s, r) => s + r.rpe, 0) / seasonRpeRows.length * 10) / 10
-          : null;
+        // Saison entière : même fonction, sur tout l'historique de la saison.
+        const avgLoadSeason = averageWeeklyLoad(seasonRpeRows.map(r => ({
+          date: dateMap2.get(r.session_id) ?? '',
+          playerId: r.player_id,
+          rpe: r.rpe,
+          actualDuration: r.actual_duration ?? undefined,
+          plannedDuration: durMap2.get(r.session_id) ?? 0,
+        })).filter(r => r.date));
+        const avgRpeSeason = avgRpe(seasonRpeRows.map(r => r.rpe));
 
         setKpiStats({
           wins: kpiWins, losses: kpiLosses,
@@ -277,12 +238,12 @@ export default function DashboardPage() {
     : availablePct >= 90 ? '#00E5A0'
     : availablePct >= 75 ? '#F59E0B' : '#EF4444';
 
-  // Bien-être équipe — carte "hero" (sensible à `range`)
-  const teamWellnessNow = range === '21j' ? teamWellness21d : teamWellnessSeason;
-  const wellnessAlertCount = players.filter(p => wellnessAlertInfo(latestWellnessByPlayer.get(p.id)).show).length;
-  const teamWellnessColor = teamWellnessNow === null ? '#475569' : wellnessScoreColor(teamWellnessNow);
-  const teamWellnessLabel = teamWellnessNow === null ? '—'
-    : teamWellnessNow >= 7 ? 'Bon' : teamWellnessNow >= 5 ? 'Moyen' : 'Faible';
+  // Bien-être équipe — carte "hero" (sensible à `range`) : nombre de joueurs dont le score
+  // global MOYEN sur la période est sous 5.
+  const wellnessAlertCount = [...wellnessStatsByPlayer.values()].filter(s => s.avgScore !== null && s.avgScore < 5).length;
+  const teamWellnessTier = teamWellnessNow === null ? null : wellnessTier(teamWellnessNow);
+  const teamWellnessColor = teamWellnessTier?.color ?? '#475569';
+  const teamWellnessLabel = teamWellnessTier?.label ?? '—';
 
   // Charge physique équipe — carte "hero" (sensible à `range`, mêmes seuils dans les 2 cas)
   const teamLoadNow = range === '21j' ? (kpiStats?.avgLoad21d ?? null) : (kpiStats?.avgLoadSeason ?? null);
@@ -303,6 +264,17 @@ export default function DashboardPage() {
       <p style={{ color: '#94A3B8', fontSize: '0.85rem' }}>Sélectionnez une équipe et une saison dans la barre du haut pour afficher le dashboard.</p>
     </div>
   );
+
+  // Un seul loader tant que TOUTES les sources ne sont pas prêtes (chargement principal +
+  // hook croisement perf) — évite l'incohérence visuelle de cards qui apparaissent l'une après l'autre.
+  if (loading || perfLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '120px 0' }}>
+        <div style={{ width: 28, height: 28, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6">
@@ -344,7 +316,7 @@ export default function DashboardPage() {
           borderColor={teamLoadColor}
           stats={[
             { value: teamLoadNow ?? 0, label: 'UA / semaine', color: teamLoadColor },
-            { value: teamRpeNow ?? 0, label: 'RPE moyen /10', color: teamRpeNow === null ? '#475569' : rpeColor(teamRpeNow) },
+            { value: teamRpeNow ?? 0, label: 'RPE moyen /10', color: teamRpeNow === null ? '#475569' : rpeColor(teamRpeNow), decimals: 1 },
             { value: highRiskAcwrCount, label: 'Risque blessures', color: '#EF4444' },
           ]}
           onOpen={() => navigate('/rpe')}
@@ -357,7 +329,7 @@ export default function DashboardPage() {
           headerRight={<Badge color={teamWellnessColor} label={teamWellnessLabel} size="sm" style={{ flexShrink: 0 }} />}
           borderColor={teamWellnessColor}
           stats={[
-            { value: teamWellnessNow ?? 0, label: 'Score moyen /10', color: teamWellnessColor },
+            { value: teamWellnessNow ?? 0, label: 'Score moyen /10', color: teamWellnessColor, decimals: 1 },
             { value: wellnessAlertCount, label: `Joueur${wellnessAlertCount > 1 ? 's' : ''} en alerte`, color: '#EF4444' },
           ]}
           onOpen={() => navigate('/wellness/team')}
@@ -369,7 +341,7 @@ export default function DashboardPage() {
         <PlayerOverviewTable
           players={perfData.players}
           acwrByPlayer={acwrByPlayer}
-          latestWellnessByPlayer={latestWellnessByPlayer}
+          wellnessStatsByPlayer={wellnessStatsByPlayer}
           range={range}
           onOpenPlayer={id => navigate(`/performance-individuelle/${id}/vue-ensemble`)}
         />
@@ -436,7 +408,7 @@ function HeroCardShell({ icon, iconBg, title, ctaLabel, onOpen, children, footer
 /** Variante "stats" — N gros chiffres (ou libellés courts) côte à côte (ex. Infirmerie). */
 function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerRight, borderColor }: {
   icon: ReactNode; iconBg: string; title: string;
-  stats: { value: number | string; label: string; color: string }[];
+  stats: { value: number | string; label: string; color: string; decimals?: number }[];
   ctaLabel: string; onOpen: () => void;
   headerRight?: ReactNode;
   borderColor?: string;
@@ -446,6 +418,7 @@ function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerRight, b
       <div style={{ display: 'flex', gap: 24 }}>
         {stats.map(s => {
           const isNumber = typeof s.value === 'number';
+          const displayValue = isNumber && s.decimals !== undefined ? (s.value as number).toFixed(s.decimals) : s.value;
           return (
             <div key={s.label}>
               <div style={{
@@ -453,7 +426,7 @@ function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerRight, b
                 fontSize: isNumber ? '1.7rem' : '1.1rem', fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap',
                 fontFamily: isNumber ? 'JetBrains Mono, monospace' : undefined,
               }}>
-                {s.value}
+                {displayValue}
               </div>
               <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5, whiteSpace: 'nowrap' }}>{s.label}</div>
             </div>
@@ -481,7 +454,7 @@ function RangeToggle({ value, onChange }: { value: DateRange; onChange: (v: Date
               padding: '6px 14px', borderRadius: 4, border: 'none', cursor: 'pointer',
               fontSize: '0.8rem', fontWeight: active ? 600 : 400, transition: 'all 0.15s',
               backgroundColor: active ? '#1E2229' : 'transparent',
-              color: active ? '#F1F5F9' : '#94A3B8',
+              color: active ? '#00E5A0' : '#94A3B8',
             }}>
             {label}
           </button>
@@ -681,34 +654,24 @@ const ACWR_LABEL_BIS: Record<string, string> = {
   'Risque élevé':  'Élevé',
 };
 
-/** Dimension bien-être la plus dégradée d'une entrée (valeur "ressentie", plus haut = mieux). */
-function worstWellnessDim(entry: WellnessEntry): { label: string; felt: number; color: string } | null {
-  let worst: { label: string; felt: number; color: string } | null = null;
-  for (const dim of WELLNESS_DIMENSIONS) {
-    const felt = wellnessRawValue(entry[dim.key], dim.inverted);
-    if (!worst || felt < worst.felt) worst = { label: dim.shortLabel, felt, color: wellnessScoreColor(felt) };
-  }
-  return worst;
-}
-
 /**
- * Tableau par joueur (identité + 6 notions) — statut, risque blessure (ACWR, jamais
- * impacté par `range`), RPE, bien-être (dernière entrée), point faible bien-être (badge
- * affiché uniquement si la note la plus basse est < 4) et éval moyen (RPE et éval sensibles
- * à `range` : 21j glissants ou saison entière). Colonne joueur fixe au scroll horizontal,
- * comme les autres tableaux de l'app.
+ * Tableau par joueur (identité + 6 notions) — statut, risque blessure (ACWR, jamais impacté
+ * par `range`), RPE, bien-être (score moyen sur la période), alerte bien-être (pire axe <5
+ * observé sur la période) et éval moyen (RPE, bien-être et éval sensibles à `range` : 21j
+ * glissants ou saison entière). Colonne joueur fixe au scroll horizontal, comme les autres
+ * tableaux de l'app.
  */
 type OverviewSortKey = 'name' | 'status' | 'risk' | 'rpe' | 'wellness' | 'attention' | 'eval';
 type SortDir = 'asc' | 'desc';
 
-function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, range, onOpenPlayer }: {
+function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, range, onOpenPlayer }: {
   players: PlayerCrossData[];
   acwrByPlayer: Map<string, number | null>;
-  latestWellnessByPlayer: Map<string, WellnessEntry | undefined>;
+  wellnessStatsByPlayer: Map<string, { avgScore: number | null; worstDim: WellnessAxisAlert | null }>;
   range: DateRange;
   onOpenPlayer: (id: string) => void;
 }) {
-  const cutoff = range === '21j' ? localDate(-20) : null;
+  const cutoff = range === '21j' ? localDate(-21) : null;
   const [sortKey, setSortKey] = useState<OverviewSortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -722,22 +685,21 @@ function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, ra
     const p = pd.player;
     const acwr = acwrByPlayer.get(p.id) ?? null;
     const zone = acwrZone(acwr);
-    const w = latestWellnessByPlayer.get(p.id);
-    const wellnessColor = w ? wellnessScoreColor(w.score) : '#475569';
-    const worstDim = w ? worstWellnessDim(w) : null;
+    const stat = wellnessStatsByPlayer.get(p.id);
+    const avgScore = stat?.avgScore ?? null;
+    const wellnessColor = avgScore !== null ? wellnessTier(avgScore).color : '#475569';
+    const weakDim = stat?.worstDim ?? null;
 
     const recentRpe = cutoff ? pd.rpe.filter(e => e.date >= cutoff) : pd.rpe;
     const avgRpe = recentRpe.length
       ? Math.round(recentRpe.reduce((s, e) => s + e.rpe, 0) / recentRpe.length * 10) / 10 : null;
-
-    const weakDim = worstDim && worstDim.felt < 4 ? worstDim : null;
 
     const matchPool = cutoff ? pd.matchStats.filter(m => m.date >= cutoff) : pd.matchStats;
     const evalVals = matchPool.map(m => m.eval).filter((v): v is number => v !== null);
     const evalAvg = evalVals.length
       ? Math.round(evalVals.reduce((s, v) => s + v, 0) / evalVals.length * 10) / 10 : null;
 
-    return { p, acwr, zone, w, wellnessColor, weakDim, avgRpe, evalAvg };
+    return { p, acwr, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg };
   });
 
   const dir = sortDir === 'asc' ? 1 : -1;
@@ -747,7 +709,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, ra
       case 'status':    return (STATUS_SORT_RANK[x.p.status] - STATUS_SORT_RANK[y.p.status]) * dir;
       case 'risk':      return ((x.acwr ?? -Infinity) - (y.acwr ?? -Infinity)) * dir;
       case 'rpe':       return ((x.avgRpe ?? -Infinity) - (y.avgRpe ?? -Infinity)) * dir;
-      case 'wellness':  return ((x.w?.score ?? -Infinity) - (y.w?.score ?? -Infinity)) * dir;
+      case 'wellness':  return ((x.avgScore ?? -Infinity) - (y.avgScore ?? -Infinity)) * dir;
       case 'attention': return ((x.weakDim?.felt ?? Infinity) - (y.weakDim?.felt ?? Infinity)) * dir;
       case 'eval':      return ((x.evalAvg ?? -Infinity) - (y.evalAvg ?? -Infinity)) * dir;
     }
@@ -768,7 +730,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, ra
           </colgroup>
           <thead>
             <tr>
-              <th style={{ ...thSortable, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>
+              <th style={{ ...thSortable, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>
               <th style={thSortable} onClick={() => toggleSort('status')}>Statut{arrow('status')}</th>
               <th style={thSortable} onClick={() => toggleSort('risk')}>Risque blessure{arrow('risk')}</th>
               <th style={thSortable} onClick={() => toggleSort('rpe')}>RPE{arrow('rpe')}</th>
@@ -778,7 +740,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, ra
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ p, zone, w, wellnessColor, weakDim, avgRpe, evalAvg }, i) => {
+            {sorted.map(({ p, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg }, i) => {
               const rowBg = i % 2 === 0 ? '#161920' : '#1A1E26';
 
               return (
@@ -786,7 +748,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, ra
                   style={{ height: 46, borderBottom: '1px solid #1E2229', backgroundColor: rowBg, cursor: 'pointer' }}
                   className="hover:!bg-white/5"
                 >
-                  <td style={{ ...tdBase, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: rowBg, borderRight: '1px solid #2A2F3A' }}>
+                  <td style={{ ...tdBase, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: rowBg }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <PlayerAvatar player={p} size={22} />
                       <span className="md:hidden" style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(p)}</span>
@@ -798,13 +760,13 @@ function PlayerOverviewTable({ players, acwrByPlayer, latestWellnessByPlayer, ra
                     {zone ? <Badge color={zone.color} label={ACWR_LABEL_BIS[zone.label] ?? zone.label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
                   </td>
                   <td style={{ ...tdBase, color: avgRpe === null ? '#334155' : rpeColor(avgRpe), fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                    {avgRpe ?? '—'}
+                    {fmt1(avgRpe)}
                   </td>
                   <td style={{ ...tdBase, color: wellnessColor, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                    {w ? w.score.toFixed(1) : '—'}
+                    {fmt1(avgScore)}
                   </td>
                   <td style={tdBase}>
-                    {weakDim && <Badge color={weakDim.color} label={`${weakDim.label} ${weakDim.felt}`} size="sm" />}
+                    {weakDim && <Badge color={weakDim.color} label={weakDim.label} size="sm" />}
                   </td>
                   <td style={{ ...tdBase, color: evalAvg === null ? '#334155' : evalColor(evalAvg), fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
                     {evalAvg ?? '—'}

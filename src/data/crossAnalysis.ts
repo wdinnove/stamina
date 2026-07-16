@@ -24,11 +24,12 @@ import type {
 } from './types';
 import { VARIABLES } from './pca';
 import { calcPlayerAdvanced, type PlayerAdvancedStats } from './playerAdvanced';
-import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor } from '../utils/rpe';
+import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEntry } from '../utils/rpe';
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
-import { WELLNESS_DIMENSIONS, wellnessScoreColor } from '../utils/wellness';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor, aggregateTeamWellnessDaily } from '../utils/wellness';
 import { correlatePairs, MIN_CORRELATION_PAIRS, type CorrelationPair, type CorrelationResult } from '../utils/correlation';
 import { playerNameFull } from '../utils/playerName';
+import { fmt1 } from '../utils/format';
 
 // ── Données d'entrée ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,9 @@ export interface PlayerCrossData {
   player: Player;
   matchStats: MatchStat[];
   rpe: RPEEntry[];
+  /** Historique RPE TOUTES saisons confondues — requis par ACWR/TSB (28j de charge chronique
+   * fiable même en tout début de saison), contrairement à `rpe` qui est borné à la saison affichée. */
+  allTimeRpe: LoadEntry[];
   wellness: WellnessEntry[];
   medical: MedicalRecord[];
   /** Présence par séance (date de la séance + statut du joueur) */
@@ -151,22 +155,38 @@ function dailyLoadSeries(d: PlayerCrossData, from: string, to: string): SeriesPo
   return [...byDay.entries()].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// ACWR/TSB ont besoin de tout l'historique (28j de charge chronique) pour être fiables en
+// tout début de saison — contrairement aux autres séries, elles lisent `allTimeRpe` et non
+// `rpe` (borné à la saison affichée), même convention que RPEPage/PlayerLoadPanel/MedicalPage.
 function acwrSeries(d: PlayerCrossData, from: string, to: string): SeriesPoint[] {
-  if (!d.rpe.length) return [];
+  if (!d.allTimeRpe.length) return [];
   return eachDay(from, to)
-    .map(date => ({ date, value: computeAcwr(d.rpe, date) }))
+    .map(date => ({ date, value: computeAcwr(d.allTimeRpe, date) }))
     .filter((p): p is SeriesPoint => p.value !== null)
     .map(p => ({ date: p.date, value: round2(p.value) }));
 }
 
 function tsbSeries(d: PlayerCrossData, from: string, to: string): SeriesPoint[] {
-  return computePmcSeries(d.rpe, to)
+  return computePmcSeries(d.allTimeRpe, to)
     .filter(p => p.date >= from && p.date <= to)
     .map(p => ({ date: p.date, value: p.tsb }));
 }
 
 function wellnessSeries(d: PlayerCrossData, from: string, to: string, get: (w: WellnessEntry) => number): SeriesPoint[] {
   return matchSeries(d.wellness, from, to, get);
+}
+
+/**
+ * Série quotidienne équipe pour un indicateur bien-être — agrège d'abord par jour via
+ * `aggregateTeamWellnessDaily` (même fonction que WellnessPage/Dashboard/PerformanceCollective),
+ * plutôt que de moyenner les séries individuelles entre elles (pondération différente en cas
+ * de doubles saisies le même jour).
+ */
+function teamWellnessSeries(players: PlayerCrossData[], from: string, to: string, get: (e: WellnessEntry) => number): SeriesPoint[] {
+  const allEntries = players.flatMap(p => p.wellness).filter(w => w.date >= from && w.date <= to);
+  return aggregateTeamWellnessDaily(allEntries)
+    .map(e => ({ date: e.date, value: round1(get(e)) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** % de présence aux séances sur 28 jours glissants, jour par jour */
@@ -309,6 +329,7 @@ const INDICATORS: IndicatorDef[] = [
     chart: 'line', yDomain: [0, 10], anchor: { window: 3, agg: 'mean' }, weeklyAgg: 'mean',
     valueColor: wellnessScoreColor,
     playerSeries: (d, f, t) => wellnessSeries(d, f, t, w => Number(w.score)),
+    teamSeries: (team, f, t) => teamWellnessSeries(team.players, f, t, e => e.score),
   },
   ...WELLNESS_DIMENSIONS.map((dim): IndicatorDef => ({
     key: `well_${dim.key}`,
@@ -319,6 +340,10 @@ const INDICATORS: IndicatorDef[] = [
     valueColor: wellnessScoreColor,
     playerSeries: (d, f, t) => wellnessSeries(d, f, t, w => {
       const raw = Number(w[dim.key]);
+      return dim.inverted ? 11 - raw : raw;
+    }),
+    teamSeries: (team, f, t) => teamWellnessSeries(team.players, f, t, e => {
+      const raw = Number(e[dim.key]);
       return dim.inverted ? 11 - raw : raw;
     }),
   })),
@@ -503,15 +528,17 @@ export function detectRiskAlerts(
   const extFrom = shiftDate(from, -14);
 
   for (const p of players) {
-    if (!p.rpe.length) continue; // toutes les règles reposent sur la charge
+    if (!p.rpe.length && !p.allTimeRpe.length) continue; // toutes les règles reposent sur la charge
     const playerName = playerNameFull(p.player);
 
+    // ACWR/TSB sur l'historique complet (pas juste la saison affichée) — sinon un épisode de
+    // surcharge en tout début de saison peut être manqué faute des 28j de charge chronique.
     const acwrByDay = new Map<string, number>();
     for (const d of eachDay(extFrom, to)) {
-      const a = computeAcwr(p.rpe, d);
+      const a = computeAcwr(p.allTimeRpe, d);
       if (a !== null) acwrByDay.set(d, a);
     }
-    const tsbByDay = new Map(computePmcSeries(p.rpe, to).map(pt => [pt.date, pt.tsb]));
+    const tsbByDay = new Map(computePmcSeries(p.allTimeRpe, to).map(pt => [pt.date, pt.tsb]));
     const redDay = (d: string) => (acwrByDay.get(d) ?? 0) > 1.5 || (tsbByDay.get(d) ?? 99) <= -30;
 
     // R1 — ACWR > 1,5 au moins 3 jours consécutifs (épisode le plus récent)
@@ -606,7 +633,7 @@ export function detectRiskAlerts(
         alerts.push({
           playerId: p.player.id, playerName, level: 'amber', date: drop.week,
           title: 'Bien-être en chute sous charge élevée',
-          detail: `Score ${drop.curr}/10 vs ${drop.prev}/10 la semaine précédente, charge hebdo « ${drop.tier} » (semaine du ${fmtDayMonth(drop.week)})`,
+          detail: `Score ${fmt1(drop.curr)}/10 vs ${fmt1(drop.prev)}/10 la semaine précédente, charge hebdo « ${drop.tier} » (semaine du ${fmtDayMonth(drop.week)})`,
         });
       }
     }

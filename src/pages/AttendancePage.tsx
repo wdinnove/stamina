@@ -350,7 +350,7 @@ export default function AttendancePage() {
               <tr>
                 <th style={{
                   position: 'sticky', left: 0, zIndex: 3, backgroundColor: '#161920',
-                  borderBottom: '1px solid #2A2F3A', borderRight: '1px solid #2A2F3A',
+                  borderBottom: '1px solid #2A2F3A',
                   padding: '12px 16px', textAlign: 'left',
                 }}>
                   <span style={{ color: '#475569', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
@@ -384,7 +384,7 @@ export default function AttendancePage() {
               <tr>
                 <td style={{
                   position: 'sticky', left: 0, zIndex: 2,
-                  backgroundColor: '#0D0F14', borderBottom: '1px solid #2A2F3A', borderRight: '1px solid #2A2F3A',
+                  backgroundColor: '#0D0F14', borderBottom: '1px solid #2A2F3A',
                   padding: '7px 16px', whiteSpace: 'nowrap',
                 }}>
                   <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</span>
@@ -410,7 +410,7 @@ export default function AttendancePage() {
                   <td style={{
                     position: 'sticky', left: 0, zIndex: 1,
                     backgroundColor: idx % 2 === 0 ? '#161920' : '#13171E',
-                    borderBottom: '1px solid #1E2229', borderRight: '1px solid #2A2F3A',
+                    borderBottom: '1px solid #1E2229',
                     padding: '0 16px', height: 48, whiteSpace: 'nowrap',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -455,7 +455,7 @@ export default function AttendancePage() {
               <tr>
                 <td style={{
                   position: 'sticky', left: 0, zIndex: 2,
-                  backgroundColor: '#13171E', borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229', borderRight: '1px solid #2A2F3A',
+                  backgroundColor: '#13171E', borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229',
                   padding: '0 16px', height: 44, whiteSpace: 'nowrap',
                 }}>
                   <span style={{ color: '#94A3B8', fontSize: '0.82rem', fontWeight: 500 }}>Partenaires</span>
@@ -486,7 +486,7 @@ export default function AttendancePage() {
               <tr>
                 <td style={{
                   position: 'sticky', left: 0, zIndex: 1,
-                  backgroundColor: '#0D0F14', borderTop: '1px solid #2A2F3A', borderRight: '1px solid #2A2F3A',
+                  backgroundColor: '#0D0F14', borderTop: '1px solid #2A2F3A',
                   padding: '8px 16px',
                 }}>
                   <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présence</span>

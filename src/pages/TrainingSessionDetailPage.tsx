@@ -14,9 +14,11 @@ import { Modal, PlayerAvatar, RpeKpiCard, Badge, DropzoneEmptyState } from '../c
 import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform } from '../utils/socialVideo';
-import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
+import { computeAcwr, acwrZone, rpeColor, avgRpe as computeAvgRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
+import { wellnessAvg, wellnessTier as sharedWellnessTier } from '../utils/wellness';
 import { getWeekTier } from '../utils/weeklyLoad';
+import { fmt1 } from '../utils/format';
 import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -103,16 +105,11 @@ function acuteLoadBefore(history: LoadEntry[], sessionDate: string): number {
 function wellnessAvgBefore(entries: WellnessEntry[], sessionDate: string): number | null {
   const { startStr, endStr } = windowBefore(sessionDate);
   const inWindow = entries.filter(e => e.date >= startStr && e.date <= endStr);
-  if (inWindow.length === 0) return null;
-  return Math.round((inWindow.reduce((sum, e) => sum + e.score, 0) / inWindow.length) * 10) / 10;
+  return wellnessAvg(inWindow.map(e => e.score));
 }
 
-// Même seuils que wellnessScoreColor — pour un badge texte plutôt qu'une valeur brute
-function wellnessTier(v: number | null): { label: string; color: string } | null {
-  if (v === null) return null;
-  if (v >= 7) return { label: 'Bon',    color: '#00E5A0' };
-  if (v >= 5) return { label: 'Moyen',  color: '#F59E0B' };
-  return { label: 'Faible', color: '#EF4444' };
+function wellnessTierBadge(v: number | null): { label: string; color: string } | null {
+  return v === null ? null : sharedWellnessTier(v);
 }
 
 function fmtSize(bytes?: number): string {
@@ -1245,7 +1242,7 @@ export default function TrainingSessionDetailPage() {
   const absentCount     = attendance.filter(a => a.status === 'absent').length;
   const lateCount       = attendance.filter(a => a.status === 'late').length;
   const rpeValues       = rpeEntries.map(e => e.rpe);
-  const avgRpe          = rpeValues.length ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length : null;
+  const avgRpe          = computeAvgRpe(rpeValues);
   const totalLoad       = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
   const blockDuration   = blocks.reduce((s, b) => s + b.duration, 0);
   const blockLoadUa     = blocks.reduce((s, b) => s + b.loadUa, 0);
@@ -1254,8 +1251,11 @@ export default function TrainingSessionDetailPage() {
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
 
-  const acwrAlertCount   = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], session.date))?.label === 'Risque élevé').length;
-  const acwrWarningCount = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], session.date))?.label === 'Risque modéré').length;
+  // Même référence que le tableau détail ci-dessous (veille de la séance : reflète le risque
+  // en entrant dans la séance, pas après l'avoir effectuée).
+  const acwrRefDate      = windowBefore(session.date).endStr;
+  const acwrAlertCount   = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], acwrRefDate))?.label === 'Risque élevé').length;
+  const acwrWarningCount = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], acwrRefDate))?.label === 'Risque modéré').length;
 
   return (
     <div className="p-4 md:p-6">
@@ -1390,7 +1390,7 @@ export default function TrainingSessionDetailPage() {
         {!physicalCollapsed && (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10, marginBottom: 18 }}>
-              <RpeKpiCard accent={estimatedRpe !== null ? rpeColor(estimatedRpe) : '#334155'} label="RPE estimé" value={estimatedRpe !== null ? estimatedRpe.toFixed(1) : '—'} />
+              <RpeKpiCard accent={estimatedRpe !== null ? rpeColor(estimatedRpe) : '#334155'} label="RPE planifié" value={estimatedRpe !== null ? estimatedRpe.toFixed(1) : '—'} />
               <RpeKpiCard
                 accent={avgRpe !== null ? rpeColor(avgRpe) : '#334155'}
                 label="RPE réel"
@@ -1410,7 +1410,7 @@ export default function TrainingSessionDetailPage() {
                   </button>
                 )}
               />
-              <RpeKpiCard accent={blockLoadUa > 0 ? getWeekTier(blockLoadUa, sessionLoadLight, sessionLoadNormal).color : '#334155'} label="Charge estimée" value={blockLoadUa > 0 ? blockLoadUa : '—'} />
+              <RpeKpiCard accent={blockLoadUa > 0 ? getWeekTier(blockLoadUa, sessionLoadLight, sessionLoadNormal).color : '#334155'} label="Charge planifiée" value={blockLoadUa > 0 ? blockLoadUa : '—'} />
               <RpeKpiCard
                 accent={avgLoadPerPlayer !== null ? getWeekTier(avgLoadPerPlayer, sessionLoadLight, sessionLoadNormal).color : '#334155'}
                 label="Charge réelle"
@@ -1456,7 +1456,7 @@ export default function TrainingSessionDetailPage() {
                       </colgroup>
                       <thead>
                         <tr style={{ backgroundColor: '#1A1E26' }}>
-                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', ...groupSep }}>Joueur</th>
+                          <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', ...groupSep, borderRight: 'none' }}>Joueur</th>
                           <th colSpan={3} style={{ ...thGroup, ...groupSep }}>Avant séance</th>
                           <th colSpan={2} style={thGroup}>Après séance</th>
                         </tr>
@@ -1488,16 +1488,16 @@ export default function TrainingSessionDetailPage() {
                               style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>
-                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #1E2229', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{playerNameShort(p)}</td>
+                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{playerNameShort(p)}</td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                                 {acwrTier ? tierBadge(acwrTier) : (
                                   <span title="Historique insuffisant (28 jours)" style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
                                 )}
                               </td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>{tierBadge(weekTier)}</td>
-                              <td style={{ padding: '8px 8px', textAlign: 'center', borderRight: '1px solid #1E2229' }}>{tierBadge(wellnessTier(wellnessAvg))}</td>
+                              <td style={{ padding: '8px 8px', textAlign: 'center', borderRight: '1px solid #1E2229' }}>{tierBadge(wellnessTierBadge(wellnessAvg))}</td>
                               <td style={{ padding: '8px 8px', textAlign: 'center', color: rpeEntry ? rpeColor(rpeEntry.rpe) : '#334155', fontSize: '0.85rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                                {rpeEntry ? rpeEntry.rpe : '—'}
+                                {rpeEntry ? fmt1(rpeEntry.rpe) : '—'}
                               </td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>{tierBadge(sessTier)}</td>
                             </tr>

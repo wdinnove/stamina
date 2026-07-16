@@ -38,13 +38,15 @@ function reprisEstimeeDisplay(rtpDate: string | undefined): { label: string; col
   return { label: fmtDateLong(rtpDate), color: days <= 3 ? '#00E5A0' : '#F59E0B' };
 }
 
-export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, showAvatarColumn = true }: {
+export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, showAvatarColumn = true, onClick }: {
   record: MedicalRecord;
   player?: Player;
   onEdit: () => void;
   onClose?: () => void;
   navigate: (path: string) => void;
   showAvatarColumn?: boolean;
+  /** Si fourni, la card devient cliquable et ouvre une modale de détail — les boutons Modifier/Clôturer disparaissent de la card (ils vivent alors dans la modale). */
+  onClick?: () => void;
 }) {
   const col = typeColors[record.type] ?? '#94A3B8';
   const sev = record.severity ? severityConfig[record.severity] : null;
@@ -52,13 +54,29 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
   const statusColor = player ? statusConfig[player.status].color : col;
   const reprise = reprisEstimeeDisplay(record.rtpDate);
 
+  const dateLines = (
+    <>
+      {/* date de création */}
+      <div style={{ color: '#64748B', fontSize: '0.7rem' }}>{typeLabels[record.type]} le : {fmtDateLong(record.date)}</div>
+
+      {/* reprise estimée (injury/treatment uniquement) */}
+      {record.type !== 'checkup' && (
+        <div style={{ color: reprise ? reprise.color : '#475569', fontSize: '0.7rem', fontWeight: reprise ? 700 : 500 }}>
+          {reprise
+            ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
+            : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <div style={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderLeft: `3px solid ${statusColor}`, borderRadius: 8, padding: '10px 12px' }}>
+    <div onClick={onClick} style={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderLeft: `3px solid ${statusColor}`, borderRadius: 8, padding: '10px 12px', cursor: onClick ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
 
         {showAvatarColumn && (player ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, width: 60 }}>
-            <div onClick={() => navigate(`/performance-individuelle/${player.id}/vue-ensemble`)} style={{ cursor: 'pointer' }}>
+            <div onClick={e => { e.stopPropagation(); navigate(`/performance-individuelle/${player.id}/vue-ensemble`); }} style={{ cursor: 'pointer' }}>
               <PlayerAvatar player={player} size={32} />
             </div>
             <div style={{ transform: 'scale(0.8)' }}>
@@ -75,7 +93,7 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
           {/* 1 : nom */}
           {showAvatarColumn && player && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span onClick={() => navigate(`/performance-individuelle/${player.id}/vue-ensemble`)} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
+              <span onClick={e => { e.stopPropagation(); navigate(`/performance-individuelle/${player.id}/vue-ensemble`); }} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
                 {playerNameFull(player)}
               </span>
             </div>
@@ -89,29 +107,28 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
             )}
           </div>
 
-          {/* 3 : date de création */}
-          <div style={{ color: '#64748B', fontSize: '0.7rem', margin: '3px 0 0' }}>{typeLabels[record.type]} le : {fmtDateLong(record.date)}</div>
-
-          {/* 4 : reprise estimée (injury/treatment uniquement) */}
-          {record.type !== 'checkup' && (
-            <div style={{ color: reprise ? reprise.color : '#475569', fontSize: '0.7rem', fontWeight: reprise ? 700 : 500, margin: '2px 0 0' }}>
-              {reprise
-                ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
-                : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
-            </div>
-          )}
+          {/* dates — restent sous la description quand la card garde ses boutons d'action */}
+          {!onClick && <div style={{ margin: '3px 0 0', display: 'flex', flexDirection: 'column', gap: 2 }}>{dateLines}</div>}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-          <button onClick={onEdit} style={{ padding: '3px 8px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: 3 }}>
-            <Pencil size={10} /> Modifier
-          </button>
-          {onClose && (
-            <button onClick={onClose} style={{ padding: '3px 8px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 4, color: '#00E5A0', cursor: 'pointer', fontSize: '0.68rem' }}>
-              Clôturer
+        {onClick && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0, textAlign: 'right' }}>
+            {dateLines}
+          </div>
+        )}
+
+        {!onClick && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+            <button onClick={onEdit} style={{ padding: '3px 8px', backgroundColor: 'rgba(148,163,184,0.1)', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', cursor: 'pointer', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Pencil size={10} /> Modifier
             </button>
-          )}
-        </div>
+            {onClose && (
+              <button onClick={onClose} style={{ padding: '3px 8px', backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 4, color: '#00E5A0', cursor: 'pointer', fontSize: '0.68rem' }}>
+                Clôturer
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import { DateRangeCard, useDateRange } from './DateRangeCard';
 import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import type { PlayerAdvancedStats } from '../data/playerAdvanced';
+import { wellnessAvg } from '../utils/wellness';
+import { averageWeeklyLoad } from '../utils/weeklyLoad';
 
 interface Props {
   rpe: RPEEntry[];
@@ -441,15 +443,20 @@ export function PlayerDynStatTab({ rpe, wellness, matchStats, seasonStart, seaso
     ? Math.max(7, (new Date(dateRange.to + 'T00:00:00').getTime() - new Date(sRef + 'T00:00:00').getTime()) / 86400000 + 1) : 91;
   const sWeeks = sDays / 7;
 
-  const pLoadWk = rpeP.length ? +(rpeP.reduce((s, r) => s + toLoad(r), 0) / pWeeks).toFixed(0) : null;
-  const sLoadWk = seasonRpe.length  ? +(seasonRpe.reduce((s, r) => s + toLoad(r), 0) / sWeeks).toFixed(0)  : null;
+  // Moyenne des charges hebdomadaires réellement enregistrées (semaines sans séance exclues
+  // du dénominateur) — même fonction que partout ailleurs dans l'app (RPEPage, Dashboard,
+  // PlayerLoadPanel), plutôt qu'une division par le nombre de semaines calendaires de la
+  // période, qui incluait à tort les semaines sans séance (blessure, trêve).
+  const toWeeklyRow = (r: RPEEntry) => ({ date: r.date, playerId: 'p', rpe: r.rpe, actualDuration: r.actualDuration, plannedDuration: r.plannedDuration });
+  const pLoadWk = averageWeeklyLoad(rpeP.map(toWeeklyRow));
+  const sLoadWk = averageWeeklyLoad(seasonRpe.map(toWeeklyRow));
   const pSessWk = +(rpeP.length / pWeeks).toFixed(1);
   const sSessWk = seasonRpe.length ? +(seasonRpe.length / sWeeks).toFixed(1) : null;
 
   // ── Bien-être ─────────────────────────────────────────────────────────────
 
   const wA = (arr: WellnessEntry[], key: 'score' | 'sleep' | 'fatigue' | 'mood' | 'motivation' | 'stress' | 'soreness') =>
-    arr.length ? +(arr.reduce((s, w) => s + n(w[key]), 0) / arr.length).toFixed(2) : null;
+    wellnessAvg(arr.map(w => n(w[key])));
 
   const pSco = wA(wellP, 'score');       const sSco = wA(seasonWellness, 'score');
   const pSlp = wA(wellP, 'sleep');       const sSlp = wA(seasonWellness, 'sleep');

@@ -38,6 +38,7 @@ const tdStyle: CSSProperties = {
 
 function fmtValue(def: IndicatorDef, v: number): string {
   if (def.key === 'acwr') return v.toFixed(2);
+  if (def.domain === 'wellness' || def.key === 'rpe') return v.toFixed(1);
   return String(Math.round(v * 10) / 10);
 }
 
@@ -73,7 +74,7 @@ export function PlayerComparisonTable({ rows, aDef, bDef, onOpenPlayer }: Player
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>
+            <th style={{ ...thStyle, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#161920' }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>
             <th style={{ ...thStyle, color: aDef.color }} onClick={() => toggleSort('a')}>
               {aDef.shortLabel}{aDef.unit ? ` (${aDef.unit})` : ''}{arrow('a')}
             </th>
@@ -94,7 +95,7 @@ export function PlayerComparisonTable({ rows, aDef, bDef, onOpenPlayer }: Player
               <tr key={r.player.id} onClick={() => onOpenPlayer(r.player.id)}
                 className="hover:bg-[#1E2229]"
                 style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', transition: 'background 0.12s' }}>
-                <td style={{ ...tdStyle, textAlign: 'left', fontFamily: 'inherit', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }}>
+                <td style={{ ...tdStyle, textAlign: 'left', fontFamily: 'inherit', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     <PlayerAvatar player={r.player} size={22} />
                     <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(r.player)}</span>

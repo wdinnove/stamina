@@ -22,7 +22,7 @@ const emptyForm = {
   playerId:    '',
   title:       '',
   description: '',
-  category:    'medical' as ActionCategory,
+  category:    '' as ActionCategory | '',
   priority:    'normal'  as ActionPriority,
   dueDate:     TODAY,
   assignedTo:  '',
@@ -79,8 +79,9 @@ export default function ActionsPage() {
       .catch(err => { setStaffError(err?.message ?? String(err)); setStaff([]); });
   }, [selected?.team.id]);
 
-  const getPlayer    = (id: string) => players.find(p => p.id === id);
-  const getStaffName = (id: string) => {
+  const getPlayer    = (id?: string) => id ? players.find(p => p.id === id) : undefined;
+  const getStaffName = (id?: string) => {
+    if (!id) return null;
     const s = staff.find(m => m.id === id);
     return s ? `${s.firstName} ${s.lastName}` : 'Inconnu';
   };
@@ -115,28 +116,28 @@ export default function ActionsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.playerId || !form.title || !form.dueDate || !form.assignedTo) {
-      setFormError('Joueur, titre, date et responsable sont obligatoires.');
+    if (!form.title || !form.dueDate) {
+      setFormError('Titre et date limite sont obligatoires.');
       return;
     }
     setSaving(true);
     setFormError('');
     try {
       const created = await actionsApi.create({
-        playerId:    form.playerId,
+        playerId:    form.playerId || undefined,
         teamId:      selected?.team.id,
         title:       form.title,
         description: form.description || undefined,
-        category:    form.category,
+        category:    form.category || undefined,
         priority:    form.priority,
         dueDate:     form.dueDate,
-        assignedTo:  form.assignedTo,
+        assignedTo:  form.assignedTo || undefined,
         status:      'todo',
       });
       setActs(prev => [...prev, created].sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
       setShowForm(false);
       setForm(emptyForm);
-      const player = players.find(p => p.id === form.playerId);
+      const player = form.playerId ? players.find(p => p.id === form.playerId) : undefined;
       const playerName = player ? playerNameFull(player) : undefined;
       notifyOrg('action_added', form.title, playerName, 'action', created.id);
     } catch (err: unknown) {
@@ -165,7 +166,7 @@ export default function ActionsPage() {
 
   const ActionCard = ({ action, showDate = true }: { action: Action; showDate?: boolean }) => {
     const player   = getPlayer(action.playerId);
-    const catCfg   = categoryConfig[action.category];
+    const catCfg   = action.category ? categoryConfig[action.category] : undefined;
     const priCfg   = priorityConfig[action.priority];
     const isOverdue = action.dueDate < TODAY && action.status !== 'done';
     const isDone    = action.status === 'done';
@@ -211,11 +212,15 @@ export default function ActionsPage() {
               <div className="rich-display" style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 6px' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(action.description) }} />
             )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Badge color={catCfg.color} bg={catCfg.color + '18'} label={catCfg.label} size="sm" style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: 3, fontWeight: 600 }} />
+              {catCfg && (
+                <Badge color={catCfg.color} bg={catCfg.color + '18'} label={catCfg.label} size="sm" style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: 3, fontWeight: 600 }} />
+              )}
               <span style={{ color: priCfg.color, fontSize: '0.7rem', fontWeight: 600 }}>
                 {priCfg.label}
               </span>
-              <span style={{ color: '#475569', fontSize: '0.72rem' }}>Assigné : {getStaffName(action.assignedTo)}</span>
+              {getStaffName(action.assignedTo) && (
+                <span style={{ color: '#475569', fontSize: '0.72rem' }}>Assigné : {getStaffName(action.assignedTo)}</span>
+              )}
             </div>
           </div>
           <button
@@ -383,22 +388,13 @@ export default function ActionsPage() {
               )}
 
               <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Joueur concerné *</label>
-                <select required value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} style={inputStyle}>
-                  <option value="">Sélectionner un joueur…</option>
-                  {players.map(p => <option key={p.id} value={p.id}>{playerNameShort(p)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre de la tâche *</label>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Titre *</label>
                 <input type="text" required placeholder="Ex : Séance kiné matin" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} />
               </div>
               <div className="act-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
-                  <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value as ActionCategory }))} style={inputStyle}>
-                    {Object.entries(categoryConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                  </select>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date limite *</label>
+                  <input type="date" required value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} style={inputStyle} />
                 </div>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Priorité</label>
@@ -409,21 +405,31 @@ export default function ActionsPage() {
               </div>
               <div className="act-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date limite *</label>
-                  <input type="date" required value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Assigné à *</label>
-                  <select required value={form.assignedTo} onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))} style={inputStyle}>
-                    <option value="">Sélectionner un membre…</option>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Assigné à</label>
+                  <select value={form.assignedTo} onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))} style={inputStyle}>
+                    <option value="">-</option>
                     {staff.map(s => <option key={s.id} value={s.id}>{s.firstName} {s.lastName} — {s.role}</option>)}
                   </select>
                   {staffError && <p style={{ color: '#EF4444', fontSize: '0.7rem', margin: '4px 0 0' }}>{staffError}</p>}
                   {!staffError && staff.length === 0 && !selected && <p style={{ color: '#F59E0B', fontSize: '0.7rem', margin: '4px 0 0' }}>Sélectionnez d'abord une équipe.</p>}
                 </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Joueur concerné</label>
+                  <select value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} style={inputStyle}>
+                    <option value="">-</option>
+                    {players.map(p => <option key={p.id} value={p.id}>{playerNameShort(p)}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Description / Consigne</label>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value as ActionCategory | '' }))} style={inputStyle}>
+                  <option value="">-</option>
+                  {Object.entries(categoryConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Description</label>
                 <RichTextEditor value={form.description} onChange={html => setForm(f => ({ ...f, description: html }))} placeholder="Description détaillée de la tâche..." minHeight={72} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>

@@ -14,6 +14,12 @@ export interface LoadEntry {
   plannedDuration: number;
 }
 
+/** Moyenne RPE arrondie à 1 décimale — mutualise le calcul répété partout (moyenne de séance,
+ * de joueur, d'équipe…) dans l'app. */
+export function avgRpe(values: number[]): number | null {
+  return values.length > 0 ? Math.round(values.reduce((s, v) => s + v, 0) / values.length * 10) / 10 : null;
+}
+
 /** Couleur associée à une valeur RPE (0–10) — 4 zones : vert / jaune / orange / rouge */
 export function rpeColor(v: number): string {
   if (v >= 8) return '#EF4444';  // 8–10 Extrême   rouge

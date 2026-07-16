@@ -397,7 +397,7 @@ export default function MatchDetailPage() {
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                         <thead>
                           <tr>
-                            <th style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Joueur</th>
+                            <th style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             {THsort('#', 'number', { width: 32, textAlign: 'center' })}
                             {THsort('MIN', 'min')}{THsort('PTS', 'pts')}
                             <th style={TH}>2pts</th>{THsort('2%', 'fg2pct', { color: '#475569' })}
@@ -414,7 +414,7 @@ export default function MatchDetailPage() {
                             const player = playerById.get(s.playerId);
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: player ? 'pointer' : undefined }} onClick={() => player && navigate(`/performance-individuelle/${player.id}/vue-ensemble`)}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={TD}>{fmt1(s.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{s.pts}</td>
@@ -447,7 +447,7 @@ export default function MatchDetailPage() {
                             }), { min: 0, pts: 0, fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0, ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0 });
                             return (
                               <tr key="totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>Totaux</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
                                 <td style={{ ...TD, color: '#334155' }}>—</td>
                                 <td style={TD}>{fmt1(t.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
@@ -481,7 +481,7 @@ export default function MatchDetailPage() {
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                         <thead>
                           <tr>
-                            <th style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Joueur</th>
+                            <th style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             <th style={{ ...TH, width: 32, textAlign: 'center' }}>#</th>
                             {THoppSort('MIN', 'min')}{THoppSort('PTS', 'pts')}
                             <th style={TH}>2pts</th>{THoppSort('2%', 'fg2pct', { color: '#475569' })}
@@ -496,7 +496,7 @@ export default function MatchDetailPage() {
                         <tbody>
                           {sortedOppStats.map((s, i) => (
                             <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                              <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
+                              <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
                               <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>—</td>
                               <td style={TD}>{fmt1(s.min)}</td>
                               <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{s.pts}</td>
@@ -527,7 +527,7 @@ export default function MatchDetailPage() {
                             }), { min:0,pts:0,fg2m:0,fg2a:0,fg3m:0,fg3a:0,ftm:0,fta:0,ro:0,rd:0,pd:0,ct:0,intercepts:0,bp:0,fte:0,fpr:0 });
                             return (
                               <tr key="opp-totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>Totaux</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
                                 <td style={{ ...TD, color: '#334155' }}>—</td>
                                 <td style={TD}>{fmt1(t.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
@@ -571,7 +571,7 @@ export default function MatchDetailPage() {
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
                         <thead>
                           <tr>
-                            <th rowSpan={2} style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Joueur</th>
+                            <th rowSpan={2} style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
                             <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
                             <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Playmaking</th>
@@ -594,7 +594,7 @@ export default function MatchDetailPage() {
                             const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
                                 <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
@@ -632,7 +632,7 @@ export default function MatchDetailPage() {
                         <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
                           <thead>
                             <tr>
-                              <th rowSpan={2} style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Joueur</th>
+                              <th rowSpan={2} style={{ ...TH, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                               <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
                               <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
                               <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Playmaking</th>
@@ -654,7 +654,7 @@ export default function MatchDetailPage() {
                               const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                               return (
                                 <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                  <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
+                                  <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
                                   <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>—</td>
                                   <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
                                   <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>

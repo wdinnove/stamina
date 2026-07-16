@@ -25,9 +25,12 @@ export function usePerformanceData() {
       wellnessApi.list({ from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() }),
       attendanceApi.listSessions(team.id, season.id),
     ]).then(async ([players, matchStats, teamMatchStats, rpe, wellness, sessions]) => {
-      const [medical, attendance] = await Promise.all([
+      const [medical, attendance, allTimeRpeRows] = await Promise.all([
         players.length ? medicalApi.list({ playerIds: players.map(p => p.id) }) : Promise.resolve([]),
         attendanceApi.listAttendance(sessions.map(s => s.id)),
+        // Toutes saisons confondues — nécessaire pour un ACWR/TSB fiable (28j de charge
+        // chronique) même en tout début de saison, contrairement à `rpe` borné à la saison.
+        players.length ? rpeApi.listRpeWithSessionByPlayerIds(players.map(p => p.id)) : Promise.resolve([]),
       ]);
       if (cancelled) return;
       const sessionDate = new Map(sessions.map(s => [s.id, s.date]));
@@ -42,6 +45,7 @@ export function usePerformanceData() {
           teamStatsByMatchId,
           matchStats: matchStats.filter(m => m.playerId === pl.id),
           rpe: rpe.filter(e => e.playerId === pl.id),
+          allTimeRpe: allTimeRpeRows.filter(r => r.playerId === pl.id),
           wellness: wellness.filter(w => w.playerId === pl.id),
           medical: medical.filter(m => m.playerId === pl.id),
           attendance: attendance

@@ -8,9 +8,11 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { DateRangeCard, useDateRange, PlayerSelect, Modal } from '../components';
 import { WellnessPomsPanel } from '../components/WellnessPomsPanel';
+import { WellnessPlayerRankingTable } from '../components/WellnessPlayerRankingTable';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor, wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues, aggregateTeamWellnessDaily } from '../utils/wellness';
 import { playerNameFull } from '../utils/playerName';
+import { fmt1 } from '../utils/format';
 import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
 
 const dimensions = WELLNESS_DIMENSIONS;
@@ -157,6 +159,10 @@ export default function WellnessPage() {
   const sourceHistory = isTeamView ? teamDailySeries : history;
 
   const historyInRange = sourceHistory.filter(e =>
+    (!dateRange.from || e.date >= dateRange.from) && (!dateRange.to || e.date <= dateRange.to)
+  );
+  // Entrées brutes par joueur (non agrégées par date) sur la période, pour le classement joueurs
+  const teamHistoryInRange = teamHistory.filter(e =>
     (!dateRange.from || e.date >= dateRange.from) && (!dateRange.to || e.date <= dateRange.to)
   );
   // ── Comparaison vs moyenne saison, réutilisée par le radar POMS et les KPI de période (WellnessPomsPanel) ──
@@ -378,11 +384,11 @@ export default function WellnessPage() {
             <div>
               <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: 0 }}>Score bien-être global</p>
               <p style={{ color: scoreColor(score), fontSize: '1.4rem', fontWeight: 800, margin: '2px 0 0', fontFamily: 'JetBrains Mono, monospace' }}>
-                {score} / 10 {score < 5 ? '⚠️ Attention' : score < 7 ? '🟡 Modéré' : '✅ Bien'}
+                {fmt1(score)} / 10 {score < 5 ? '⚠️ Attention' : score < 7 ? '🟡 Modéré' : '✅ Bien'}
               </p>
               {previousEntry && scoreDiff !== null && (
                 <p style={{ color: Math.abs(scoreDiff) < 0.05 ? '#475569' : scoreDiff > 0 ? '#00E5A0' : '#EF4444', fontSize: '0.75rem', margin: '4px 0 0' }}>
-                  vs dernière saisie ({fmtDate(previousEntry.date)}, {previousEntry.score}) : {Math.abs(scoreDiff) < 0.05 ? '=' : `${scoreDiff > 0 ? '▲ +' : '▼ '}${scoreDiff}`}
+                  vs dernière saisie ({fmtDate(previousEntry.date)}, {fmt1(previousEntry.score)}) : {Math.abs(scoreDiff) < 0.05 ? '=' : `${scoreDiff > 0 ? '▲ +' : '▼ '}${scoreDiff}`}
                 </p>
               )}
             </div>
@@ -419,6 +425,12 @@ export default function WellnessPage() {
               showSeasonDiff={showSeasonDiff}
               subjectLabel={isTeamView ? "L'équipe" : (selectedPlayer?.firstName ?? '')}
             />
+          )}
+
+          {isTeamView && !loadingTeamHistory && teamHistoryInRange.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <WellnessPlayerRankingTable entries={teamHistoryInRange} roster={roster} />
+            </div>
           )}
         </>
       )}

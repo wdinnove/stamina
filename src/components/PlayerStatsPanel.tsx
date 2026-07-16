@@ -312,7 +312,7 @@ export function PlayerStatsPanel({
               <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead>
                   <tr>
-                    <th onClick={() => toggleB('opp')}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, color: thC('opp', basicSort), position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Adv{si('opp', basicSort)}</th>
+                    <th onClick={() => toggleB('opp')}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, color: thC('opp', basicSort), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', basicSort)}</th>
                     <th onClick={() => toggleB('date')} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, maxWidth: 60, color: thC('date', basicSort) }}>Date{si('date', basicSort)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>L/E</th>
                     <th style={{ ...TH, cursor: 'default' }}>Score</th>
@@ -347,7 +347,7 @@ export function PlayerStatsPanel({
                     const pmCol = (m.plusMinus ?? 0) > 0 ? '#00E5A0' : (m.plusMinus ?? 0) < 0 ? '#EF4444' : '#475569';
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                        <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600, width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{m.opponent}</td>
+                        <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600, width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                         <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60, maxWidth: 60 }}>{fmtShortDate(m.date)}</td>
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
@@ -375,7 +375,7 @@ export function PlayerStatsPanel({
                     );
                   })}
                   <tr style={TOTALS}>
-                    <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{n} matchs · {wins}V {losses}D</td>
+                    <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>{n} matchs · {wins}V {losses}D</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
@@ -406,7 +406,7 @@ export function PlayerStatsPanel({
               <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead>
                   <tr>
-                    <th rowSpan={2} style={{ ...TH, cursor: 'default', textAlign: 'left', width: 140, minWidth: 140, verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, borderRight: '1px solid #2A2F3A' }}>Adv</th>
+                    <th rowSpan={2} style={{ ...TH, cursor: 'default', textAlign: 'left', width: 140, minWidth: 140, verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2 }}>Adv</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', textAlign: 'left', width: 60, minWidth: 60, maxWidth: 60, verticalAlign: 'middle' }}>Date</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>L/E</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>Score</th>
@@ -434,7 +434,7 @@ export function PlayerStatsPanel({
                     const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                        <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600, width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{m.opponent}</td>
+                        <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600, width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                         <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60, maxWidth: 60 }}>{fmtShortDate(m.date)}</td>
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
@@ -454,7 +454,7 @@ export function PlayerStatsPanel({
                     );
                   })}
                   <tr style={TOTALS}>
-                    <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>{n} matchs · {wins}V {losses}D</td>
+                    <td style={{ ...TL, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>{n} matchs · {wins}V {losses}D</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>

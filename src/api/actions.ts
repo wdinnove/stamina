@@ -73,14 +73,14 @@ export const actionsApi = {
 function toAction(row: Record<string, unknown>): Action {
   return {
     id:          row.id          as string,
-    playerId:    row.player_id   as string,
+    playerId:    (row.player_id   as string | null) ?? undefined,
     teamId:      row.team_id     as string | undefined,
     title:       row.title       as string,
     description: row.description as string | undefined,
-    category:    row.category    as Action['category'],
+    category:    (row.category   as Action['category'] | null) ?? undefined,
     priority:    row.priority    as Action['priority'],
     dueDate:     row.due_date    as string,
-    assignedTo:  row.assigned_to as string,
+    assignedTo:  (row.assigned_to as string | null) ?? undefined,
     status:      row.status      as Action['status'],
   };
 }

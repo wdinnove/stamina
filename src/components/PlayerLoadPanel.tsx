@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { getWeekTier } from '../utils/weeklyLoad';
+import { getWeekTier, weeklyLoadBuckets } from '../utils/weeklyLoad';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
 import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, SESSION_TYPES } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
+import { fmt1 } from '../utils/format';
 import { AlertTriangle, ListChecks } from 'lucide-react';
 import { RpeKpiCard } from './RpeKpiCard';
 import { Badge } from './Badge';
@@ -44,26 +45,12 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff 
   const [indivTableView, setIndivTableView] = useState<'session' | 'week'>('week');
 
   const avgRPE = filtered.length ? Math.round(filtered.reduce((s: number, e: RPEEntry) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
-  const weeklyChartData = (() => {
-    const m = new Map<string, number>();
-    filtered.forEach(e => {
-      const k = getWeekMonday(e.date);
-      m.set(k, (m.get(k) ?? 0) + e.rpe * (e.actualDuration ?? e.plannedDuration));
-    });
-    return [...m.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([d, load]) => ({ date: fmtDate(d), load: Math.round(load) }));
-  })();
+  const toWeeklyRow = (e: RPEEntry) => ({ date: e.date, playerId: e.playerId, rpe: e.rpe, actualDuration: e.actualDuration, plannedDuration: e.plannedDuration });
+  const weeklyChartData = weeklyLoadBuckets(filtered.map(toWeeklyRow))
+    .map(b => ({ date: fmtDate(b.week), load: Math.round(b.load) }));
   // Charge hebdo sur toute la saison (indépendant de la période sélectionnée), une entrée par
   // semaine ayant eu au moins une séance — sert de référence pour la moyenne "vs saison"
-  const seasonWeeklyLoadData = (() => {
-    const m = new Map<string, number>();
-    history.forEach(e => {
-      const k = getWeekMonday(e.date);
-      m.set(k, (m.get(k) ?? 0) + e.rpe * (e.actualDuration ?? e.plannedDuration));
-    });
-    return [...m.values()];
-  })();
+  const seasonWeeklyLoadData = weeklyLoadBuckets(history.map(toWeeklyRow)).map(b => b.load);
   const acwr              = computeAcwr(history, todayStr());
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
 
@@ -128,7 +115,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff 
             <RpeKpiCard
               accent={avgRPE !== null ? rpeColor(avgRPE) : '#334155'}
               label="RPE moyen de la période"
-              value={avgRPE !== null ? avgRPE : '—'}
+              value={fmt1(avgRPE)}
               sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{subSeason(rpeDelta)}</> : (avgRPE !== null ? rpeLabel(Math.round(avgRPE)) : '—')}
             />
             <RpeKpiCard
@@ -325,7 +312,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff 
                           </td>
                           <td style={{ padding: '9px 14px', color: '#475569', fontSize: '0.78rem' }}>{e.teamName ?? '—'}</td>
                           <td style={{ padding: '9px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{dur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
-                          <td style={{ padding: '9px 14px' }}><span style={{ color: rpeC, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{e.rpe}</span></td>
+                          <td style={{ padding: '9px 14px' }}><span style={{ color: rpeC, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{fmt1(e.rpe)}</span></td>
                           <td style={{ padding: '9px 14px', color: lCfg.color, fontSize: '0.82rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{load.toLocaleString('fr')}</td>
                           <td style={{ padding: '9px 14px' }}><Badge color={lCfg.color} bg={lCfg.color + '20'} size="sm" label={lCfg.label} style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                         </tr>
@@ -363,7 +350,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff 
                           </td>
                           <td style={{ padding: '9px 14px', color: '#475569', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{w.teamLabel}</td>
                           <td style={{ padding: '9px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.totalDur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
-                          <td style={{ padding: '9px 14px' }}><span style={{ color: rpeC, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{w.avgRpe}</span></td>
+                          <td style={{ padding: '9px 14px' }}><span style={{ color: rpeC, fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>{fmt1(w.avgRpe)}</span></td>
                           <td style={{ padding: '9px 14px', color: lCfg.color, fontSize: '0.82rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{w.totalLoad.toLocaleString('fr')}</td>
                           <td style={{ padding: '9px 14px' }}><Badge color={lCfg.color} bg={lCfg.color + '20'} size="sm" label={lCfg.label} style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                         </tr>

@@ -31,3 +31,37 @@ export function getWeekTier(ua: number, lightMax = DEFAULT_THRESHOLDS.lightMax, 
   return buildWeekTiers(lightMax, normalMax).find(t => ua <= t.max)
     ?? { max: Infinity, label: 'Surcharge', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' };
 }
+
+export interface WeeklyLoadRow { date: string; playerId: string; rpe: number; actualDuration?: number; plannedDuration: number }
+export interface WeeklyLoadBucket { week: string; load: number; players: number }
+
+/**
+ * Regroupe des lignes de charge par semaine calendaire réelle (lundi = clé), charge totale
+ * ÷ joueurs distincts ayant loggué cette semaine-là — brique commune aux graphiques hebdo
+ * (PlayerLoadPanel, RPEPage) et à `averageWeeklyLoad`. Pour un seul joueur, `players` vaut
+ * toujours 1 (÷1 sans effet) : marche indifféremment pour un joueur seul ou toute l'équipe.
+ * Filtrer `rows` sur la période voulue avant l'appel ; résultat trié par semaine croissante.
+ */
+export function weeklyLoadBuckets(rows: WeeklyLoadRow[]): WeeklyLoadBucket[] {
+  const weekMap = new Map<string, { load: number; players: Set<string> }>();
+  for (const r of rows) {
+    const wk = mondayIso(r.date);
+    if (!weekMap.has(wk)) weekMap.set(wk, { load: 0, players: new Set() });
+    const w = weekMap.get(wk)!;
+    w.load += r.rpe * (r.actualDuration ?? r.plannedDuration);
+    w.players.add(r.playerId);
+  }
+  return [...weekMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([week, w]) => ({ week, load: w.load / Math.max(w.players.size, 1), players: w.players.size }));
+}
+
+/**
+ * Charge hebdomadaire moyenne — moyenne uniquement sur les semaines actives (≥1 séance) :
+ * les semaines creuses (blessure, trêve) sont exclues du dénominateur, sinon elles font
+ * chuter la moyenne artificiellement.
+ */
+export function averageWeeklyLoad(rows: WeeklyLoadRow[]): number | null {
+  const buckets = weeklyLoadBuckets(rows);
+  return buckets.length ? Math.round(buckets.reduce((a, b) => a + b.load, 0) / buckets.length) : null;
+}

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { ListOrdered } from 'lucide-react';
 import type { PlayerRank } from '../data/types';
 import { rpeColor } from '../utils/rpe';
 import { getWeekTier } from '../utils/weeklyLoad';
+import { fmt1 } from '../utils/format';
 import { Badge } from './Badge';
 
-interface PlayerRankingTableProps {
+interface RPEPlayerRankingTableProps {
   players:           PlayerRank[];
   sessionLoadLight:  number;
   sessionLoadNormal: number;
@@ -16,11 +18,13 @@ interface PlayerRankingTableProps {
 type SortKey = 'name' | 'rpe' | 'diff' | 'surcharge' | 'elevee' | 'soutenu' | 'legere' | 'charge';
 type SortDir = 'asc' | 'desc';
 
+const COL_WIDTH = `${100 / 8}%`;
+
 function ZoneDot({ color }: { color: string }) {
   return <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: color, marginRight: 3 }} />;
 }
 
-export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNormal, lightMax, normalMax }: PlayerRankingTableProps) {
+export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNormal, lightMax, normalMax }: RPEPlayerRankingTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('rpe');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -80,26 +84,32 @@ export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNorma
 
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26' }}>
-        <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Liste joueurs</p>
+      <style>{`
+        @media (max-width: 639px) {
+          .rpe-rank-table { table-layout: auto !important; }
+          .rpe-rank-table col { width: auto !important; }
+          .rpe-rank-table th, .rpe-rank-table td { padding: 8px 12px !important; }
+        }
+      `}</style>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <ListOrdered size={13} color="#94A3B8" />
+        <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Classement joueurs</p>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <table className="rpe-rank-table" style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <colgroup>
-            <col style={{ width: 150 }} />
-            <col style={{ width: 28 }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '7%' }} />
-            <col style={{ width: '7%' }} />
-            <col style={{ width: '7%' }} />
-            <col style={{ width: '7%' }} />
-            <col style={{ width: '12%' }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
+            <col style={{ width: COL_WIDTH }} />
           </colgroup>
           <thead>
             <tr style={{ backgroundColor: '#1A1E26', position: 'sticky', top: 0, zIndex: 1 }}>
-              <th onClick={() => toggleSort('name')} style={{ ...thBase, color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', borderRight: '1px solid #2A2F3A' }}>Nom{sortArrow('name')}</th>
-              <th style={{ padding: '7px 8px', textAlign: 'left', color: '#475569', fontSize: '0.67rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, borderBottom: '1px solid #2A2F3A' }}>#</th>
+              <th onClick={() => toggleSort('name')} style={{ ...thBase, whiteSpace: 'nowrap', color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26' }}>Nom{sortArrow('name')}</th>
               <th onClick={() => toggleSort('rpe')} style={{ ...thBase, color: sortKey === 'rpe' ? '#94A3B8' : '#475569' }}>RPE{sortArrow('rpe')}</th>
               <th onClick={() => toggleSort('diff')} style={{ ...thBase, color: sortKey === 'diff' ? '#94A3B8' : '#475569' }}>± 21j{sortArrow('diff')}</th>
               {([
@@ -118,7 +128,7 @@ export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNorma
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ player: p, uaPerSession, uaColor, uaLabel, diff, arrowCfg, zones }, idx) => {
+            {sorted.map(({ player: p, uaPerSession, uaColor, uaLabel, diff, arrowCfg, zones }) => {
               const rpeC = rpeColor(p.avgRpe);
 
               const zoneCell = (val: number, color: string) => (
@@ -133,9 +143,8 @@ export function PlayerRankingTable({ players, sessionLoadLight, sessionLoadNorma
                 <tr key={p.playerId} style={{ borderBottom: '1px solid #1E2229' }}
                   onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                   onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
-                  <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920', borderRight: '1px solid #2A2F3A' }}>{p.name}</td>
-                  <td style={{ padding: '8px 8px', color: idx < 3 ? '#F59E0B' : '#334155', fontSize: '0.75rem', fontWeight: idx < 3 ? 700 : 400, fontFamily: 'JetBrains Mono, monospace' }}>{idx + 1}</td>
-                  <td style={{ padding: '8px 8px', color: rpeC, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{p.avgRpe}</td>
+                  <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{p.name}</td>
+                  <td style={{ padding: '8px 8px', color: rpeC, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(p.avgRpe)}</td>
                   <td style={{ padding: '8px 8px' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
                       color: diff === null ? '#475569' : diff > 0.2 ? (diff > 1 ? '#EF4444' : '#F97316') : diff < -0.2 ? '#00E5A0' : '#475569' }}>

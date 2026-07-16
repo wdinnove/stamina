@@ -9,6 +9,7 @@ import { playersApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
+import { avgRpe } from '../utils/rpe';
 import type { TrainingSession, Player } from '../data/types';
 
 const SESSION_TYPE_OPTIONS = [
@@ -102,7 +103,7 @@ export default function TrainingSessionsPage() {
         }
         const avgs: Record<string, number> = {};
         for (const [sid, vals] of Object.entries(bySession)) {
-          avgs[sid] = vals.reduce((a, b) => a + b, 0) / vals.length;
+          avgs[sid] = avgRpe(vals) ?? 0;
         }
         setRpeAvg(avgs);
 
@@ -277,13 +278,15 @@ export default function TrainingSessionsPage() {
                     const est      = rpeEst[session.id];
                     const isLast   = idx === group.sessions.length - 1;
 
-                    let rpeColor = '#94A3B8';
+                    // Couleur de l'écart réel/estimé — sans rapport avec rpeColor() de utils/rpe.ts
+                    // (qui colore une valeur RPE brute 1-10), volontairement renommée pour éviter la confusion.
+                    let deltaColor = '#94A3B8';
                     if (avg !== undefined && est !== undefined && est > 0) {
                       const delta = (avg - est) / est;
-                      if (delta > 0.25)       rpeColor = '#EF4444';
-                      else if (delta > 0.10)  rpeColor = '#F59E0B';
-                      else if (delta < -0.10) rpeColor = '#3B82F6';
-                      else                    rpeColor = '#00E5A0';
+                      if (delta > 0.25)       deltaColor = '#EF4444';
+                      else if (delta > 0.10)  deltaColor = '#F59E0B';
+                      else if (delta < -0.10) deltaColor = '#3B82F6';
+                      else                    deltaColor = '#00E5A0';
                     }
 
                     return (
@@ -329,11 +332,11 @@ export default function TrainingSessionsPage() {
                                 {est !== undefined ? est.toFixed(1) : '—'}
                               </span>
                               <span style={{ color: '#334155', fontSize: '0.75rem' }}>→</span>
-                              <span style={{ color: avg !== undefined ? rpeColor : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
+                              <span style={{ color: avg !== undefined ? deltaColor : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                                 {avg !== undefined ? avg.toFixed(1) : '—'}
                               </span>
                               {avg !== undefined && est !== undefined && est > 0 && (
-                                <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: rpeColor, flexShrink: 0, display: 'inline-block' }} />
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: deltaColor, flexShrink: 0, display: 'inline-block' }} />
                               )}
                             </div>
                             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>

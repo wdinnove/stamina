@@ -4,6 +4,7 @@ import type { TeamSessionRow, SessionType } from '../data/types';
 import { rpeColor } from '../utils/rpe';
 import { mondayIso as getWeekMonday, getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
+import { fmt1 } from '../utils/format';
 import { CardTitle } from './Card';
 import { Badge } from './Badge';
 
@@ -114,7 +115,7 @@ export function TeamSessionHistoryTable({
                     <td style={{ padding: '8px 14px' }}><Badge color={typeCfg.color} bg={typeCfg.bg} label={typeCfg.label} size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.nbPlayers}</td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.duration} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{s.avg}</span></td>
+                    <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{fmt1(s.avg)}</span></td>
                     <td style={{ padding: '8px 14px', color: cfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{avgUaS.toLocaleString('fr')}</td>
                     <td style={{ padding: '8px 14px' }}><Badge color={cfg.color} bg={cfg.color + '20'} label={cfg.label} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                   </tr>
@@ -141,7 +142,7 @@ export function TeamSessionHistoryTable({
                     <td style={{ padding: '8px 14px' }}><Badge color="#3B82F6" label="Semaine" size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgPlayers}</td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.totalDur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{w.avgRpe}</span></td>
+                    <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{fmt1(w.avgRpe)}</span></td>
                     <td style={{ padding: '8px 14px', color: cfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgUa.toLocaleString('fr')}</td>
                     <td style={{ padding: '8px 14px' }}><Badge color={cfg.color} bg={cfg.color + '20'} label={cfg.label} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                   </tr>

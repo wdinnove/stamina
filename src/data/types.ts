@@ -157,14 +157,14 @@ export interface MedicalRecord {
 
 export interface Action {
   id: string;
-  playerId: string;
+  playerId?: string;
   teamId?: string;
   title: string;
   description?: string;
-  category: ActionCategory;
+  category?: ActionCategory;
   priority: ActionPriority;
   dueDate: string;
-  assignedTo: string;
+  assignedTo?: string;
   status: ActionStatus;
 }
 
@@ -362,7 +362,6 @@ export interface PlayerRank {
   maxRpe: number;
   totalLoad: number;
   rpe3w:     number | null;
-  load3w:    number | null;
   weekLoads: number[];
 }
 

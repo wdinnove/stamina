@@ -7,11 +7,12 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
+import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, MedicalRecordDetailModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
 import type { PlayerMedicalViewHandle } from '../components';
+import { rtpDaysLeft } from '../components/MedicalCard';
 import { computeAcwr, acwrZone } from '../utils/rpe';
+import { isoToday } from '../components/DateRangeCard';
 import { fmtDate } from '../utils/dateFormat';
-import { sanitizeHtml } from '../utils/sanitize';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { MedicalRecord, Player, RPEEntry, PlayerStatus } from '../data/types';
 
@@ -27,10 +28,6 @@ const typeLabels: Record<string, string> = {
 
 const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
-};
-
-const typeIcons: Record<string, string> = {
-  injury: '🚑', checkup: '🩺', treatment: '💊',
 };
 
 type Tab = 'infirmary' | 'record' | 'team';
@@ -189,7 +186,7 @@ export default function MedicalPage() {
     (!selected?.season.endDate   || r.date <= selected.season.endDate)
   );
   const playerSeasonDays  = playerSeasonInjuries.reduce((s, r) => s + injuryDaysSeason(r), 0);
-  const playerAcwr        = computeAcwr(playerRpe);
+  const playerAcwr        = computeAcwr(playerRpe, isoToday());
   const playerAcwrZone    = acwrZone(playerAcwr);
 
   const openForm = (prePlayerId?: string) => {
@@ -251,7 +248,7 @@ export default function MedicalPage() {
         let notifBody: string | undefined;
         if (formType === 'injury') {
           const parts: string[] = [severityConfig[fSeverity].label];
-          if (fDays) parts.push(`${fDays}j d'absence`);
+          if (fDays) parts.push(`${fDays}j blessé`);
           if (fDesc) parts.push(fDesc);
           notifBody = parts.join(' · ');
         } else {
@@ -372,6 +369,7 @@ export default function MedicalPage() {
               player={player}
               onEdit={() => openEdit(record)}
               onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
+              onClick={() => setDetailRecord(record)}
               navigate={navigate}
             />
           );
@@ -456,7 +454,7 @@ export default function MedicalPage() {
               />
               <RpeKpiCard
                 accent={seasonDays > 0 ? '#3B82F6' : '#00E5A0'}
-                label="Jours d'absence"
+                label="Jours blessés"
                 value={seasonDays > 0 ? `${seasonDays}j` : '—'}
                 sub="cumulés saison"
               />
@@ -476,6 +474,8 @@ export default function MedicalPage() {
                       {teamInjuries.map(r => {
                         const p = playerById(r.playerId);
                         if (!p) return null;
+                        const rtpDaysLeftVal = r.rtpDate ? rtpDaysLeft(r.rtpDate) : null;
+                        const rtpColor = rtpDaysLeftVal === null ? '#475569' : rtpDaysLeftVal <= 3 ? '#00E5A0' : '#F59E0B';
                         return (
                           <div key={r.id} onClick={() => navigate(`/performance-individuelle/${p.id}/vue-ensemble`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                             <PlayerAvatar player={p} size={26} />
@@ -484,7 +484,10 @@ export default function MedicalPage() {
                               color: playerStatusColor[p.status], backgroundColor: `${playerStatusColor[p.status]}18`,
                               fontSize: '0.66rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
                             }}>{playerStatusLabel[p.status]}</span>
-                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 0 auto', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</span>
+                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', margin: '0 0 0 auto', minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</span>
+                            <span style={{ color: rtpColor, fontSize: '0.72rem', fontWeight: 600, flexShrink: 0, minWidth: 70, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' }}>
+                              {r.rtpDate ? fmtDate(r.rtpDate) : '—'}
+                            </span>
                           </div>
                         );
                       })}
@@ -761,7 +764,7 @@ export default function MedicalPage() {
               />
               <RpeKpiCard
                 accent={playerSeasonDays > 0 ? '#3B82F6' : '#00E5A0'}
-                label="Jours d'absence"
+                label="Jours blessés"
                 value={playerSeasonDays > 0 ? `${playerSeasonDays}j` : '—'}
                 sub="cumulés saison"
               />
@@ -780,63 +783,17 @@ export default function MedicalPage() {
       )}
 
       {/* ── DETAIL RECORD MODAL ── */}
-      {detailRecord && (() => {
-        const p   = teamPlayers.find(pl => pl.id === detailRecord.playerId);
-        const sev = detailRecord.severity ? severityConfig[detailRecord.severity] : null;
-        const col = typeColors[detailRecord.type] ?? '#94A3B8';
-        const totalDays = detailRecord.rtpDate ? daysBetween(detailRecord.date, detailRecord.rtpDate) : null;
-        return (
-          <Modal onClose={() => setDetailRecord(null)} maxWidth={480} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 38, height: 38, borderRadius: '50%', backgroundColor: col + '20', border: `1px solid ${col}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
-                    {typeIcons[detailRecord.type]}
-                  </div>
-                  <div>
-                    <span style={{ color: col, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{typeLabels[detailRecord.type]}</span>
-                    <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem', margin: '2px 0 0' }}>{detailRecord.description}</p>
-                  </div>
-                </div>
-                <button onClick={() => setDetailRecord(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, flexShrink: 0 }}><X size={18} /></button>
-              </div>
-
-              {/* Grille de détails */}
-              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 14 }}>
-                {([
-                  { label: 'Joueur',   value: p ? playerNameFull(p) : '—' },
-                  { label: 'Date',     value: `${fmtDate(detailRecord.date)} ${detailRecord.date.slice(0,4)}` },
-                  { label: 'Statut',   value: detailRecord.status === 'active' ? 'En cours' : 'Clôturé', color: detailRecord.status === 'active' ? '#F59E0B' : '#00E5A0' },
-                  ...(sev ? [{ label: 'Gravité', value: sev.label, color: sev.color }] : []),
-                  ...(detailRecord.location ? [{ label: 'Localisation', value: detailRecord.location }] : []),
-                  ...(detailRecord.daysAbsent != null ? [{ label: "Jours d'absence", value: `${detailRecord.daysAbsent} jour${detailRecord.daysAbsent > 1 ? 's' : ''}`, color: '#F59E0B' }] : []),
-                  ...(detailRecord.rtpDate ? [{ label: detailRecord.type === 'injury' ? 'Date de retour' : 'Date de fin', value: `${fmtDate(detailRecord.rtpDate)} ${detailRecord.rtpDate.slice(0,4)}${totalDays ? ` · ${totalDays}j` : ''}` }] : []),
-                  ...(detailRecord.resolvedDate ? [{ label: 'Clôturé le', value: `${fmtDate(detailRecord.resolvedDate)} ${detailRecord.resolvedDate.slice(0,4)}`, color: '#00E5A0' }] : []),
-                ] as { label: string; value: string; color?: string }[]).map(({ label, value, color }) => (
-                  <div key={label} style={{ padding: '10px 12px', backgroundColor: '#1E2229', borderRadius: 6 }}>
-                    <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 3px', fontWeight: 600 }}>{label}</p>
-                    <p style={{ color: color ?? '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>{value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Traitement / Notes */}
-              {detailRecord.treatment && (
-                <div style={{ padding: '12px 14px', backgroundColor: '#1E2229', borderRadius: 6, marginBottom: 14 }}>
-                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 5px', fontWeight: 600 }}>
-                    {detailRecord.type === 'injury' ? 'Traitement & protocole' : 'Notes'}
-                  </p>
-                  <div className="rich-display" style={{ color: '#CBD5E1', fontSize: '0.84rem' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(detailRecord.treatment) }} />
-                </div>
-              )}
-
-              <button onClick={() => setDetailRecord(null)}
-                style={{ width: '100%', padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.88rem' }}>
-                Fermer
-              </button>
-          </Modal>
-        );
-      })()}
+      {detailRecord && (
+        <MedicalRecordDetailModal
+          record={detailRecord}
+          player={teamPlayers.find(pl => pl.id === detailRecord.playerId)}
+          onClose={() => setDetailRecord(null)}
+          onEdit={() => { const r = detailRecord; setDetailRecord(null); openEdit(r); }}
+          onCloseRecord={detailRecord.status === 'active' && detailRecord.type !== 'checkup'
+            ? () => { const r = detailRecord; setDetailRecord(null); setCloseModal({ recordId: r.id, playerId: r.playerId, date: TODAY, playerStatus: 'active' }); }
+            : undefined}
+        />
+      )}
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
@@ -991,7 +948,7 @@ export default function MedicalPage() {
                   {/* Jours absence + Date de retour */}
                   <div className="med-form-days-rtp" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
-                      <label style={labelStyle}>Jours d'absence estimés</label>
+                      <label style={labelStyle}>Jours blessés (estimés)</label>
                       <input
                         type="number" min="0" value={fDays}
                         onChange={e => {

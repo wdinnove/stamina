@@ -3,6 +3,7 @@ import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Line
 import { Heart, TrendingUp, Smile, Meh, Frown } from 'lucide-react';
 import { Card, CardTitle } from '../components';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessStatus, wellnessRawValue } from '../utils/wellness';
+import { fmt1 } from '../utils/format';
 import type { WellnessEntry } from '../data/types';
 
 const dimensions = WELLNESS_DIMENSIONS;
@@ -52,8 +53,7 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
   // Une mini-série par dimension : valeurs brutes sur la courbe, axe inversé pour les dimensions
   // "inversées" (fatigue/stress/douleurs) pour que le haut du graphique reste toujours "mieux".
   const dimensionSeries = dimensions.map(dim => {
-    const rawValues = historyAsc.map(e => e[dim.key as keyof WellnessEntry] as number);
-    const avg = rawValues.length > 0 ? Math.round(rawValues.reduce((s, v) => s + v, 0) / rawValues.length * 10) / 10 : null;
+    const avg = wellnessAvg(historyAsc.map(e => e[dim.key as keyof WellnessEntry] as number));
     return {
       ...dim,
       avg,
@@ -110,7 +110,7 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
           <InsightIcon size={22} style={{ color: insightColor, flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 220 }}>
             <p style={{ color: '#F1F5F9', margin: 0, fontSize: '0.86rem', fontWeight: 600 }}>
-              {subjectLabel} traverse une période {insightLabel} ({scoreAvg}/10){insightSeasonPhrase ? `, ${insightSeasonPhrase}` : ''}
+              {subjectLabel} traverse une période {insightLabel} ({fmt1(scoreAvg)}/10){insightSeasonPhrase ? `, ${insightSeasonPhrase}` : ''}
             </p>
             {(goodDims.length > 0 || midDims.length > 0 || badDims.length > 0) && (
               <p style={{ color: '#94A3B8', margin: '4px 0 0', fontSize: '0.8rem' }}>
@@ -153,7 +153,7 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
                       const flat     = hasEvo && Math.abs(diff!) < 0.05;
                       const better   = hasEvo ? (dataPoint.inverted ? diff! < 0 : diff! > 0) : null;
                       const evoColor = flat ? '#94A3B8' : better ? '#00E5A0' : '#EF4444';
-                      const valueStr = hasValue ? String(dataPoint.avg) : '—';
+                      const valueStr = fmt1(dataPoint.avg);
 
                       // Flèche/tiret d'évolution dessiné en forme SVG (pas en caractère Unicode ▲▼) pour éviter
                       // tout décalage de police de secours qui la ferait chevaucher le dernier chiffre.
@@ -190,7 +190,7 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
                 </RadarChart>
               </ResponsiveContainer>
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
-                <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{scoreAvg ?? '—'}</div>
+                <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{fmt1(scoreAvg)}</div>
               </div>
             </div>
           </Card>
@@ -283,7 +283,7 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
                           padding: '1px 6px', fontSize: '0.7rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace',
                           color: boxColor,
                         }}>
-                          {dim.avg ?? '—'}
+                          {fmt1(dim.avg)}
                           {diff !== null && (
                             <span style={{ color: evoColor, fontSize: '0.6rem' }}>{flat ? '=' : better ? '▲' : '▼'}</span>
                           )}
@@ -335,10 +335,10 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
                     {dimensions.map((dim, i) => {
                       const val = [e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness][i];
                       return (
-                        <span key={i} style={{ color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{val}</span>
+                        <span key={i} style={{ color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(val)}</span>
                       );
                     })}
-                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{e.score}</span>
+                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{fmt1(e.score)}</span>
                   </div>
                 ))}
               </div>
