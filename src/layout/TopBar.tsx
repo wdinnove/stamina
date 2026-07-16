@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ChevronDown, Check, X, ArrowLeft, Settings, Search } from 'lucide-react';
+import { ChevronDown, Check, X, ArrowLeft, Settings, Search, User } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { navGroups, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
@@ -311,6 +311,11 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
               })}
             </div>
           ))}
+          <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
+          <Link to="/profile" onClick={onClose} style={navLinkStyle(location.pathname.startsWith('/profile'))}>
+            <User size={18} style={{ flexShrink: 0 }} />
+            Mon profil
+          </Link>
           {/* Configuration */}
           {(orgRole === 'admin') && <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />}
           {orgRole === 'admin' && (
