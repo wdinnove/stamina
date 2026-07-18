@@ -143,18 +143,26 @@ export function ChargeRpeComboChart({
       </ResponsiveContainer>
 
       {!!statItems?.length && (
-        <div style={{ display: 'flex', marginTop: 16 }}>
-          {statItems.map((s, i) => (
-            <div key={i} style={{
-              flex: 1, display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'center', padding: '0 8px',
-              borderLeft: i > 0 ? '1px solid #2A2F3A' : 'none',
-            }}>
-              <div style={{ fontSize: '0.66rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>{s.label}</div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: s.color ?? '#F1F5F9', fontFamily: 'JetBrains Mono, monospace' }}>{s.value}</div>
-              {s.sub && <div style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{s.sub}</div>}
-            </div>
-          ))}
-        </div>
+        <>
+          <style>{`
+            @media (max-width: 479px) {
+              .combo-stat-item { flex: 1 1 45% !important; border-left: none !important; }
+              .combo-stat-item:nth-child(n+3) { border-top: 1px solid #2A2F3A; padding-top: 10px !important; margin-top: 6px; }
+            }
+          `}</style>
+          <div style={{ display: 'flex', flexWrap: 'wrap', rowGap: 12, marginTop: 16 }}>
+            {statItems.map((s, i) => (
+              <div key={i} className="combo-stat-item" style={{
+                flex: '1 1 90px', minWidth: 90, display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'center', padding: '0 8px',
+                borderLeft: i > 0 ? '1px solid #2A2F3A' : 'none',
+              }}>
+                <div style={{ fontSize: '0.66rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>{s.label}</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: s.color ?? '#F1F5F9', fontFamily: 'JetBrains Mono, monospace' }}>{s.value}</div>
+                {s.sub && <div style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{s.sub}</div>}
+              </div>
+            ))}
+          </div>
+        </>
       )}
       </div>
     </div>

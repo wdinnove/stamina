@@ -43,6 +43,9 @@ const TD: CSSProperties = {
 const si = (col: SortKey, key: SortKey, dir: SortDir) => key === col ? (dir === 'asc' ? ' ↑' : ' ↓') : '';
 const thC = (col: SortKey, key: SortKey) => key === col ? '#CBD5E1' : '#475569';
 
+// Colonne "Cl." sticky elle aussi (avant "Joueur") — décalage explicite pour ne pas se chevaucher.
+const RANK_WIDTH = 36;
+
 function fmtValue(def: IndicatorDef, v: number): string {
   const num = def.key === 'acwr' ? v.toFixed(2)
     : (def.domain === 'wellness' || def.key === 'rpe' || def.key === 'tsb') ? v.toFixed(1)
@@ -79,10 +82,15 @@ export function PlayerRankingTable({ rows, def, teamAvg, normalized25, onOpenPla
 
   return (
     <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+      <style>{`
+        @media (max-width: 639px) {
+          .player-ranking-table th, .player-ranking-table td { padding: 10px 12px !important; }
+        }
+      `}</style>
+      <table className="player-ranking-table" style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
         <thead><tr>
-          <th style={{ ...THS, width: 36 }}>Cl.</th>
-          <th onClick={() => toggleSort('name')} style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, color: thC('name', sortKey) }}>
+          <th style={{ ...THS, width: RANK_WIDTH, position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#161920' }}>Cl.</th>
+          <th onClick={() => toggleSort('name')} style={{ ...TH, textAlign: 'left', position: 'sticky', left: RANK_WIDTH, zIndex: 2, color: thC('name', sortKey) }}>
             Joueur{si('name', sortKey, sortDir)}
           </th>
           <th onClick={() => toggleSort('position')} style={{ ...TH, color: thC('position', sortKey) }}>Poste{si('position', sortKey, sortDir)}</th>
@@ -98,8 +106,8 @@ export function PlayerRankingTable({ rows, def, teamAvg, normalized25, onOpenPla
             <tr key={r.player.id} onClick={() => onOpenPlayer(r.player.id)}
               style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
               className="hover:!bg-white/5">
-              <td style={{ ...TD, fontWeight: 800, color: i < 3 ? '#00E5A0' : '#475569' }}>{i + 1}</td>
-              <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>
+              <td style={{ ...TD, fontWeight: 800, color: i < 3 ? '#00E5A0' : '#475569', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{i + 1}</td>
+              <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: RANK_WIDTH, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <PlayerAvatar player={r.player} size={22} />
                   <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(r.player)}</span>

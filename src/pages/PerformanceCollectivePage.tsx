@@ -921,7 +921,7 @@ export default function PerformanceCollectivePage() {
           <CardTitle icon={<BarChart2 size={12} style={{ color: '#00E5A0' }} />} mb={10}
             info={`${rankingRows.length} joueur${rankingRows.length > 1 ? 's' : ''} · moyennes sur la période`}
             right={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setNormalize25(v => !v)}
                   title="Recalculer toutes les stats comme si chaque joueur jouait 25 min"
                   style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
