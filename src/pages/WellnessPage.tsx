@@ -99,11 +99,21 @@ export default function WellnessPage() {
     playersApi.listBySeason(selected.season.id)
       .then(players => {
         setRoster(players);
-        if (players.length > 0 && !urlId && activeTab !== 'team') {
-          const slug = activeTab === 'entry' ? 'new' : 'individual';
-          navigate(`/wellness/${slug}/${players[0].id}`, { replace: true });
-        } else if (activeTab === 'team' && !urlId) {
-          navigate(`/wellness/team/${selected.team.id}`, { replace: true });
+        if (activeTab === 'team') {
+          if (!urlId) {
+            navigate(`/wellness/team/${selected.team.id}`, { replace: true });
+          } else if (urlId !== selected.team.id) {
+            // L'équipe dans l'URL ne correspond plus à l'équipe sélectionnée (ex. bascule dans la TopBar).
+            navigate('/', { replace: true });
+          }
+        } else if (players.length > 0) {
+          if (!urlId) {
+            const slug = activeTab === 'entry' ? 'new' : 'individual';
+            navigate(`/wellness/${slug}/${players[0].id}`, { replace: true });
+          } else if (!players.some(p => p.id === urlId)) {
+            // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
+            navigate('/', { replace: true });
+          }
         }
       })
       .catch(() => {})

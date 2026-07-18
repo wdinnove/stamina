@@ -935,7 +935,7 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
 export default function TrainingSessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { thresholds } = useTeamSeason();
+  const { thresholds, selected } = useTeamSeason();
 
   const [session,    setSession]    = useState<TrainingSession | null>(null);
   const [players,    setPlayers]    = useState<Player[]>([]);
@@ -1023,6 +1023,11 @@ export default function TrainingSessionDetailPage() {
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    // La séance dans l'URL n'appartient pas à l'équipe sélectionnée (ex. bascule dans la TopBar).
+    if (session && selected && session.teamId !== selected.team.id) navigate('/', { replace: true });
+  }, [session, selected?.team.id]);
 
   // Charge l'historique RPE + bien-être de chaque joueur concerné (ACWR, charge 7j, bien-être 7j)
   // Chargé dès l'arrivée sur la page (pas seulement à l'ouverture du bloc) pour alimenter le compteur d'alertes dans le titre

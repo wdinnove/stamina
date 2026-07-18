@@ -8,6 +8,7 @@ import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem, Modal, Badge } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
@@ -90,6 +91,7 @@ function SectionLabel({ icon, children }: { icon: React.ReactNode; children: Rea
 export default function ExerciseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { selected } = useTeamSeason();
 
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
   const [images,     setImages]     = useState<ExerciseImage[]>([]);
@@ -129,6 +131,11 @@ export default function ExerciseDetailPage() {
     if (!exercise?.teamId) return;
     exerciseCategoriesApi.list(exercise.teamId).then(setCategories).catch(() => {});
   }, [exercise?.teamId]);
+
+  useEffect(() => {
+    // Exercice propre à une autre équipe que celle sélectionnée (les exercices sans équipe sont partagés).
+    if (exercise?.teamId && selected && exercise.teamId !== selected.team.id) navigate('/', { replace: true });
+  }, [exercise, selected?.team.id]);
 
   const videoPlatform = videoUrl.trim() ? detectSocialPlatform(videoUrl) : null;
   const videoInvalid = videoUrl.trim() !== '' && !videoPlatform;

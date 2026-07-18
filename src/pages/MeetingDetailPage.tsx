@@ -7,6 +7,7 @@ import RichTextEditor from '../components/RichTextEditor';
 import { fmtDateFull } from '../utils/dateFormat';
 import { sanitizeHtml } from '../utils/sanitize';
 import { Modal } from '../components';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StaffMeeting } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
@@ -19,6 +20,7 @@ const inputStyle: React.CSSProperties = {
 export default function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { selected } = useTeamSeason();
 
   const [meeting,  setMeeting]  = useState<StaffMeeting | null>(null);
   const [loading,  setLoading]  = useState(true);
@@ -47,6 +49,11 @@ export default function MeetingDetailPage() {
         setLoading(false);
       }, (err: { message?: string }) => { setFetchErr(err?.message ?? 'Réunion introuvable.'); setLoading(false); });
   }, [id]);
+
+  useEffect(() => {
+    // La réunion dans l'URL n'appartient pas à l'équipe sélectionnée (ex. bascule dans la TopBar).
+    if (meeting && selected && meeting.teamId !== selected.team.id) navigate('/', { replace: true });
+  }, [meeting, selected?.team.id]);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}>

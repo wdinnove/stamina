@@ -17,6 +17,7 @@ import { notifyOrg } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
 import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, RPEPlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle, Modal, Badge, PlayerLoadPanel } from '../components';
+import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
@@ -114,6 +115,7 @@ export default function RPEPage() {
   const [history, setHistory]                   = useState<RPEEntry[]>([]);
   const [loadingHistory, setLoadingHistory]     = useState(false);
   const [historyVersion, setHistoryVersion]     = useState(0);
+  const [indivDisplay, setIndivDisplay]         = useState<'chart' | 'table'>('chart');
   const [chargeView, setChargeView]             = useState<'session' | 'week'>('week');
   const [rpeView, setRpeView]                   = useState<'session' | 'week'>('week');
   const [teamChargeView, setTeamChargeView]     = useState<'session' | 'week'>('week');
@@ -129,8 +131,13 @@ export default function RPEPage() {
       .then(players => {
         setRoster(players);
         setRpeValues(Object.fromEntries(players.map(p => [p.id, null])));
-        if (players.length > 0 && activeTab === 'individual' && !urlId) {
-          navigate(`/rpe/individual/${players[0].id}`, { replace: true });
+        if (players.length > 0 && activeTab === 'individual') {
+          if (!urlId) {
+            navigate(`/rpe/individual/${players[0].id}`, { replace: true });
+          } else if (!players.some(p => p.id === urlId)) {
+            // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
+            navigate('/', { replace: true });
+          }
         }
       })
       .catch(() => {})
@@ -606,7 +613,15 @@ export default function RPEPage() {
 
           <DateRangeCard from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
             onPreset={p => dateRange.applyPreset(p, selected?.season.startDate, selected?.season.endDate)}
-            onFrom={dateRange.setFrom} onTo={dateRange.setTo} />
+            onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+            extra={
+              <FilterField legend="Affichage">
+                <select value={indivDisplay} onChange={e => setIndivDisplay(e.target.value as 'chart' | 'table')} style={filterControlStyle}>
+                  <option value="chart">Graphique</option>
+                  <option value="table">Tableau</option>
+                </select>
+              </FilterField>
+            } />
 
           {loadingHistory ? (
             <EmptyState message="Chargement…" />
@@ -615,7 +630,7 @@ export default function RPEPage() {
           ) : filtered.length === 0 && history.length > 0 ? (
             <EmptyState message="Aucune donnée RPE sur la période sélectionnée." />
           ) : history.length > 0 ? (
-            <PlayerLoadPanel history={history} filtered={filtered} thresholds={thresholds} showSeasonDiff={dateRange.preset !== 'saison'} />
+            <PlayerLoadPanel history={history} filtered={filtered} thresholds={thresholds} showSeasonDiff={dateRange.preset !== 'saison'} display={indivDisplay} onDisplayChange={setIndivDisplay} />
           ) : null}
         </div>
       )}
@@ -710,7 +725,7 @@ export default function RPEPage() {
                     />
                     <RpeKpiCard
                       accent={teamZone ? teamZone.color : '#334155'}
-                      label="ACWR moyen — risque de blessure"
+                      label="Charge récente vs habituelle"
                       value={teamAcwrAvg !== null ? teamAcwrAvg.toFixed(2) : '—'}
                       sub={teamZone
                         ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -722,8 +737,8 @@ export default function RPEPage() {
                     />
                     <RpeKpiCard
                       accent={teamFresh ? teamFresh.color : '#334155'}
-                      label="Fraîcheur moyenne (TSB)"
-                      value={teamFreshAvg !== null ? <>{teamFreshAvg > 0 ? '+' : ''}{teamFreshAvg}</> : '—'}
+                      label="Fraîcheur moyenne"
+                      value={teamFreshAvg !== null ? <>{teamFreshAvg > 0 ? '+' : ''}{teamFreshAvg.toFixed(1)}</> : '—'}
                       sub={teamFresh
                         ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <Badge color={teamFresh.color} size="sm" label={teamFresh.label} style={{ fontSize: '0.62rem' }} />

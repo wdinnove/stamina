@@ -66,6 +66,22 @@ export function acwrZone(acwr: number | null): { label: string; color: string } 
   return { label: 'Risque élevé', color: '#EF4444' };
 }
 
+/** Libellés compréhensibles pour les alertes de detectRiskAlerts (évite le jargon type "ACWR"/"R1-R4"). */
+export const ALERT_TITLE_PLAIN: Record<string, string> = {
+  'Charge en zone rouge':                  'Pic de charge d\'entraînement récent',
+  'Baisse de perf après pic de charge':     'Baisse de performance après une charge élevée',
+  'Blessure précédée d\'un pic de charge':  'Blessure survenue après une charge élevée',
+  'Bien-être en chute sous charge élevée':  'Bien-être en baisse pendant une charge élevée',
+};
+
+/** Libellés compréhensibles par zone ACWR (évite le jargon), pour le verdict "à risque maintenant". */
+export const CHARGE_ZONE_PLAIN: Record<string, string> = {
+  'Sous-charge':   'Charge d\'entraînement plus faible que d\'habitude',
+  'Zone optimale': 'Charge d\'entraînement dans la normale',
+  'Risque modéré': 'Charge d\'entraînement en hausse',
+  'Risque élevé':  'Charge d\'entraînement en forte hausse récente',
+};
+
 // ── PMC (modèle de Banister) : ATL / CTL / TSB ────────────────────────────────
 
 export interface PmcPoint { date: string; atl: number; ctl: number; tsb: number }

@@ -1,4 +1,5 @@
-import { AlertTriangle, ChevronRight, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, ChevronRight, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import type { RiskAlert } from '../data/crossAnalysis';
 
@@ -7,6 +8,8 @@ interface RiskAlertsListProps {
   onOpenPlayer?: (playerId: string) => void;
   /** Masquer le nom du joueur (vue individuelle : contexte déjà connu) */
   hidePlayerName?: boolean;
+  /** Repliée par défaut, avec un bouton chevron pour l'ouvrir (ex. page "Charge physique") */
+  collapsible?: boolean;
 }
 
 const LEVEL_COLORS = { red: '#EF4444', amber: '#F59E0B' } as const;
@@ -17,16 +20,23 @@ const fmtDayMonth = (iso: string) => {
 };
 
 /** Zones à risque détectées par les règles charge/fraîcheur × perf/blessure/bien-être */
-export function RiskAlertsList({ alerts, onOpenPlayer, hidePlayerName }: RiskAlertsListProps) {
+export function RiskAlertsList({ alerts, onOpenPlayer, hidePlayerName, collapsible }: RiskAlertsListProps) {
+  const [collapsed, setCollapsed] = useState(!!collapsible);
   const accent = alerts.some(a => a.level === 'red') ? '#EF4444' : alerts.length ? '#F59E0B' : '#00E5A0';
   return (
     <Card accentColor={accent}>
-      <CardTitle icon={<AlertTriangle size={12} style={{ color: accent }} />} mb={12}
-        info={alerts.length > 0 ? `${alerts.length}` : undefined}>
+      <CardTitle icon={<AlertTriangle size={12} style={{ color: accent }} />} mb={collapsed ? 0 : 12}
+        info={alerts.length > 0 ? `${alerts.length}` : undefined}
+        right={collapsible ? (
+          <button onClick={() => setCollapsed(v => !v)} title={collapsed ? 'Afficher' : 'Réduire'}
+            style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+            {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+          </button>
+        ) : undefined}>
         Zones à risque
       </CardTitle>
 
-      {alerts.length === 0 ? (
+      {collapsed ? null : alerts.length === 0 ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#00E5A0', fontSize: '0.8rem', padding: '6px 0' }}>
           <ShieldCheck size={15} />
           Aucune zone de risque détectée sur la période.

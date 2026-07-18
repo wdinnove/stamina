@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { GROUP_A_COLOR, GROUP_B_COLOR } from './FilterField';
 
 /**
  * Blocs "période vs saison" — extraits de PlayerDynStatTab pour être réutilisés par toute vue de
@@ -82,6 +83,46 @@ export function MetricRow({ label, period, season, unit = '', higherIsBetter = t
   );
 }
 
+function BarTrack({ pct, color, value, empty }: { pct: number; color: string; value: string; empty: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ flex: 1, height: 6, backgroundColor: '#1E2229', borderRadius: 3, overflow: 'hidden' }}>
+        {!empty && <div style={{ width: `${pct}%`, height: '100%', backgroundColor: color, borderRadius: 3 }} />}
+      </div>
+      <span style={{ width: 54, flexShrink: 0, textAlign: 'right', fontSize: '0.72rem', fontWeight: 700, color: empty ? '#334155' : color, whiteSpace: 'nowrap' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** Variante graphique de MetricRow : deux barres horizontales fines (une par groupe), longueur
+ * relative au plus grand des deux valeurs de la ligne — même signature de props que MetricRow pour
+ * pouvoir se substituer à l'identique dans les blocs. */
+export function MetricBarRow({ label, period, season, unit = '', dec = 1, sign = false, muted = false }: MetricRowProps) {
+  const unitInNumber = unit === '%' || unit === ' UA';
+  const unitSuffix = unitInNumber ? unit : '';
+  const unitLabel = unit && !unitInNumber ? unit.trim() : '';
+  const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmt(period, dec)}${unitSuffix}` : '—';
+  const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmt(season, dec)}${unitSuffix}` : '—';
+
+  const maxAbs = Math.max(Math.abs(period ?? 0), Math.abs(season ?? 0)) || 1;
+  const pPct = period !== null ? (period === 0 ? 0 : Math.max(Math.abs(period) / maxAbs * 100, 3)) : 0;
+  const sPct = season !== null ? (season === 0 ? 0 : Math.max(Math.abs(season) / maxAbs * 100, 3)) : 0;
+
+  return (
+    <div style={{ padding: '6px 0', borderBottom: '1px solid #1A1F28' }}>
+      <div style={{ fontSize: '0.7rem', color: muted ? '#3E4756' : '#64748B', lineHeight: 1.2, marginBottom: 4 }}>
+        {label}{unitLabel && <span style={{ color: '#334155', fontSize: '0.6rem', marginLeft: 3 }}>{unitLabel}</span>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <BarTrack pct={pPct} color={GROUP_A_COLOR} value={periodStr} empty={period === null} />
+        <BarTrack pct={sPct} color={GROUP_B_COLOR} value={seasonStr} empty={season === null} />
+      </div>
+    </div>
+  );
+}
+
 export function Divider() {
   return <div style={{ height: 1, backgroundColor: '#252A35', margin: '5px 0' }} />;
 }
@@ -154,13 +195,14 @@ export function createSignalCollector() {
 }
 
 // "en hausse/baisse" = direction réelle du chiffre (pas de la performance)
-function toSentence(s: Signal): string {
+function toSentence(s: Signal, bLabel: string): string {
   const dir = s.pct > 0 ? 'en hausse' : 'en baisse';
-  return `${s.label} ${dir} de ${Math.abs(s.pct)}% · ${s.pVal.toFixed(s.dec)}${s.unit} vs ${s.sVal.toFixed(s.dec)}${s.unit} saison`;
+  return `${s.label} ${dir} de ${Math.abs(s.pct)}% · ${s.pVal.toFixed(s.dec)}${s.unit} vs ${s.sVal.toFixed(s.dec)}${s.unit} ${bLabel}`;
 }
 
-/** Bloc "Résumé analytique" (signaux période vs saison triés par ampleur) — partagé joueur/équipe. */
-export function AnalyticalSummary({ signals }: { signals: Signal[] }) {
+/** Bloc "Résumé analytique" (signaux A vs B triés par ampleur) — partagé joueur/équipe/comparaisons.
+ * `bLabel` nomme le second terme de la comparaison dans les phrases (par défaut "saison"). */
+export function AnalyticalSummary({ signals, bLabel = 'saison' }: { signals: Signal[]; bLabel?: string }) {
   if (signals.length === 0) return null;
   const sorted   = [...signals].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
   const improved = sorted.filter(s => s.hib ? s.pct > 0 : s.pct < 0);
@@ -181,7 +223,7 @@ export function AnalyticalSummary({ signals }: { signals: Signal[] }) {
               {improved.map((sig, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
                   <span style={{ color: '#00E5A0', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↑</span>
-                  <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
+                  <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig, bLabel)}</span>
                 </div>
               ))}
             </div>
@@ -194,7 +236,7 @@ export function AnalyticalSummary({ signals }: { signals: Signal[] }) {
               {declined.map((sig, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
                   <span style={{ color: '#EF4444', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↓</span>
-                  <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
+                  <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig, bLabel)}</span>
                 </div>
               ))}
             </div>
@@ -219,7 +261,7 @@ export function AnalyticalSummary({ signals }: { signals: Signal[] }) {
                 {items.map((sig, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
                     <span style={{ color: '#00E5A0', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↑</span>
-                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig, bLabel)}</span>
                   </div>
                 ))}
               </div>
@@ -241,7 +283,7 @@ export function AnalyticalSummary({ signals }: { signals: Signal[] }) {
                 {items.map((sig, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
                     <span style={{ color: '#EF4444', fontSize: '0.72rem', flexShrink: 0, marginTop: 1 }}>↓</span>
-                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig)}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.45 }}>{toSentence(sig, bLabel)}</span>
                   </div>
                 ))}
               </div>

@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { getWeekTier, weeklyLoadBuckets } from '../utils/weeklyLoad';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, SESSION_TYPES } from '../utils/rpe';
-import type { LoadEntry } from '../utils/rpe';
+import { rpeColor, rpeLabel, SESSION_TYPES } from '../utils/rpe';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
-import { AlertTriangle, ListChecks } from 'lucide-react';
+import { ListChecks } from 'lucide-react';
 import { RpeKpiCard } from './RpeKpiCard';
 import { Badge } from './Badge';
 import { CardTitle } from './Card';
@@ -13,50 +12,36 @@ import { ChargeRpeComboChart } from './ChargeRpeComboChart';
 import type { LoadThresholds } from '../contexts/TeamSeasonContext';
 import type { RPEEntry } from '../data/types';
 
-function todayStr(): string {
-  return new Date().toLocaleDateString('sv');
-}
-
-/** Nombre de jours entre la 1ère entrée et aujourd'hui (0 si aucune entrée) — sert à juger la fiabilité de l'ACWR/TSB */
-function historySpanDays(entries: LoadEntry[]): number {
-  if (!entries.length) return 0;
-  const firstDate = [...entries.map(e => e.date)].sort()[0];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const first = new Date(firstDate + 'T00:00:00');
-  return Math.floor((today.getTime() - first.getTime()) / 86400000) + 1;
-}
-
-const MIN_RELIABLE_HISTORY_DAYS = 28;
-
 interface PlayerLoadPanelProps {
   history: RPEEntry[];   // ALL-TIME entries for this player (rpeApi.listPlayerHistory)
   filtered: RPEEntry[];  // `history` restreint à la période sélectionnée
   thresholds: LoadThresholds;
   showSeasonDiff: boolean;
+  /** Graphique/Tableau — piloté depuis le bloc Filtres du parent (extra de DateRangeCard) si fourni, sinon géré en interne */
+  display?: 'chart' | 'table';
+  onDisplayChange?: (v: 'chart' | 'table') => void;
 }
 
 /**
  * KPIs + graphe combiné (charge/RPE) + tableau historique pour un joueur — onglet "Historique
  * joueur" de RPEPage, extrait pour être réutilisable par d'autres pages (perf individuelle).
  */
-export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff }: PlayerLoadPanelProps) {
+export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff, display, onDisplayChange }: PlayerLoadPanelProps) {
   const [indivComboView, setIndivComboView] = useState<'session' | 'week'>('week');
-  const [indivDisplay, setIndivDisplay]     = useState<'chart' | 'table'>('chart');
+  const [internalDisplay, setInternalDisplay] = useState<'chart' | 'table'>('chart');
+  const indivDisplay   = display ?? internalDisplay;
+  const setIndivDisplay = onDisplayChange ?? setInternalDisplay;
   const [indivTableView, setIndivTableView] = useState<'session' | 'week'>('week');
 
   const avgRPE = filtered.length ? Math.round(filtered.reduce((s: number, e: RPEEntry) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
   const toWeeklyRow = (e: RPEEntry) => ({ date: e.date, playerId: e.playerId, rpe: e.rpe, actualDuration: e.actualDuration, plannedDuration: e.plannedDuration });
   const weeklyChartData = weeklyLoadBuckets(filtered.map(toWeeklyRow))
     .map(b => ({ date: fmtDate(b.week), load: Math.round(b.load) }));
-  // Charge hebdo sur toute la saison (indépendant de la période sélectionnée), une entrée par
-  // semaine ayant eu au moins une séance — sert de référence pour la moyenne "vs saison"
-  const seasonWeeklyLoadData = weeklyLoadBuckets(history.map(toWeeklyRow)).map(b => b.load);
-  const acwr              = computeAcwr(history, todayStr());
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
 
   return (
     <>
-      {/* KPIs joueur — même format que équipe, période sélectionnée vs moyenne saison */}
+      {/* KPIs joueur */}
       {(() => {
         // Moyenne des charges hebdomadaires réellement enregistrées (semaines sans séance
         // exclues), et non charge totale / nb de semaines calendaires de la période — sinon
@@ -66,116 +51,40 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff 
           : 0;
         const tier          = avgWeeklyLoad > 0 ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
 
-        const seasonAvgWeeklyLoad = seasonWeeklyLoadData.length
-          ? Math.round(seasonWeeklyLoadData.reduce((a, b) => a + b, 0) / seasonWeeklyLoadData.length)
-          : null;
-        const seasonAvgRpe        = history.length ? Math.round(history.reduce((s, e) => s + e.rpe, 0) / history.length * 10) / 10 : null;
-
-        const chargeDelta   = showSeasonDiff && avgWeeklyLoad > 0 && seasonAvgWeeklyLoad > 0 ? avgWeeklyLoad - seasonAvgWeeklyLoad : null;
-        const rpeDelta      = showSeasonDiff && avgRPE !== null && seasonAvgRpe !== null ? Math.round((avgRPE - seasonAvgRpe) * 10) / 10 : null;
-
         const surchargeWeeks = weeklyChartData.filter(w => w.load >= thresholds.normalMax).length;
         const totalWeeks     = weeklyChartData.length;
 
-        const arrow = (delta: number) => {
-          const c = delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#475569';
-          return <span style={{ color: c, fontSize: '0.85rem', marginLeft: 4, fontFamily: 'JetBrains Mono, monospace' }}>{delta > 0 ? '↑' : delta < 0 ? '↓' : '='}</span>;
-        };
-        const subSeason = (delta: number, unit = '') =>
-          <span style={{ color: '#475569', fontSize: '0.67rem' }}>
-            <span style={{ color: delta > 0 ? '#EF4444' : delta < 0 ? '#00E5A0' : '#94A3B8', fontWeight: 600 }}>
-              {delta > 0 ? '+' : ''}{delta}{unit}
-            </span>
-            {' '}vs saison
-          </span>;
-
-        const zone = acwrZone(acwr);
-
-        // Fraîcheur (TSB) — modèle PMC de Banister. Données à l'heure actuelle, indépendantes de la période sélectionnée.
-        const tsb   = computeTsb(history) ?? 0;
-        const fresh = tsbZone(tsb);
-
-        // Historique court (< 28j) : ACWR/TSB restent affichés (utiles en phase de reprise) mais moins fiables statistiquement
-        const shortHistory = historySpanDays(history) < MIN_RELIABLE_HISTORY_DAYS;
-
-        const currentNote = <span style={{ color: '#475569', fontSize: '0.62rem' }}>· à ce jour</span>;
-        const shortHistoryNote = <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, backgroundColor: '#F59E0B22', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}><AlertTriangle size={10} /> Période de reprise</span>;
-
         return (
-          <div className="grid grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 20 }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10, marginBottom: 20 }}>
             <RpeKpiCard
               accent={tier ? tier.color : '#334155'}
               label="Charge moyenne par semaine"
-              value={tier ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span>{avgWeeklyLoad > 0 ? avgWeeklyLoad.toLocaleString('fr') : '—'}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></span>
-                <Badge color={tier.color} size="sm" label={tier.label} style={{ fontSize: '0.62rem' }} />
-              </span> : '—'}
-              sub={chargeDelta !== null ? <>{arrow(chargeDelta)}{' '}{subSeason(chargeDelta, ' UA')}</> : undefined}
+              value={avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
+              sub={tier ? <Badge color={tier.color} size="sm" label={tier.label} style={{ fontSize: '0.62rem' }} /> : undefined}
             />
             <RpeKpiCard
               accent={avgRPE !== null ? rpeColor(avgRPE) : '#334155'}
-              label="RPE moyen de la période"
+              label="RPE moyen par semaine"
               value={fmt1(avgRPE)}
-              sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{subSeason(rpeDelta)}</> : (avgRPE !== null ? rpeLabel(Math.round(avgRPE)) : '—')}
-            />
-            <RpeKpiCard
-              accent={surchargeWeeks > 0 ? '#EF4444' : '#00E5A0'}
-              label="Semaines surcharge"
-              value={<><span style={{ color: surchargeWeeks > 0 ? '#EF4444' : '#00E5A0' }}>{surchargeWeeks}</span><span style={{ color: '#475569', fontSize: '0.9rem', fontWeight: 400 }}> / {totalWeeks}</span></>}
-              valueColor="#F1F5F9"
-              sub={totalWeeks > 0 ? `${Math.round(surchargeWeeks / totalWeeks * 100)} % des semaines` : '—'}
+              sub={avgRPE !== null ? <Badge color={rpeColor(avgRPE)} size="sm" label={rpeLabel(Math.round(avgRPE))} style={{ fontSize: '0.62rem' }} /> : undefined}
             />
             <RpeKpiCard
               accent="#3B82F6"
-              label="Séances"
+              label="Nombre de séances"
               value={filtered.length}
               valueColor="#F1F5F9"
               sub="sur la période sélectionnée"
             />
             <RpeKpiCard
-              accent={zone ? zone.color : '#334155'}
-              label="ACWR — risque de blessure"
-              value={acwr !== null ? acwr.toFixed(2) : '—'}
-              sub={zone
-                ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Badge color={zone.color} size="sm" label={zone.label} style={{ fontSize: '0.62rem' }} />
-                    {currentNote}
-                    {shortHistory && shortHistoryNote}
-                  </span>
-                : 'Historique insuffisant (28j)'}
-            />
-            <RpeKpiCard
-              accent={fresh.color}
-              label="Fraîcheur (TSB)"
-              value={<>{tsb > 0 ? '+' : ''}{tsb}</>}
-              sub={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <Badge color={fresh.color} size="sm" label={fresh.label} style={{ fontSize: '0.62rem' }} />
-                {currentNote}
-                {shortHistory && shortHistoryNote}
-              </span>}
+              accent={surchargeWeeks > 0 ? '#EF4444' : '#00E5A0'}
+              label="Semaines en surcharge"
+              value={<><span style={{ color: surchargeWeeks > 0 ? '#EF4444' : '#00E5A0' }}>{surchargeWeeks}</span><span style={{ color: '#475569', fontSize: '0.9rem', fontWeight: 400 }}> / {totalWeeks}</span></>}
+              valueColor="#F1F5F9"
+              sub={totalWeeks > 0 ? `${Math.round(surchargeWeeks / totalWeeks * 100)} % des semaines` : '—'}
             />
           </div>
         );
       })()}
-
-      {/* Toggle graphique / tableau */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2 }}>
-        {([
-          { key: 'chart', label: 'Graphique' },
-          { key: 'table', label: 'Tableau'   },
-        ] as const).map(({ key, label }) => {
-          const active = indivDisplay === key;
-          return (
-            <button key={key} onClick={() => setIndivDisplay(key)}
-              style={{ flex: 1, padding: '6px 12px', borderRadius: 4, border: 'none',
-                cursor: 'pointer', fontSize: '0.82rem', fontWeight: active ? 600 : 400, transition: 'all 0.15s',
-                backgroundColor: active ? '#1E2229' : 'transparent',
-                color: active ? '#F1F5F9' : '#94A3B8' }}>
-              {label}
-            </button>
-          );
-        })}
-      </div>
 
       {/* Graphe combiné UA + RPE joueur */}
       {indivDisplay === 'chart' && (() => {

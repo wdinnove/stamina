@@ -117,12 +117,16 @@ export interface IndicatorDef {
   chart: 'bar' | 'line' | 'dots';
   /** Domaine Y imposé (ex. échelles /10) */
   yDomain?: [number, number];
+  /** Graduations Y explicites (ex. [0, 1] pour un indicateur binaire) — sinon Recharts génère les siennes */
+  yTicks?: number[];
   /** Fenêtre pré-match (jours) et agrégat pour la corrélation ancrée sur match */
   anchor: { window: number; agg: 'mean' | 'sum' | 'last' };
   /** Agrégat lors du regroupement par semaine sur le graphique */
   weeklyAgg: 'mean' | 'sum';
   /** Couleur d'une valeur (zones de risque) — tableau comparatif */
   valueColor?: (v: number) => string;
+  /** Libellé de zone d'une valeur (ex. "Frais", "Chargé") — toujours affiché à côté de la valeur quand présent */
+  valueLabel?: (v: number) => string;
   /** Série individuelle (absent = indisponible en vue joueur) */
   playerSeries?: (d: PlayerCrossData, from: string, to: string) => SeriesPoint[];
   /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueurs */
@@ -240,6 +244,25 @@ function playerAdvStat(
 const TEAM_COLORS = ['#60A5FA', '#00E5A0', '#F59E0B', '#EC4899', '#8B5CF6', '#38BDF8', '#F97316', '#EAB308', '#2DD4BF', '#A78BFA'];
 
 const INDICATORS: IndicatorDef[] = [
+  // ── Match — Contexte (catégoriel, encodé en 0/1 pour être corrélable) ──
+  {
+    ...playerMatchStat('starter', 'Titulaire', 'Titulaire', '#60A5FA', '', m => m.starter ? 1 : 0, 'Match — Contexte'),
+    yDomain: [-0.2, 1.2], yTicks: [0, 1],
+    valueColor: v => v >= 0.5 ? '#00E5A0' : '#94A3B8',
+    valueLabel: v => v >= 0.999 ? 'Titulaire' : v <= 0.001 ? 'Remplaçant' : `${Math.round(v * 100)}% des matchs`,
+  },
+  {
+    ...playerMatchStat('homeAway', 'Domicile / extérieur', 'Domicile', '#38BDF8', '', m => m.homeAway === 'home' ? 1 : 0, 'Match — Contexte'),
+    yDomain: [-0.2, 1.2], yTicks: [0, 1],
+    valueColor: v => v >= 0.5 ? '#00E5A0' : '#94A3B8',
+    valueLabel: v => v >= 0.999 ? 'Domicile' : v <= 0.001 ? 'Extérieur' : `${Math.round(v * 100)}% à domicile`,
+  },
+  {
+    ...playerMatchStat('result', 'Résultat du match', 'Résultat', '#00E5A0', '', m => m.result === 'win' ? 1 : 0, 'Match — Contexte'),
+    yDomain: [-0.2, 1.2], yTicks: [0, 1],
+    valueColor: v => v >= 0.5 ? '#00E5A0' : '#EF4444',
+    valueLabel: v => v >= 0.999 ? 'Victoire' : v <= 0.001 ? 'Défaite' : `${Math.round(v * 100)}% de victoires`,
+  },
   // ── Match — Statistiques brutes (joueur ; en vue équipe = moyenne des joueurs) ──
   playerMatchStat('eval',      'Évaluation',       'Éval', '#60A5FA', '',    m => m.eval),
   playerMatchStat('plusMinus', '+/-',              '+/-',  '#3B82F6', '',    m => m.plusMinus),
@@ -268,6 +291,23 @@ const INDICATORS: IndicatorDef[] = [
   playerAdvStat('adv_orebPct',  '% Rebonds offensifs captés',       '%OREB',  '#F97316', a => a.orebPct),
   playerAdvStat('adv_drebPct',  '% Rebonds défensifs captés',       '%DREB',  '#F59E0B', a => a.drebPct),
   playerAdvStat('adv_ptsProd',  'Points générés (pts + passes converties)', 'PtsGén', '#38BDF8', a => a.ptsProd, 'pts'),
+  // ── Match — Contexte équipe (catégoriel, encodé en 0/1 — même logique que côté joueur) ──
+  {
+    key: 'team_homeAway', label: 'Domicile / extérieur', shortLabel: 'Domicile', domain: 'match', group: 'Match — Contexte', unit: '', color: '#38BDF8',
+    chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
+    yDomain: [-0.2, 1.2], yTicks: [0, 1],
+    valueColor: v => v >= 0.5 ? '#00E5A0' : '#94A3B8',
+    valueLabel: v => v >= 0.999 ? 'Domicile' : v <= 0.001 ? 'Extérieur' : `${Math.round(v * 100)}% à domicile`,
+    teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.homeAway === 'home' ? 1 : 0),
+  },
+  {
+    key: 'team_result', label: 'Résultat du match', shortLabel: 'Résultat', domain: 'match', group: 'Match — Contexte', unit: '', color: '#00E5A0',
+    chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
+    yDomain: [-0.2, 1.2], yTicks: [0, 1],
+    valueColor: v => v >= 0.5 ? '#00E5A0' : '#EF4444',
+    valueLabel: v => v >= 0.999 ? 'Victoire' : v <= 0.001 ? 'Défaite' : `${Math.round(v * 100)}% de victoires`,
+    teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.result === 'win' ? 1 : 0),
+  },
   // ── Match — équipe (mêmes variables que les facteurs de victoire de pca.ts) ──
   {
     key: 'team_scorediff', label: 'Écart au score', shortLabel: 'Écart', domain: 'match', group: 'Match — équipe', unit: 'pts', color: '#A78BFA',
@@ -312,15 +352,17 @@ const INDICATORS: IndicatorDef[] = [
     playerSeries: (d, f, t) => matchSeries(d.rpe, f, t, e => e.rpe),
   },
   {
-    key: 'acwr', label: 'ACWR (charge aiguë / chronique)', shortLabel: 'ACWR', domain: 'charge', unit: '', color: '#F59E0B',
+    key: 'acwr', label: 'Charge récente vs habituelle', shortLabel: 'Charge récente', domain: 'charge', unit: '', color: '#F59E0B',
     chart: 'line', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     valueColor: v => acwrZone(v)?.color ?? '#F1F5F9',
+    valueLabel: v => acwrZone(v)?.label ?? '',
     playerSeries: acwrSeries,
   },
   {
-    key: 'tsb', label: 'Fraîcheur (TSB)', shortLabel: 'TSB', domain: 'charge', unit: '', color: '#8B5CF6',
+    key: 'tsb', label: 'Fraîcheur', shortLabel: 'Fraîcheur', domain: 'charge', unit: '', color: '#8B5CF6',
     chart: 'line', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     valueColor: v => tsbZone(v).color,
+    valueLabel: v => tsbZone(v).label,
     playerSeries: tsbSeries,
   },
   // ── Bien-être (axes redressés : plus haut = mieux, y compris fatigue/stress/courbatures) ──
@@ -357,13 +399,16 @@ const INDICATORS: IndicatorDef[] = [
 ];
 
 export const teamIndicators   = () => INDICATORS.filter(i => i.teamSeries || i.playerSeries);
-/**
- * Vue joueur : ses indicateurs individuels + les collectifs de match (ORtg, DRtg,
- * points encaissés…) pour croiser par ex. sa charge avec la performance de l'équipe.
- * Nécessite un scope { player, team }.
- */
-export const playerViewIndicators = () => INDICATORS;
 export const indicatorByKey   = (key: string) => INDICATORS.find(i => i.key === key);
+
+/** Attributs propres à UN joueur (stats de match individuelles, charge, bien-être, assiduité — sa valeur à lui) */
+export const playerAttributeIndicators = () => INDICATORS.filter(i => i.playerSeries);
+/**
+ * Attributs de L'ÉQUIPE : stats collectives dédiées (groupe « Match — équipe ») + moyenne d'équipe
+ * pour les indicateurs non-match (charge/bien-être/assiduité). Les stats de match individuelles
+ * (éval, +/-…) sont exclues : leur équivalent collectif existe déjà comme attribut équipe dédié.
+ */
+export const teamAttributeIndicators = () => INDICATORS.filter(i => i.teamSeries || (i.domain !== 'match' && i.playerSeries));
 
 // ── Extraction de séries ──────────────────────────────────────────────────────
 
@@ -388,6 +433,28 @@ export function getSeries(def: IndicatorDef, scope: CrossScope, from: string, to
     if (def.teamSeries) return def.teamSeries(scope.team, from, to);
     if (def.playerSeries) return aggregatePlayerSeries(scope.team.players, def, from, to);
   }
+  return [];
+}
+
+/**
+ * Sujet d'un côté de la corrélation : UN joueur précis, ou l'équipe (moyenne/collectif).
+ * Contrairement à `CrossScope` (qui autorise les deux à la fois, avec priorité implicite au
+ * joueur), un `Subject` est sans ambiguïté — nécessaire pour croiser deux sujets différents
+ * (deux joueurs, ou un joueur et l'équipe) côte à côte.
+ */
+export type Subject = { kind: 'player'; player: PlayerCrossData } | { kind: 'team' };
+
+export function sameSubject(x: Subject, y: Subject): boolean {
+  if (x.kind === 'team' && y.kind === 'team') return true;
+  return x.kind === 'player' && y.kind === 'player' && x.player.player.id === y.player.player.id;
+}
+
+/** Équivalent de `getSeries` pour un `Subject` explicite (voir `getSeries` pour la logique équipe) */
+export function getSeriesFor(def: IndicatorDef, subject: Subject, team: TeamCrossData | undefined, from: string, to: string): SeriesPoint[] {
+  if (subject.kind === 'player') return def.playerSeries ? def.playerSeries(subject.player, from, to) : [];
+  if (!team) return [];
+  if (def.teamSeries) return def.teamSeries(team, from, to);
+  if (def.playerSeries) return aggregatePlayerSeries(team.players, def, from, to);
   return [];
 }
 
@@ -419,20 +486,24 @@ function anchoredValue(pred: SeriesPoint[], obsDate: string, lagDays: number, an
 export type LagMode = 0 | 3 | 7 | 'week';
 
 const WEEK_ANCHOR: IndicatorDef['anchor'] = { window: 7, agg: 'mean' };
+// Dernière valeur connue (tolérance 3j, cf. anchoredValue) — évite d'exiger une saisie exactement
+// le jour décalé pour le croisement quotidien × quotidien (RPE/bien-être ne sont pas saisis tous les jours).
+const LAST_ANCHOR: IndicatorDef['anchor'] = { window: 1, agg: 'last' };
 
 /**
- * Corrèle deux indicateurs sur la période. Les paires retournées sont toujours
- * orientées x = indicateur A, y = indicateur B. `lag` décale le prédicteur
- * (l'indicateur non-match, ou A si aucun des deux n'est un indicateur de match) :
- * un nombre de jours prend un instantané à J-n, `'week'` prend sa moyenne sur les
- * 7 jours précédents (plus stable qu'un instantané pour des indicateurs comme
- * l'ACWR ou le TSB, mesurés par défaut jour par jour).
+ * Cœur du calcul, indépendant de la façon dont chaque série est obtenue (scope partagé pour
+ * les deux côtés, ou sujet indépendant par côté — cf. `correlateIndicators`/`correlateAcrossSubjects`).
+ * Les paires retournées sont toujours orientées x = indicateur A, y = indicateur B. `lag` décale
+ * le prédicteur (l'indicateur non-match, ou A si aucun des deux n'est un indicateur de match) :
+ * un nombre de jours prend un instantané à J-n, `'week'` prend sa moyenne sur les 7 jours
+ * précédents (plus stable qu'un instantané pour des indicateurs comme l'ACWR ou le TSB, mesurés
+ * par défaut jour par jour).
  */
-export function correlateIndicators(
-  a: IndicatorDef, b: IndicatorDef, scope: CrossScope,
-  from: string, to: string, lag: LagMode = 0,
+function correlatePairsForDefs(
+  a: IndicatorDef, getA: (def: IndicatorDef, from: string, to: string) => SeriesPoint[],
+  b: IndicatorDef, getB: (def: IndicatorDef, from: string, to: string) => SeriesPoint[],
+  from: string, to: string, lag: LagMode,
 ): CorrelationResult | null {
-  if (a.key === b.key) return null;
   const aIsMatch = a.domain === 'match';
   const bIsMatch = b.domain === 'match';
   const weekMode = lag === 'week' && !(aIsMatch && bIsMatch);
@@ -442,11 +513,13 @@ export function correlateIndicators(
 
   // Match × quotidien → ancrage sur match
   if (aIsMatch !== bIsMatch) {
-    const outcome   = aIsMatch ? a : b;
-    const predictor = aIsMatch ? b : a;
+    const outcome     = aIsMatch ? a : b;
+    const predictor   = aIsMatch ? b : a;
+    const getOutcome  = aIsMatch ? getA : getB;
+    const getPredictor = aIsMatch ? getB : getA;
     const predictorAnchor = weekMode ? WEEK_ANCHOR : predictor.anchor;
-    const outcomePts   = getSeries(outcome, scope, from, to);
-    const predictorPts = getSeries(predictor, scope, extFrom, to);
+    const outcomePts   = getOutcome(outcome, from, to);
+    const predictorPts = getPredictor(predictor, extFrom, to);
     const pairs: CorrelationPair[] = [];
     for (const o of outcomePts) {
       const v = anchoredValue(predictorPts, o.date, lagDays, predictorAnchor);
@@ -462,8 +535,8 @@ export function correlateIndicators(
 
   // Match × match → appariement par date de match (le décalage n'a pas de sens ici)
   if (aIsMatch && bIsMatch) {
-    const aPts = getSeries(a, scope, from, to);
-    const bPts = getSeries(b, scope, from, to);
+    const aPts = getA(a, from, to);
+    const bPts = getB(b, from, to);
     const aByDate = new Map(aPts.map(p => [p.date, p.value]));
     const pairs: CorrelationPair[] = [];
     for (const pb of bPts) {
@@ -475,8 +548,8 @@ export function correlateIndicators(
   }
 
   // Quotidien × quotidien → A (moyenne semaine ou instantané J-lag) apparié à B jour par jour
-  const aPts = getSeries(a, scope, weekMode || lagDays ? extFrom : from, to);
-  const bPts = getSeries(b, scope, from, to);
+  const aPts = getA(a, weekMode || lagDays ? extFrom : from, to);
+  const bPts = getB(b, from, to);
   const pairs: CorrelationPair[] = [];
   if (weekMode) {
     for (const pb of bPts) {
@@ -485,14 +558,44 @@ export function correlateIndicators(
       pairs.push({ x: round2(av), y: round2(pb.value), date: pb.date });
     }
   } else {
-    const aByDate = new Map(aPts.map(p => [p.date, p.value]));
     for (const pb of bPts) {
-      const av = aByDate.get(lagDays ? shiftDate(pb.date, -lagDays) : pb.date);
-      if (av === undefined) continue;
+      const av = anchoredValue(aPts, pb.date, lagDays, LAST_ANCHOR);
+      if (av === null) continue;
       pairs.push({ x: round2(av), y: round2(pb.value), date: pb.date });
     }
   }
   return correlatePairs(pairs);
+}
+
+/** Corrèle deux indicateurs sur un même scope (joueur et/ou équipe) — voir `correlatePairsForDefs`. */
+export function correlateIndicators(
+  a: IndicatorDef, b: IndicatorDef, scope: CrossScope,
+  from: string, to: string, lag: LagMode = 0,
+): CorrelationResult | null {
+  if (a.key === b.key) return null;
+  return correlatePairsForDefs(
+    a, (def, f, t) => getSeries(def, scope, f, t),
+    b, (def, f, t) => getSeries(def, scope, f, t),
+    from, to, lag,
+  );
+}
+
+/**
+ * Corrèle deux indicateurs pour deux sujets indépendants (deux joueurs différents, un joueur et
+ * l'équipe, etc.) — permet par ex. de croiser la charge d'un joueur avec l'évaluation d'un autre.
+ */
+export function correlateAcrossSubjects(
+  a: IndicatorDef, subjectA: Subject,
+  b: IndicatorDef, subjectB: Subject,
+  team: TeamCrossData | undefined,
+  from: string, to: string, lag: LagMode = 0,
+): CorrelationResult | null {
+  if (a.key === b.key && sameSubject(subjectA, subjectB)) return null;
+  return correlatePairsForDefs(
+    a, (def, f, t) => getSeriesFor(def, subjectA, team, f, t),
+    b, (def, f, t) => getSeriesFor(def, subjectB, team, f, t),
+    from, to, lag,
+  );
 }
 
 // ── Zones à risque ────────────────────────────────────────────────────────────
@@ -558,7 +661,7 @@ export function detectRiskAlerts(
       alerts.push({
         playerId: p.player.id, playerName, level: 'red', date: episode.end,
         title: 'Charge en zone rouge',
-        detail: `ACWR > 1,5 du ${fmtDayMonth(episode.start)} au ${fmtDayMonth(episode.end)} (pic à ${episode.peak.toFixed(2)})`,
+        detail: `Charge d'entraînement en forte hausse du ${fmtDayMonth(episode.start)} au ${fmtDayMonth(episode.end)} (jusqu'à ${episode.peak.toFixed(1)}× la charge habituelle)`,
       });
     }
 
@@ -593,7 +696,7 @@ export function detectRiskAlerts(
         alerts.push({
           playerId: p.player.id, playerName, level: 'red', date: rec.date,
           title: 'Blessure précédée d\'un pic de charge',
-          detail: `${rec.location || rec.description || 'Blessure'} le ${fmtDayMonth(rec.date)} — ACWR/fraîcheur en zone rouge dans les 14 jours précédents`,
+          detail: `${rec.location || rec.description || 'Blessure'} le ${fmtDayMonth(rec.date)} — charge d'entraînement ou fraîcheur en zone à risque dans les 14 jours précédents`,
         });
         break; // une seule alerte blessure par joueur
       }

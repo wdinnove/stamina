@@ -1,12 +1,12 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router';
-import { X } from 'lucide-react';
+import { X, Ambulance, Pill, Stethoscope } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from './RichTextEditor';
 import { Modal } from './Modal';
-import { Badge } from './Badge';
+import { Card } from './Card';
 import { InjuryRecordCard } from './InjuryRecordCard';
 import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { typeLabels, severityConfig } from './MedicalCard';
@@ -19,6 +19,7 @@ const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', ba
 
 export interface PlayerMedicalViewHandle {
   openForm: () => void;
+  openRecord: (record: MedicalRecord) => void;
 }
 
 export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId: string; onUpdated?: () => void }>(({ playerId, onUpdated }, ref) => {
@@ -26,6 +27,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
   const [records, setRecords]   = useState<MedicalRecord[]>([]);
   const [player, setPlayer]     = useState<Player | null>(null);
   const [version, setVersion]   = useState(0);
+  const [typeFilter, setTypeFilter] = useState<'all' | MedicalRecord['type']>('all');
 
   const [closeModal, setCloseModal] = useState<{ recordId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
   const [closeSaving, setCloseSaving] = useState(false);
@@ -65,7 +67,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
     setShowForm(true);
   };
 
-  useImperativeHandle(ref, () => ({ openForm }));
+  useImperativeHandle(ref, () => ({ openForm, openRecord: setDetailRecord }));
 
   const openEdit = (record: MedicalRecord) => {
     setEditingRecord(record);
@@ -148,54 +150,65 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
   const recTreatments = records.filter(r => r.type === 'treatment');
   const allCheckups   = records.filter(r => r.type === 'checkup');
 
+  const typeTabs = [
+    { key: 'all' as const,       label: 'Tout',         color: '#94A3B8', icon: null,        count: records.length },
+    { key: 'injury' as const,    label: 'Blessures',    color: '#EF4444', icon: Ambulance,   count: recInjuries.length },
+    { key: 'treatment' as const, label: 'Traitements',  color: '#00E5A0', icon: Pill,        count: recTreatments.length },
+    { key: 'checkup' as const,   label: 'Bilans santé', color: '#3B82F6', icon: Stethoscope, count: allCheckups.length },
+  ];
+  const visibleRecords = (typeFilter === 'all' ? records : records.filter(r => r.type === typeFilter))
+    .slice()
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+      return b.date.localeCompare(a.date);
+    });
+
   return (
     <>
-      {/* 3 colonnes : Blessures / Traitements / Bilans — pleine largeur, empilées en mobile */}
-      <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 12 }}>
-        {([
-          { key: 'injury',    title: 'Blessures',    color: '#EF4444', records: recInjuries,   emptyMsg: 'Aucune blessure enregistrée'  },
-          { key: 'treatment', title: 'Traitements',  color: '#00E5A0', records: recTreatments, emptyMsg: 'Aucun traitement enregistré' },
-          { key: 'checkup',   title: 'Bilans santé', color: '#3B82F6', records: allCheckups,   emptyMsg: 'Aucun bilan enregistré'     },
-        ]).map(section => (
-          <div key={section.key}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <h4 style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, fontWeight: 700, flex: 1 }}>
-                {section.title}
-              </h4>
-              {section.records.length > 0 && (
-                <Badge color={section.color} bg={section.color + '18'} label={section.records.length} style={{ padding: '2px 8px', borderRadius: 3 }} />
-              )}
-            </div>
-            {section.records.length === 0
-              ? <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ {section.emptyMsg}</p>
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[...section.records]
-                    .sort((a, b) => {
-                      if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
-                      return b.date.localeCompare(a.date);
-                    })
-                    .map(record => (
-                      <InjuryRecordCard
-                        key={record.id}
-                        record={record}
-                        player={player ?? undefined}
-                        showAvatarColumn={false}
-                        onEdit={() => openEdit(record)}
-                        onClose={record.status === 'active' && record.type !== 'checkup'
-                          ? () => setCloseModal({ recordId: record.id, date: TODAY, playerStatus: 'active' })
-                          : undefined}
-                        onClick={() => setDetailRecord(record)}
-                        navigate={navigate}
-                      />
-                    ))
-                  }
-                </div>
-              )
-            }
-          </div>
-        ))}
+      {/* Filtre par type — timeline unique, plutôt que 3 colonnes qui laissent du vide quand une catégorie est peu remplie */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        {typeTabs.map(t => {
+          const active = typeFilter === t.key;
+          return (
+            <button key={t.key} onClick={() => setTypeFilter(t.key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+                border: `1px solid ${active ? t.color : '#2A2F3A'}`,
+                backgroundColor: active ? `${t.color}18` : '#161920',
+                color: active ? t.color : '#94A3B8',
+                fontSize: '0.8rem', fontWeight: active ? 700 : 500,
+              }}>
+              {t.icon && <t.icon size={13} />}
+              {t.label}
+              <span style={{ fontSize: '0.7rem', opacity: 0.75 }}>{t.count}</span>
+            </button>
+          );
+        })}
       </div>
+
+      {visibleRecords.length === 0 ? (
+        <Card style={{ padding: '24px' }}>
+          <p style={{ color: '#00E5A0', fontSize: '0.9rem', margin: 0, textAlign: 'center' }}>✓ Aucune entrée médicale enregistrée</p>
+        </Card>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {visibleRecords.map(record => (
+            <InjuryRecordCard
+              key={record.id}
+              record={record}
+              player={player ?? undefined}
+              showAvatarColumn={false}
+              onEdit={() => openEdit(record)}
+              onClose={record.status === 'active' && record.type !== 'checkup'
+                ? () => setCloseModal({ recordId: record.id, date: TODAY, playerStatus: 'active' })
+                : undefined}
+              onClick={() => setDetailRecord(record)}
+              navigate={navigate}
+            />
+          ))}
+        </div>
+      )}
 
       {/* ── DETAIL MODAL ── */}
       {detailRecord && (

@@ -103,8 +103,12 @@ export function CrossTimelineChart({ a, b, from, to, injuries = [], loadThreshol
     return weekly ? `${Number(d)} ${MONTHS[Number(m) - 1]}` : `${Number(d)}/${Number(m)}`;
   };
 
-  const fmtValue = (def: IndicatorDef, v: number) =>
-    `${def.key === 'acwr' ? v.toFixed(2) : Math.round(v * 10) / 10}${def.unit ? ` ${def.unit}` : ''}`;
+  const fmtValue = (def: IndicatorDef, v: number) => {
+    const num = def.key === 'acwr' ? v.toFixed(2) : def.key === 'tsb' ? v.toFixed(1) : Math.round(v * 10) / 10;
+    const signed = def.key === 'tsb' && v > 0 ? `+${num}` : `${num}`;
+    const label = def.valueLabel ? ` · ${def.valueLabel(v)}` : '';
+    return `${signed}${def.unit ? ` ${def.unit}` : ''}${label}`;
+  };
 
   const ChartTooltipContent = ({ active, payload }: { active?: boolean; payload?: { payload: ChartRow }[] }) => {
     if (!active || !payload?.length) return null;
@@ -184,9 +188,9 @@ export function CrossTimelineChart({ a, b, from, to, injuries = [], loadThreshol
             <CartesianGrid strokeDasharray="3 3" stroke="#1E2229" vertical={false} />
             <XAxis dataKey="key" interval={tickInterval} tickFormatter={fmtTick}
               tick={{ fill: '#64748B', fontSize: 10 }} axisLine={false} tickLine={false} height={22} />
-            <YAxis yAxisId="a" orientation="left" domain={axisDomain(a.def)}
+            <YAxis yAxisId="a" orientation="left" domain={axisDomain(a.def)} ticks={a.def.yTicks}
               tick={{ fill: a.def.color, fontSize: 10, fillOpacity: 0.85 }} axisLine={false} tickLine={false} width={40} />
-            <YAxis yAxisId="b" orientation="right" domain={axisDomain(b.def)}
+            <YAxis yAxisId="b" orientation="right" domain={axisDomain(b.def)} ticks={b.def.yTicks}
               tick={{ fill: b.def.color, fontSize: 10, fillOpacity: 0.85 }} axisLine={false} tickLine={false} width={40} />
             <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
             {injuryAreas.map((ep, i) => (

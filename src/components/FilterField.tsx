@@ -34,3 +34,27 @@ export function FilterField({ legend, width = FILTER_FIELD_WIDTH, disabled, chil
     </fieldset>
   );
 }
+
+// Couleurs fixes par groupe (identité A/B, pas de sémantique bien/mal) — partagées par tous les
+// sélecteurs des onglets Comparer (par période, par match, par saison, par joueur) et par le rendu
+// graphique de PlayerCompareStatBlocks, pour que le violet/vert désigne toujours "groupe A/B".
+export const GROUP_A_COLOR = '#8B5CF6';
+export const GROUP_B_COLOR = '#00E5A0';
+
+/** Hauteur fixe des containers de groupe (période/joueur/saison/match des onglets Comparer),
+ * pour un centrage vertical identique quel que soit le contenu (select, bouton, ou trio de champs). */
+export const GROUP_PICKER_HEIGHT = 40;
+
+/** Boîte encadrée de la couleur du groupe, hauteur fixe et contenu centré verticalement, pastille
+ * accolée directement au(x) champ(s) sur une seule ligne (pas de libellé "Groupe A/B" séparé). */
+export function GroupPickerBox({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <div style={{
+      flex: 1, minWidth: 240, height: GROUP_PICKER_HEIGHT, display: 'flex', alignItems: 'center', gap: 8,
+      border: `1px solid ${color}40`, borderRadius: 8, padding: '0 12px',
+    }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}

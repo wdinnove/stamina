@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare, ArrowRight } from 'lucide-react';
-import { Badge, StatusBadge, PlayerAvatar } from '../components';
+import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare } from 'lucide-react';
+import { Badge, StatusBadge, PlayerAvatar, HeroCard, HeroCardShell } from '../components';
 import { playersApi, medicalApi, actionsApi, matchesApi, rpeApi } from '../api';
 import { profileApi } from '../api/profile';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -61,6 +61,25 @@ export default function DashboardPage() {
     for (const pd of perfData.players) map.set(pd.player.id, computeAcwr(pd.allTimeRpe, today));
     return map;
   }, [perfData, today]);
+
+  // Statut "à risque maintenant" — plus lisible que la seule zone ACWR : combine blessure active,
+  // zone de charge à risque et alertes rouges récentes (mêmes règles que RiskAlertsList/PlayerOverviewTable).
+  const recentAlerts = useMemo(
+    () => perfData ? detectRiskAlerts(perfData.players, localDate(-14), today, thresholds) : [],
+    [perfData, today, thresholds],
+  );
+  const redAlertPlayerIds = useMemo(
+    () => new Set(recentAlerts.filter(a => a.level === 'red').map(a => a.playerId)),
+    [recentAlerts],
+  );
+  const atRiskCount = useMemo(() => {
+    if (!perfData) return 0;
+    return perfData.players.filter(pd => {
+      const hasActiveInjury = pd.medical.some(m => m.type === 'injury' && m.status === 'active');
+      const zone = acwrZone(acwrByPlayer.get(pd.player.id) ?? null);
+      return hasActiveInjury || zone?.label === 'Risque modéré' || zone?.label === 'Risque élevé' || redAlertPlayerIds.has(pd.player.id);
+    }).length;
+  }, [perfData, acwrByPlayer, redAlertPlayerIds]);
 
   // Bien-être par joueur sur la période sélectionnée (21j glissants ou saison entière) :
   // score moyen de TOUTES les entrées de la période (pas juste la dernière saisie — sinon
@@ -257,7 +276,6 @@ export default function DashboardPage() {
     : teamLoadNow > thresholds.normalMax ? 'Surcharge'
     : teamLoadNow > thresholds.normalMax * 2 / 3 ? 'Élevée'
     : teamLoadNow > thresholds.normalMax / 3 ? 'Soutenu' : 'Normal';
-  const highRiskAcwrCount = players.filter(p => acwrZone(acwrByPlayer.get(p.id) ?? null)?.label === 'Risque élevé').length;
 
   if (teamLoading) return <div style={{ padding: 24, color: '#94A3B8', fontSize: '0.85rem' }}>Chargement…</div>;
   if (!selected) return (
@@ -318,7 +336,7 @@ export default function DashboardPage() {
           stats={[
             { value: teamLoadNow ?? 0, label: 'UA / semaine', color: teamLoadColor },
             { value: teamRpeNow ?? 0, label: 'RPE moyen /10', color: teamRpeNow === null ? '#475569' : rpeColor(teamRpeNow), decimals: 1 },
-            { value: highRiskAcwrCount, label: 'Risque blessures', color: '#EF4444' },
+            { value: atRiskCount, label: 'Risque blessures', color: '#EF4444' },
           ]}
           onOpen={() => navigate('/rpe')}
         />
@@ -343,99 +361,13 @@ export default function DashboardPage() {
           players={perfData.players}
           acwrByPlayer={acwrByPlayer}
           wellnessStatsByPlayer={wellnessStatsByPlayer}
+          redAlertPlayerIds={redAlertPlayerIds}
           range={range}
-          thresholds={thresholds}
           onOpenPlayer={id => navigate(`/performance-individuelle/${id}/vue-ensemble`)}
         />
       )}
 
     </div>
-  );
-}
-
-/**
- * Coque partagée des cartes "hero" : icône ronde + titre, liseré latéral neutre (blanc),
- * contenu libre au milieu, flèche + libellé en bas à droite vers la page liée.
- * La couleur reste sur l'icône/les badges, pas sur le cadre de la carte.
- * Pensée pour occuper 1/3 d'une grille à 3 colonnes.
- */
-function HeroCardShell({ icon, iconBg, title, ctaLabel, onOpen, children, footerLeft, headerRight, borderColor = '#475569' }: {
-  icon: ReactNode; iconBg: string; title: string;
-  ctaLabel: string; onOpen: () => void; children: ReactNode;
-  /** Contenu optionnel affiché à gauche de la dernière ligne (ex. points du carrousel). */
-  footerLeft?: ReactNode;
-  /** Contenu optionnel affiché en haut à droite (ex. badge V/D). */
-  headerRight?: ReactNode;
-  /** Couleur du liseré latéral, reflétant l'état des données de la carte. */
-  borderColor?: string;
-}) {
-  return (
-    <div
-      style={{
-        backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${borderColor}`,
-        borderRadius: 10, padding: '18px 20px', minHeight: 160,
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
-          <div style={{
-            width: 42, height: 42, borderRadius: '50%', backgroundColor: iconBg, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {icon}
-          </div>
-          <p style={{ color: '#F1F5F9', fontSize: '0.95rem', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</p>
-        </div>
-        {headerRight && <div style={{ flexShrink: 0 }}>{headerRight}</div>}
-      </div>
-
-      {children}
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, marginTop: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 6 }}>{footerLeft}</div>
-        <div onClick={onOpen}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', padding: '4px 0 4px 12px', marginRight: -4 }}
-          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '0.7'}
-          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
-        >
-          <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 500 }}>{ctaLabel}</span>
-          <ArrowRight size={14} color="#475569" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Variante "stats" — N gros chiffres (ou libellés courts) côte à côte (ex. Infirmerie). */
-function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerRight, borderColor }: {
-  icon: ReactNode; iconBg: string; title: string;
-  stats: { value: number | string; label: string; color: string; decimals?: number }[];
-  ctaLabel: string; onOpen: () => void;
-  headerRight?: ReactNode;
-  borderColor?: string;
-}) {
-  return (
-    <HeroCardShell icon={icon} iconBg={iconBg} title={title} ctaLabel={ctaLabel} onOpen={onOpen} headerRight={headerRight} borderColor={borderColor}>
-      <div style={{ display: 'flex', gap: 24 }}>
-        {stats.map(s => {
-          const isNumber = typeof s.value === 'number';
-          const displayValue = isNumber && s.decimals !== undefined ? (s.value as number).toFixed(s.decimals) : s.value;
-          return (
-            <div key={s.label}>
-              <div style={{
-                color: isNumber && s.value === 0 ? '#475569' : s.color,
-                fontSize: isNumber ? '1.7rem' : '1.1rem', fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap',
-                fontFamily: isNumber ? 'JetBrains Mono, monospace' : undefined,
-              }}>
-                {displayValue}
-              </div>
-              <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5, whiteSpace: 'nowrap' }}>{s.label}</div>
-            </div>
-          );
-        })}
-      </div>
-    </HeroCardShell>
   );
 }
 
@@ -666,12 +598,13 @@ const ACWR_LABEL_BIS: Record<string, string> = {
 type OverviewSortKey = 'name' | 'status' | 'risk' | 'rpe' | 'wellness' | 'attention' | 'eval';
 type SortDir = 'asc' | 'desc';
 
-function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, range, thresholds, onOpenPlayer }: {
+function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, redAlertPlayerIds, range, onOpenPlayer }: {
   players: PlayerCrossData[];
   acwrByPlayer: Map<string, number | null>;
   wellnessStatsByPlayer: Map<string, { avgScore: number | null; worstDim: WellnessAxisAlert | null }>;
+  /** Joueurs avec une alerte rouge récente (mêmes règles que la carte Charge physique / RiskAlertsList). */
+  redAlertPlayerIds: Set<string>;
   range: DateRange;
-  thresholds: LoadThresholds;
   onOpenPlayer: (id: string) => void;
 }) {
   const cutoff = range === '21j' ? localDate(-21) : null;
@@ -683,17 +616,6 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, ran
     else { setSortKey(key); setSortDir('asc'); }
   };
   const arrow = (key: OverviewSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
-
-  // Statut "à risque maintenant" — plus lisible que la seule zone ACWR : combine blessure active,
-  // zone de charge à risque et alertes rouges récentes (mêmes règles que RiskAlertsList).
-  const recentAlerts = useMemo(
-    () => detectRiskAlerts(players, localDate(-14), localDate(0), thresholds),
-    [players, thresholds],
-  );
-  const redAlertPlayerIds = useMemo(
-    () => new Set(recentAlerts.filter(a => a.level === 'red').map(a => a.playerId)),
-    [recentAlerts],
-  );
 
   const rows = players.map(pd => {
     const p = pd.player;

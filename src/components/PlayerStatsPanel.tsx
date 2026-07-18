@@ -43,12 +43,23 @@ export function PlayerStatsPanel({
     return labels.sort((a, b) => b.localeCompare(a));
   }, [seasonGroupedStats]);
 
+  // Toutes les équipes jamais rencontrées (toutes saisons confondues) — sert de liste quand
+  // "Toutes les saisons" est sélectionné, pour pouvoir filtrer par équipe même dans ce cas.
+  const allTeams = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const g of seasonGroupedStats) if (!seen.has(g.teamId)) seen.set(g.teamId, g.teamName || '—');
+    return [...seen.entries()].map(([teamId, teamName]) => ({ teamId, teamName }));
+  }, [seasonGroupedStats]);
+
   const groupsForSeason = useMemo(
     () => seasonFilter === ALL_SEASONS ? [] : seasonGroupedStats.filter(g => g.seasonLabel === seasonFilter),
     [seasonGroupedStats, seasonFilter],
   );
-  const multiTeam = groupsForSeason.length > 1;
-  const teamSelectApplicable = seasonFilter !== ALL_SEASONS && multiTeam;
+
+  // Options du select Équipe : équipes de la saison choisie, ou toutes les équipes si "Toutes les saisons".
+  const teamOptions = seasonFilter === ALL_SEASONS
+    ? allTeams
+    : groupsForSeason.map(g => ({ teamId: g.teamId, teamName: g.teamName || '—' }));
 
   const effectiveMatchStats = useMemo(() => {
     if (seasonFilter === ALL_SEASONS) return [];
@@ -56,9 +67,21 @@ export function PlayerStatsPanel({
     return groupsForSeason.find(g => g.teamId === teamFilter)?.stats ?? groupsForSeason.flatMap(g => g.stats);
   }, [groupsForSeason, teamFilter, seasonFilter]);
 
+  // Groupes utilisés par la vue "Toutes les saisons" — filtrés par équipe si une équipe précise est choisie,
+  // pour pouvoir combiner "Toutes les saisons" + une équipe donnée (historique saison par saison de cette équipe).
+  const groupsForAllSeasonsView = useMemo(
+    () => teamFilter === ALL_TEAMS ? seasonGroupedStats : seasonGroupedStats.filter(g => g.teamId === teamFilter),
+    [seasonGroupedStats, teamFilter],
+  );
+
   const handleSeasonChange = (label: string) => {
     setSeasonFilter(label);
-    if (label === ALL_SEASONS) { setTeamFilter(ALL_TEAMS); return; }
+    if (label === ALL_SEASONS) {
+      // Garde l'équipe déjà choisie si elle existe toujours parmi toutes les équipes, sinon "Toutes les équipes".
+      const stillValid = teamFilter !== ALL_TEAMS && allTeams.some(t => t.teamId === teamFilter);
+      setTeamFilter(stillValid ? teamFilter : ALL_TEAMS);
+      return;
+    }
     const newGroups = seasonGroupedStats.filter(g => g.seasonLabel === label);
     const hasCurrentTeam = !!currentTeamId && newGroups.some(g => g.teamId === currentTeamId);
     setTeamFilter(hasCurrentTeam ? currentTeamId! : newGroups.length === 1 ? newGroups[0].teamId : ALL_TEAMS);
@@ -79,15 +102,10 @@ export function PlayerStatsPanel({
                   <option value={ALL_SEASONS}>Toutes les saisons</option>
                 </select>
               </FilterField>
-              <FilterField legend="Équipe" width={160} disabled={!teamSelectApplicable}>
-                <select
-                  value={teamFilter}
-                  onChange={e => setTeamFilter(e.target.value)}
-                  disabled={!teamSelectApplicable}
-                  style={{ ...filterControlStyle, cursor: teamSelectApplicable ? 'pointer' : 'not-allowed' }}
-                >
-                  {teamSelectApplicable && <option value={ALL_TEAMS}>Toutes les équipes</option>}
-                  {teamSelectApplicable && groupsForSeason.map(g => <option key={g.teamId} value={g.teamId}>{g.teamName || '—'}</option>)}
+              <FilterField legend="Équipe" width={160}>
+                <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} style={filterControlStyle}>
+                  <option value={ALL_TEAMS}>Toutes les équipes</option>
+                  {teamOptions.map(t => <option key={t.teamId} value={t.teamId}>{t.teamName}</option>)}
                 </select>
               </FilterField>
             </div>
@@ -106,7 +124,7 @@ export function PlayerStatsPanel({
         >Statistiques saison</CardTitle>
 
         {seasonFilter === ALL_SEASONS ? (
-          seasonGroupedStats.length === 0 ? (
+          groupsForAllSeasonsView.length === 0 ? (
             <EmptyState message="Aucune statistique disponible." />
           ) : (() => {
             const TH: React.CSSProperties = {
@@ -128,7 +146,7 @@ export function PlayerStatsPanel({
             const toggle = (col: string) => setSeasonSort(prev =>
               prev.col === col ? { ...prev, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }
             );
-            const computed = seasonGroupedStats.map(({ seasonId, seasonLabel, teamName, stats: ss }) => {
+            const computed = groupsForAllSeasonsView.map(({ seasonId, seasonLabel, teamName, stats: ss }) => {
               const n = ss.length;
               const sum = (k: keyof MatchStat) => ss.reduce((acc, m) => acc + (((m[k] as number) || 0)), 0);
               const avg = (k: keyof MatchStat) => n > 0 ? Math.round((sum(k) / n) * 10) / 10 : 0;

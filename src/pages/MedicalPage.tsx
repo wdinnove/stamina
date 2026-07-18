@@ -6,7 +6,7 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalView, InjuryRecordCard, MedicalRecordDetailModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
+import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalOverview, InjuryRecordCard, MedicalRecordDetailModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
 import type { PlayerMedicalViewHandle } from '../components';
 import { rtpDaysLeft } from '../components/MedicalCard';
 import { fmtDate } from '../utils/dateFormat';
@@ -100,8 +100,13 @@ export default function MedicalPage() {
     setTeamPlayers([]);
     playersApi.listBySeason(selected.season.id).then(list => {
       setTeamPlayers(list);
-      if (activeTab === 'record' && !urlId && list[0]?.id) {
-        navigate(`/medical/record/${list[0].id}`, { replace: true });
+      if (activeTab === 'record') {
+        if (!urlId && list[0]?.id) {
+          navigate(`/medical/record/${list[0].id}`, { replace: true });
+        } else if (urlId && list.length > 0 && !list.some(p => p.id === urlId)) {
+          // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
+          navigate('/', { replace: true });
+        }
       }
     });
   }, [selected?.season.id, version]);
@@ -729,46 +734,16 @@ export default function MedicalPage() {
       {/* ── RECORD TAB ── */}
       {activeTab === 'record' && (
         <div>
-          {selectedPlayer && (
-            <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 10, marginBottom: 14 }}>
-              <RpeKpiCard
-                accent={playerStatusColor[selectedPlayer.status]}
-                label="Statut"
-                value={playerStatusLabel[selectedPlayer.status]}
-                sub={
-                  selectedPlayer.status === 'active'
-                    ? '-'
-                    : (selectedPlayer.status === 'injured' || selectedPlayer.status === 'limited')
-                      ? (activePlayerInjury?.description ?? '-')
-                      : playerNameFull(selectedPlayer)
-                }
-              />
-              <RpeKpiCard
-                accent={lastPlayerInjury ? '#EF4444' : '#475569'}
-                label="Dernière blessure"
-                value={lastPlayerInjury ? lastPlayerInjury.description : '—'}
-                sub={lastPlayerInjury ? fmtDate(lastPlayerInjury.date) : 'Aucune blessure enregistrée'}
-              />
-              <RpeKpiCard
-                accent={playerSeasonInjuries.length > 0 ? '#F59E0B' : '#00E5A0'}
-                label="Blessures saison"
-                value={String(playerSeasonInjuries.length)}
-                sub="cette saison"
-              />
-              <RpeKpiCard
-                accent={playerSeasonDays > 0 ? '#3B82F6' : '#00E5A0'}
-                label="Jours blessés"
-                value={playerSeasonDays > 0 ? `${playerSeasonDays}j` : '—'}
-                sub="cumulés saison"
-              />
-            </div>
-          )}
-
-          {selectedPlayerId && (
-            <PlayerMedicalView
+          {selectedPlayer && selectedPlayerId && (
+            <PlayerMedicalOverview
               key={selectedPlayerId}
               ref={playerMedicalViewRef}
+              player={selectedPlayer}
               playerId={selectedPlayerId}
+              currentInjury={activePlayerInjury}
+              lastInjury={lastPlayerInjury}
+              seasonInjuryCount={playerSeasonInjuries.length}
+              seasonInjuryDays={playerSeasonDays}
               onUpdated={() => setVersion(v => v + 1)}
             />
           )}

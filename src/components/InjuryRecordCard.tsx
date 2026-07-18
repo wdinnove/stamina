@@ -1,4 +1,4 @@
-import { Pencil, Bandage, Stethoscope, Pill } from 'lucide-react';
+import { Pencil, Bandage, Stethoscope, Pill, ChevronRight } from 'lucide-react';
 import { PlayerAvatar } from './PlayerAvatar';
 import { StatusBadge } from './StatusBadge';
 import { Badge } from './Badge';
@@ -51,8 +51,44 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
   const col = typeColors[record.type] ?? '#94A3B8';
   const sev = record.severity ? severityConfig[record.severity] : null;
   const TypeIcon = typeIconComponents[record.type];
-  const statusColor = player ? statusConfig[player.status].color : col;
+  const airy = !showAvatarColumn;
+  // Sans colonne avatar (historique médical d'un joueur), la couleur reflète toujours le type de
+  // l'entrée (rouge/vert/bleu), pas le statut courant du joueur — évite la confusion vue en pratique.
+  const statusColor = airy ? col : (player ? statusConfig[player.status].color : col);
   const reprise = reprisEstimeeDisplay(record.rtpDate);
+
+  if (airy) {
+    return (
+      <div onClick={onClick} style={{
+        backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderLeft: `3px solid ${statusColor}`, borderRadius: 8,
+        padding: '16px 18px', cursor: onClick ? 'pointer' : 'default', display: 'flex', gap: 14, alignItems: 'center',
+      }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: '50%', backgroundColor: statusColor + '20', border: `1px solid ${statusColor}44`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <TypeIcon size={17} color={statusColor} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <p style={{ color: '#F1F5F9', fontSize: '1rem', fontWeight: 600, margin: 0, lineHeight: 1.3 }}>{record.description}</p>
+            {sev && <Badge color={sev.color} bg={sev.color + '18'} label={sev.label} size="md" style={{ flexShrink: 0 }} />}
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ color: '#64748B', fontSize: '0.78rem' }}>{typeLabels[record.type]} le : {fmtDateLong(record.date)}</span>
+            {record.type !== 'checkup' && (
+              <span style={{ color: reprise ? reprise.color : '#475569', fontSize: '0.78rem', fontWeight: reprise ? 700 : 500 }}>
+                {reprise
+                  ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
+                  : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
+              </span>
+            )}
+          </div>
+        </div>
+        {onClick && <ChevronRight size={16} style={{ color: '#475569', flexShrink: 0 }} />}
+      </div>
+    );
+  }
 
   const dateLines = (
     <>
@@ -71,10 +107,13 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
   );
 
   return (
-    <div onClick={onClick} style={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderLeft: `3px solid ${statusColor}`, borderRadius: 8, padding: '10px 12px', cursor: onClick ? 'pointer' : 'default' }}>
+    <div onClick={onClick} style={{
+      backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderLeft: `3px solid ${statusColor}`, borderRadius: 8,
+      padding: '10px 12px', cursor: onClick ? 'pointer' : 'default',
+    }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
 
-        {showAvatarColumn && (player ? (
+        {player ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0, width: 60 }}>
             <div onClick={e => { e.stopPropagation(); navigate(`/performance-individuelle/${player.id}/vue-ensemble`); }} style={{ cursor: 'pointer' }}>
               <PlayerAvatar player={player} size={32} />
@@ -87,11 +126,11 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
           <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: statusColor + '20', border: `1px solid ${statusColor}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <TypeIcon size={14} color={statusColor} />
           </div>
-        ))}
+        )}
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 1 : nom */}
-          {showAvatarColumn && player && (
+          {player && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span onClick={e => { e.stopPropagation(); navigate(`/performance-individuelle/${player.id}/vue-ensemble`); }} style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
                 {playerNameFull(player)}

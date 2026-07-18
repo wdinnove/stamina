@@ -7,6 +7,7 @@ import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
 import { EmptyState, Modal } from '../components';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
@@ -48,6 +49,7 @@ const TD: React.CSSProperties = {
 export default function MatchDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { selected } = useTeamSeason();
 
   const [match,            setMatch]           = useState<Match | null>(null);
   const [players,          setPlayers]         = useState<Player[]>([]);
@@ -127,6 +129,11 @@ export default function MatchDetailPage() {
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [id, loadStats]);
+
+  useEffect(() => {
+    // Le match dans l'URL n'appartient pas à l'équipe sélectionnée (ex. bascule dans la TopBar).
+    if (match && selected && match.teamId !== selected.team.id) navigate('/', { replace: true });
+  }, [match, selected?.team.id]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();

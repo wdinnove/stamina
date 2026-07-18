@@ -1686,3 +1686,50 @@ CREATE POLICY "push_subscriptions_user_own" ON push_subscriptions
   FOR ALL TO authenticated
   USING      (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
+
+-- match_stats duplique (date, opponent, home_away, competition, result, score_us, score_them)
+-- depuis matches au moment de la saisie des stats — sans trigger, corriger un match après coup
+-- (ex: mauvaise date) ne se répercutait jamais sur les match_stats déjà enregistrées, d'où des
+-- dates périmées affichées sur Performance individuelle.
+CREATE OR REPLACE FUNCTION sync_match_stats_from_match()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (NEW.date, NEW.opponent, NEW.home_away, NEW.competition, NEW.result, NEW.score_us, NEW.score_them)
+     IS DISTINCT FROM
+     (OLD.date, OLD.opponent, OLD.home_away, OLD.competition, OLD.result, OLD.score_us, OLD.score_them) THEN
+    UPDATE match_stats SET
+      date        = NEW.date,
+      opponent    = NEW.opponent,
+      home_away   = NEW.home_away::TEXT,
+      competition = NEW.competition,
+      result      = NEW.result::TEXT,
+      score_us    = NEW.score_us,
+      score_them  = NEW.score_them
+    WHERE match_id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_matches_sync_match_stats
+  AFTER UPDATE ON matches
+  FOR EACH ROW EXECUTE FUNCTION sync_match_stats_from_match();
+
+-- Correction ponctuelle des match_stats déjà désynchronisées (à exécuter une seule fois)
+UPDATE match_stats ms
+SET date        = m.date,
+    opponent    = m.opponent,
+    home_away   = m.home_away::TEXT,
+    competition = m.competition,
+    result      = m.result::TEXT,
+    score_us    = m.score_us,
+    score_them  = m.score_them
+FROM matches m
+WHERE ms.match_id = m.id
+  AND (ms.date        IS DISTINCT FROM m.date
+    OR ms.opponent    IS DISTINCT FROM m.opponent
+    OR ms.home_away   IS DISTINCT FROM m.home_away::TEXT
+    OR ms.competition IS DISTINCT FROM m.competition
+    OR ms.result      IS DISTINCT FROM m.result::TEXT
+    OR ms.score_us    IS DISTINCT FROM m.score_us
+    OR ms.score_them  IS DISTINCT FROM m.score_them);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Filter, ChevronDown, X } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Modal } from './Modal';
@@ -14,7 +14,7 @@ const isoOffsetFrom = (dateStr: string, days: number) => {
 };
 
 export type DatePreset = 7 | 21 | 45 | 90 | 'phase1' | 'phase2' | 'saison';
-const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+export const DATE_PRESETS: { value: DatePreset; label: string }[] = [
   { value: 7,        label: '7j'      },
   { value: 21,       label: '21j'     },
   { value: 45,       label: '45j'     },
@@ -82,9 +82,41 @@ interface DateRangeCardProps {
   onFrom:       (v: string) => void;
   onTo:         (v: string) => void;
   style?:       React.CSSProperties;
+  /** Champ(s) de filtre additionnel(s) — même style FilterField, affiché à côté de Période/Du/Au */
+  extra?:       ReactNode;
 }
 
 const CUSTOM = 'custom';
+
+const flatControlStyle: React.CSSProperties = { ...filterControlStyle, width: 'auto', flexShrink: 0 };
+
+/** Trio préréglage + Du + Au, à plat (sans fieldset/légende) — même poids visuel que les autres
+ * champs des onglets Comparer (par période : un par groupe ; par joueur : partagé par les 2 groupes),
+ * pour que tous les containers de groupe aient la même hauteur. */
+export function PeriodFields({ from, to, preset, onPreset, onFrom, onTo }: {
+  from: string; to: string; preset: DatePreset | null;
+  onPreset: (p: DatePreset) => void; onFrom: (v: string) => void; onTo: (v: string) => void;
+}) {
+  const selectValue = preset === null ? CUSTOM : String(preset);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'nowrap', overflowX: 'auto' }}>
+      <select value={selectValue} onChange={e => {
+        if (e.target.value === CUSTOM) return;
+        const found = DATE_PRESETS.find(p => String(p.value) === e.target.value);
+        if (found) onPreset(found.value);
+      }} style={flatControlStyle}>
+        {DATE_PRESETS.map(p => <option key={String(p.value)} value={String(p.value)}>{p.label}</option>)}
+        {preset === null && <option value={CUSTOM}>Personnalisé</option>}
+      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <span style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>·</span>
+        <input type="date" value={from} onChange={e => onFrom(e.target.value)} style={flatControlStyle} />
+        <span style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>→</span>
+        <input type="date" value={to} onChange={e => onTo(e.target.value)} style={flatControlStyle} />
+      </div>
+    </div>
+  );
+}
 
 function fmtShort(iso: string): string {
   const [, m, d] = iso.split('-');
@@ -92,7 +124,7 @@ function fmtShort(iso: string): string {
 }
 
 /** Contenu commun (select preset + inputs de dates) — utilisé dans la barre desktop et dans la modale mobile. */
-function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, layout }: DateRangeCardProps & { layout: 'row' | 'stacked' }) {
+function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, layout }: DateRangeCardProps & { layout: 'row' | 'stacked' }) {
   const selectValue = preset === null ? CUSTOM : String(preset);
   const handlePresetSelect = (v: string) => {
     if (v === CUSTOM) return;
@@ -112,6 +144,7 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, layout }
   if (layout === 'stacked') {
     return (
       <div className="flex flex-col gap-2 w-full">
+        {extra}
         {presetField}
         <div className="flex items-center gap-2 w-full">
           <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
@@ -123,6 +156,7 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, layout }
   }
   return (
     <div className="flex items-center" style={{ gap: 10 }}>
+      {extra}
       {presetField}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
@@ -133,7 +167,7 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, layout }
   );
 }
 
-export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style }: DateRangeCardProps) {
+export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style, extra }: DateRangeCardProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const activePreset = DATE_PRESETS.find(p => p.value === preset);
   const summary = activePreset ? activePreset.label : (from && to ? `${fmtShort(from)} → ${fmtShort(to)}` : 'Personnalisé');
@@ -168,7 +202,7 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style 
                 <X size={18} />
               </button>
             </div>
-            <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} layout="stacked" />
+            <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} layout="stacked" />
           </div>
         </Modal>
       )}
@@ -176,7 +210,7 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style 
       {/* ── Desktop : titre à gauche, champs à droite ── */}
       <div className="hidden md:block">
         <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
-          right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} layout="row" />}
+          right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} layout="row" />}
         >Filtres</CardTitle>
       </div>
 
