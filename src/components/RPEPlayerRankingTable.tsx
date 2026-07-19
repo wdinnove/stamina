@@ -13,43 +13,41 @@ interface RPEPlayerRankingTableProps {
   sessionLoadNormal: number;
   lightMax:          number;
   normalMax:         number;
+  /** Masque l'en-tête interne "Classement joueurs" — utile quand le tableau est déjà entouré
+   *  d'une Card avec son propre CardTitle (sinon le titre apparaît en double). */
+  hideHeader?: boolean;
 }
 
-type SortKey = 'name' | 'rpe' | 'diff' | 'surcharge' | 'elevee' | 'soutenu' | 'legere' | 'charge';
+type SortKey = 'name' | 'rpe' | 'surcharge' | 'elevee' | 'soutenu' | 'legere' | 'charge';
 type SortDir = 'asc' | 'desc';
 
-const COL_WIDTH = `${100 / 8}%`;
+const COL_WIDTH = `${100 / 7}%`;
 
 function ZoneDot({ color }: { color: string }) {
   return <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: color, marginRight: 3 }} />;
 }
 
-export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNormal, lightMax, normalMax }: RPEPlayerRankingTableProps) {
+export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNormal, lightMax, normalMax, hideHeader }: RPEPlayerRankingTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('rpe');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const rows = players.map(p => {
     const uaPerSession = p.nbSessions > 0 ? Math.round(p.totalLoad / p.nbSessions) : 0;
     const uaTier  = getWeekTier(uaPerSession, sessionLoadLight, sessionLoadNormal);
-    const diff    = p.rpe3w !== null ? Math.round((p.rpe3w - p.avgRpe) * 10) / 10 : null;
-    const arrowCfg = diff === null ? null
-      : diff > 0.2  ? { sym: '▲', color: diff > 1 ? '#EF4444' : '#F97316' }
-      : diff < -0.2 ? { sym: '▼', color: '#00E5A0' }
-      : { sym: '—', color: '#475569' };
 
     const zones = p.weekLoads.reduce(
       (acc, load) => {
         const label = getWeekTier(load, lightMax, normalMax).label;
         if (label === 'Surcharge')    acc.surcharge++;
         else if (label === 'Élevée')  acc.elevee++;
-        else if (label === 'Soutenu') acc.soutenu++;
+        else if (label === 'Soutenue') acc.soutenu++;
         else                          acc.legere++;
         return acc;
       },
       { surcharge: 0, elevee: 0, soutenu: 0, legere: 0 },
     );
 
-    return { player: p, uaPerSession, uaColor: uaTier.color, uaLabel: uaTier.label, diff, arrowCfg, zones };
+    return { player: p, uaPerSession, uaColor: uaTier.color, uaLabel: uaTier.label, zones };
   });
 
   const dir = sortDir === 'asc' ? 1 : -1;
@@ -57,7 +55,6 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
     switch (sortKey) {
       case 'name':      return a.player.name.localeCompare(b.player.name) * dir;
       case 'rpe':       return (a.player.avgRpe - b.player.avgRpe) * dir;
-      case 'diff':      return ((a.diff ?? -Infinity) - (b.diff ?? -Infinity)) * dir;
       case 'surcharge': return (a.zones.surcharge - b.zones.surcharge) * dir;
       case 'elevee':    return (a.zones.elevee - b.zones.elevee) * dir;
       case 'soutenu':   return (a.zones.soutenu - b.zones.soutenu) * dir;
@@ -91,14 +88,15 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
           .rpe-rank-table th, .rpe-rank-table td { padding: 8px 12px !important; }
         }
       `}</style>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ListOrdered size={13} color="#94A3B8" />
-        <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Classement joueurs</p>
-      </div>
+      {!hideHeader && (
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ListOrdered size={13} color="#94A3B8" />
+          <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Classement joueurs</p>
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         <table className="rpe-rank-table" style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <colgroup>
-            <col style={{ width: COL_WIDTH }} />
             <col style={{ width: COL_WIDTH }} />
             <col style={{ width: COL_WIDTH }} />
             <col style={{ width: COL_WIDTH }} />
@@ -111,7 +109,7 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
             <tr style={{ backgroundColor: '#1A1E26', position: 'sticky', top: 0, zIndex: 1 }}>
               <th onClick={() => toggleSort('name')} style={{ ...thBase, whiteSpace: 'nowrap', color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26' }}>Nom{sortArrow('name')}</th>
               <th onClick={() => toggleSort('rpe')} style={{ ...thBase, color: sortKey === 'rpe' ? '#94A3B8' : '#475569' }}>RPE{sortArrow('rpe')}</th>
-              <th onClick={() => toggleSort('diff')} style={{ ...thBase, color: sortKey === 'diff' ? '#94A3B8' : '#475569' }}>± 21j{sortArrow('diff')}</th>
+              <th onClick={() => toggleSort('charge')} style={{ ...thBase, color: sortKey === 'charge' ? '#94A3B8' : '#475569' }}>Charge{sortArrow('charge')}</th>
               {([
                 { key: 'surcharge' as const, label: 'Sur.',  color: '#EF4444' },
                 { key: 'elevee'    as const, label: 'Él.',   color: '#F97316' },
@@ -124,11 +122,10 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
                   </span>
                 </th>
               ))}
-              <th onClick={() => toggleSort('charge')} style={{ ...thBase, color: sortKey === 'charge' ? '#94A3B8' : '#475569' }}>Charge{sortArrow('charge')}</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ player: p, uaPerSession, uaColor, uaLabel, diff, arrowCfg, zones }) => {
+            {sorted.map(({ player: p, uaPerSession, uaColor, uaLabel, zones }) => {
               const rpeC = rpeColor(p.avgRpe);
 
               const zoneCell = (val: number, color: string) => (
@@ -146,21 +143,12 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
                   <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{p.name}</td>
                   <td style={{ padding: '8px 8px', color: rpeC, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(p.avgRpe)}</td>
                   <td style={{ padding: '8px 8px' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
-                      color: diff === null ? '#475569' : diff > 0.2 ? (diff > 1 ? '#EF4444' : '#F97316') : diff < -0.2 ? '#00E5A0' : '#475569' }}>
-                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem', fontWeight: 600 }}>
-                        {diff === null ? '—' : (diff > 0 ? '+' : '') + diff}
-                      </span>
-                      {arrowCfg && arrowCfg.sym !== '—' && <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{arrowCfg.sym}</span>}
-                    </span>
+                    <Badge color={uaColor} bg={uaColor + '20'} label={uaLabel} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 5px' }} />
                   </td>
                   {zoneCell(zones.surcharge, '#EF4444')}
                   {zoneCell(zones.elevee,    '#F97316')}
                   {zoneCell(zones.soutenu,   '#EAB308')}
                   {zoneCell(zones.legere,    '#00E5A0')}
-                  <td style={{ padding: '8px 8px' }}>
-                    <Badge color={uaColor} bg={uaColor + '20'} label={uaLabel} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 5px' }} />
-                  </td>
                 </tr>
               );
             })}

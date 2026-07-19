@@ -127,6 +127,6 @@ export function computeTsb(history: LoadEntry[]): number | null {
 export function tsbZone(tsb: number): { label: string; color: string } {
   if (tsb <= -30) return { label: 'Surmenage', color: '#EF4444' };
   if (tsb <= -10) return { label: 'Chargé',    color: '#F59E0B' };
-  if (tsb <=   5) return { label: 'Zone peak', color: '#00E5A0' };
+  if (tsb <=   5) return { label: 'Zone optimale', color: '#00E5A0' };
   return                 { label: 'Frais',     color: '#60A5FA' };
 }

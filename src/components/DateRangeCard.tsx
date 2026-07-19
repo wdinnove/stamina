@@ -1,12 +1,19 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { Filter, ChevronDown, X } from 'lucide-react';
+import { Filter, SlidersHorizontal, X } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Modal } from './Modal';
 import { FilterField, filterControlStyle } from './FilterField';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-export const isoToday  = () => new Date().toISOString().split('T')[0];
-const isoOffset = (days: number) => new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+// Date locale (pas UTC, cf. toISOString) — sinon "aujourd'hui" saute au jour suivant/précédent
+// selon l'heure locale par rapport à UTC, décalant tout calcul de plage qui en dépend
+// (ex. filtre "45j" mal recalculé juste après minuit UTC).
+export const isoToday  = () => new Date().toLocaleDateString('sv');
+const isoOffset = (days: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toLocaleDateString('sv');
+};
 const isoOffsetFrom = (dateStr: string, days: number) => {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() - days);
@@ -118,11 +125,6 @@ export function PeriodFields({ from, to, preset, onPreset, onFrom, onTo }: {
   );
 }
 
-function fmtShort(iso: string): string {
-  const [, m, d] = iso.split('-');
-  return `${d}/${m}`;
-}
-
 /** Contenu commun (select preset + inputs de dates) — utilisé dans la barre desktop et dans la modale mobile. */
 function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, layout }: DateRangeCardProps & { layout: 'row' | 'stacked' }) {
   const selectValue = preset === null ? CUSTOM : String(preset);
@@ -143,14 +145,14 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, l
 
   if (layout === 'stacked') {
     return (
-      <div className="flex flex-col gap-2 w-full">
+      <div className="flex flex-col gap-3 w-full stacked-filters">
+        {/* Un champ par ligne, chacun en pleine largeur — y compris `extra` et le préréglage,
+            qui gardent sinon leur largeur fixe (130px) prévue pour un alignement en ligne. */}
+        <style>{`.stacked-filters > fieldset { width: 100% !important; }`}</style>
         {extra}
         {presetField}
-        <div className="flex items-center gap-2 w-full">
-          <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
-          <span style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>→</span>
-          <FilterField legend="Au"><input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
-        </div>
+        <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
+        <FilterField legend="Au"><input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
       </div>
     );
   }
@@ -169,25 +171,19 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, l
 
 export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style, extra }: DateRangeCardProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const activePreset = DATE_PRESETS.find(p => p.value === preset);
-  const summary = activePreset ? activePreset.label : (from && to ? `${fmtShort(from)} → ${fmtShort(to)}` : 'Personnalisé');
 
   return (
     <Card style={{ marginBottom: 14, ...style }}>
 
-      {/* ── Mobile : titre + bouton résumé qui ouvre une modale ── */}
-      <div className="flex md:hidden">
-        <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
-          right={
-            <button onClick={() => setMobileOpen(true)} style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 5,
-              border: '1px solid #2A2F3A', backgroundColor: '#1E2229', color: '#F1F5F9',
-              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-            }}>
-              {summary} <ChevronDown size={14} style={{ color: '#64748B' }} />
-            </button>
-          }
-        >Filtres</CardTitle>
+      {/* ── Mobile : toute la card est cliquable → ouvre la modale (pas de résumé texte, juste
+          l'icône qui indique qu'on peut ouvrir quelque chose) ── */}
+      <div className="flex md:hidden" onClick={() => setMobileOpen(true)}
+        style={{ alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Filter size={12} style={{ color: '#3B82F6' }} />
+          <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Filtres</span>
+        </div>
+        <SlidersHorizontal size={15} style={{ color: '#64748B' }} />
       </div>
 
       {mobileOpen && (
@@ -203,6 +199,12 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style,
               </button>
             </div>
             <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} layout="stacked" />
+            <button onClick={() => setMobileOpen(false)} style={{
+              width: '100%', padding: '10px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6,
+              color: '#0D0F14', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700,
+            }}>
+              Valider
+            </button>
           </div>
         </Modal>
       )}

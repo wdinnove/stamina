@@ -8,10 +8,11 @@ import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, HeroCard, HeroCardShell, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
-  CorrelationsPanel, RiskAlertsList, ResponsiveTabNav,
+  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav,
 } from '../components';
 import { daysBetween } from '../components/MedicalCard';
 import { FilterField, filterControlStyle } from '../components/FilterField';
+import type { DatePreset } from '../components/DateRangeCard';
 import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
 import { wellnessScoreColor, wellnessAvg, wellnessTier } from '../utils/wellness';
 import { mondayIso, getWeekTier } from '../utils/weeklyLoad';
@@ -76,6 +77,16 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
   ] },
 ];
+
+// Préréglage de période appliqué à la première arrivée sur chaque onglet (cf. useDateRange —
+// ne se réapplique pas à un simple changement d'onglet, seulement quand seasonStart/seasonEnd
+// changent, ex. saison/équipe différente choisie dans la TopBar). Actuellement identique partout,
+// mais gérable indépendamment onglet par onglet si un besoin de préréglage différent apparaît.
+const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
+  overview: 'saison', 'stats-basic': 'saison', 'stats-advanced': 'saison',
+  dynamic: 'saison', 'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
+  load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison',
+};
 
 export default function PerformanceIndividuellePage() {
   const { id, tab: tabSlug } = useParams<{ id?: string; tab?: string }>();
@@ -145,7 +156,7 @@ export default function PerformanceIndividuellePage() {
   }, [matchIdsKey]);
 
   // ── Plage de dates (charge physique / bien-être / corrélations) ──
-  const dateRange = useDateRange(seasonStart, 'saison', seasonEnd);
+  const dateRange = useDateRange(seasonStart, TAB_DEFAULT_PRESET[activeTab], seasonEnd);
   const { from, to } = dateRange;
   const showSeasonDiff = dateRange.preset !== 'saison';
 
@@ -199,19 +210,21 @@ export default function PerformanceIndividuellePage() {
   const latestRedAlert = redAlerts.length ? [...redAlerts].sort((a, b) => b.date.localeCompare(a.date))[0] : null;
   const atRiskNow = !!currentInjury || acwrZ?.label === 'Risque modéré' || acwrZ?.label === 'Risque élevé' || !!latestRedAlert;
 
-  // Fraîcheur (TSB) et graphe Charge & RPE de l'onglet "Charge physique" — fenêtre fixe récente,
-  // indépendante du filtre de date de la page (même logique temps réel que le verdict de risque).
+  // Fraîcheur (TSB) — reste en temps réel indépendamment du filtre (même logique que le verdict de
+  // risque, qui a besoin de tout l'historique pour être fiable, pas juste la période affichée).
   const tsb = computeTsb(rpe) ?? 0;
   const freshZ = tsbZone(tsb);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
-  const loadSessionCombo = useMemo(() => [...rpe]
+  // Graphe Charge & RPE — suit le filtre de dates de la page (pas de fenêtre fixe) ; le graphe
+  // devient scrollable horizontalement (cf. ChargeRpeComboChart) si la période choisie contient
+  // beaucoup de séances/semaines, plutôt que de tout tasser dans la largeur disponible.
+  const loadSessionCombo = useMemo(() => [...rpeFiltered]
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-20)
     .map(e => ({ date: fmtDateWithDay(e.date), load: Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)), rpe: e.rpe })),
-  [rpe]);
+  [rpeFiltered]);
   const loadWeekBuckets = useMemo(() => {
     const byWeek = new Map<string, { load: number; rpes: number[] }>();
-    rpe.forEach(e => {
+    rpeFiltered.forEach(e => {
       const wk = mondayIso(e.date);
       if (!byWeek.has(wk)) byWeek.set(wk, { load: 0, rpes: [] });
       const w = byWeek.get(wk)!;
@@ -220,24 +233,21 @@ export default function PerformanceIndividuellePage() {
     });
     return [...byWeek.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([week, w]) => ({ week, load: w.load, rpe: Math.round(w.rpes.reduce((s, v) => s + v, 0) / w.rpes.length * 10) / 10 }))
-      .slice(-12);
-  }, [rpe]);
+      .map(([week, w]) => ({ week, load: w.load, rpe: Math.round(w.rpes.reduce((s, v) => s + v, 0) / w.rpes.length * 10) / 10 }));
+  }, [rpeFiltered]);
   const loadWeekCombo = loadWeekBuckets.map(b => ({ date: fmtDate(b.week), load: Math.round(b.load), rpe: b.rpe }));
   const injuryMarkWeeks = new Set(loadWeekBuckets.map(b => b.week));
   const injuryMarkLabels = allInjuries
     .filter(inj => injuryMarkWeeks.has(mondayIso(inj.date)))
     .map(inj => fmtDate(mondayIso(inj.date)));
 
-  // Charge moyenne/semaine + RPE moyen sur la même fenêtre récente (12 dernières semaines) que le graphe.
+  // Charge moyenne/semaine + RPE moyen sur la période filtrée (même donnée que le graphe).
   const avgWeeklyLoad = loadWeekBuckets.length
     ? Math.round(loadWeekBuckets.reduce((s, b) => s + b.load, 0) / loadWeekBuckets.length) : null;
   const weekTier = avgWeeklyLoad !== null && avgWeeklyLoad > 0
     ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
-  const recentRpeCutoff = loadWeekBuckets.length ? loadWeekBuckets[0].week : null;
-  const recentRpeEntries = recentRpeCutoff ? rpe.filter(e => e.date >= recentRpeCutoff) : [];
-  const rpeAvgRecent = recentRpeEntries.length
-    ? Math.round(recentRpeEntries.reduce((s, e) => s + e.rpe, 0) / recentRpeEntries.length * 10) / 10 : null;
+  const rpeAvgRecent = rpeFiltered.length
+    ? Math.round(rpeFiltered.reduce((s, e) => s + e.rpe, 0) / rpeFiltered.length * 10) / 10 : null;
 
   const openActions = actions.filter(a => a.status !== 'done').length;
   const doneActions = actions.filter(a => a.status === 'done').length;
@@ -269,14 +279,17 @@ export default function PerformanceIndividuellePage() {
 
       <PlayerHero player={pd.player} />
 
-      <div className="flex flex-col lg:flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
+      {/* gap plus petit en pile mobile (aligné sur l'espacement entre cards, 14px) qu'en ligne
+          desktop (20px, entre la sidebar et le contenu) — sinon l'écart Menu→Filtres ressort
+          nettement plus grand que les autres écarts entre cards. */}
+      <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-5" style={{ alignItems: 'flex-start' }}>
 
         <ResponsiveTabNav groups={TAB_GROUPS} activeKey={activeTab} onSelect={setActiveTab} />
 
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'stats-basic' && activeTab !== 'stats-advanced' && activeTab !== 'medical' && activeTab !== 'load'
+          {activeTab !== 'dynamic' && activeTab !== 'stats-basic' && activeTab !== 'stats-advanced' && activeTab !== 'medical'
             && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
@@ -405,7 +418,7 @@ export default function PerformanceIndividuellePage() {
 
       {/* ══ COMPARER : PAR JOUEUR ════════════════════════════════════════════ */}
       {activeTab === 'compare-player' && (
-        <PlayerCompareByPlayer currentPlayerId={pd.player.id} roster={roster} />
+        <PlayerCompareByPlayer currentPlayerId={pd.player.id} roster={roster} seasonStart={selected?.season.startDate} seasonEnd={selected?.season.endDate} />
       )}
 
       {/* ══ RPE ══════════════════════════════════════════════════════════════ */}
@@ -454,49 +467,29 @@ export default function PerformanceIndividuellePage() {
       {activeTab === 'load' && (
         <div>
           {/* Verdict — à risque maintenant */}
-          <Card accentColor={atRiskNow ? '#EF4444' : '#00E5A0'} style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{
-                width: 46, height: 46, borderRadius: '50%', flexShrink: 0, alignSelf: 'center',
-                backgroundColor: atRiskNow ? 'rgba(239,68,68,0.12)' : 'rgba(0,229,160,0.12)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <ShieldAlert size={22} style={{ color: atRiskNow ? '#EF4444' : '#00E5A0' }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 200, alignSelf: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: 3 }}>
-                  Risque de blessure — maintenant
-                </div>
-                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: atRiskNow ? '#EF4444' : '#00E5A0' }}>
-                  {atRiskNow ? 'À risque' : 'Pas de risque identifié'}
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignSelf: 'center', justifyContent: 'center' }}>
-                {([
-                  {
-                    id: 'injury',
-                    active: !!currentInjury,
-                    label: currentInjury ? 'Blessure active en cours' : 'Aucune blessure active',
-                  },
-                  {
-                    id: 'acwr',
-                    active: acwrZ?.label === 'Risque modéré' || acwrZ?.label === 'Risque élevé',
-                    label: acwrZ ? (CHARGE_ZONE_PLAIN[acwrZ.label] ?? acwrZ.label) : 'Historique de charge insuffisant',
-                  },
-                  {
-                    id: 'alert',
-                    active: !!latestRedAlert,
-                    label: latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent',
-                  },
-                ]).map(f => (
-                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                    <span style={{ fontSize: '0.78rem', color: f.active ? '#EF4444' : '#94A3B8', fontWeight: f.active ? 700 : 400, textAlign: 'right' }}>{f.label}</span>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: f.active ? '#EF4444' : '#00E5A0' }} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
+          <RiskVerdictCard
+            title="Risque de blessure — maintenant"
+            atRisk={atRiskNow}
+            verdictLabel={atRiskNow ? 'À risque' : 'Pas de risque identifié'}
+            style={{ marginBottom: 14 }}
+            factors={[
+              {
+                id: 'injury',
+                active: !!currentInjury,
+                label: currentInjury ? 'Blessure active en cours' : 'Aucune blessure active',
+              },
+              {
+                id: 'acwr',
+                active: acwrZ?.label === 'Risque modéré' || acwrZ?.label === 'Risque élevé',
+                label: acwrZ ? (CHARGE_ZONE_PLAIN[acwrZ.label] ?? acwrZ.label) : 'Historique de charge insuffisant',
+              },
+              {
+                id: 'alert',
+                active: !!latestRedAlert,
+                label: latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent',
+              },
+            ]}
+          />
 
           {/* Charge & RPE — avec marqueurs de blessure pour visualiser la corrélation charge/blessure */}
           <div style={{ marginBottom: 14 }}>
@@ -505,7 +498,7 @@ export default function PerformanceIndividuellePage() {
               view={loadComboView}
               onViewChange={setLoadComboView}
               high={loadComboView === 'session' ? sessionLoadNormal : thresholds.normalMax}
-              title="Charge & RPE — 12 dernières semaines"
+              title="Charge & RPE"
               height={260}
               markLabels={loadComboView === 'week' ? injuryMarkLabels : undefined}
               statItems={[

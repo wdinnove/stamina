@@ -21,7 +21,10 @@ interface ModalProps {
 }
 
 /** Coquille commune (fond + boîte centrée) à toutes les modales de l'app — le header/contenu/footer
- *  restent entièrement à la charge de l'appelant, seul le fond+conteneur est mutualisé ici. */
+ *  restent entièrement à la charge de l'appelant, seul le fond+conteneur est mutualisé ici.
+ *  NB : plusieurs appelants passent un `zIndex` explicite (110, 200, 1000…) pour s'empiler
+ *  au-dessus d'une AUTRE modale déjà ouverte (ex. confirmation de suppression par-dessus un
+ *  formulaire d'édition) — ne pas changer ce défaut sans vérifier ces empilements. */
 export function Modal({
   onClose, closeOnBackdropClick = false, maxWidth = 480, maxHeight = '90vh', zIndex = 100,
   overlayOpacity = 0.75, scrollOverlay = true, align = 'center', style, className, children,

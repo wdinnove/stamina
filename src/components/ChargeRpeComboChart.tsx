@@ -46,12 +46,18 @@ interface ChargeRpeComboChartProps {
   statItems?:    ComboStatItem[];
 }
 
+// Largeur mini par point (barre + bulle RPE) pour que les bulles — taille fixe en pixels — ne se
+// chevauchent jamais. En dessous de ce nombre de points, le graphe remplit la largeur disponible
+// normalement ; au-delà, il s'élargit et devient scrollable horizontalement plutôt que de tasser.
+const MIN_POINT_WIDTH = 50;
+
 export function ChargeRpeComboChart({
   data, view, onViewChange, high, title = 'Charge & RPE', height = 220, markLabels, statItems,
 }: ChargeRpeComboChartProps) {
   const t1       = Math.round(high / 3);
   const t2       = Math.round(high * 2 / 3);
   const interval = Math.max(0, Math.floor(data.length / 8) - 1);
+  const chartMinWidth = Math.max(data.length * MIN_POINT_WIDTH, 100);
 
   return (
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
@@ -76,8 +82,8 @@ export function ChargeRpeComboChart({
 
       <div style={{ padding: '4px 16px 16px' }}>
       <div style={{ display: 'flex', gap: 16, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.65rem', color: '#00E5A0' }}>{'< '}{t1.toLocaleString('fr')} Normal</span>
-        <span style={{ fontSize: '0.65rem', color: '#EAB308' }}>{t1.toLocaleString('fr')}–{t2.toLocaleString('fr')} Soutenu</span>
+        <span style={{ fontSize: '0.65rem', color: '#00E5A0' }}>{'< '}{t1.toLocaleString('fr')} Normale</span>
+        <span style={{ fontSize: '0.65rem', color: '#EAB308' }}>{t1.toLocaleString('fr')}–{t2.toLocaleString('fr')} Soutenue</span>
         <span style={{ fontSize: '0.65rem', color: '#F97316' }}>{t2.toLocaleString('fr')}–{high.toLocaleString('fr')} Élevée</span>
         <span style={{ fontSize: '0.65rem', color: '#EF4444' }}>{'> '}{high.toLocaleString('fr')} Surcharge</span>
         <span style={{ width: 1, height: 12, backgroundColor: '#2A2F3A', display: 'inline-block' }} />
@@ -92,6 +98,17 @@ export function ChargeRpeComboChart({
         )}
       </div>
 
+      {/* Largeur mini calculée sur le nombre de points, UNIQUEMENT en dessous de 640px (mobile) —
+          au-delà (tablette/PC), tout doit rester visible sans scroll, tassé dans la largeur
+          disponible comme avant. Le scroll horizontal n'a de sens que là où l'écran est trop
+          étroit pour éviter le chevauchement des bulles RPE (taille fixe en pixels). */}
+      <style>{`
+        @media (min-width: 640px) {
+          .combo-chart-scroll-inner { min-width: 0 !important; }
+        }
+      `}</style>
+      <div style={{ overflowX: 'auto' }}>
+      <div className="combo-chart-scroll-inner" style={{ minWidth: chartMinWidth }}>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: markLabels?.length ? 28 : 14, right: 4, left: 4, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2A2F3A" />
@@ -141,6 +158,8 @@ export function ChargeRpeComboChart({
           />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
+      </div>
 
       {!!statItems?.length && (
         <>

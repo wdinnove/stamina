@@ -1,5 +1,4 @@
 import { Block, MetricRow, MetricBarRow, SubLabel } from './TrendBlocks';
-import { GROUP_A_COLOR, GROUP_B_COLOR } from './FilterField';
 import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import type { PlayerAdvancedStats } from '../data/playerAdvanced';
@@ -223,19 +222,6 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {display === 'chart' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: '0.75rem' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94A3B8' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_A_COLOR, flexShrink: 0 }} />
-            {a.label}
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94A3B8' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_B_COLOR, flexShrink: 0 }} />
-            {b.label}
-          </span>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3" style={{ gap: 12 }}>
 
         {/* ── Col 1 : Performance + Charge + Bien-être ────────────── */}

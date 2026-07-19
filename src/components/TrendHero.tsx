@@ -149,6 +149,15 @@ function TrendHeroBody({ scope }: { scope: CrossScope }) {
 
   return (
     <Card accentColor={verdict.color}>
+      {/* En dessous de 1100px, le bloc de métriques (largeur naturelle) n'a plus la place de
+          rester à droite du titre et se met à flotter au milieu de la card quand flexWrap le
+          renvoie seul sur sa propre ligne. On le force alors en pleine largeur pour qu'il
+          reste proprement collé au bord droit (son alignement interne flex-end redevient correct). */}
+      <style>{`
+        @media (max-width: 1099px) {
+          .trend-hero-metrics { width: 100%; }
+        }
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div style={{
           width: 46, height: 46, borderRadius: '50%', flexShrink: 0, alignSelf: 'center',
@@ -162,7 +171,7 @@ function TrendHeroBody({ scope }: { scope: CrossScope }) {
           </div>
           <div style={{ fontSize: '1.3rem', fontWeight: 800, color: verdict.color }}>{verdict.label}</div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignSelf: 'center' }}>
+        <div className="trend-hero-metrics" style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignSelf: 'center' }}>
           {metrics.map(m => {
             const meta = directionMeta(m.trend.direction, m.trend.pct);
             return (

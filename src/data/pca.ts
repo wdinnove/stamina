@@ -3,13 +3,10 @@ import { pearson, hasVariance } from '../utils/correlation';
 import { playerNameFull } from '../utils/playerName';
 import type { TeamMatchStat, MatchStat, Player } from './types';
 
-// Ré-export : WinFactorsList et PlayerImpactList l'importent depuis ce module
-export { impactLabel } from '../utils/correlation';
-
 export interface PCAPoint { x: number; y: number; win: boolean; label: string }
 export interface PCAVector { x: number; y: number; label: string }
 export interface PCAResult { points: PCAPoint[]; vectors: PCAVector[]; varPct: [number, number] }
-export interface WinFactor { label: string; corr: number; n: number }
+export interface WinFactor { key: string; label: string; corr: number; n: number }
 export interface PlayerImpact { playerId: string; label: string; corr: number; n: number; avgEval: number }
 
 const MIN_MATCHES = 4;
@@ -54,7 +51,7 @@ export function computeWinFactors(teamStats: TeamMatchStat[]): WinFactor[] {
       if (pairs.length < MIN_MATCHES) return null;
       const xs = pairs.map(p => p[0]);
       if (!hasVariance(xs)) return null;
-      return { label: v.longLabel, corr: pearson(xs, pairs.map(p => p[1])), n: pairs.length };
+      return { key: v.key, label: v.longLabel, corr: pearson(xs, pairs.map(p => p[1])), n: pairs.length };
     })
     .filter((f): f is WinFactor => f !== null)
     .sort((a, b) => Math.abs(b.corr) - Math.abs(a.corr));

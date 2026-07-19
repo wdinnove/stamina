@@ -82,12 +82,13 @@ export function TeamSessionHistoryTable({
       <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26' }}>
         <CardTitle icon={<ListChecks size={12} style={{ color: '#00E5A0' }} />} mb={0}
           right={
-            <div style={{ display: 'flex', gap: 2, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, padding: 2 }}>
+            <div style={{ display: 'flex', gap: 2, backgroundColor: '#0D0F14', borderRadius: 6, padding: 2 }}>
               {(['session', 'week'] as const).map(v => (
                 <button key={v} onClick={() => setView(v)}
-                  style={{ padding: '2px 8px', borderRadius: 3, border: 'none', cursor: 'pointer', fontSize: '0.68rem',
-                    backgroundColor: view === v ? '#2A2F3A' : 'transparent',
-                    color: view === v ? '#F1F5F9' : '#475569', transition: 'all 0.12s' }}>
+                  style={{ padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem',
+                    fontWeight: view === v ? 700 : 400,
+                    backgroundColor: view === v ? '#1E2229' : 'transparent',
+                    color: view === v ? '#00E5A0' : '#475569', whiteSpace: 'nowrap' }}>
                   {v === 'session' ? 'Séance' : 'Semaine'}
                 </button>
               ))}

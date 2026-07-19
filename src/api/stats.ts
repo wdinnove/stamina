@@ -313,6 +313,40 @@ export const statsApi = {
     return [...grouped.values()].sort((a, b) => b.seasonLabel.localeCompare(a.seasonLabel));
   },
 
+  async getTeamStatsGroupedBySeason(teamId: string): Promise<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: TeamMatchStat[] }[]> {
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id, season_id, seasons(label, teams(name))')
+      .eq('team_id', teamId);
+    if (matchErr) throw matchErr;
+    const matchSeasonMap = new Map<string, { seasonId: string; seasonLabel: string; teamName: string }>();
+    for (const m of matchRows ?? []) {
+      const row = m as unknown as { id: string; season_id: string; seasons: { label: string; teams: { name: string } | null } | null };
+      matchSeasonMap.set(row.id, {
+        seasonId: row.season_id,
+        seasonLabel: row.seasons?.label ?? row.season_id,
+        teamName: row.seasons?.teams?.name ?? '',
+      });
+    }
+    const matchIds = [...matchSeasonMap.keys()];
+    if (matchIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('team_match_stats_full')
+      .select('*')
+      .in('match_id', matchIds);
+    if (error) throw error;
+    const stats = (data ?? []).map(toTeamMatchStat);
+    const grouped = new Map<string, { seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: TeamMatchStat[] }>();
+    for (const stat of stats) {
+      if (!stat.matchId) continue;
+      const season = matchSeasonMap.get(stat.matchId);
+      if (!season) continue;
+      if (!grouped.has(season.seasonId)) grouped.set(season.seasonId, { seasonId: season.seasonId, seasonLabel: season.seasonLabel, teamId, teamName: season.teamName, stats: [] });
+      grouped.get(season.seasonId)!.stats.push(stat);
+    }
+    return [...grouped.values()].sort((a, b) => b.seasonLabel.localeCompare(a.seasonLabel));
+  },
+
   async listAllStatsBySeason(teamId: string, seasonId: string): Promise<MatchStat[]> {
     const { data: matchRows, error: matchErr } = await supabase
       .from('matches')

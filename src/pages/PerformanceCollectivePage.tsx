@@ -1,18 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { BarChart2, ChevronDown, ChevronRight, Activity, Heart, UserCheck, CheckSquare, ShieldAlert } from 'lucide-react';
+import { BarChart2, ChevronDown, ChevronUp, ChevronRight, Activity, Heart, UserCheck, CheckSquare, ShieldAlert } from 'lucide-react';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
 import { aggregateTeamWellnessDaily, wellnessAvg, wellnessTier } from '../utils/wellness';
-import { actionsApi } from '../api';
+import { actionsApi, statsApi } from '../api';
 import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, HeroCard, HeroCardShell,
-  PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, ChargeRpeComboChart,
+  PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
-  TeamDynStatTab, TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT,
+  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT,
+  RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
+import { FilterField, filterControlStyle } from '../components/FilterField';
+import type { DatePreset } from '../components/DateRangeCard';
 import { evalColor, ortgColor, drtgColor } from '../data';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import { computeMatchPCA, computeWinFactors, computePlayerImpact } from '../data/pca';
@@ -26,7 +29,7 @@ import {
   playerAttributeIndicators, getSeries, detectRiskAlerts,
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
-import type { MatchStat, Action } from '../data/types';
+import type { MatchStat, TeamMatchStat, Action } from '../data/types';
 
 // ─── Helpers partagés (portés depuis AnalyseCollectivePage / PerformancePage) ──
 
@@ -76,7 +79,8 @@ const avg = (vals: number[]): number | null =>
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced'
-         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'wellness' | 'correlations' | 'compare-player';
+         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'compare-match' | 'compare-season' | 'compare-player';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':            'overview',
@@ -89,8 +93,12 @@ const TAB_SLUGS: Record<string, Tab> = {
   'acp':                     'pca',
   'classement-joueurs':      'ranking',
   'charge-physique':         'load',
+  'rpe':                     'rpe',
   'bien-etre':               'wellness',
+  'medical':                 'medical',
   'correlations':            'correlations',
+  'par-match':               'compare-match',
+  'par-saison':              'compare-season',
   'par-joueur':              'compare-player',
   'comparaison':             'compare-player', // ancien slug — "Comparaison joueurs" fusionné avec "Par joueur" (même page que côté individuel)
   'tendances':               'dynamic', // ancien alias — "Tendances" (période vs saison) s'appelle maintenant "Par période"
@@ -110,19 +118,35 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   ] },
   { label: 'Suivi', tabs: [
     { key: 'load',     slug: 'charge-physique', label: 'Charge physique' },
+    { key: 'rpe',      slug: 'rpe',             label: 'RPE' },
     { key: 'wellness', slug: 'bien-etre',       label: 'Bien-être' },
+    { key: 'medical',  slug: 'medical',         label: 'Médical' },
   ] },
   { label: 'Comparer', tabs: [
     { key: 'dynamic',        slug: 'par-periode',       label: 'Par période' },
-    { key: 'correlations',   slug: 'correlations',      label: 'Corrélations' },
+    { key: 'compare-match',  slug: 'par-match',         label: 'Par match' },
+    { key: 'compare-season', slug: 'par-saison',        label: 'Par saison' },
     { key: 'compare-player', slug: 'par-joueur',        label: 'Par joueur' },
-    { key: 'ranking',        slug: 'classement-joueurs', label: 'Classement joueurs' },
   ] },
   { label: 'Analyse', tabs: [
-    { key: 'impact', slug: 'impact', label: 'Impact joueurs' },
-    { key: 'pca',    slug: 'acp',    label: 'Facteurs de victoire' },
+    { key: 'ranking',      slug: 'classement-joueurs', label: 'Classement joueurs' },
+    { key: 'impact',       slug: 'impact',       label: 'Impact joueurs' },
+    { key: 'pca',          slug: 'acp',          label: 'Facteurs de victoire' },
+    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
   ] },
 ];
+
+// Préréglage de période appliqué à la première arrivée sur chaque onglet (cf. useDateRange —
+// ne se réapplique pas à un simple changement d'onglet, seulement quand seasonStart/seasonEnd
+// changent, ex. saison/équipe différente choisie dans la TopBar). Actuellement identique partout,
+// mais gérable indépendamment onglet par onglet si un besoin de préréglage différent apparaît.
+const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
+  overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
+  'matches-basic': 'saison', 'matches-advanced': 'saison',
+  impact: 'saison', pca: 'saison', ranking: 'saison', dynamic: 'saison',
+  load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison',
+  'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
+};
 
 export default function PerformanceCollectivePage() {
   const { selected, thresholds, statThresholds, loading: teamLoading } = useTeamSeason();
@@ -132,7 +156,7 @@ export default function PerformanceCollectivePage() {
   const setActiveTab = (slug: string) => navigate(`/performance-collective/${slug}`, { replace: true });
 
   const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
-  const dateRange = useDateRange(seasonStart, 'saison', seasonEnd);
+  const dateRange = useDateRange(seasonStart, TAB_DEFAULT_PRESET[activeTab], seasonEnd);
   const { from, to } = dateRange;
   const showSeasonDiff = dateRange.preset !== 'saison';
 
@@ -161,7 +185,6 @@ export default function PerformanceCollectivePage() {
   // sur la période — sinon une joueuse qui logge plus souvent pèse plus lourd dans la moyenne.
   const wellAvgP   = wellnessAvg(aggregateTeamWellnessDaily(allWellness.filter(w => inRangeTeam(w.date))).map(e => e.score));
   const evalAvgP   = avg(allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)).map(m => Number(m.eval)));
-  const evalAvgAll = avg(allMatchStats.filter(m => m.eval !== null).map(m => Number(m.eval)));
   const attP = allAttendance.filter(a => inRangeTeam(a.date));
   const presentP = attP.filter(a => a.status === 'present' || a.status === 'late').length;
   const presencePct = attP.length ? Math.round(presentP / attP.length * 100) : null;
@@ -400,6 +423,9 @@ export default function PerformanceCollectivePage() {
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
   const [loadComboView, setLoadComboView] = useState<'session' | 'week'>('week');
+  const [rpeComboView, setRpeComboView] = useState<'session' | 'week'>('week');
+  const [rpeDisplay, setRpeDisplay] = useState<'chart' | 'table'>('chart');
+  const [rankingCollapsed, setRankingCollapsed] = useState(true);
 
   const alerts = useMemo(
     () => data ? detectRiskAlerts(data.players, from, to, thresholds) : [],
@@ -427,6 +453,10 @@ export default function PerformanceCollectivePage() {
   const teamFreshZ = teamFreshAvg !== null ? tsbZone(teamFreshAvg) : null;
 
   // Graphe Charge & RPE équipe — même construction que RPEPage (charge moyenne par joueur présent).
+  // Suit le filtre de dates de la page (teamSessionRows est déjà borné par from/to, cf.
+  // useTeamRpeHistory) ; le graphe devient scrollable horizontalement (cf. ChargeRpeComboChart) si
+  // la période choisie contient beaucoup de séances/semaines, plutôt que de tout tasser dans la
+  // largeur disponible.
   const sessionCombo = useMemo(() => [...teamSessionRows].reverse().map(s => ({
     date: fmtDateWithDay(s.date),
     load: Math.round(s.totalLoad / Math.max(s.nbPlayers, 1)),
@@ -455,6 +485,15 @@ export default function PerformanceCollectivePage() {
     ? Math.round(weekCombo.reduce((s, d) => s + d.load, 0) / weekCombo.length) : null;
   const weekTier = avgWeeklyLoad !== null && avgWeeklyLoad > 0
     ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
+  const surchargeWeeksTeam = weekCombo.filter(d => d.load >= thresholds.normalMax).length;
+  const totalWeeksTeam = weekCombo.length;
+
+  // ── Comparer > Par saison — historique de l'équipe toutes saisons confondues ──
+  const [teamSeasonGroupedStats, setTeamSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: TeamMatchStat[] }[]>([]);
+  useEffect(() => {
+    if (!selected) { setTeamSeasonGroupedStats([]); return; }
+    statsApi.getTeamStatsGroupedBySeason(selected.team.id).then(setTeamSeasonGroupedStats).catch(() => {});
+  }, [selected?.team.id]);
 
   // ── Bien-être (ex-WellnessPage team) ──────────────────────────────────────
   const teamWellnessDaily = useMemo(
@@ -527,18 +566,30 @@ export default function PerformanceCollectivePage() {
         teamStats={filteredTeamStats} statThresholds={statThresholds}
       />
 
-      <div className="flex flex-col lg:flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
-
+      {/* gap plus petit en pile mobile (aligné sur l'espacement entre cards, 14px) qu'en ligne
+          desktop (20px, entre la sidebar et le contenu) — sinon l'écart Menu→Filtres ressort
+          nettement plus grand que les autres écarts entre cards. */}
+      <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-5" style={{ alignItems: 'flex-start' }}>
         <ResponsiveTabNav groups={TAB_GROUPS} activeKey={activeTab} onSelect={setActiveTab} />
 
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          <DateRangeCard
-            from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
-            onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
-            onFrom={dateRange.setFrom} onTo={dateRange.setTo}
-          />
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && (
+            <DateRangeCard
+              from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
+              onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
+              onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+              extra={activeTab === 'rpe' ? (
+                <FilterField legend="Affichage">
+                  <select value={rpeDisplay} onChange={e => setRpeDisplay(e.target.value as 'chart' | 'table')} style={filterControlStyle}>
+                    <option value="chart">Graphique</option>
+                    <option value="table">Tableau</option>
+                  </select>
+                </FilterField>
+              ) : undefined}
+            />
+          )}
 
           {/* ══ VUE D'ENSEMBLE ══════════════════════════════════════════════════ */}
       {activeTab === 'overview' && (
@@ -871,9 +922,9 @@ export default function PerformanceCollectivePage() {
       {/* ══ IMPACT JOUEURS ══════════════════════════════════════════════════ */}
       {activeTab === 'impact' && (
         <Card>
-          <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Qui fait la différence sur le terrain ?</h3>
+          <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Niveau de jeu et impact sur les résultats</h3>
           <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 18px', lineHeight: 1.5 }}>
-            Ce classement indique si le niveau de jeu de chaque joueur est plus élevé lors des victoires ou des défaites de l'équipe (à partir de 5 matchs joués).
+            Deux lectures complémentaires : le niveau de jeu de chaque joueur sur la saison, et la tendance de ses meilleurs matchs à coïncider avec les victoires ou les défaites de l'équipe (à partir de 5 matchs évalués).
           </p>
           <PlayerImpactList impacts={playerImpacts} />
         </Card>
@@ -884,9 +935,9 @@ export default function PerformanceCollectivePage() {
         <Card>
           {pcaResult === null ? <EmptyState message="Pas assez de matchs (minimum 4) pour calculer une ACP." /> : (
             <div>
-              <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Quelles statistiques font gagner l'équipe ?</h3>
+              <h3 style={{ color: '#F1F5F9', fontSize: '0.9rem', margin: '0 0 7px' }}>Quelles statistiques sont liées aux victoires ?</h3>
               <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 18px', lineHeight: 1.5 }}>
-                Sur les {matchCount} derniers matchs, voici les statistiques qui ont le plus influencé le résultat des rencontres. Plus le score est élevé, plus cette statistique a de poids.
+                Sur les {matchCount} derniers matchs, voici les statistiques les plus corrélées avec le résultat des rencontres. C'est une tendance statistique, pas une preuve que l'une cause l'autre.
               </p>
               <WinFactorsList factors={winFactors} />
 
@@ -939,49 +990,28 @@ export default function PerformanceCollectivePage() {
       {activeTab === 'load' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Verdict — à risque maintenant */}
-          <Card accentColor={atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{
-                width: 46, height: 46, borderRadius: '50%', flexShrink: 0, alignSelf: 'center',
-                backgroundColor: atRiskPlayerCount > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(0,229,160,0.12)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <ShieldAlert size={22} style={{ color: atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0' }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 200, alignSelf: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: 3 }}>
-                  Risque de blessure — maintenant
-                </div>
-                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0' }}>
-                  {atRiskPlayerCount > 0 ? `${atRiskPlayerCount} joueur${atRiskPlayerCount > 1 ? 's' : ''} à risque` : 'Pas de risque identifié'}
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignSelf: 'center', justifyContent: 'center' }}>
-                {([
-                  {
-                    id: 'injury',
-                    active: injuredPlayerCount > 0,
-                    label: injuredPlayerCount > 0 ? `${injuredPlayerCount} blessure${injuredPlayerCount > 1 ? 's' : ''} active${injuredPlayerCount > 1 ? 's' : ''}` : 'Aucune blessure active',
-                  },
-                  {
-                    id: 'acwr',
-                    active: teamAcwrZ?.label === 'Risque modéré' || teamAcwrZ?.label === 'Risque élevé',
-                    label: teamAcwrZ ? (CHARGE_ZONE_PLAIN[teamAcwrZ.label] ?? teamAcwrZ.label) : 'Historique de charge insuffisant',
-                  },
-                  {
-                    id: 'alert',
-                    active: !!latestRedAlert,
-                    label: latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent',
-                  },
-                ]).map(f => (
-                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                    <span style={{ fontSize: '0.78rem', color: f.active ? '#EF4444' : '#94A3B8', fontWeight: f.active ? 700 : 400, textAlign: 'right' }}>{f.label}</span>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: f.active ? '#EF4444' : '#00E5A0' }} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
+          <RiskVerdictCard
+            title="Risque de blessure — maintenant"
+            atRisk={atRiskPlayerCount > 0}
+            verdictLabel={atRiskPlayerCount > 0 ? `${atRiskPlayerCount} joueur${atRiskPlayerCount > 1 ? 's' : ''} à risque` : 'Pas de risque identifié'}
+            factors={[
+              {
+                id: 'injury',
+                active: injuredPlayerCount > 0,
+                label: injuredPlayerCount > 0 ? `${injuredPlayerCount} blessure${injuredPlayerCount > 1 ? 's' : ''} active${injuredPlayerCount > 1 ? 's' : ''}` : 'Aucune blessure active',
+              },
+              {
+                id: 'acwr',
+                active: teamAcwrZ?.label === 'Risque modéré' || teamAcwrZ?.label === 'Risque élevé',
+                label: teamAcwrZ ? (CHARGE_ZONE_PLAIN[teamAcwrZ.label] ?? teamAcwrZ.label) : 'Historique de charge insuffisant',
+              },
+              {
+                id: 'alert',
+                active: !!latestRedAlert,
+                label: latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent',
+              },
+            ]}
+          />
 
           {/* Charge & RPE équipe */}
           <ChargeRpeComboChart
@@ -1020,15 +1050,74 @@ export default function PerformanceCollectivePage() {
           />
 
           <Card>
-            <CardTitle icon={<Activity size={12} style={{ color: '#3B82F6' }} />} mb={10}
-              info={rpeTeamKpis ? `${rpeTeamKpis.sessions} séance${rpeTeamKpis.sessions > 1 ? 's' : ''}` : undefined}>
-              Classement charge RPE
+            <CardTitle icon={<Activity size={12} style={{ color: '#3B82F6' }} />} mb={rankingCollapsed ? 0 : 10}
+              info={rpeTeamKpis ? `${rpeTeamKpis.sessions} séance${rpeTeamKpis.sessions > 1 ? 's' : ''}` : undefined}
+              right={
+                <button onClick={() => setRankingCollapsed(v => !v)} title={rankingCollapsed ? 'Afficher' : 'Réduire'}
+                  style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}>
+                  {rankingCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                </button>
+              }>
+              Classement joueurs
             </CardTitle>
-            <RPEPlayerRankingTable players={playerRanking} sessionLoadLight={sessionLoadLight} sessionLoadNormal={sessionLoadNormal} lightMax={thresholds.lightMax} normalMax={thresholds.normalMax} />
+            {!rankingCollapsed && (
+              <RPEPlayerRankingTable players={playerRanking} sessionLoadLight={sessionLoadLight} sessionLoadNormal={sessionLoadNormal} lightMax={thresholds.lightMax} normalMax={thresholds.normalMax} hideHeader />
+            )}
           </Card>
 
-          <RiskAlertsList alerts={alerts} onOpenPlayer={openPlayer} />
+          <RiskAlertsList alerts={alerts} onOpenPlayer={openPlayer} collapsible />
         </div>
+      )}
+
+      {/* ══ RPE (historique des séances équipe : KPIs + graphe + tableau) ══ */}
+      {activeTab === 'rpe' && (
+        !rpeTeamKpis || rpeTeamKpis.sessions === 0 ? (
+          <EmptyState message="Aucune séance RPE enregistrée sur cette période." />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
+              <RpeKpiCard
+                accent={weekTier ? weekTier.color : '#334155'}
+                label="Charge moyenne par semaine"
+                value={avgWeeklyLoad !== null && avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
+                sub={weekTier ? <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} /> : undefined}
+              />
+              <RpeKpiCard
+                accent={rpeColor(rpeTeamKpis.avg)}
+                label="RPE moyen"
+                value={fmt1(rpeTeamKpis.avg)}
+                sub={<Badge color={rpeColor(rpeTeamKpis.avg)} size="sm" label={rpeLabel(Math.round(rpeTeamKpis.avg))} style={{ fontSize: '0.62rem' }} />}
+              />
+              <RpeKpiCard
+                accent="#3B82F6"
+                label="Séances"
+                value={rpeTeamKpis.sessions}
+                valueColor="#F1F5F9"
+                sub="sur la période sélectionnée"
+              />
+              <RpeKpiCard
+                accent={surchargeWeeksTeam > 0 ? '#EF4444' : '#00E5A0'}
+                label="Semaines en surcharge"
+                value={<><span style={{ color: surchargeWeeksTeam > 0 ? '#EF4444' : '#00E5A0' }}>{surchargeWeeksTeam}</span><span style={{ color: '#475569', fontSize: '0.9rem', fontWeight: 400 }}> / {totalWeeksTeam}</span></>}
+                valueColor="#F1F5F9"
+                sub={totalWeeksTeam > 0 ? `${Math.round(surchargeWeeksTeam / totalWeeksTeam * 100)} % des semaines` : '—'}
+              />
+            </div>
+
+            {rpeDisplay === 'chart' ? (
+              <ChargeRpeComboChart
+                data={rpeComboView === 'session' ? sessionCombo : weekCombo}
+                view={rpeComboView}
+                onViewChange={setRpeComboView}
+                high={rpeComboView === 'session' ? sessionLoadNormal : thresholds.normalMax}
+                title="Charge & RPE équipe"
+                height={320}
+              />
+            ) : (
+              <TeamSessionHistoryTable rows={teamSessionRows} sessionLoadLight={sessionLoadLight} sessionLoadNormal={sessionLoadNormal} lightMax={thresholds.lightMax} normalMax={thresholds.normalMax} />
+            )}
+          </div>
+        )
       )}
 
       {/* ══ BIEN-ÊTRE ═══════════════════════════════════════════════════════ */}
@@ -1045,6 +1134,11 @@ export default function PerformanceCollectivePage() {
         )
       )}
 
+      {/* ══ MÉDICAL ══════════════════════════════════════════════════════════ */}
+      {activeTab === 'medical' && (
+        <TeamMedicalOverview players={players} showAddButton={false} />
+      )}
+
       {/* ══ CORRÉLATIONS ════════════════════════════════════════════════════ */}
       {activeTab === 'correlations' && (
         <CorrelationsPanel
@@ -1055,21 +1149,25 @@ export default function PerformanceCollectivePage() {
 
       {/* ══ PAR JOUEUR (même page que "Comparaison joueurs" — comparaison libre de 2 joueurs) ══ */}
       {activeTab === 'compare-player' && (
-        <PlayerCompareByPlayer roster={data.players} />
+        <PlayerCompareByPlayer roster={data.players} seasonStart={selected?.season.startDate} seasonEnd={selected?.season.endDate} />
       )}
 
-      {/* ══ PAR PÉRIODE (période choisie vs saison) ═══════════════════════════ */}
+      {/* ══ PAR PÉRIODE (2 périodes sélectionnées librement) ═══════════════════ */}
       {activeTab === 'dynamic' && (
-        <TeamDynStatTab
-          periodStats={filteredTeamStats}
-          seasonStats={teamStats}
-          periodLabel={`${filteredTeamStats.length} match${filteredTeamStats.length > 1 ? 's' : ''}`}
-          periodRpe={allRpe.filter(e => inRangeTeam(e.date))}
-          seasonRpe={allRpe}
-          periodWellness={allWellness.filter(w => inRangeTeam(w.date))}
-          seasonWellness={allWellness}
-          evalAvgP={evalAvgP} evalAvgAll={evalAvgAll}
+        <TeamCompareByPeriod
+          teamStats={teamStats} allStats={allStats} allRpe={allRpe} allWellness={allWellness}
+          seasonStart={selected?.season.startDate} seasonEnd={selected?.season.endDate}
         />
+      )}
+
+      {/* ══ PAR MATCH (2 groupes de matchs d'équipe sélectionnés librement) ═══ */}
+      {activeTab === 'compare-match' && (
+        <TeamCompareByMatch teamStats={teamStats} allStats={allStats} allRpe={allRpe} allWellness={allWellness} />
+      )}
+
+      {/* ══ PAR SAISON (2 saisons de l'équipe sélectionnées librement) ═══════ */}
+      {activeTab === 'compare-season' && (
+        <TeamCompareBySeason seasonGroupedStats={teamSeasonGroupedStats} currentSeasonId={selected?.season.id} />
       )}
 
         </div>

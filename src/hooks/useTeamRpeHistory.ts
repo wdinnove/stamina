@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { rpeApi } from '../api/rpe';
 import { computeAcwr, computeTsb, avgRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
@@ -38,6 +38,18 @@ function historySpanDays(entries: LoadEntry[]): number {
 
 const MIN_RELIABLE_HISTORY_DAYS = 28;
 
+/** Stats agrégées d'un joueur, sans le nom — résolu séparément depuis `roster` (cf. plus bas),
+ * pour ne jamais dépendre de l'ordre d'arrivée entre le fetch RPE et le roster. */
+interface PlayerStatsRaw {
+  playerId:   string;
+  nbSessions: number;
+  avgRpe:     number;
+  maxRpe:     number;
+  totalLoad:  number;
+  rpe3w:      number | null;
+  weekLoads:  number[];
+}
+
 /**
  * Données d'historique équipe (RPE) pour une période donnée : timeline, sessions, classement
  * joueurs, KPIs, distribution par type de séance, moyennes saison, ACWR/TSB moyens de l'équipe.
@@ -52,7 +64,7 @@ export function useTeamRpeHistory(
 ) {
   const [teamChartData, setTeamChartData]       = useState<TeamChartDay[]>([]);
   const [teamSessionRows, setTeamSessionRows]   = useState<TeamSessionRow[]>([]);
-  const [playerRanking, setPlayerRanking]       = useState<PlayerRank[]>([]);
+  const [playerStatsRaw, setPlayerStatsRaw]     = useState<PlayerStatsRaw[]>([]);
   const [teamKpis, setTeamKpis]                 = useState<TeamKpis | null>(null);
   const [typeStats, setTypeStats]               = useState<Record<string, { count: number; avgRpe: number; totalLoad: number }>>({});
   const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
@@ -62,11 +74,6 @@ export function useTeamRpeHistory(
   const [teamAcwrAvg, setTeamAcwrAvg]               = useState<number | null>(null);
   const [teamFreshAvg, setTeamFreshAvg]             = useState<number | null>(null);
   const [teamHistoryShort, setTeamHistoryShort]     = useState(false);
-
-  const rosterRef = useRef<Player[]>([]);
-  useEffect(() => {
-    rosterRef.current = roster;
-  }, [roster]);
 
   // ── Load team history
   useEffect(() => {
@@ -103,7 +110,7 @@ export function useTeamRpeHistory(
       if (sessionIds.length === 0) {
         setTeamChartData([]);
         setTeamSessionRows([]);
-        setPlayerRanking([]);
+        setPlayerStatsRaw([]);
         setTeamKpis(null);
         setTypeStats({});
         setLoadingTeamHistory(false);
@@ -208,21 +215,17 @@ export function useTeamRpeHistory(
         }
       });
 
-      const ranking: PlayerRank[] = Array.from(playerMap.entries()).map(([playerId, data]) => {
-        const player  = rosterRef.current.find(p => p.id === playerId);
-        return {
-          playerId,
-          name:       player ? playerNameShort(player) : '—',
-          nbSessions: data.sessions.size,
-          avgRpe:     avgRpe(data.rpes) ?? 0,
-          maxRpe:     Math.max(...data.rpes),
-          totalLoad:  Math.round(data.load),
-          rpe3w:      avgRpe(data.rpes3w),
-          weekLoads:  [...(playerWeekLoadMap.get(playerId)?.values() ?? [])],
-        };
-      }).sort((a, b) => b.avgRpe - a.avgRpe);
+      const statsRaw: PlayerStatsRaw[] = Array.from(playerMap.entries()).map(([playerId, data]) => ({
+        playerId,
+        nbSessions: data.sessions.size,
+        avgRpe:     avgRpe(data.rpes) ?? 0,
+        maxRpe:     Math.max(...data.rpes),
+        totalLoad:  Math.round(data.load),
+        rpe3w:      avgRpe(data.rpes3w),
+        weekLoads:  [...(playerWeekLoadMap.get(playerId)?.values() ?? [])],
+      }));
 
-      setPlayerRanking(ranking);
+      setPlayerStatsRaw(statsRaw);
 
       // ── Type distribution
       const typeMap = new Map<string, { count: number; rpes: number[]; totalLoad: number }>();
@@ -308,6 +311,17 @@ export function useTeamRpeHistory(
         setTeamHistoryShort(avgSpan < MIN_RELIABLE_HISTORY_DAYS);
       }, () => { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); });
   }, [roster]);
+
+  // Résout le nom depuis `roster` à chaque rendu où l'un des deux change — jamais figé au
+  // moment (potentiellement plus tôt) où le fetch RPE a résolu, contrairement à un ref mis à
+  // jour par un effet séparé (source du bug "nom du joueur absent" selon l'ordre d'arrivée).
+  const playerRanking: PlayerRank[] = useMemo(() => playerStatsRaw
+    .map(s => {
+      const player = roster.find(p => p.id === s.playerId);
+      return { ...s, name: player ? playerNameShort(player) : '—' };
+    })
+    .sort((a, b) => b.avgRpe - a.avgRpe),
+  [playerStatsRaw, roster]);
 
   return {
     teamChartData, teamSessionRows, playerRanking, teamKpis, typeStats,

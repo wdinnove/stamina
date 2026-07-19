@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from 'recharts';
 import { Heart, TrendingUp, Smile, Meh, Frown } from 'lucide-react';
 import { Card, CardTitle } from '../components';
-import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessStatus, wellnessRawValue } from '../utils/wellness';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessStatus, wellnessRawValue, type WellnessDimension } from '../utils/wellness';
 import { fmt1 } from '../utils/format';
 import type { WellnessEntry } from '../data/types';
 
@@ -43,10 +44,14 @@ interface WellnessPomsPanelProps {
   subjectLabel: string;
 }
 
+type EvoSortKey = 'date' | 'score' | WellnessDimension['key'];
+
 export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subjectLabel }: WellnessPomsPanelProps) {
   // Courbes par dimension du graphique "Évolution › Global" : masquées par défaut, affichées au clic sur la légende
   const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
   const [hiddenDimCurves, setHiddenDimCurves] = useState<Set<string>>(() => new Set(dimensions.map(d => d.key)));
+  const [evoSortKey, setEvoSortKey] = useState<EvoSortKey>('date');
+  const [evoSortDir, setEvoSortDir] = useState<'asc' | 'desc'>('desc');
 
   const historyAsc = [...entries].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -82,7 +87,29 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
     ...Object.fromEntries(dimensions.map(d => [d.key, wellnessRawValue(e[d.key as keyof WellnessEntry] as number, d.inverted)])),
   }));
 
-  const tableData = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  const evoDir = evoSortDir === 'asc' ? 1 : -1;
+  const tableData = [...entries].sort((a, b) => {
+    if (evoSortKey === 'date')  return a.date.localeCompare(b.date) * evoDir;
+    if (evoSortKey === 'score') return (a.score - b.score) * evoDir;
+    return (a[evoSortKey] - b[evoSortKey]) * evoDir;
+  });
+
+  function toggleEvoSort(key: EvoSortKey) {
+    if (evoSortKey === key) {
+      setEvoSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setEvoSortKey(key);
+      setEvoSortDir('desc');
+    }
+  }
+
+  const evoSortArrow = (key: EvoSortKey) => evoSortKey === key
+    ? <span style={{ fontSize: '0.6rem', marginLeft: 3 }}>{evoSortDir === 'asc' ? '▲' : '▼'}</span>
+    : null;
+
+  // Style d'en-tête aligné sur RPEPlayerRankingTable / WellnessPlayerRankingTable, pour que le
+  // tableau Historique (seul vrai tableau de ce panneau) reprenne le même habillage que partout ailleurs.
+  const thBase: CSSProperties = { padding: '7px 8px', textAlign: 'left', fontSize: '0.67rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, borderBottom: '1px solid #2A2F3A', cursor: 'pointer', userSelect: 'none' };
 
   // ── Résumé en langage naturel de la période, affiché sous le sélecteur de dates ──
   const goodDims = dimensionSeries.filter(d => d.avg !== null && wellnessStatus(d.avg, d.inverted) === 'good').map(d => d.shortLabel);
@@ -323,24 +350,48 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
             )}
 
             {evoTab === 'history' && (
-              <div style={{ overflowX: 'auto', minHeight: RADAR_HEIGHT, border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                <div style={{ padding: '8px 14px', borderBottom: '1px solid #2A2F3A', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, minWidth: 500 }}>
-                  {['Date', ...dimensions.map(d => d.shortLabel), 'Score'].map(h => (
-                    <span key={h} style={{ color: '#475569', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: h === 'Score' ? 'right' : 'left' }}>{h}</span>
-                  ))}
+              <div style={{ minHeight: RADAR_HEIGHT, border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
+                <style>{`
+                  @media (max-width: 639px) {
+                    .wellness-evo-table { table-layout: auto !important; }
+                    .wellness-evo-table col { width: auto !important; }
+                    .wellness-evo-table th, .wellness-evo-table td { padding: 8px 12px !important; }
+                  }
+                `}</style>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="wellness-evo-table" style={{ width: '100%', minWidth: 500, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 56 }} />
+                      {dimensions.map(dim => <col key={dim.key} />)}
+                    </colgroup>
+                    <thead>
+                      <tr style={{ backgroundColor: '#1A1E26' }}>
+                        <th onClick={() => toggleEvoSort('date')} style={{ ...thBase, whiteSpace: 'nowrap', color: evoSortKey === 'date' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26' }}>Date{evoSortArrow('date')}</th>
+                        <th onClick={() => toggleEvoSort('score')} style={{ ...thBase, color: evoSortKey === 'score' ? '#94A3B8' : '#475569' }}>Score{evoSortArrow('score')}</th>
+                        {dimensions.map(dim => (
+                          <th key={dim.key} onClick={() => toggleEvoSort(dim.key)} style={{ ...thBase, color: evoSortKey === dim.key ? '#94A3B8' : '#475569' }}>{dim.shortLabel}{evoSortArrow(dim.key)}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableData.map((e, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #1E2229' }}
+                          onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
+                          onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
+                          <td style={{ padding: '8px 8px', color: '#64748B', fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{fmtDate(e.date)}</td>
+                          <td style={{ padding: '8px 8px', color: scoreColor(e.score), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(e.score)}</td>
+                          {dimensions.map((dim, i) => {
+                            const val = [e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness][i];
+                            return (
+                              <td key={dim.key} style={{ padding: '8px 8px', color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(val)}</td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                {tableData.map((e, idx) => (
-                  <div key={idx} style={{ padding: '6px 14px', borderBottom: '1px solid #1A1E26', display: 'grid', gridTemplateColumns: '90px repeat(6, 1fr) 56px', gap: 4, alignItems: 'center', minWidth: 500 }}>
-                    <span style={{ color: '#64748B', fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDate(e.date)}</span>
-                    {dimensions.map((dim, i) => {
-                      const val = [e.fatigue, e.mood, e.stress, e.motivation, e.sleep, e.soreness][i];
-                      return (
-                        <span key={i} style={{ color: dimColor(val, dim.inverted), fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(val)}</span>
-                      );
-                    })}
-                    <span style={{ color: scoreColor(e.score), fontWeight: 700, fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{fmt1(e.score)}</span>
-                  </div>
-                ))}
               </div>
             )}
           </Card>

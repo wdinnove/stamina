@@ -25,7 +25,7 @@ interface CrossTimelineChartProps {
   to: string;
   /** Épisodes de blessure affichés en surimpression rouge */
   injuries?: InjuryEpisode[];
-  /** Seuils d'équipe — colore les barres de « Charge de séance » par palier (Normal/Soutenu/Élevée/Surcharge) */
+  /** Seuils d'équipe — colore les barres de « Charge de séance » par palier (Normale/Soutenue/Élevée/Surcharge) */
   loadThresholds?: { lightMax: number; normalMax: number; sessionsPerWeek: number };
   height?: number;
 }
@@ -129,7 +129,7 @@ export function CrossTimelineChart({ a, b, from, to, injuries = [], loadThreshol
 
   const renderSeries = (id: 'a' | 'b', def: IndicatorDef) => {
     if (def.chart === 'bar') {
-      // Charge de séance : barres colorées par palier d'équipe (Normal/Soutenu/Élevée/Surcharge)
+      // Charge de séance : barres colorées par palier d'équipe (Normale/Soutenue/Élevée/Surcharge)
       if (def.key === 'loadUa' && chargeHigh !== null) {
         return (
           <Bar key={id} yAxisId={id} dataKey={id} name={def.shortLabel} radius={[3, 3, 0, 0]} maxBarSize={26}>
