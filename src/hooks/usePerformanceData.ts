@@ -20,17 +20,21 @@ export function usePerformanceData() {
       statsApi.listAllStatsBySeason(team.id, season.id),
       statsApi.listTeamStatsBySeason(team.id, season.id),
       rpeApi.list({ seasonId: season.id }),
-      // wellness_entries n'a pas de season_id : borner explicitement à la fin de saison,
-      // sinon une saison passée récupère aussi les entrées des saisons suivantes jusqu'à aujourd'hui.
-      wellnessApi.list({ from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() }),
       attendanceApi.listSessions(team.id, season.id),
-    ]).then(async ([players, matchStats, teamMatchStats, rpe, wellness, sessions]) => {
-      const [medical, attendance, allTimeRpeRows] = await Promise.all([
+    ]).then(async ([players, matchStats, teamMatchStats, rpe, sessions]) => {
+      const [medical, attendance, allTimeRpeRows, wellness] = await Promise.all([
         players.length ? medicalApi.list({ playerIds: players.map(p => p.id) }) : Promise.resolve([]),
         attendanceApi.listAttendance(sessions.map(s => s.id)),
         // Toutes saisons confondues — nécessaire pour un ACWR/TSB fiable (28j de charge
         // chronique) même en tout début de saison, contrairement à `rpe` borné à la saison.
         players.length ? rpeApi.listRpeWithSessionByPlayerIds(players.map(p => p.id)) : Promise.resolve([]),
+        // wellness_entries n'a pas de season_id : borner explicitement à la fin de saison, sinon une
+        // saison passée récupère aussi les entrées des saisons suivantes jusqu'à aujourd'hui. Scopé aux
+        // joueuses de la saison (playerIds) pour ne pas remonter les autres équipes du club et rester
+        // sous le plafond de lignes de l'API sur un effectif/historique conséquent.
+        players.length
+          ? wellnessApi.list({ playerIds: players.map(p => p.id), from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() })
+          : Promise.resolve([]),
       ]);
       if (cancelled) return;
       const sessionDate = new Map(sessions.map(s => [s.id, s.date]));

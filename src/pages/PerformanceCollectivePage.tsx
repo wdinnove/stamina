@@ -5,13 +5,14 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
 import { aggregateTeamWellnessDaily, wellnessAvg, wellnessTier } from '../utils/wellness';
-import { actionsApi, statsApi } from '../api';
+import { actionsApi, statsApi, matchesApi } from '../api';
 import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, HeroCard, HeroCardShell,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
+  TeamQuarterBreakdown,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { FilterField, filterControlStyle } from '../components/FilterField';
@@ -24,12 +25,13 @@ import { wellnessScoreColor } from '../utils/wellness';
 import { mondayIso, getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
 import { playerNameShort } from '../utils/playerName';
+import { roundedAvg } from '../utils/avg';
 import { fmt1 } from '../utils/format';
 import {
   playerAttributeIndicators, getSeries, detectRiskAlerts,
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
-import type { MatchStat, TeamMatchStat, Action } from '../data/types';
+import type { MatchStat, TeamMatchStat, Action, Match } from '../data/types';
 
 // ─── Helpers partagés (portés depuis AnalyseCollectivePage / PerformancePage) ──
 
@@ -70,15 +72,25 @@ function sumStats(ss: MatchStat[], k: keyof MatchStat) {
 function avgStats(ss: MatchStat[], k: keyof MatchStat) {
   return ss.length > 0 ? Math.round(sumStats(ss, k) / ss.length * 10) / 10 : 0;
 }
-const avg = (vals: number[]): number | null =>
-  vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
+
+/** Moyenne d'une colonne sur les lignes d'un tableau — pour la ligne "Moyenne équipe" en pied de tableau. */
+function colAvg<T>(rows: T[], get: (r: T) => number | null): number | null {
+  const vals = rows.map(get).filter((v): v is number => v !== null && !Number.isNaN(v));
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+const colAvg1   = <T,>(rows: T[], get: (r: T) => number | null): number | null => {
+  const m = colAvg(rows, get); return m !== null ? Math.round(m * 10) / 10 : null;
+};
+const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null => {
+  const m = colAvg(rows, get); return m !== null ? Math.round(m) : null;
+};
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
 
 // Noms de clés/groupes alignés sur PerformanceIndividuellePage pour une navigation symétrique
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
-type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced'
+type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
          | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'compare-match' | 'compare-season' | 'compare-player';
 
@@ -89,6 +101,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'stats-joueurs-avancees':  'players-advanced',
   'stats-matchs':            'matches-basic',
   'stats-matchs-avancees':   'matches-advanced',
+  'qt-par-qt':               'matches-quarters',
   'impact':                  'impact',
   'acp':                     'pca',
   'classement-joueurs':      'ranking',
@@ -115,6 +128,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Statistiques matchs', tabs: [
     { key: 'matches-basic',    slug: 'stats-matchs',          label: 'Brutes' },
     { key: 'matches-advanced', slug: 'stats-matchs-avancees', label: 'Avancées' },
+    { key: 'matches-quarters', slug: 'qt-par-qt',             label: 'QT par QT' },
   ] },
   { label: 'Suivi', tabs: [
     { key: 'load',     slug: 'charge-physique', label: 'Charge physique' },
@@ -142,7 +156,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
 // mais gérable indépendamment onglet par onglet si un besoin de préréglage différent apparaît.
 const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
-  'matches-basic': 'saison', 'matches-advanced': 'saison',
+  'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
   impact: 'saison', pca: 'saison', ranking: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
@@ -180,15 +194,15 @@ export default function PerformanceCollectivePage() {
   const allWellness = allPd.flatMap(p => p.wellness);
   const allMatchStats = allPd.flatMap(p => p.matchStats);
   const allAttendance = allPd.flatMap(p => p.attendance);
-  const rpeAvgP   = avg(allRpe.filter(e => inRangeTeam(e.date)).map(e => e.rpe));
+  const rpeAvgP   = roundedAvg(allRpe.filter(e => inRangeTeam(e.date)).map(e => e.rpe));
   // Agrégat quotidien équipe (moyenne des joueuses ayant loggué ce jour-là) avant de moyenner
   // sur la période — sinon une joueuse qui logge plus souvent pèse plus lourd dans la moyenne.
   const wellAvgP   = wellnessAvg(aggregateTeamWellnessDaily(allWellness.filter(w => inRangeTeam(w.date))).map(e => e.score));
-  const evalAvgP   = avg(allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)).map(m => Number(m.eval)));
+  const evalAvgP   = roundedAvg(allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)).map(m => Number(m.eval)));
   const attP = allAttendance.filter(a => inRangeTeam(a.date));
   const presentP = attP.filter(a => a.status === 'present' || a.status === 'late').length;
   const presencePct = attP.length ? Math.round(presentP / attP.length * 100) : null;
-  const ptsAvgP = avg(filteredTeamStats.map(t => t.scoreUs));
+  const ptsAvgP = roundedAvg(filteredTeamStats.map(t => t.scoreUs));
 
   // ── Actions d'équipe (Vue d'ensemble) ─────────────────────────────────────
   const [teamActions, setTeamActions] = useState<Action[]>([]);
@@ -226,8 +240,7 @@ export default function PerformanceCollectivePage() {
       const ftm  = sumStats(ss, 'ftm'),  fta  = sumStats(ss, 'fta');
       const tit  = ss.filter(s => s.starter).length;
       const we   = ss.filter(s => s.eval !== null);
-      const evalAvg = we.length > 0
-        ? Math.round(we.reduce((a, s) => a + (s.eval ?? 0), 0) / we.length * 10) / 10 : null;
+      const evalAvg = roundedAvg(we.map(s => s.eval as number));
       const avgPm = n > 0
         ? Math.round(ss.reduce((a, s) => a + (s.plusMinus ?? 0), 0) / n * 10) / 10 : 0;
       return {
@@ -310,9 +323,6 @@ export default function PerformanceCollectivePage() {
     return m;
   }, [filteredAllStats]);
 
-  const evalTeamColor = (sum: number | null, count: number) =>
-    sum !== null && count > 0 ? evalColor(sum / count, statThresholds) : '#475569';
-
   const pmRows = useMemo(() => filteredTeamStats.map(t => {
     const evalStats = t.matchId ? matchEvalStatsMap.get(t.matchId) : undefined;
     return {
@@ -321,8 +331,9 @@ export default function PerformanceCollectivePage() {
       fg2Pct:        t.fg2a > 0 ? Math.round(t.fg2m / t.fg2a * 100) : null,
       fg3Pct:        t.fg3a > 0 ? Math.round(t.fg3m / t.fg3a * 100) : null,
       ftPct:         t.fta  > 0 ? Math.round(t.ftm  / t.fta  * 100) : null,
-      evalTeam:      evalStats ? evalStats.sum : null,
-      evalTeamCount: evalStats ? evalStats.count : 0,
+      // Moyenne d'éval par joueuse sur ce match (pas un total d'équipe) — comparable à la
+      // colonne "Éval" de l'onglet Statistiques joueurs, et cohérente avec sa propre couleur.
+      evalTeamAvg:   evalStats && evalStats.count > 0 ? Math.round(evalStats.sum / evalStats.count * 10) / 10 : null,
     };
   }), [filteredTeamStats, matchEvalStatsMap]);
 
@@ -416,6 +427,48 @@ export default function PerformanceCollectivePage() {
   const matchCount = pmRows.length;
   const wins       = pmRows.filter(m => m.result === 'win').length;
 
+  // ── Lignes "Moyenne équipe" en pied des 4 tableaux Statistiques joueurs/matchs ──
+  const pjFooter = {
+    n:       colAvg1(sortedPJ, r => r.n),       tit:     colAvg1(sortedPJ, r => r.tit),
+    avgMin:  colAvg1(sortedPJ, r => r.avgMin),  avgPts:  colAvg1(sortedPJ, r => r.avgPts),
+    fg2mPg:  colAvg1(sortedPJ, r => r.fg2mPg),  fg2aPg:  colAvg1(sortedPJ, r => r.fg2aPg),  fg2Pct: colAvgInt(sortedPJ, r => r.fg2Pct),
+    fg3mPg:  colAvg1(sortedPJ, r => r.fg3mPg),  fg3aPg:  colAvg1(sortedPJ, r => r.fg3aPg),  fg3Pct: colAvgInt(sortedPJ, r => r.fg3Pct),
+    ftmPg:   colAvg1(sortedPJ, r => r.ftmPg),   ftaPg:   colAvg1(sortedPJ, r => r.ftaPg),   ftPct:  colAvgInt(sortedPJ, r => r.ftPct),
+    avgRo:   colAvg1(sortedPJ, r => r.avgRo),   avgRd:   colAvg1(sortedPJ, r => r.avgRd),   avgRt:  colAvg1(sortedPJ, r => r.avgRt),
+    avgPd:   colAvg1(sortedPJ, r => r.avgPd),   avgCt:   colAvg1(sortedPJ, r => r.avgCt),
+    avgInt:  colAvg1(sortedPJ, r => r.avgInt),  avgBp:   colAvg1(sortedPJ, r => r.avgBp),
+    evalAvg: colAvg1(sortedPJ, r => r.evalAvg), avgPm:   colAvg1(sortedPJ, r => r.avgPm),
+  };
+  const pjAdvFooter = {
+    n:         colAvg1(sortedPJAdv, r => r.n),         avgMin:    colAvg1(sortedPJAdv, r => r.avgMin),
+    avgPts:    colAvg1(sortedPJAdv, r => r.avgPts),    usagePct:  colAvg1(sortedPJAdv, r => r.usagePct),
+    offRating: colAvg1(sortedPJAdv, r => r.offRating), efgPct:    colAvg1(sortedPJAdv, r => r.efgPct),
+    ftRate:    colAvg1(sortedPJAdv, r => r.ftRate),    ptsProd:   colAvg1(sortedPJAdv, r => r.ptsProd),
+    astPct:    colAvg1(sortedPJAdv, r => r.astPct),    tovPct:    colAvg1(sortedPJAdv, r => r.tovPct),
+    bpPerPoss: colAvg1(sortedPJAdv, r => r.bpPerPoss), trebPct:   colAvg1(sortedPJAdv, r => r.trebPct),
+    drebPct:   colAvg1(sortedPJAdv, r => r.drebPct),   orebPct:   colAvg1(sortedPJAdv, r => r.orebPct),
+  };
+  const pmFooter = {
+    pts:  colAvg1(sortedPM, r => r.pts),
+    fg2m: colAvg1(sortedPM, r => r.fg2m), fg2a: colAvg1(sortedPM, r => r.fg2a), fg2Pct: colAvgInt(sortedPM, r => r.fg2Pct),
+    fg3m: colAvg1(sortedPM, r => r.fg3m), fg3a: colAvg1(sortedPM, r => r.fg3a), fg3Pct: colAvgInt(sortedPM, r => r.fg3Pct),
+    ftm:  colAvg1(sortedPM, r => r.ftm),  fta:  colAvg1(sortedPM, r => r.fta),  ftPct:  colAvgInt(sortedPM, r => r.ftPct),
+    ro:   colAvg1(sortedPM, r => r.ro),   rd:   colAvg1(sortedPM, r => r.rd),   rt:     colAvg1(sortedPM, r => r.rt),
+    pd:   colAvg1(sortedPM, r => r.pd),   ct:   colAvg1(sortedPM, r => r.ct),
+    intercepts: colAvg1(sortedPM, r => r.intercepts), bp: colAvg1(sortedPM, r => r.bp),
+    evalTeamAvg: colAvg1(sortedPM, r => r.evalTeamAvg),
+  };
+  const pmAdvFooter = {
+    pts:       colAvg1(sortedPMAdv, r => r.pts),
+    offRating: colAvg1(sortedPMAdv, r => r.offRating > 0 ? r.offRating : null),
+    defRating: colAvg1(sortedPMAdv, r => r.defRating > 0 ? r.defRating : null),
+    efgPct:    colAvgInt(sortedPMAdv, r => r.efgPct > 0 ? r.efgPct : null),
+    ftRate:    colAvg1(sortedPMAdv, r => r.ftRate > 0 ? r.ftRate : null),
+    toPct:     colAvgInt(sortedPMAdv, r => r.toPct > 0 ? r.toPct : null),
+    orebPct:   colAvgInt(sortedPMAdv, r => r.orebPct > 0 ? r.orebPct : null),
+    drebPct:   colAvgInt(sortedPMAdv, r => r.drebPct > 0 ? r.drebPct : null),
+  };
+
   // ── Charge physique (ex-RPEPage team_history + verdict/graphe alignés sur PerformanceIndividuellePage) ──
   const {
     playerRanking, teamKpis: rpeTeamKpis, teamSessionRows, teamAcwrAvg, teamFreshAvg,
@@ -495,6 +548,17 @@ export default function PerformanceCollectivePage() {
     statsApi.getTeamStatsGroupedBySeason(selected.team.id).then(setTeamSeasonGroupedStats).catch(() => {});
   }, [selected?.team.id]);
 
+  // ── QT par QT — matchs de la saison avec détail quart-temps ───────────────
+  const [seasonMatches, setSeasonMatches] = useState<Match[]>([]);
+  useEffect(() => {
+    if (!selected) { setSeasonMatches([]); return; }
+    matchesApi.listBySeason(selected.team.id, selected.season.id).then(setSeasonMatches).catch(() => {});
+  }, [selected?.team.id, selected?.season.id]);
+  const filteredSeasonMatches = useMemo(
+    () => from ? seasonMatches.filter(m => m.date >= from && m.date <= to) : seasonMatches,
+    [seasonMatches, from, to],
+  );
+
   // ── Bien-être (ex-WellnessPage team) ──────────────────────────────────────
   const teamWellnessDaily = useMemo(
     () => data ? aggregateTeamWellnessDaily(data.players.flatMap(p => p.wellness)) : [],
@@ -543,7 +607,7 @@ export default function PerformanceCollectivePage() {
       evalAvg: rawEvalAvg !== null ? Math.round(rawEvalAvg * sc * 10) / 10 : null,
     };
   }), [data?.players, rankDef, from, to, normalize25]);
-  const rankTeamAvg = avg(rankingRows.map(r => r.value).filter((v): v is number => v !== null));
+  const rankTeamAvg = roundedAvg(rankingRows.map(r => r.value).filter((v): v is number => v !== null));
 
   // ── Guards ─────────────────────────────────────────────────────────────────
   if (teamLoading || loading) return <div className="p-4 md:p-6" style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>;
@@ -575,11 +639,12 @@ export default function PerformanceCollectivePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && (
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
               onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+              min={seasonStart} max={seasonEnd}
               extra={activeTab === 'rpe' ? (
                 <FilterField legend="Affichage">
                   <select value={rpeDisplay} onChange={e => setRpeDisplay(e.target.value as 'chart' | 'table')} style={filterControlStyle}>
@@ -633,10 +698,10 @@ export default function PerformanceCollectivePage() {
             ctaLabel="Voir le risque" onOpen={() => setActiveTab('charge-physique')}
             borderColor={atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0'}
           >
-            <div style={{ color: atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0', fontSize: '1.7rem', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
+            <div className="text-[1.25rem] md:text-[1.7rem]" style={{ color: atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
               {atRiskPlayerCount}
             </div>
-            <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5 }}>
+            <div className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', marginTop: 5 }}>
               {atRiskPlayerCount > 0 ? `Joueur${atRiskPlayerCount > 1 ? 's' : ''} à risque` : 'Aucun facteur de risque identifié'}
             </div>
           </HeroCardShell>
@@ -743,6 +808,33 @@ export default function PerformanceCollectivePage() {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr style={TOTALS}>
+                      <td style={{ ...TL, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>Moyenne équipe</td>
+                      <td style={TD}>—</td>
+                      <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{fmt(pjFooter.n)}</td>
+                      <td style={TD}>{fmt(pjFooter.tit)}</td>
+                      <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pjFooter.avgMin)}</td>
+                      <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjFooter.avgPts)}</td>
+                      <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.fg2mPg)}/{fmt(pjFooter.fg2aPg)}</td>
+                      <td style={TD}>{fmt(pjFooter.fg2Pct, '%')}</td>
+                      <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.fg3mPg)}/{fmt(pjFooter.fg3aPg)}</td>
+                      <td style={TD}>{fmt(pjFooter.fg3Pct, '%')}</td>
+                      <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.ftmPg)}/{fmt(pjFooter.ftaPg)}</td>
+                      <td style={TD}>{fmt(pjFooter.ftPct, '%')}</td>
+                      <td style={TD}>{fmt(pjFooter.avgRo)}</td>
+                      <td style={TD}>{fmt(pjFooter.avgRd)}</td>
+                      <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pjFooter.avgRt)}</td>
+                      <td style={TD}>{fmt(pjFooter.avgPd)}</td>
+                      <td style={TD}>{fmt(pjFooter.avgCt)}</td>
+                      <td style={TD}>{fmt(pjFooter.avgInt)}</td>
+                      <td style={TD}>{fmt(pjFooter.avgBp)}</td>
+                      <td style={{ ...TD, color: pjFooter.evalAvg !== null ? evalColor(pjFooter.evalAvg, statThresholds) : '#475569', fontWeight: 700 }}>{fmt(pjFooter.evalAvg)}</td>
+                      <td style={{ ...TD, color: pjFooter.avgPm !== null && pjFooter.avgPm > 0 ? '#00E5A0' : pjFooter.avgPm !== null && pjFooter.avgPm < 0 ? '#EF4444' : '#475569', fontWeight: 700 }}>
+                        {pjFooter.avgPm !== null ? (pjFooter.avgPm > 0 ? `+${pjFooter.avgPm}` : pjFooter.avgPm) : '—'}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )
@@ -797,6 +889,26 @@ export default function PerformanceCollectivePage() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr style={TOTALS}>
+                      <td style={{ ...TL, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>Moyenne équipe</td>
+                      <td style={TD}>—</td>
+                      <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{fmt(pjAdvFooter.n)}</td>
+                      <td style={{ ...TD, color: '#94A3B8' }}>{fmt(pjAdvFooter.avgMin)}</td>
+                      <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjAdvFooter.avgPts)}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.usagePct, '%')}</td>
+                      <td style={{ ...TD, color: pjAdvFooter.offRating !== null ? ortgColor(pjAdvFooter.offRating, statThresholds) : '#475569' }}>{fmt(pjAdvFooter.offRating)}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.efgPct, '%')}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.ftRate)}</td>
+                      <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(pjAdvFooter.ptsProd)}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.astPct, '%')}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.tovPct, '%')}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.bpPerPoss)}</td>
+                      <td style={{ ...TD, ...SEP }}>{fmt(pjAdvFooter.trebPct, '%')}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.drebPct, '%')}</td>
+                      <td style={TD}>{fmt(pjAdvFooter.orebPct, '%')}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )
@@ -859,11 +971,34 @@ export default function PerformanceCollectivePage() {
                           <td style={TD}>{m.ct}</td>
                           <td style={TD}>{m.intercepts}</td>
                           <td style={TD}>{m.bp}</td>
-                          <td style={{ ...TD, color: evalTeamColor(m.evalTeam, m.evalTeamCount), fontWeight: m.evalTeam !== null ? 700 : 400 }}>{m.evalTeam ?? '—'}</td>
+                          <td style={{ ...TD, color: m.evalTeamAvg !== null ? evalColor(m.evalTeamAvg, statThresholds) : '#475569', fontWeight: m.evalTeamAvg !== null ? 700 : 400 }}>{m.evalTeamAvg ?? '—'}</td>
                         </tr>
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr style={TOTALS}>
+                      <td style={{ ...TL, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>Moyenne / match</td>
+                      <td style={TD}>—</td>
+                      <td style={TD}>—</td>
+                      <td style={TD}>—</td>
+                      <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pmFooter.pts)}</td>
+                      <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pmFooter.fg2m)}/{fmt(pmFooter.fg2a)}</td>
+                      <td style={TD}>{fmt(pmFooter.fg2Pct, '%')}</td>
+                      <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pmFooter.fg3m)}/{fmt(pmFooter.fg3a)}</td>
+                      <td style={TD}>{fmt(pmFooter.fg3Pct, '%')}</td>
+                      <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pmFooter.ftm)}/{fmt(pmFooter.fta)}</td>
+                      <td style={TD}>{fmt(pmFooter.ftPct, '%')}</td>
+                      <td style={TD}>{fmt(pmFooter.ro)}</td>
+                      <td style={TD}>{fmt(pmFooter.rd)}</td>
+                      <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pmFooter.rt)}</td>
+                      <td style={TD}>{fmt(pmFooter.pd)}</td>
+                      <td style={TD}>{fmt(pmFooter.ct)}</td>
+                      <td style={TD}>{fmt(pmFooter.intercepts)}</td>
+                      <td style={TD}>{fmt(pmFooter.bp)}</td>
+                      <td style={{ ...TD, color: pmFooter.evalTeamAvg !== null ? evalColor(pmFooter.evalTeamAvg, statThresholds) : '#475569', fontWeight: 700 }}>{fmt(pmFooter.evalTeamAvg)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )
@@ -912,11 +1047,32 @@ export default function PerformanceCollectivePage() {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr style={TOTALS}>
+                      <td style={{ ...TL, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>Moyenne / match</td>
+                      <td style={TD}>—</td>
+                      <td style={TD}>—</td>
+                      <td style={TD}>—</td>
+                      <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pmAdvFooter.pts)}</td>
+                      <td style={{ ...TD, color: pmAdvFooter.offRating !== null ? ortgColor(pmAdvFooter.offRating, statThresholds) : '#475569' }}>{fmt(pmAdvFooter.offRating)}</td>
+                      <td style={{ ...TD, color: pmAdvFooter.defRating !== null ? drtgColor(pmAdvFooter.defRating, statThresholds) : '#475569' }}>{fmt(pmAdvFooter.defRating)}</td>
+                      <td style={TD}>{fmt(pmAdvFooter.efgPct, '%')}</td>
+                      <td style={TD}>{fmt(pmAdvFooter.ftRate)}</td>
+                      <td style={{ ...TD, ...SEP }}>{fmt(pmAdvFooter.toPct, '%')}</td>
+                      <td style={TD}>{fmt(pmAdvFooter.orebPct, '%')}</td>
+                      <td style={TD}>{fmt(pmAdvFooter.drebPct, '%')}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )
           )}
         </Card>
+      )}
+
+      {/* ══ QT PAR QT ═══════════════════════════════════════════════════════ */}
+      {activeTab === 'matches-quarters' && (
+        <TeamQuarterBreakdown matches={filteredSeasonMatches} />
       )}
 
       {/* ══ IMPACT JOUEURS ══════════════════════════════════════════════════ */}
@@ -989,6 +1145,9 @@ export default function PerformanceCollectivePage() {
       {/* ══ CHARGE PHYSIQUE (synthèse RPE × ACWR × Fraîcheur × Risque, alignée sur PerformanceIndividuellePage) ══ */}
       {activeTab === 'load' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ color: '#64748B', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+            Vue d'ensemble décisionnelle : risque de blessure et charge d'équipe en un coup d'œil. Pour le détail séance par séance et le classement joueurs, voir l'onglet RPE.
+          </p>
           {/* Verdict — à risque maintenant */}
           <RiskVerdictCard
             title="Risque de blessure — maintenant"
@@ -1008,7 +1167,7 @@ export default function PerformanceCollectivePage() {
               {
                 id: 'alert',
                 active: !!latestRedAlert,
-                label: latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent',
+                label: `${latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent'} (21 j)`,
               },
             ]}
           />
@@ -1024,7 +1183,9 @@ export default function PerformanceCollectivePage() {
             statItems={[
               {
                 label: 'Charge moyenne / semaine',
-                value: avgWeeklyLoad !== null && avgWeeklyLoad > 0 ? `${avgWeeklyLoad.toLocaleString('fr')} UA` : '—',
+                value: avgWeeklyLoad !== null && avgWeeklyLoad > 0
+                  ? <>{avgWeeklyLoad.toLocaleString('fr')} <span title="Unité Arbitraire = RPE × durée de la séance (minutes)">UA</span></>
+                  : '—',
                 sub: weekTier ? <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} /> : undefined,
                 color: weekTier ? weekTier.color : undefined,
               },
@@ -1035,14 +1196,18 @@ export default function PerformanceCollectivePage() {
                 color: rpeTeamKpis ? rpeColor(rpeTeamKpis.avg) : undefined,
               },
               {
-                label: 'Charge récente vs habituelle',
-                value: teamAcwrAvg !== null ? teamAcwrAvg.toFixed(2) : '—',
+                label: 'Charge récente vs habituelle (à ce jour)',
+                value: teamAcwrAvg !== null
+                  ? <span title="Charge des 7 derniers jours ÷ charge des 28 derniers jours. 1.0 = charge habituelle, au-dessus = charge inhabituellement élevée.">{teamAcwrAvg.toFixed(2)}</span>
+                  : '—',
                 sub: teamAcwrZ ? <Badge color={teamAcwrZ.color} size="sm" label={teamAcwrZ.label} style={{ fontSize: '0.62rem' }} /> : 'Historique insuffisant (28j)',
                 color: teamAcwrZ ? teamAcwrZ.color : undefined,
               },
               {
-                label: 'Fraîcheur',
-                value: teamFreshAvg !== null ? <>{teamFreshAvg > 0 ? '+' : ''}{teamFreshAvg.toFixed(1)}</> : '—',
+                label: 'Fraîcheur (à ce jour)',
+                value: teamFreshAvg !== null
+                  ? <span title="Écart entre la forme récente et la forme habituelle de l'équipe. Positif = plus frais, négatif = plus fatigué que d'habitude.">{teamFreshAvg > 0 ? '+' : ''}{teamFreshAvg.toFixed(1)}</span>
+                  : '—',
                 sub: teamFreshZ ? <Badge color={teamFreshZ.color} size="sm" label={teamFreshZ.label} style={{ fontSize: '0.62rem' }} /> : undefined,
                 color: teamFreshZ ? teamFreshZ.color : undefined,
               },
@@ -1075,11 +1240,14 @@ export default function PerformanceCollectivePage() {
           <EmptyState message="Aucune séance RPE enregistrée sur cette période." />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p style={{ color: '#64748B', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+              Détail séance par séance et classement des joueuses par charge. Pour le verdict de risque de blessure, voir l'onglet Charge physique.
+            </p>
             <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
               <RpeKpiCard
                 accent={weekTier ? weekTier.color : '#334155'}
                 label="Charge moyenne par semaine"
-                value={avgWeeklyLoad !== null && avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
+                value={avgWeeklyLoad !== null && avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span title="Unité Arbitraire = RPE × durée de la séance (minutes)" style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
                 sub={weekTier ? <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} /> : undefined}
               />
               <RpeKpiCard
@@ -1162,7 +1330,7 @@ export default function PerformanceCollectivePage() {
 
       {/* ══ PAR MATCH (2 groupes de matchs d'équipe sélectionnés librement) ═══ */}
       {activeTab === 'compare-match' && (
-        <TeamCompareByMatch teamStats={teamStats} allStats={allStats} allRpe={allRpe} allWellness={allWellness} />
+        <TeamCompareByMatch teamStats={teamStats} allStats={allStats} allRpe={allRpe} allWellness={allWellness} seasonKey={selected ? `${selected.team.id}-${selected.season.id}` : undefined} />
       )}
 
       {/* ══ PAR SAISON (2 saisons de l'équipe sélectionnées librement) ═══════ */}

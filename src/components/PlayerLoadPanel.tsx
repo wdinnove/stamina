@@ -4,6 +4,7 @@ import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
 import { rpeColor, rpeLabel, SESSION_TYPES } from '../utils/rpe';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
+import { roundedAvg } from '../utils/avg';
 import { ListChecks } from 'lucide-react';
 import { RpeKpiCard } from './RpeKpiCard';
 import { Badge } from './Badge';
@@ -33,10 +34,10 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
   const setIndivDisplay = onDisplayChange ?? setInternalDisplay;
   const [indivTableView, setIndivTableView] = useState<'session' | 'week'>('week');
 
-  const avgRPE = filtered.length ? Math.round(filtered.reduce((s: number, e: RPEEntry) => s + e.rpe, 0) / filtered.length * 10) / 10 : null;
+  const avgRPE = roundedAvg(filtered.map((e: RPEEntry) => e.rpe));
   const toWeeklyRow = (e: RPEEntry) => ({ date: e.date, playerId: e.playerId, rpe: e.rpe, actualDuration: e.actualDuration, plannedDuration: e.plannedDuration });
-  const weeklyChartData = weeklyLoadBuckets(filtered.map(toWeeklyRow))
-    .map(b => ({ date: fmtDate(b.week), load: Math.round(b.load) }));
+  const weeklyBuckets = weeklyLoadBuckets(filtered.map(toWeeklyRow));
+  const weeklyChartData = weeklyBuckets.map(b => ({ date: fmtDate(b.week), load: Math.round(b.load) }));
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
 
   return (
@@ -59,7 +60,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
             <RpeKpiCard
               accent={tier ? tier.color : '#334155'}
               label="Charge moyenne par semaine"
-              value={avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
+              value={avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span title="Unité Arbitraire = RPE × durée de la séance (minutes)" style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
               sub={tier ? <Badge color={tier.color} size="sm" label={tier.label} style={{ fontSize: '0.62rem' }} /> : undefined}
             />
             <RpeKpiCard
@@ -88,21 +89,11 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
 
       {/* Graphe combiné UA + RPE joueur */}
       {indivDisplay === 'chart' && (() => {
-        const weekCombMap = new Map<string, { load: number; rpes: number[] }>();
-        filtered.forEach(e => {
-          const k = getWeekMonday(e.date);
-          if (!weekCombMap.has(k)) weekCombMap.set(k, { load: 0, rpes: [] });
-          const w = weekCombMap.get(k)!;
-          w.load += e.rpe * (e.actualDuration ?? e.plannedDuration);
-          w.rpes.push(e.rpe);
-        });
-        const weekCombo = [...weekCombMap.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([d, { load, rpes }]) => ({
-            date: fmtDateWithDay(d),
-            load: Math.round(load),
-            rpe:  Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10,
-          }));
+        const weekCombo = weeklyBuckets.map(b => ({
+          date: fmtDateWithDay(b.week),
+          load: Math.round(b.load),
+          rpe:  b.avgRpe ?? 0,
+        }));
         const sessionCombo = [...filtered]
           .sort((a: RPEEntry, b: RPEEntry) => a.date.localeCompare(b.date))
           .map((e: RPEEntry) => ({

@@ -5,6 +5,7 @@ import { TeamCompareStatBlocks } from './TeamCompareStatBlocks';
 import { filterControlStyle, GroupPickerBox, GROUP_A_COLOR, GROUP_B_COLOR } from './FilterField';
 import { StatDisplayToggle } from './StatDisplayToggle';
 import { fmtDate } from '../utils/dateFormat';
+import { roundedAvg } from '../utils/avg';
 import type { TeamMatchStat, MatchStat, RPEEntry, WellnessEntry } from '../data/types';
 
 interface Props {
@@ -14,6 +15,9 @@ interface Props {
   allStats: MatchStat[];
   allRpe: RPEEntry[];
   allWellness: WellnessEntry[];
+  /** Identifiant stable équipe+saison — refait la présélection quand il change, pour ne pas
+   * garder une sélection de matchs orpheline d'une autre équipe/saison. */
+  seasonKey?: string;
 }
 
 type Group = 'a' | 'b' | null;
@@ -98,10 +102,10 @@ function MatchGroupDropdown({ color, matches, assign, group, otherLabel, onToggl
  * matchs sélectionnés librement), mais sur les stats d'équipe (TeamMatchStat) plutôt que sur un
  * seul joueur.
  */
-export function TeamCompareByMatch({ teamStats, allStats, allRpe, allWellness }: Props) {
+export function TeamCompareByMatch({ teamStats, allStats, allRpe, allWellness, seasonKey }: Props) {
   const [assign, setAssign] = useState<Map<string, Group>>(new Map());
   const [display, setDisplay] = useState<'blocks' | 'chart'>('blocks');
-  const didInit = useRef(false);
+  const didInit = useRef<string | null>('__uninitialized__');
 
   const setGroup = (id: string, g: Group) => {
     setAssign(prev => {
@@ -113,16 +117,17 @@ export function TeamCompareByMatch({ teamStats, allStats, allRpe, allWellness }:
 
   const sorted = [...teamStats].sort((a, b) => b.date.localeCompare(a.date));
 
-  // Présélection : dernier match en Groupe A, avant-dernier en Groupe B.
+  // Présélection : dernier match en Groupe A, avant-dernier en Groupe B — refaite à chaque
+  // changement d'équipe/saison (seasonKey), pour ne pas garder une sélection orpheline.
   useEffect(() => {
-    if (didInit.current || sorted.length === 0) return;
-    didInit.current = true;
+    if (didInit.current === (seasonKey ?? null) || sorted.length === 0) return;
+    didInit.current = seasonKey ?? null;
     const next = new Map<string, Group>();
     if (sorted[0]) next.set(sorted[0].id, 'a');
     if (sorted[1]) next.set(sorted[1].id, 'b');
     setAssign(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sorted.length]);
+  }, [seasonKey, sorted.length]);
 
   const matchesA = teamStats.filter(m => assign.get(m.id) === 'a');
   const matchesB = teamStats.filter(m => assign.get(m.id) === 'b');
@@ -133,10 +138,8 @@ export function TeamCompareByMatch({ teamStats, allStats, allRpe, allWellness }:
 
   const rpeInRange = (range: { from: string; to: string } | null) => range ? allRpe.filter(e => e.date >= range.from && e.date <= range.to) : [];
   const wellnessInRange = (range: { from: string; to: string } | null) => range ? allWellness.filter(w => w.date >= range.from && w.date <= range.to) : [];
-  const evalAvgOf = (ids: Set<string>) => {
-    const vals = allStats.filter(m => m.matchId && ids.has(m.matchId) && m.eval !== null).map(m => Number(m.eval));
-    return vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length * 10) / 10 : null;
-  };
+  const evalAvgOf = (ids: Set<string>) =>
+    roundedAvg(allStats.filter(m => m.matchId && ids.has(m.matchId) && m.eval !== null).map(m => Number(m.eval)));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

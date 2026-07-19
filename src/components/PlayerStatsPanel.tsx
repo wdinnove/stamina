@@ -32,6 +32,7 @@ export function PlayerStatsPanel({
 }: PlayerStatsPanelProps) {
   const [seasonFilter, setSeasonFilter] = useState<string>(currentSeasonLabel ?? ALL_SEASONS);
   const [teamFilter, setTeamFilter] = useState<string>(currentTeamId ?? ALL_TEAMS);
+  const [normalize25, setNormalize25] = useState(false);
   const [basicSort, setBasicSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [seasonSort, setSeasonSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'season', dir: 'desc' });
@@ -94,8 +95,14 @@ export function PlayerStatsPanel({
         <CardTitle
           icon={<Filter size={12} style={{ color: '#3B82F6' }} />}
           mb={0}
+          info="indépendant de la période sélectionnée sur les autres onglets"
           right={
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button type="button" onClick={() => setNormalize25(v => !v)}
+                title="Recalculer toutes les stats comme si la joueuse jouait 25 min"
+                style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
+                25 min
+              </button>
               <FilterField legend="Saison" width={160}>
                 <select value={seasonFilter} onChange={e => handleSeasonChange(e.target.value)} style={filterControlStyle}>
                   {seasonLabels.map(label => <option key={label} value={label}>{label}</option>)}
@@ -163,18 +170,23 @@ export function PlayerStatsPanel({
                 const vals = advList.map(a => (a as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
                 return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
               };
+              const avgMinRaw = avg('min');
+              const sc = normalize25 && avgMinRaw > 0 ? 25 / avgMinRaw : 1;
+              const nr = (v: number) => Math.round(v * sc * 10) / 10;
               return {
                 seasonId, seasonLabel, teamName: teamName || '', n,
                 fg2m: sum('fg2m'), fg2a: sum('fg2a'),
                 fg3m: sum('fg3m'), fg3a: sum('fg3a'),
                 ftm: sum('ftm'), fta: sum('fta'),
-                starters: ss.filter(s => s.starter).length, evalAvg, pmAvg,
-                avgMin: avg('min'), avgPts: avg('pts'),
-                avgRo: avg('ro'), avgRd: avg('rd'),
-                avgPd: avg('pd'), avgCt: avg('ct'),
-                avgInt: avg('intercepts'), avgBp: avg('bp'),
+                starters: ss.filter(s => s.starter).length,
+                evalAvg: evalAvg !== null ? nr(evalAvg) : null,
+                pmAvg: pmAvg !== null ? nr(pmAvg) : null,
+                avgMin: normalize25 && avgMinRaw > 0 ? 25 : avgMinRaw, avgPts: nr(avg('pts')),
+                avgRo: nr(avg('ro')), avgRd: nr(avg('rd')),
+                avgPd: nr(avg('pd')), avgCt: nr(avg('ct')),
+                avgInt: nr(avg('intercepts')), avgBp: nr(avg('bp')),
                 avgUsg: avgAdv('usagePct'), avgOrtg: avgAdv('offRating'), avgEfg: avgAdv('efgPct'), avgFtr: avgAdv('ftRate'),
-                avgPprod: avgAdv('ptsProd'), avgAst: avgAdv('astPct'), avgTov: avgAdv('tovPct'), avgBppos: avgAdv('bpPerPoss'),
+                avgPprod: (() => { const v = avgAdv('ptsProd'); return v !== null ? nr(v) : null; })(), avgAst: avgAdv('astPct'), avgTov: avgAdv('tovPct'), avgBppos: avgAdv('bpPerPoss'),
                 avgTreb: avgAdv('trebPct'), avgDreb: avgAdv('drebPct'), avgOreb: avgAdv('orebPct'),
               };
             });
@@ -220,7 +232,7 @@ export function PlayerStatsPanel({
                       <th style={{ ...TH, textAlign: 'left', cursor: 'default' }}>Équipe</th>
                       <th onClick={() => toggle('mj')}    style={{ ...TH, color: thC('mj') }}>MJ{si('mj')}</th>
                       <th onClick={() => toggle('tit')}   style={{ ...TH, color: thC('tit') }}>Tit{si('tit')}</th>
-                      <th onClick={() => toggle('min')}   style={{ ...TH, color: thC('min') }}>MIN{si('min')}</th>
+                      <th onClick={() => toggle('min')}   style={{ ...TH, color: normalize25 ? '#F59E0B' : thC('min') }}>MIN{si('min')}{normalize25 ? ' ⟳' : ''}</th>
                       <th onClick={() => toggle('pts')}   style={{ ...TH, color: thC('pts') }}>PTS{si('pts')}</th>
                       <th style={{ ...TH, cursor: 'default' }}>2PT</th>
                       <th onClick={() => toggle('fg2')}   style={{ ...TH, color: thC('fg2') }}>2PT%{si('fg2')}</th>
@@ -328,6 +340,23 @@ export function PlayerStatsPanel({
           <EmptyState message="Aucune statistique pour cette sélection." />
         ) : (() => {
           const rows = effectiveMatchStats;
+          // Vue "basic" recalculée comme si chaque match avait été joué en 25 min (percentages
+          // inchangés : le facteur d'échelle s'annule au numérateur/dénominateur). La vue "advancée"
+          // garde les stats brutes (ORtg/USG%/eFG%... sont des taux déjà indépendants des minutes,
+          // les recalculer sur des stats mises à l'échelle fausserait les possessions) — seuls Pts et
+          // Pts générés y sont recalculés au rendu, comme côté Performance Collective.
+          const dispRows = normalize25 ? rows.map(m => {
+            const sc = m.min > 0 ? 25 / m.min : 1;
+            const nr = (v: number) => Math.round(v * sc * 10) / 10;
+            return {
+              ...m, min: 25, pts: nr(m.pts),
+              fg2m: nr(m.fg2m), fg2a: nr(m.fg2a), fg3m: nr(m.fg3m), fg3a: nr(m.fg3a), ftm: nr(m.ftm), fta: nr(m.fta),
+              ro: nr(m.ro), rd: nr(m.rd), pd: nr(m.pd), ct: nr(m.ct), intercepts: nr(m.intercepts), bp: nr(m.bp),
+              fte: nr(m.fte), fpr: nr(m.fpr),
+              eval: m.eval !== null ? nr(m.eval) : null,
+              plusMinus: m.plusMinus !== null ? nr(m.plusMinus) : null,
+            };
+          }) : rows;
           const TH: React.CSSProperties = {
             padding: '7px 10px', color: '#475569', fontSize: '0.68rem', fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center',
@@ -353,9 +382,14 @@ export function PlayerStatsPanel({
           const sum = (key: keyof MatchStat) => rows.reduce((acc, m) => acc + (((m[key] as number) || 0)), 0);
           const n = rows.length;
           const avg = (key: keyof MatchStat) => n > 0 ? Math.round(sum(key) / n * 10) / 10 : 0;
+          // Mêmes helpers, mais sur les stats déjà mises à l'échelle 25 min — pour le pied de tableau
+          // "basic" (les pourcentages, eux, restent calculés sur les stats brutes ci-dessus : le
+          // facteur d'échelle s'annule au numérateur/dénominateur, pas besoin de les recalculer).
+          const sumD = (key: keyof MatchStat) => dispRows.reduce((acc, m) => acc + (((m[key] as number) || 0)), 0);
+          const avgD = (key: keyof MatchStat) => n > 0 ? Math.round(sumD(key) / n * 10) / 10 : 0;
           const evalCol = (v: number | null) => evalColor(v, statThresholds);
           const ortgCol = (v: number | null) => v === null ? '#475569' : ortgColor(v, statThresholds);
-          const sortedBasic = [...rows].sort((a, b) => {
+          const sortedBasic = [...dispRows].sort((a, b) => {
             const mult = basicSort.dir === 'asc' ? 1 : -1;
             switch (basicSort.col) {
               case 'date':   return mult * (a.date ?? '').localeCompare(b.date ?? '');
@@ -408,18 +442,24 @@ export function PlayerStatsPanel({
             const vals = advRows.map(m => (m.adv as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
             return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
           };
-          const avgAdvPts = n > 0 ? Math.round(rows.reduce((a, m) => a + m.pts, 0) / n * 10) / 10 : null;
+          const avgAdvPtsProd = (() => {
+            const vals = advRows
+              .map(m => m.adv.ptsProd !== null ? m.adv.ptsProd * (normalize25 && m.min > 0 ? 25 / m.min : 1) : null)
+              .filter((v): v is number => v !== null);
+            return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
+          })();
+          const avgAdvPts = avgD('pts');
           const totalFg2m = sum('fg2m'), totalFg2a = sum('fg2a');
           const totalFg3m = sum('fg3m'), totalFg3a = sum('fg3a');
           const totalFtm  = sum('ftm'),  totalFta  = sum('fta');
           const fg2Pct = shotPct(totalFg2m, totalFg2a);
           const fg3Pct = shotPct(totalFg3m, totalFg3a);
           const ftPct  = shotPct(totalFtm, totalFta);
-          const withEval = rows.filter(m => m.eval !== null);
+          const withEval = dispRows.filter(m => m.eval !== null);
           const avgEval = withEval.length > 0
             ? Math.round(withEval.reduce((a, m) => a + (m.eval ?? 0), 0) / withEval.length * 10) / 10
             : null;
-          const avgPm = n > 0 ? Math.round(rows.reduce((acc, m) => acc + (m.plusMinus ?? 0), 0) / n * 10) / 10 : 0;
+          const avgPm = avgD('plusMinus');
           const wins = rows.filter(m => m.result === 'win').length;
           const losses = n - wins;
           const TOTALS: React.CSSProperties = { borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' };
@@ -435,7 +475,7 @@ export function PlayerStatsPanel({
                     <th style={{ ...TH, cursor: 'default' }}>L/E</th>
                     <th style={{ ...TH, cursor: 'default' }}>Score</th>
                     <th onClick={() => toggleB('tit')}  style={{ ...TH, color: thC('tit', basicSort) }}>5D{si('tit', basicSort)}</th>
-                    <th onClick={() => toggleB('min')}  style={{ ...TH, color: thC('min', basicSort) }}>Min{si('min', basicSort)}</th>
+                    <th onClick={() => toggleB('min')}  style={{ ...TH, color: normalize25 ? '#F59E0B' : thC('min', basicSort) }}>Min{si('min', basicSort)}{normalize25 ? ' ⟳' : ''}</th>
                     <th onClick={() => toggleB('pts')}  style={{ ...TH, color: thC('pts', basicSort) }}>Pts{si('pts', basicSort)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>2pts</th>
                     <th onClick={() => toggleB('fg2pct')} style={{ ...TH, color: thC('fg2pct', basicSort) }}>2%{si('fg2pct', basicSort)}</th>
@@ -498,23 +538,23 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={TD}>{rows.filter(m => m.starter).length}</td>
-                    <td style={TD}>{avg('min')}</td>
-                    <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{avg('pts')}</td>
-                    <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{Math.round(totalFg2m/n*10)/10}/{Math.round(totalFg2a/n*10)/10}</td>
+                    <td style={TD}>{avgD('min')}</td>
+                    <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{avgD('pts')}</td>
+                    <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{avgD('fg2m')}/{avgD('fg2a')}</td>
                     <td style={{ ...TD, color: '#475569' }}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
-                    <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{Math.round(totalFg3m/n*10)/10}/{Math.round(totalFg3a/n*10)/10}</td>
+                    <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{avgD('fg3m')}/{avgD('fg3a')}</td>
                     <td style={{ ...TD, color: '#475569' }}>{fg3Pct !== null ? `${fg3Pct}%` : '—'}</td>
-                    <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{Math.round(totalFtm/n*10)/10}/{Math.round(totalFta/n*10)/10}</td>
+                    <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{avgD('ftm')}/{avgD('fta')}</td>
                     <td style={{ ...TD, color: '#475569' }}>{ftPct !== null ? `${ftPct}%` : '—'}</td>
-                    <td style={TD}>{avg('ro')}</td>
-                    <td style={TD}>{avg('rd')}</td>
-                    <td style={{ ...TD, color: '#F1F5F9' }}>{Math.round((avg('ro') + avg('rd')) * 10) / 10}</td>
-                    <td style={TD}>{avg('pd')}</td>
-                    <td style={TD}>{avg('ct')}</td>
-                    <td style={TD}>{avg('intercepts')}</td>
-                    <td style={TD}>{avg('bp')}</td>
-                    <td style={TD}>{avg('fte')}</td>
-                    <td style={TD}>{avg('fpr')}</td>
+                    <td style={TD}>{avgD('ro')}</td>
+                    <td style={TD}>{avgD('rd')}</td>
+                    <td style={{ ...TD, color: '#F1F5F9' }}>{Math.round((avgD('ro') + avgD('rd')) * 10) / 10}</td>
+                    <td style={TD}>{avgD('pd')}</td>
+                    <td style={TD}>{avgD('ct')}</td>
+                    <td style={TD}>{avgD('intercepts')}</td>
+                    <td style={TD}>{avgD('bp')}</td>
+                    <td style={TD}>{avgD('fte')}</td>
+                    <td style={TD}>{avgD('fpr')}</td>
                     <td style={{ ...TD, color: evalCol(avgEval), fontWeight: 700 }}>{avgEval !== null ? avgEval : '—'}</td>
                     <td style={{ ...TD, color: avgPm > 0 ? '#00E5A0' : avgPm < 0 ? '#EF4444' : '#475569', fontWeight: 700 }}>{avgPm > 0 ? `+${avgPm}` : avgPm}</td>
                   </tr>
@@ -550,18 +590,21 @@ export function PlayerStatsPanel({
                 <tbody>
                   {sortedAdv.map((m, i) => {
                     const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
+                    const sc = normalize25 && m.min > 0 ? 25 / m.min : 1;
+                    const ptsDisp = Math.round(m.pts * sc * 10) / 10;
+                    const ptsProdDisp = m.adv.ptsProd !== null ? Math.round(m.adv.ptsProd * sc * 10) / 10 : null;
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600, width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                         <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60, maxWidth: 60 }}>{fmtShortDate(m.date)}</td>
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
-                        <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
+                        <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{ptsDisp}</td>
                         <td style={TD}>{fmt(m.adv.usagePct, '%')}</td>
                         <td style={{ ...TD, color: ortgCol(m.adv.offRating) }}>{fmt(m.adv.offRating)}</td>
                         <td style={TD}>{fmt(m.adv.efgPct, '%')}</td>
                         <td style={TD}>{fmt(m.adv.ftRate)}</td>
-                        <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(m.adv.ptsProd)}</td>
+                        <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(ptsProdDisp)}</td>
                         <td style={TD}>{fmt(m.adv.astPct, '%')}</td>
                         <td style={TD}>{fmt(m.adv.tovPct, '%')}</td>
                         <td style={TD}>{fmt(m.adv.bpPerPoss)}</td>
@@ -581,7 +624,7 @@ export function PlayerStatsPanel({
                     {(() => { const v = avgAdvField('offRating'); return <td style={{ ...TD, color: ortgCol(v) }}>{fmt(v)}</td>; })()}
                     <td style={TD}>{fmt(avgAdvField('efgPct'), '%')}</td>
                     <td style={TD}>{fmt(avgAdvField('ftRate'))}</td>
-                    <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgAdvField('ptsProd'))}</td>
+                    <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgAdvPtsProd)}</td>
                     <td style={TD}>{fmt(avgAdvField('astPct'), '%')}</td>
                     <td style={TD}>{fmt(avgAdvField('tovPct'), '%')}</td>
                     <td style={TD}>{fmt(avgAdvField('bpPerPoss'))}</td>

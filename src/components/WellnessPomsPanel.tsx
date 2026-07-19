@@ -162,6 +162,7 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
         <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
           <Card className="md:col-span-1" style={{ display: 'flex', flexDirection: 'column', alignSelf: 'start' }}>
             <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={14}
+              info="état émotionnel du moment"
               right={<span style={{ color: '#475569', fontSize: '0.7rem' }}>{historyAsc.length} saisie{historyAsc.length > 1 ? 's' : ''}</span>}
             >Profil POMS</CardTitle>
             <div style={{ position: 'relative', height: RADAR_HEIGHT }}>

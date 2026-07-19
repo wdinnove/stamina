@@ -71,6 +71,8 @@ function getNotifUrl(n: AppNotification): string | null {
   if (type === 'medical_updated')  return entity_id ? `/medical/record/${entity_id}` : '/medical';
   if (type === 'action_added')     return '/actions';
   if (type === 'action_deleted')   return '/actions';
+  if (type === 'exercise_added')   return entity_id ? `/exercises/${entity_id}` : '/exercises';
+  if (type === 'exercise_updated') return entity_id ? `/exercises/${entity_id}` : '/exercises';
   if (type === 'rpe_added')        return entity_id ? `/sessions/${entity_id}` : '/rpe';
   if (type === 'wellness_added')   return entity_id ? `/wellness/new/${entity_id}` : '/wellness';
   if (type === 'session_added')    return entity_id ? `/sessions/${entity_id}` : '/sessions';

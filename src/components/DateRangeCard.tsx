@@ -91,6 +91,11 @@ interface DateRangeCardProps {
   style?:       React.CSSProperties;
   /** Champ(s) de filtre additionnel(s) — même style FilterField, affiché à côté de Période/Du/Au */
   extra?:       ReactNode;
+  /** Bornes de la saison en cours — empêche de sélectionner une date "Personnalisé" hors saison,
+   * ce qui ferait diverger les onglets dont les données sous-jacentes sont bornées à la saison
+   * (ex. Vue d'ensemble) de ceux qui interrogent tout l'historique (ex. RPE/Bien-être). */
+  min?:         string;
+  max?:         string;
 }
 
 const CUSTOM = 'custom';
@@ -126,7 +131,7 @@ export function PeriodFields({ from, to, preset, onPreset, onFrom, onTo }: {
 }
 
 /** Contenu commun (select preset + inputs de dates) — utilisé dans la barre desktop et dans la modale mobile. */
-function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, layout }: DateRangeCardProps & { layout: 'row' | 'stacked' }) {
+function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, layout, min, max }: DateRangeCardProps & { layout: 'row' | 'stacked' }) {
   const selectValue = preset === null ? CUSTOM : String(preset);
   const handlePresetSelect = (v: string) => {
     if (v === CUSTOM) return;
@@ -151,8 +156,8 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, l
         <style>{`.stacked-filters > fieldset { width: 100% !important; }`}</style>
         {extra}
         {presetField}
-        <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
-        <FilterField legend="Au"><input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
+        <FilterField legend="Du"><input type="date" value={from} min={min} max={max} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
+        <FilterField legend="Au"><input type="date" value={to}   min={min} max={max} onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
       </div>
     );
   }
@@ -161,15 +166,15 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, l
       {extra}
       {presetField}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <FilterField legend="Du"><input type="date" value={from} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
+        <FilterField legend="Du"><input type="date" value={from} min={min} max={max} onChange={e => onFrom(e.target.value)} style={filterControlStyle} /></FilterField>
         <span style={{ color: '#475569', fontSize: '0.75rem' }}>→</span>
-        <FilterField legend="Au"><input type="date" value={to}   onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
+        <FilterField legend="Au"><input type="date" value={to}   min={min} max={max} onChange={e => onTo(e.target.value)}   style={filterControlStyle} /></FilterField>
       </div>
     </div>
   );
 }
 
-export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style, extra }: DateRangeCardProps) {
+export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style, extra, min, max }: DateRangeCardProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -198,7 +203,7 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style,
                 <X size={18} />
               </button>
             </div>
-            <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} layout="stacked" />
+            <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} min={min} max={max} layout="stacked" />
             <button onClick={() => setMobileOpen(false)} style={{
               width: '100%', padding: '10px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6,
               color: '#0D0F14', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700,
@@ -212,7 +217,7 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style,
       {/* ── Desktop : titre à gauche, champs à droite ── */}
       <div className="hidden md:block">
         <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
-          right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} layout="row" />}
+          right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} min={min} max={max} layout="row" />}
         >Filtres</CardTitle>
       </div>
 

@@ -19,22 +19,23 @@ export function HeroCardShell({ icon, iconBg, title, ctaLabel, onOpen, children,
   return (
     <div
       onClick={onOpen}
+      className="px-4 py-3 md:p-[18px_20px] min-h-[110px] md:min-h-[160px]"
       style={{
         backgroundColor: '#161920', border: '1px solid #2A2F3A', borderLeft: `3px solid ${borderColor}`,
-        borderRadius: 10, padding: '18px 20px', minHeight: 160,
+        borderRadius: 10, position: 'relative',
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
         cursor: onOpen ? 'pointer' : 'default',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
-          <div style={{
-            width: 42, height: 42, borderRadius: '50%', backgroundColor: iconBg, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+      <div className="gap-2 mb-2 md:gap-3 md:mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="gap-2 md:gap-3" style={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+          <div
+            className="w-7 h-7 md:w-[42px] md:h-[42px] [&>svg]:!w-3.5 [&>svg]:!h-3.5 md:[&>svg]:!w-5 md:[&>svg]:!h-5"
+            style={{ borderRadius: '50%', backgroundColor: iconBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
             {icon}
           </div>
-          <p style={{ color: '#F1F5F9', fontSize: '0.95rem', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</p>
+          <p className="text-[0.78rem] md:text-[0.95rem]" style={{ color: '#F1F5F9', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</p>
         </div>
         {headerRight && <div style={{ flexShrink: 0 }}>{headerRight}</div>}
       </div>
@@ -44,12 +45,19 @@ export function HeroCardShell({ icon, iconBg, title, ctaLabel, onOpen, children,
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 6 }}>{footerLeft}</div>
         {ctaLabel && onOpen && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 0 4px 12px', marginRight: -4 }}>
+          <div className="hidden md:flex" style={{ alignItems: 'center', gap: 5, padding: '4px 0 4px 12px', marginRight: -4 }}>
             <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 500 }}>{ctaLabel}</span>
             <ArrowRight size={14} color="#475569" />
           </div>
         )}
       </div>
+
+      {ctaLabel && onOpen && (
+        <ArrowRight
+          size={14} color="#475569" className="md:hidden"
+          style={{ position: 'absolute', top: '50%', right: 16, transform: 'translateY(-50%)' }}
+        />
+      )}
     </div>
   );
 }
@@ -64,20 +72,22 @@ export function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerR
 }) {
   return (
     <HeroCardShell icon={icon} iconBg={iconBg} title={title} ctaLabel={ctaLabel} onOpen={onOpen} headerRight={headerRight} borderColor={borderColor}>
-      <div style={{ display: 'flex', gap: 24 }}>
+      <div className="gap-4 md:gap-6" style={{ display: 'flex' }}>
         {stats.map(s => {
           const isNumber = typeof s.value === 'number';
           const displayValue = isNumber && s.decimals !== undefined ? (s.value as number).toFixed(s.decimals) : s.value;
           return (
             <div key={s.label}>
-              <div style={{
-                color: isNumber && s.value === 0 ? '#475569' : s.color,
-                fontSize: isNumber ? '1.7rem' : '1.1rem', fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap',
-                fontFamily: isNumber ? 'JetBrains Mono, monospace' : undefined,
-              }}>
+              <div
+                className={isNumber ? 'text-[1.25rem] md:text-[1.7rem]' : 'text-[0.85rem] md:text-[1.1rem]'}
+                style={{
+                  color: isNumber && s.value === 0 ? '#475569' : s.color,
+                  fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap',
+                  fontFamily: isNumber ? 'JetBrains Mono, monospace' : undefined,
+                }}>
                 {displayValue}
               </div>
-              <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5, whiteSpace: 'nowrap' }}>{s.label}</div>
+              <div className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', marginTop: 5, whiteSpace: 'nowrap' }}>{s.label}</div>
             </div>
           );
         })}

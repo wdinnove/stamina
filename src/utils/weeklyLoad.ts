@@ -32,8 +32,10 @@ export function getWeekTier(ua: number, lightMax = DEFAULT_THRESHOLDS.lightMax, 
     ?? { max: Infinity, label: 'Surcharge', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' };
 }
 
+import { roundedAvg } from './avg';
+
 export interface WeeklyLoadRow { date: string; playerId: string; rpe: number; actualDuration?: number; plannedDuration: number }
-export interface WeeklyLoadBucket { week: string; load: number; players: number }
+export interface WeeklyLoadBucket { week: string; load: number; players: number; avgRpe: number | null }
 
 /**
  * Regroupe des lignes de charge par semaine calendaire réelle (lundi = clé), charge totale
@@ -43,17 +45,18 @@ export interface WeeklyLoadBucket { week: string; load: number; players: number 
  * Filtrer `rows` sur la période voulue avant l'appel ; résultat trié par semaine croissante.
  */
 export function weeklyLoadBuckets(rows: WeeklyLoadRow[]): WeeklyLoadBucket[] {
-  const weekMap = new Map<string, { load: number; players: Set<string> }>();
+  const weekMap = new Map<string, { load: number; players: Set<string>; rpes: number[] }>();
   for (const r of rows) {
     const wk = mondayIso(r.date);
-    if (!weekMap.has(wk)) weekMap.set(wk, { load: 0, players: new Set() });
+    if (!weekMap.has(wk)) weekMap.set(wk, { load: 0, players: new Set(), rpes: [] });
     const w = weekMap.get(wk)!;
     w.load += r.rpe * (r.actualDuration ?? r.plannedDuration);
     w.players.add(r.playerId);
+    w.rpes.push(r.rpe);
   }
   return [...weekMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([week, w]) => ({ week, load: w.load / Math.max(w.players.size, 1), players: w.players.size }));
+    .map(([week, w]) => ({ week, load: w.load / Math.max(w.players.size, 1), players: w.players.size, avgRpe: roundedAvg(w.rpes) }));
 }
 
 /**

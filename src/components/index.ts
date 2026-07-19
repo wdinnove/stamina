@@ -39,6 +39,7 @@ export type { TeamCompareDataset } from './TeamCompareStatBlocks';
 export { TeamCompareByMatch } from './TeamCompareByMatch';
 export { TeamCompareBySeason } from './TeamCompareBySeason';
 export { TeamCompareByPeriod } from './TeamCompareByPeriod';
+export { TeamQuarterBreakdown } from './TeamQuarterBreakdown';
 export { TeamMedicalOverview } from './TeamMedicalOverview';
 export { StatDisplayToggle } from './StatDisplayToggle';
 export type { StatDisplayMode } from './StatDisplayToggle';

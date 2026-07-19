@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Activity, ShieldAlert, BarChart2, Heart, CheckSquare, UserCheck, Ambulance } from 'lucide-react';
-import { rpeApi, wellnessApi, statsApi, actionsApi } from '../api';
+import { statsApi, actionsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
+import { usePlayerAllTimeHistory } from '../hooks/usePlayerAllTimeHistory';
 import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, HeroCard, HeroCardShell, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
@@ -15,13 +16,13 @@ import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { DatePreset } from '../components/DateRangeCard';
 import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
 import { wellnessScoreColor, wellnessAvg, wellnessTier } from '../utils/wellness';
-import { mondayIso, getWeekTier } from '../utils/weeklyLoad';
+import { mondayIso, getWeekTier, weeklyLoadBuckets } from '../utils/weeklyLoad';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { evalColor } from '../data';
 import { playerNameFull } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
 import { detectRiskAlerts, type PlayerCrossData } from '../data/crossAnalysis';
-import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat, Action } from '../data/types';
+import type { MatchStat, TeamMatchStat, Action } from '../data/types';
 
 function isoDaysAgo(days: number): string {
   const d = new Date();
@@ -40,7 +41,6 @@ const TAB_SLUGS: Record<string, Tab> = {
   'statistiques':           'stats-basic',
   'statistiques-brutes':    'stats-basic',
   'statistiques-avancees':  'stats-advanced',
-  'statistiques-par-saison':'stats-basic',
   'dynamique':              'dynamic',
   'forme':                  'overview', // ancien onglet "Tendances" — son hero de forme vit désormais sur la Vue d'ensemble
   'tendances':              'dynamic', // ancien alias — "Par période" (période vs saison)
@@ -112,8 +112,7 @@ export default function PerformanceIndividuellePage() {
   }, [loading, id, roster.length, !!pd]);
 
   // ── Données joueur all-time (dynamique / charge physique / bien-être / statistiques) ──
-  const [rpe, setRpe] = useState<RPEEntry[]>([]);
-  const [wellness, setWellness] = useState<WellnessEntry[]>([]);
+  const { rpe, wellness } = usePlayerAllTimeHistory(id);
   const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]>([]);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, TeamMatchStat>>(new Map());
@@ -123,15 +122,7 @@ export default function PerformanceIndividuellePage() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
-      rpeApi.listPlayerHistory(id),
-      wellnessApi.getByPlayer(id),
-      actionsApi.getByPlayer(id),
-    ]).then(([rpeData, wellnessData, actionsData]) => {
-      setRpe(rpeData);
-      setWellness(wellnessData);
-      setActions(actionsData);
-    });
+    actionsApi.getByPlayer(id).then(setActions);
     statsApi.getPlayerStatsGroupedBySeason(id).then(setSeasonGroupedStats);
   }, [id]);
 
@@ -222,20 +213,8 @@ export default function PerformanceIndividuellePage() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(e => ({ date: fmtDateWithDay(e.date), load: Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)), rpe: e.rpe })),
   [rpeFiltered]);
-  const loadWeekBuckets = useMemo(() => {
-    const byWeek = new Map<string, { load: number; rpes: number[] }>();
-    rpeFiltered.forEach(e => {
-      const wk = mondayIso(e.date);
-      if (!byWeek.has(wk)) byWeek.set(wk, { load: 0, rpes: [] });
-      const w = byWeek.get(wk)!;
-      w.load += e.rpe * (e.actualDuration ?? e.plannedDuration);
-      w.rpes.push(e.rpe);
-    });
-    return [...byWeek.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([week, w]) => ({ week, load: w.load, rpe: Math.round(w.rpes.reduce((s, v) => s + v, 0) / w.rpes.length * 10) / 10 }));
-  }, [rpeFiltered]);
-  const loadWeekCombo = loadWeekBuckets.map(b => ({ date: fmtDate(b.week), load: Math.round(b.load), rpe: b.rpe }));
+  const loadWeekBuckets = useMemo(() => weeklyLoadBuckets(rpeFiltered), [rpeFiltered]);
+  const loadWeekCombo = loadWeekBuckets.map(b => ({ date: fmtDate(b.week), load: Math.round(b.load), rpe: b.avgRpe ?? 0 }));
   const injuryMarkWeeks = new Set(loadWeekBuckets.map(b => b.week));
   const injuryMarkLabels = allInjuries
     .filter(inj => injuryMarkWeeks.has(mondayIso(inj.date)))
@@ -295,6 +274,7 @@ export default function PerformanceIndividuellePage() {
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
               onFrom={dateRange.setFrom} onTo={dateRange.setTo}
+              min={seasonStart} max={seasonEnd}
               extra={activeTab === 'rpe' ? (
                 <FilterField legend="Affichage">
                   <select value={rpeDisplay} onChange={e => setRpeDisplay(e.target.value as 'chart' | 'table')} style={filterControlStyle}>
@@ -349,10 +329,10 @@ export default function PerformanceIndividuellePage() {
             ctaLabel="Voir le risque" onOpen={() => setActiveTab('charge-physique')}
             borderColor={atRiskNow ? '#EF4444' : '#00E5A0'}
           >
-            <div style={{ color: atRiskNow ? '#EF4444' : '#00E5A0', fontSize: '1.4rem', fontWeight: 800, lineHeight: 1 }}>
+            <div className="text-[1.1rem] md:text-[1.4rem]" style={{ color: atRiskNow ? '#EF4444' : '#00E5A0', fontWeight: 800, lineHeight: 1 }}>
               {atRiskNow ? 'À risque' : 'RAS'}
             </div>
-            <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5 }}>
+            <div className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', marginTop: 5 }}>
               {atRiskNow ? 'Blessure active ou charge à surveiller' : 'Aucun facteur de risque identifié'}
             </div>
           </HeroCardShell>
@@ -423,9 +403,14 @@ export default function PerformanceIndividuellePage() {
 
       {/* ══ RPE ══════════════════════════════════════════════════════════════ */}
       {activeTab === 'rpe' && (
-        rpe.length === 0
-          ? <EmptyState message={`Aucune donnée RPE pour ${playerNameFull(pd.player)}.`} />
-          : <PlayerLoadPanel history={rpe} filtered={rpeFiltered} thresholds={thresholds} showSeasonDiff={showSeasonDiff} display={rpeDisplay} onDisplayChange={setRpeDisplay} />
+        <div>
+          <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px', lineHeight: 1.5 }}>
+            Détail séance par séance et historique de charge. Pour le verdict de risque de blessure, voir l'onglet Charge physique.
+          </p>
+          {rpe.length === 0
+            ? <EmptyState message={`Aucune donnée RPE pour ${playerNameFull(pd.player)}.`} />
+            : <PlayerLoadPanel history={rpe} filtered={rpeFiltered} thresholds={thresholds} showSeasonDiff={showSeasonDiff} display={rpeDisplay} onDisplayChange={setRpeDisplay} />}
+        </div>
       )}
 
       {/* ══ BIEN-ÊTRE ═══════════════════════════════════════════════════════ */}
@@ -466,6 +451,9 @@ export default function PerformanceIndividuellePage() {
       {/* ══ CHARGE PHYSIQUE (synthèse RPE × ACWR × Fraîcheur × Risque × Historique blessure) ══ */}
       {activeTab === 'load' && (
         <div>
+          <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px', lineHeight: 1.5 }}>
+            Vue d'ensemble décisionnelle : risque de blessure et charge en un coup d'œil. Pour le détail séance par séance, voir l'onglet RPE.
+          </p>
           {/* Verdict — à risque maintenant */}
           <RiskVerdictCard
             title="Risque de blessure — maintenant"
@@ -486,7 +474,7 @@ export default function PerformanceIndividuellePage() {
               {
                 id: 'alert',
                 active: !!latestRedAlert,
-                label: latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent',
+                label: `${latestRedAlert ? (ALERT_TITLE_PLAIN[latestRedAlert.title] ?? latestRedAlert.title) : 'Aucun signal d\'alerte récent'} (21 j)`,
               },
             ]}
           />
@@ -504,7 +492,9 @@ export default function PerformanceIndividuellePage() {
               statItems={[
                 {
                   label: 'Charge moyenne / semaine',
-                  value: avgWeeklyLoad !== null && avgWeeklyLoad > 0 ? `${avgWeeklyLoad.toLocaleString('fr')} UA` : '—',
+                  value: avgWeeklyLoad !== null && avgWeeklyLoad > 0
+                    ? <>{avgWeeklyLoad.toLocaleString('fr')} <span title="Unité Arbitraire = RPE × durée de la séance (minutes)">UA</span></>
+                    : '—',
                   sub: weekTier ? <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} /> : undefined,
                   color: weekTier ? weekTier.color : undefined,
                 },
@@ -515,14 +505,16 @@ export default function PerformanceIndividuellePage() {
                   color: rpeAvgRecent !== null ? rpeColor(rpeAvgRecent) : undefined,
                 },
                 {
-                  label: 'Charge récente vs habituelle',
-                  value: acwr !== null ? acwr.toFixed(2) : '—',
+                  label: 'Charge récente vs habituelle (à ce jour)',
+                  value: acwr !== null
+                    ? <span title="Charge des 7 derniers jours ÷ charge des 28 derniers jours. 1.0 = charge habituelle, au-dessus = charge inhabituellement élevée.">{acwr.toFixed(2)}</span>
+                    : '—',
                   sub: acwrZ ? <Badge color={acwrZ.color} size="sm" label={acwrZ.label} style={{ fontSize: '0.62rem' }} /> : 'Historique insuffisant (28j)',
                   color: acwrZ ? acwrZ.color : undefined,
                 },
                 {
-                  label: 'Fraîcheur',
-                  value: <>{tsb > 0 ? '+' : ''}{tsb.toFixed(1)}</>,
+                  label: 'Fraîcheur (à ce jour)',
+                  value: <span title="Écart entre la forme récente et la forme habituelle. Positif = plus frais, négatif = plus fatigué que d'habitude.">{tsb > 0 ? '+' : ''}{tsb.toFixed(1)}</span>,
                   sub: <Badge color={freshZ.color} size="sm" label={freshZ.label} style={{ fontSize: '0.62rem' }} />,
                   color: freshZ.color,
                 },

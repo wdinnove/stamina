@@ -1,6 +1,7 @@
 import { PCA } from 'ml-pca';
 import { pearson, hasVariance } from '../utils/correlation';
 import { playerNameFull } from '../utils/playerName';
+import { roundedAvg } from '../utils/avg';
 import type { TeamMatchStat, MatchStat, Player } from './types';
 
 export interface PCAPoint { x: number; y: number; win: boolean; label: string }
@@ -80,7 +81,7 @@ export function computePlayerImpact(players: Player[], allStats: MatchStat[]): P
       return {
         playerId: p.id, label: playerNameFull(p),
         corr: pearson(xs, ys), n: ss.length,
-        avgEval: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length * 10) / 10,
+        avgEval: roundedAvg(xs)!,
       };
     })
     .filter((f): f is PlayerImpact => f !== null)

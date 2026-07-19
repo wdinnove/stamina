@@ -5,6 +5,7 @@ import { useDateRange, PeriodFields, type DatePreset } from './DateRangeCard';
 import { GroupPickerBox, GROUP_A_COLOR, GROUP_B_COLOR } from './FilterField';
 import { TeamCompareStatBlocks } from './TeamCompareStatBlocks';
 import { StatDisplayToggle } from './StatDisplayToggle';
+import { roundedAvg } from '../utils/avg';
 import type { RPEEntry, WellnessEntry, TeamMatchStat, MatchStat } from '../data/types';
 
 interface Props {
@@ -47,10 +48,8 @@ export function TeamCompareByPeriod({ teamStats, allStats, allRpe, allWellness, 
   const inRangeA = (iso: string) => iso >= rangeA.from && iso <= rangeA.to;
   const inRangeB = (iso: string) => iso >= rangeB.from && iso <= rangeB.to;
 
-  const evalAvgOf = (inRange: (iso: string) => boolean) => {
-    const vals = allStats.filter(m => inRange(m.date) && m.eval !== null).map(m => Number(m.eval));
-    return vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length * 10) / 10 : null;
-  };
+  const evalAvgOf = (inRange: (iso: string) => boolean) =>
+    roundedAvg(allStats.filter(m => inRange(m.date) && m.eval !== null).map(m => Number(m.eval)));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

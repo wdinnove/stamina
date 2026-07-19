@@ -159,24 +159,26 @@ function TrendHeroBody({ scope }: { scope: CrossScope }) {
         }
       `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{
-          width: 46, height: 46, borderRadius: '50%', flexShrink: 0, alignSelf: 'center',
-          backgroundColor: `${verdict.color}1F`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+        <div
+          className="w-9 h-9 md:w-[46px] md:h-[46px] [&>svg]:!w-4 [&>svg]:!h-4 md:[&>svg]:!w-[22px] md:[&>svg]:!h-[22px]"
+          style={{
+            borderRadius: '50%', flexShrink: 0, alignSelf: 'center',
+            backgroundColor: `${verdict.color}1F`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
           <Activity size={22} color={verdict.color} />
         </div>
         <div style={{ flex: 1, minWidth: 200, alignSelf: 'center' }}>
-          <div style={{ fontSize: '0.68rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: 3 }}>
+          <div className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: 3 }}>
             Forme actuelle — {TRAILING_WEEKS} dernières semaines
           </div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: verdict.color }}>{verdict.label}</div>
+          <div className="text-[1.05rem] md:text-[1.3rem]" style={{ fontWeight: 800, color: verdict.color }}>{verdict.label}</div>
         </div>
         <div className="trend-hero-metrics" style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignSelf: 'center' }}>
           {metrics.map(m => {
             const meta = directionMeta(m.trend.direction, m.trend.pct);
             return (
               <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                <span style={{ fontSize: '0.78rem', color: meta.color, fontWeight: meta.label === 'Stable' ? 400 : 700, textAlign: 'right' }}>
+                <span className="text-[0.68rem] md:text-[0.78rem]" style={{ color: meta.color, fontWeight: meta.label === 'Stable' ? 400 : 700, textAlign: 'right' }}>
                   {m.label} — {meta.label.toLowerCase()}
                 </span>
                 <meta.Icon size={13} color={meta.color} />

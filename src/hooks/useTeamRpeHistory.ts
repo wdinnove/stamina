@@ -200,7 +200,7 @@ export function useTeamRpeHistory(
         if (!playerMap.has(r.playerId)) playerMap.set(r.playerId, { rpes: [], sessions: new Set(), load: 0, rpes3w: [] });
         const p    = playerMap.get(r.playerId)!;
         const sess = sessionMap.get(r.sessionId);
-        const dur  = sess?.plannedDuration ?? 0;
+        const dur  = r.actualDuration ?? sess?.plannedDuration ?? 0;
         p.rpes.push(r.rpe);
         p.sessions.add(r.sessionId);
         p.load += r.rpe * dur;

@@ -384,9 +384,10 @@ function RangeToggle({ value, onChange }: { value: DateRange; onChange: (v: Date
         const active = value === key;
         return (
           <button key={key} onClick={() => onChange(key)}
+            className="px-2 py-1 text-[0.7rem] md:px-[14px] md:py-[6px] md:text-[0.8rem]"
             style={{
-              padding: '6px 14px', borderRadius: 4, border: 'none', cursor: 'pointer',
-              fontSize: '0.8rem', fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+              borderRadius: 4, border: 'none', cursor: 'pointer',
+              fontWeight: active ? 600 : 400, transition: 'all 0.15s',
               backgroundColor: active ? '#1E2229' : 'transparent',
               color: active ? '#00E5A0' : '#94A3B8',
             }}>

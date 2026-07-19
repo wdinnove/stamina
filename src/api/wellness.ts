@@ -3,6 +3,7 @@ import type { WellnessEntry, WellnessEntryMethod } from '../data/types';
 
 export interface ListWellnessFilters {
   playerId?: string;
+  playerIds?: string[];
   from?: string;
   to?: string;
 }
@@ -51,7 +52,8 @@ export const wellnessApi = {
   },
   async list(filters: ListWellnessFilters = {}): Promise<WellnessEntry[]> {
     let query = supabase.from('wellness_entries').select('*');
-    if (filters.playerId) query = query.eq('player_id', filters.playerId);
+    if (filters.playerId)          query = query.eq('player_id', filters.playerId);
+    if (filters.playerIds?.length) query = query.in('player_id', filters.playerIds);
     if (filters.from)     query = query.gte('date', filters.from);
     if (filters.to)       query = query.lte('date', filters.to);
     const { data, error } = await query.order('date', { ascending: false }).limit(500);

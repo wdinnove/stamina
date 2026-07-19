@@ -4,6 +4,7 @@ import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import type { PlayerAdvancedStats } from '../data/playerAdvanced';
 import { wellnessAvg } from '../utils/wellness';
 import { averageWeeklyLoad } from '../utils/weeklyLoad';
+import { roundedAvg } from '../utils/avg';
 
 /**
  * Rendu des blocs "Tendances" (Performance/Charge/Bien-être/Scoring/Défense/Playmaking/Rebonds)
@@ -165,8 +166,8 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
   const p = (k: NumKey) => pm(matchP, k);
   const s = (k: NumKey) => pm(matchS, k);
 
-  const evalP = avg(matchP.filter(m => m.eval !== null).map(m => m.eval!));
-  const evalS = avg(matchS.filter(m => m.eval !== null).map(m => m.eval!));
+  const evalP = roundedAvg(matchP.filter(m => m.eval !== null).map(m => m.eval!));
+  const evalS = roundedAvg(matchS.filter(m => m.eval !== null).map(m => m.eval!));
   const pmP   = avg(matchP.filter(m => m.plusMinus !== null).map(m => m.plusMinus!));
   const pmS   = avg(matchS.filter(m => m.plusMinus !== null).map(m => m.plusMinus!));
 
