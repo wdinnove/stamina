@@ -1,42 +1,31 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare } from 'lucide-react';
-import { Badge, StatusBadge, PlayerAvatar, HeroCard, HeroCardShell, SlideCarousel, CarouselDots } from '../components';
-import { playersApi, medicalApi, actionsApi, matchesApi, rpeApi } from '../api';
+import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare, BarChart2, Users } from 'lucide-react';
+import { Badge, StatusBadge, PlayerAvatar, MiniStatCard } from '../components';
+import { playersApi, actionsApi, matchesApi, rpeApi } from '../api';
+import { staffApi } from '../api/staff';
 import { profileApi } from '../api/profile';
+import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { detectRiskAlerts, type PlayerCrossData } from '../data/crossAnalysis';
 import type { LoadThresholds } from '../contexts/TeamSeasonContext';
 import { wellnessAvg, aggregateTeamWellnessDaily, wellnessTier, worstWellnessAxis, type WellnessAxisAlert } from '../utils/wellness';
 import { playerNameShort, playerNameFull } from '../utils/playerName';
-import type { Player, Action, MedicalRecord, Match } from '../data/types';
+import type { Player, Action, Match } from '../data/types';
 import { rpeColor, rpeLabel, computeAcwr, acwrZone, avgRpe } from '../utils/rpe';
 import { averageWeeklyLoad } from '../utils/weeklyLoad';
-import { fmtDateShort } from '../utils/dateFormat';
-import { fmt1 } from '../utils/format';
+import { fmtDate } from '../utils/dateFormat';
 import { evalColor } from '../data';
-
-type DateRange = '21j' | 'season';
 
 function localDate(offsetDays = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
   return d.toLocaleDateString('sv');
 }
-function fmtWeekday(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short' });
-}
-
 interface TrainingSession { id: string; date: string; planned_duration: number; session_type?: string }
 interface SessionSummary  { id: string; date: string; duration: number; load: number | null; avgRpe: number | null; nbPlayers: number; type: string }
 
-const SESSION_TYPE_LABELS: Record<string, string> = {
-  training: 'Entraînement', match: 'Match', gym: 'Gym', rest: 'Repos',
-};
-const SESSION_TYPE_COLORS: Record<string, string> = {
-  training: '#00E5A0', match: '#EF4444', gym: '#F59E0B', rest: '#3B82F6',
-};
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -48,13 +37,8 @@ export default function DashboardPage() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   }), []);
 
-  // Plage de dates affichée sur les cartes/tableau sensibles (Charge physique, Bien-être,
-  // colonnes RPE/Assiduité/Éval du tableau) — Matchs/Entraînements/Actions/Infirmerie et le
-  // risque blessure (ACWR) ne sont eux jamais impactés par ce sélecteur.
-  const [range, setRange] = useState<DateRange>('21j');
-
   // ACWR à la date du jour, par joueur — dérivé de l'historique RPE toutes saisons confondues
-  // (allTimeRpe) pour un calcul correct même en tout début de saison. Indépendant de `range`.
+  // (allTimeRpe) pour un calcul correct même en tout début de saison.
   const acwrByPlayer = useMemo(() => {
     const map = new Map<string, number | null>();
     if (!perfData) return map;
@@ -72,52 +56,37 @@ export default function DashboardPage() {
     () => new Set(recentAlerts.filter(a => a.level === 'red').map(a => a.playerId)),
     [recentAlerts],
   );
-  const atRiskCount = useMemo(() => {
-    if (!perfData) return 0;
-    return perfData.players.filter(pd => {
-      const hasActiveInjury = pd.medical.some(m => m.type === 'injury' && m.status === 'active');
-      const zone = acwrZone(acwrByPlayer.get(pd.player.id) ?? null);
-      return hasActiveInjury || zone?.label === 'Risque modéré' || zone?.label === 'Risque élevé' || redAlertPlayerIds.has(pd.player.id);
-    }).length;
-  }, [perfData, acwrByPlayer, redAlertPlayerIds]);
 
-  // Bien-être par joueur sur la période sélectionnée (21j glissants ou saison entière) :
-  // score moyen de TOUTES les entrées de la période (pas juste la dernière saisie — sinon
-  // le sélecteur 21j/saison n'a souvent aucun effet visible, la dernière entrée tombant déjà
-  // dans les deux fenêtres), et le pire écart d'axe (< 5, "ressenti") observé sur la période.
+  // Bien-être par joueur sur la saison entière : score moyen de TOUTES les entrées (pas juste
+  // la dernière saisie) et pire écart d'axe (< 5, "ressenti") observé sur la saison.
   const wellnessStatsByPlayer = useMemo(() => {
     const map = new Map<string, { avgScore: number | null; worstDim: WellnessAxisAlert | null }>();
     if (!perfData) return map;
-    const cutoff = range === '21j' ? localDate(-21) : null;
     for (const pd of perfData.players) {
-      const pool = cutoff ? pd.wellness.filter(w => w.date >= cutoff) : pd.wellness;
       map.set(pd.player.id, {
-        avgScore: wellnessAvg(pool.map(w => w.score)),
-        worstDim: worstWellnessAxis(pool),
+        avgScore: wellnessAvg(pd.wellness.map(w => w.score)),
+        worstDim: worstWellnessAxis(pd.wellness),
       });
     }
     return map;
-  }, [perfData, range]);
+  }, [perfData]);
 
   // Bien-être équipe — mêmes fonctions que la page Bien-être / Historique équipe
   // (agrégat quotidien puis moyenne des jours) pour rester cohérent avec cette page.
   const teamWellnessNow = useMemo(() => {
     if (!perfData) return null;
-    const cutoff = range === '21j' ? localDate(-21) : null;
-    const allEntries = perfData.players.flatMap(pd => cutoff ? pd.wellness.filter(w => w.date >= cutoff) : pd.wellness);
+    const allEntries = perfData.players.flatMap(pd => pd.wellness);
     const daily = aggregateTeamWellnessDaily(allEntries);
     return wellnessAvg(daily.map(e => e.score));
-  }, [perfData, range]);
+  }, [perfData]);
 
   const [userName,        setUserName]        = useState('');
   const [players,         setPlayers]         = useState<Player[]>([]);
-  const [injuries,        setInjuries]        = useState<MedicalRecord[]>([]);
   const [actions,         setActions]         = useState<Action[]>([]);
+  const [myStaffId,       setMyStaffId]       = useState<string | null>(null);
   const [last3Matches,    setLast3Matches]    = useState<Match[]>([]);
   const [last3Sessions,   setLast3Sessions]   = useState<SessionSummary[]>([]);
   const [kpiStats,          setKpiStats]          = useState<{
-    wins: number; losses: number;
-    avgLoad21d: number | null; avgRpe21d: number | null;
     avgLoadSeason: number | null; avgRpeSeason: number | null;
   } | null>(null);
   const [loading,         setLoading]         = useState(false);
@@ -130,31 +99,30 @@ export default function DashboardPage() {
     if (!selected || teamLoading) return;
     setLoading(true);
     setPlayers([]);
-    setInjuries([]);
     setActions([]);
+    setMyStaffId(null);
     setLast3Matches([]);
     setLast3Sessions([]);
     setKpiStats(null);
 
     const from30 = localDate(-30);
-    const from21 = localDate(-21); // fenêtre 21 jours glissants
 
     Promise.all([
       playersApi.listBySeason(selected.season.id),
-      medicalApi.getActiveInjuries(),
       actionsApi.list({ teamId: selected.team.id }),
       rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, from30, today),
       matchesApi.listBySeason(selected.team.id, selected.season.id),
+      staffApi.listByTeam(selected.team.id),
+      supabase.auth.getUser(),
     ])
-      .then(async ([seasonPlayers, rawInjuries, allActions, sessResult, matchesList]) => {
+      .then(async ([seasonPlayers, allActions, sessResult, matchesList, teamStaff, { data: { user } }]) => {
+        setMyStaffId(teamStaff.find(s => s.profileId === user?.id)?.id ?? null);
         // Matchs
         setLast3Matches(matchesList.slice(0, 3));
 
         setPlayers(seasonPlayers);
 
         const seasonPlayerIds = new Set(seasonPlayers.map(p => p.id));
-        const activeInjuries = rawInjuries.filter(inj => seasonPlayerIds.has(inj.playerId));
-        setInjuries(activeInjuries);
 
         setActions(
           allActions
@@ -194,11 +162,6 @@ export default function DashboardPage() {
           setLast3Sessions(recentSessions.map(s => ({ id: s.id, date: s.date, duration: s.planned_duration, type: s.session_type ?? 'training', load: null, avgRpe: null, nbPlayers: 0 })));
         }
 
-        // ── Charge/RPE équipe — calculées à la fois sur 21j glissants et sur toute la
-        // saison ; le sélecteur en haut de page choisit laquelle des deux afficher. ─────
-        const kpiWins   = matchesList.filter(m => m.result === 'win').length;
-        const kpiLosses = matchesList.filter(m => m.result === 'loss').length;
-
         const allSessRows = await rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, undefined, today);
         const allSessIds  = allSessRows.map(s => s.id);
         const seasonRpeRows2 = await rpeApi.listRpeDetailsBySessionIds(allSessIds);
@@ -210,20 +173,9 @@ export default function DashboardPage() {
           rpe: r.rpe, actual_duration: r.actualDuration ?? null, player_id: r.playerId, session_id: r.sessionId,
         }));
 
-        // 21 jours glissants — même fonction averageWeeklyLoad (bucket semaine réel, ÷ joueurs
-        // distincts, moyenne sur les semaines actives) que la vue "Saison" et que RPEPage/
-        // useTeamRpeHistory/PlayerLoadPanel, pour rester cohérent partout dans l'app.
-        const rows21d = seasonRpeRows.filter(r => (dateMap2.get(r.session_id) ?? '') >= from21);
-        const avgLoad21d = averageWeeklyLoad(rows21d.map(r => ({
-          date: dateMap2.get(r.session_id) ?? '',
-          playerId: r.player_id,
-          rpe: r.rpe,
-          actualDuration: r.actual_duration ?? undefined,
-          plannedDuration: durMap2.get(r.session_id) ?? 0,
-        })).filter(r => r.date));
-        const avgRpe21d = avgRpe(rows21d.map(r => r.rpe));
-
-        // Saison entière : même fonction, sur tout l'historique de la saison.
+        // Charge/RPE équipe — moyenne sur toute la saison. Même fonction averageWeeklyLoad
+        // (bucket semaine réel, ÷ joueurs distincts, moyenne sur les semaines actives) que
+        // RPEPage/useTeamRpeHistory/PlayerLoadPanel, pour rester cohérent partout dans l'app.
         const avgLoadSeason = averageWeeklyLoad(seasonRpeRows.map(r => ({
           date: dateMap2.get(r.session_id) ?? '',
           playerId: r.player_id,
@@ -233,41 +185,52 @@ export default function DashboardPage() {
         })).filter(r => r.date));
         const avgRpeSeason = avgRpe(seasonRpeRows.map(r => r.rpe));
 
-        setKpiStats({
-          wins: kpiWins, losses: kpiLosses,
-          avgLoad21d, avgRpe21d, avgLoadSeason, avgRpeSeason,
-        });
+        setKpiStats({ avgLoadSeason, avgRpeSeason });
 
         setLoading(false);
       })
       .catch(err => { console.error('[Dashboard]', err); setLoading(false); });
   }, [selected, teamLoading]);
 
-  // Actions : 3 items max, retard en premier
-  const topActions = [
-    ...actions.filter(a => a.dueDate < today),
-    ...actions.filter(a => a.dueDate >= today),
-  ].slice(0, 3);
+  // Actions assignées à moi (staff connecté) — carte "hero"
+  const myActions = myStaffId ? actions.filter(a => a.assignedTo === myStaffId) : [];
+  const myOverdueActions = myActions.filter(a => a.dueDate < today);
+  const myActionsColor = myActions.length === 0 ? '#475569' : myOverdueActions.length > 0 ? '#EF4444' : '#00E5A0';
+  const myActionsSubtitle = myOverdueActions.length > 0
+    ? `${myOverdueActions.length} en retard`
+    : myActions[0]?.title ?? 'Aucune tâche en cours';
 
-  // Infirmerie — comptes pour la carte "hero"
-  const injuredCount     = players.filter(p => p.status === 'injured').length;
-  const limitedCount     = players.filter(p => p.status === 'limited').length;
-  const inTreatmentCount = injuries.filter(inj => !!inj.treatment?.trim()).length;
-  const availablePct = players.length > 0 ? Math.round((players.length - injuredCount) / players.length * 100) : null;
-  const availableColor = availablePct === null ? '#475569'
-    : availablePct >= 90 ? '#00E5A0'
-    : availablePct >= 75 ? '#F59E0B' : '#EF4444';
+  // Infirmerie — carte "hero" : nombre de blessés (statut injured uniquement, pas limité)
+  const injuredCount = players.filter(p => p.status === 'injured').length;
+  const injuredColor = injuredCount > 0 ? '#EF4444' : '#00E5A0';
 
-  // Bien-être équipe — carte "hero" (sensible à `range`) : nombre de joueurs dont le score
-  // global MOYEN sur la période est sous 5.
+  // Dernier match / dernier entraînement — cartes "hero"
+  const lastMatch = last3Matches[0] ?? null;
+  const lastMatchColor = lastMatch ? (lastMatch.result === 'win' ? '#00E5A0' : '#EF4444') : '#475569';
+  const lastMatchScore = lastMatch ? `${lastMatch.result === 'win' ? 'Victoire' : 'Défaite'} ${lastMatch.scoreUs}-${lastMatch.scoreThem}` : '—';
+  const lastMatchSubtitle = lastMatch
+    ? `vs ${lastMatch.opponent} · ${lastMatch.homeAway === 'home' ? 'Domicile' : 'Extérieur'}`
+    : 'Aucun match enregistré';
+
+  const lastSession = last3Sessions.filter(s => s.type !== 'match')[0] ?? null;
+  const lastSessionColor = lastSession?.avgRpe != null ? rpeColor(lastSession.avgRpe) : '#475569';
+  const lastSessionLabel = lastSession?.avgRpe != null ? rpeLabel(Math.round(lastSession.avgRpe)) : '—';
+  const lastSessionSubtitle = lastSession
+    ? `${fmtDate(lastSession.date)} · ${lastSession.duration} min`
+    : 'Aucune séance récente';
+
+  // Bien-être équipe — carte "hero" : score moyen + nb de joueurs sous le seuil d'alerte
   const wellnessAlertCount = [...wellnessStatsByPlayer.values()].filter(s => s.avgScore !== null && s.avgScore < 5).length;
   const teamWellnessTier = teamWellnessNow === null ? null : wellnessTier(teamWellnessNow);
   const teamWellnessColor = teamWellnessTier?.color ?? '#475569';
   const teamWellnessLabel = teamWellnessTier?.label ?? '—';
+  const teamWellnessSubtitle = teamWellnessNow !== null
+    ? `${teamWellnessNow.toFixed(1)}/10 · ${wellnessAlertCount} joueur${wellnessAlertCount > 1 ? 's' : ''} en alerte`
+    : 'Aucune donnée sur la période';
 
-  // Charge physique équipe — carte "hero" (sensible à `range`, mêmes seuils dans les 2 cas)
-  const teamLoadNow = range === '21j' ? (kpiStats?.avgLoad21d ?? null) : (kpiStats?.avgLoadSeason ?? null);
-  const teamRpeNow  = range === '21j' ? (kpiStats?.avgRpe21d ?? null) : (kpiStats?.avgRpeSeason ?? null);
+  // Charge physique équipe — carte "hero" : moyenne sur la saison entière
+  const teamLoadNow = kpiStats?.avgLoadSeason ?? null;
+  const teamRpeNow  = kpiStats?.avgRpeSeason ?? null;
   const teamLoadColor = teamLoadNow === null ? '#475569'
     : teamLoadNow > thresholds.normalMax ? '#EF4444'
     : teamLoadNow > thresholds.normalMax * 2 / 3 ? '#F97316'
@@ -276,6 +239,9 @@ export default function DashboardPage() {
     : teamLoadNow > thresholds.normalMax ? 'Surcharge'
     : teamLoadNow > thresholds.normalMax * 2 / 3 ? 'Élevée'
     : teamLoadNow > thresholds.normalMax / 3 ? 'Soutenue' : 'Normale';
+  const teamLoadSubtitle = teamLoadNow !== null
+    ? `${Math.round(teamLoadNow)} UA/semaine${teamRpeNow !== null ? ` · RPE ${teamRpeNow.toFixed(1)}/10` : ''}`
+    : 'Aucune donnée sur la période';
 
   if (teamLoading) return <div style={{ padding: 24, color: '#94A3B8', fontSize: '0.85rem' }}>Chargement…</div>;
   if (!selected) return (
@@ -299,59 +265,96 @@ export default function DashboardPage() {
     <div className="p-4 md:p-6">
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ color: '#F1F5F9', margin: '0 0 2px' }}>{userName ? `Bonjour ${userName}` : 'Bonjour'}</h1>
-          <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>{todayLabel} · {selected.team.name}</p>
-        </div>
-        <RangeToggle value={range} onChange={setRange} />
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ color: '#F1F5F9', margin: '0 0 2px' }}>{userName ? `Bonjour ${userName}` : 'Bonjour'}</h1>
+        <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>{todayLabel} · {selected.team.name}</p>
       </div>
 
-      {/* 6 cartes "hero" — Matchs / Entraînements / Actions / Infirmerie / Charge physique / Bien-être */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 12, marginBottom: 16 }}>
-        <MatchCarouselCard matches={last3Matches} wins={kpiStats?.wins ?? 0} losses={kpiStats?.losses ?? 0} onOpen={() => navigate('/matches')} />
-        <SessionCarouselCard sessions={last3Sessions.filter(s => s.type !== 'match')} onOpen={() => navigate('/sessions')} />
-        <ActionCarouselCard actions={topActions} totalCount={actions.length} players={players} today={today} onOpen={() => navigate('/actions')} />
-        <HeroCard
-          icon={<Stethoscope size={20} color="#EF4444" />}
+      {/* 6 cartes compactes — Matchs / Entraînements / Actions / Infirmerie / Charge physique / Bien-être */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 16 }}>
+        <MiniStatCard
+          icon={<Trophy size={18} color="#F59E0B" />}
+          iconBg="#F59E0B22"
+          title="Matchs"
+          value={lastMatchScore}
+          valueColor={lastMatchColor}
+          subtitle={lastMatchSubtitle}
+          borderColor={lastMatchColor}
+          onOpen={() => navigate(lastMatch ? `/matches/${lastMatch.id}` : '/matches')}
+        />
+        <MiniStatCard
+          icon={<Dumbbell size={18} color="#00E5A0" />}
+          iconBg="#00E5A022"
+          title="Entraînements"
+          value={lastSessionLabel}
+          valueColor={lastSessionColor}
+          subtitle={lastSessionSubtitle}
+          borderColor={lastSessionColor}
+          onOpen={() => navigate('/sessions')}
+        />
+        <MiniStatCard
+          icon={<CheckSquare size={18} color="#3B82F6" />}
+          iconBg="#3B82F622"
+          title="Actions"
+          value={`${myActions.length} à faire`}
+          valueColor={myActionsColor}
+          subtitle={myActionsSubtitle}
+          borderColor={myActionsColor}
+          onOpen={() => navigate('/actions')}
+        />
+        <MiniStatCard
+          icon={<Stethoscope size={18} color="#EF4444" />}
           iconBg="#EF444422"
           title="Infirmerie"
-          ctaLabel="Voir l'infirmerie"
-          headerRight={availablePct !== null && <Badge color={availableColor} label={`${availablePct}% dispo`} size="sm" style={{ flexShrink: 0 }} />}
-          borderColor={availableColor}
-          stats={[
-            { value: injuredCount, label: `Blessé${injuredCount > 1 ? 's' : ''}`, color: '#EF4444' },
-            { value: limitedCount, label: `Limité${limitedCount > 1 ? 's' : ''}`, color: '#F59E0B' },
-            { value: inTreatmentCount, label: 'En traitement', color: '#3B82F6' },
-          ]}
-          onOpen={() => navigate('/medical/infirmary')}
+          value={`${injuredCount} blessé${injuredCount > 1 ? 's' : ''}`}
+          valueColor={injuredColor}
+          subtitle={`sur ${players.length} joueur${players.length > 1 ? 's' : ''}`}
+          borderColor={injuredColor}
+          onOpen={() => navigate('/performance-collective/medical')}
         />
-        <HeroCard
-          icon={<Activity size={20} color="#8B5CF6" />}
+        <MiniStatCard
+          icon={<Activity size={18} color="#8B5CF6" />}
           iconBg="#8B5CF622"
           title="Charge physique"
-          ctaLabel="Voir le RPE"
-          headerRight={<Badge color={teamLoadColor} label={teamLoadLabel} size="sm" style={{ flexShrink: 0 }} />}
+          value={teamLoadLabel}
+          valueColor={teamLoadColor}
+          subtitle={teamLoadSubtitle}
           borderColor={teamLoadColor}
-          stats={[
-            { value: teamLoadNow ?? 0, label: 'UA / semaine', color: teamLoadColor },
-            { value: teamRpeNow ?? 0, label: 'RPE moyen /10', color: teamRpeNow === null ? '#475569' : rpeColor(teamRpeNow), decimals: 1 },
-            { value: atRiskCount, label: 'Risque blessures', color: '#EF4444' },
-          ]}
-          onOpen={() => navigate('/rpe')}
+          onOpen={() => navigate('/performance-collective/charge-physique')}
         />
-        <HeroCard
-          icon={<Heart size={20} color="#EC4899" />}
+        <MiniStatCard
+          icon={<Heart size={18} color="#EC4899" />}
           iconBg="#EC489922"
           title="Bien-être"
-          ctaLabel="Voir le bien-être"
-          headerRight={<Badge color={teamWellnessColor} label={teamWellnessLabel} size="sm" style={{ flexShrink: 0 }} />}
+          value={teamWellnessLabel}
+          valueColor={teamWellnessColor}
+          subtitle={teamWellnessSubtitle}
           borderColor={teamWellnessColor}
-          stats={[
-            { value: teamWellnessNow ?? 0, label: 'Score moyen /10', color: teamWellnessColor, decimals: 1 },
-            { value: wellnessAlertCount, label: `Joueur${wellnessAlertCount > 1 ? 's' : ''} en alerte`, color: '#EF4444' },
-          ]}
-          onOpen={() => navigate('/wellness/team')}
+          onOpen={() => navigate('/performance-collective/bien-etre')}
+        />
+      </div>
+
+      {/* 2 cartes d'accès aux analyses détaillées */}
+      <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 16 }}>
+        <MiniStatCard
+          icon={<BarChart2 size={18} color="#3B82F6" />}
+          iconBg="#3B82F622"
+          title="Analyse collective"
+          value="Vue d'ensemble équipe"
+          valueColor="#F1F5F9"
+          subtitle="Charge, RPE, bien-être et risque à l'échelle de l'équipe"
+          borderColor="#3B82F6"
+          onOpen={() => navigate('/performance-collective/vue-ensemble')}
+        />
+        <MiniStatCard
+          icon={<Users size={18} color="#8B5CF6" />}
+          iconBg="#8B5CF622"
+          title="Analyse individuelle"
+          value="Fiche joueur détaillée"
+          valueColor="#F1F5F9"
+          subtitle="Statistiques, charge, bien-être et risque par joueur"
+          borderColor="#8B5CF6"
+          onOpen={() => navigate('/performance-individuelle')}
         />
       </div>
 
@@ -362,152 +365,11 @@ export default function DashboardPage() {
           acwrByPlayer={acwrByPlayer}
           wellnessStatsByPlayer={wellnessStatsByPlayer}
           redAlertPlayerIds={redAlertPlayerIds}
-          range={range}
           onOpenPlayer={id => navigate(`/performance-individuelle/${id}/vue-ensemble`)}
         />
       )}
 
     </div>
-  );
-}
-
-const RANGE_OPTIONS: { key: DateRange; label: string }[] = [
-  { key: '21j',    label: '21 jours' },
-  { key: 'season', label: 'Saison' },
-];
-
-/** Sélecteur de plage de dates — Charge physique, Bien-être et une partie du tableau en dépendent. */
-function RangeToggle({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
-  return (
-    <div style={{ display: 'flex', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, flexShrink: 0 }}>
-      {RANGE_OPTIONS.map(({ key, label }) => {
-        const active = value === key;
-        return (
-          <button key={key} onClick={() => onChange(key)}
-            className="px-2 py-1 text-[0.7rem] md:px-[14px] md:py-[6px] md:text-[0.8rem]"
-            style={{
-              borderRadius: 4, border: 'none', cursor: 'pointer',
-              fontWeight: active ? 600 : 400, transition: 'all 0.15s',
-              backgroundColor: active ? '#1E2229' : 'transparent',
-              color: active ? '#00E5A0' : '#94A3B8',
-            }}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function MatchCarouselCard({ matches, wins, losses, onOpen }: {
-  matches: Match[]; wins: number; losses: number; onOpen: () => void;
-}) {
-  const [index, setIndex] = useState(0);
-  const recordColor = wins > losses ? '#00E5A0' : losses > wins ? '#EF4444' : '#94A3B8';
-
-  return (
-    <HeroCardShell icon={<Trophy size={20} color="#F59E0B" />} iconBg="#F59E0B22" title="Matchs"
-      ctaLabel="Voir les matchs" onOpen={onOpen}
-      footerLeft={<CarouselDots count={matches.length} index={index} onSelect={setIndex} />}
-      headerRight={<Badge color={recordColor} label={`${wins}-${losses}`} size="sm" style={{ flexShrink: 0 }} />}
-      borderColor={recordColor}>
-      {matches.length > 0 ? (
-        <SlideCarousel items={matches} index={index} setIndex={setIndex} renderItem={mm => {
-          const w = mm.result === 'win';
-          const c = w ? '#00E5A0' : '#EF4444';
-          return (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ color: c, fontSize: '1.9rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
-                  {mm.scoreUs}–{mm.scoreThem}
-                </span>
-                <span style={{ color: c, fontSize: '0.72rem', fontWeight: 700 }}>{w ? 'Victoire' : 'Défaite'}</span>
-              </div>
-              <p style={{ color: '#475569', fontSize: '0.68rem', margin: '5px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                vs {mm.opponent} · {mm.homeAway === 'home' ? 'Domicile' : 'Extérieur'}
-              </p>
-            </div>
-          );
-        }} />
-      ) : (
-        <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucun match enregistré.</p>
-      )}
-    </HeroCardShell>
-  );
-}
-
-function SessionCarouselCard({ sessions, onOpen }: { sessions: SessionSummary[]; onOpen: () => void }) {
-  const [index, setIndex] = useState(0);
-  const latestRpe = sessions[0]?.avgRpe ?? null;
-
-  return (
-    <HeroCardShell icon={<Dumbbell size={20} color="#00E5A0" />} iconBg="#00E5A022" title="Entraînements"
-      ctaLabel="Voir les séances" onOpen={onOpen}
-      footerLeft={<CarouselDots count={sessions.length} index={index} onSelect={setIndex} />}
-      borderColor={latestRpe !== null ? rpeColor(latestRpe) : '#475569'}>
-      {sessions.length > 0 ? (
-        <SlideCarousel items={sessions} index={index} setIndex={setIndex} renderItem={ss => {
-          const col = ss.avgRpe != null ? rpeColor(ss.avgRpe) : '#475569';
-          const lbl = ss.avgRpe != null ? rpeLabel(Math.round(ss.avgRpe)) : '';
-          return (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ color: col, fontSize: '1.9rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
-                  {ss.avgRpe != null ? ss.avgRpe.toFixed(1) : '—'}
-                </span>
-                {lbl && <span style={{ color: col, fontSize: '0.72rem', fontWeight: 700 }}>{lbl}</span>}
-              </div>
-              <p style={{ color: '#475569', fontSize: '0.68rem', margin: '5px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {fmtWeekday(ss.date)} {fmtDateShort(ss.date)} · {SESSION_TYPE_LABELS[ss.type] ?? ss.type} · {ss.duration} min
-              </p>
-            </div>
-          );
-        }} />
-      ) : (
-        <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune séance récente.</p>
-      )}
-    </HeroCardShell>
-  );
-}
-
-function ActionCarouselCard({ actions, totalCount, players, today, onOpen }: {
-  actions: Action[]; totalCount: number; players: Player[]; today: string; onOpen: () => void;
-}) {
-  const [index, setIndex] = useState(0);
-  const hasOverdue = actions.some(a => a.dueDate < today);
-  const actionsBorderColor = actions.length === 0 ? '#475569' : hasOverdue ? '#EF4444' : '#00E5A0';
-
-  return (
-    <HeroCardShell icon={<CheckSquare size={20} color="#3B82F6" />} iconBg="#3B82F622" title="Actions"
-      ctaLabel="Voir les tâches" onOpen={onOpen}
-      footerLeft={<CarouselDots count={actions.length} index={index} onSelect={setIndex} />}
-      headerRight={<Badge color={totalCount > 0 ? '#3B82F6' : '#475569'} label={`${totalCount} à faire`} size="sm" style={{ flexShrink: 0 }} />}
-      borderColor={actionsBorderColor}>
-      {actions.length > 0 ? (
-        <SlideCarousel items={actions} index={index} setIndex={setIndex} renderItem={aa => {
-          const isOverdue = aa.dueDate < today;
-          const color = isOverdue ? '#EF4444' : '#00E5A0';
-          const player = players.find(p => p.id === aa.playerId);
-          return (
-            <div>
-              <p style={{ color: '#CBD5E1', fontSize: '0.82rem', fontWeight: 600, margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {aa.title}{player && <> · <span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></>}
-              </p>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ color, fontSize: '1.3rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>
-                  {aa.dueDate.slice(5).replace('-', '/')}
-                </span>
-                <span style={{ color, fontSize: '0.72rem', fontWeight: 700 }}>
-                  {isOverdue ? 'En retard' : 'À faire'}
-                </span>
-              </div>
-            </div>
-          );
-        }} />
-      ) : (
-        <p style={{ color: '#334155', fontSize: '0.8rem', margin: 0 }}>Aucune tâche en cours.</p>
-      )}
-    </HeroCardShell>
   );
 }
 
@@ -524,37 +386,22 @@ const STATUS_SORT_RANK: Record<Player['status'], number> = {
 };
 
 /**
- * Libellés alternatifs pour la colonne "Charge entraînement" du tableau — plus neutres que
- * les libellés de `acwrZone` (pensés "risque blessure"), qui restent inchangés partout
- * ailleurs dans l'app (RPE, fiche joueur, infirmerie…).
- */
-const ACWR_LABEL_BIS: Record<string, string> = {
-  'Sous-charge':   'Très faible',
-  'Zone optimale': 'Faible',
-  'Risque modéré': 'Moyen',
-  'Risque élevé':  'Élevé',
-};
-
-/**
- * Tableau par joueur (identité + 6 notions) — statut, risque blessure (ACWR, jamais impacté
- * par `range`), RPE, bien-être (score moyen sur la période), alerte bien-être (pire axe <5
- * observé sur la période) et éval moyen (RPE, bien-être et éval sensibles à `range` : 21j
- * glissants ou saison entière). Colonne joueur fixe au scroll horizontal, comme les autres
+ * Tableau par joueur (identité + 6 notions) — statut, risque blessure (ACWR), RPE, bien-être
+ * (score moyen), alerte bien-être (pire axe <5 observé) et éval moyen (RPE, bien-être et éval
+ * calculés sur la saison entière). Colonne joueur fixe au scroll horizontal, comme les autres
  * tableaux de l'app.
  */
 type OverviewSortKey = 'name' | 'status' | 'risk' | 'rpe' | 'wellness' | 'attention' | 'eval';
 type SortDir = 'asc' | 'desc';
 
-function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, redAlertPlayerIds, range, onOpenPlayer }: {
+function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, redAlertPlayerIds, onOpenPlayer }: {
   players: PlayerCrossData[];
   acwrByPlayer: Map<string, number | null>;
   wellnessStatsByPlayer: Map<string, { avgScore: number | null; worstDim: WellnessAxisAlert | null }>;
   /** Joueurs avec une alerte rouge récente (mêmes règles que la carte Charge physique / RiskAlertsList). */
   redAlertPlayerIds: Set<string>;
-  range: DateRange;
   onOpenPlayer: (id: string) => void;
 }) {
-  const cutoff = range === '21j' ? localDate(-21) : null;
   const [sortKey, setSortKey] = useState<OverviewSortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -573,12 +420,10 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
     const wellnessColor = avgScore !== null ? wellnessTier(avgScore).color : '#475569';
     const weakDim = stat?.worstDim ?? null;
 
-    const recentRpe = cutoff ? pd.rpe.filter(e => e.date >= cutoff) : pd.rpe;
-    const avgRpe = recentRpe.length
-      ? Math.round(recentRpe.reduce((s, e) => s + e.rpe, 0) / recentRpe.length * 10) / 10 : null;
+    const avgRpe = pd.rpe.length
+      ? Math.round(pd.rpe.reduce((s, e) => s + e.rpe, 0) / pd.rpe.length * 10) / 10 : null;
 
-    const matchPool = cutoff ? pd.matchStats.filter(m => m.date >= cutoff) : pd.matchStats;
-    const evalVals = matchPool.map(m => m.eval).filter((v): v is number => v !== null);
+    const evalVals = pd.matchStats.map(m => m.eval).filter((v): v is number => v !== null);
     const evalAvg = evalVals.length
       ? Math.round(evalVals.reduce((s, v) => s + v, 0) / evalVals.length * 10) / 10 : null;
 
@@ -587,7 +432,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
       || zone?.label === 'Risque modéré' || zone?.label === 'Risque élevé'
       || redAlertPlayerIds.has(p.id);
 
-    return { p, acwr, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg, atRiskNow };
+    return { p, avgScore, wellnessColor, weakDim, avgRpe, evalAvg, atRiskNow };
   });
 
   const dir = sortDir === 'asc' ? 1 : -1;
@@ -595,7 +440,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
     switch (sortKey) {
       case 'name':      return `${x.p.lastName} ${x.p.firstName}`.localeCompare(`${y.p.lastName} ${y.p.firstName}`) * dir;
       case 'status':    return (STATUS_SORT_RANK[x.p.status] - STATUS_SORT_RANK[y.p.status]) * dir;
-      case 'risk':      return ((x.acwr ?? -Infinity) - (y.acwr ?? -Infinity)) * dir;
+      case 'risk':      return (Number(x.atRiskNow) - Number(y.atRiskNow)) * dir;
       case 'rpe':       return ((x.avgRpe ?? -Infinity) - (y.avgRpe ?? -Infinity)) * dir;
       case 'wellness':  return ((x.avgScore ?? -Infinity) - (y.avgScore ?? -Infinity)) * dir;
       case 'attention': return ((x.weakDim?.felt ?? Infinity) - (y.weakDim?.felt ?? Infinity)) * dir;
@@ -620,15 +465,15 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
             <tr>
               <th style={{ ...thSortable, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>
               <th style={thSortable} onClick={() => toggleSort('status')}>Statut{arrow('status')}</th>
-              <th style={thSortable} onClick={() => toggleSort('risk')}>Risque blessure{arrow('risk')}</th>
               <th style={thSortable} onClick={() => toggleSort('rpe')}>RPE{arrow('rpe')}</th>
+              <th style={thSortable} onClick={() => toggleSort('risk')}>Risque blessure{arrow('risk')}</th>
               <th style={thSortable} onClick={() => toggleSort('wellness')}>Bien-être{arrow('wellness')}</th>
               <th style={thSortable} onClick={() => toggleSort('attention')}>Alerte{arrow('attention')}</th>
               <th style={thSortable} onClick={() => toggleSort('eval')}>Éval{arrow('eval')}</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ p, zone, avgScore, wellnessColor, weakDim, avgRpe, evalAvg, atRiskNow }, i) => {
+            {sorted.map(({ p, avgScore, wellnessColor, weakDim, avgRpe, evalAvg, atRiskNow }, i) => {
               const rowBg = i % 2 === 0 ? '#161920' : '#1A1E26';
 
               return (
@@ -645,20 +490,13 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
                   </td>
                   <td style={tdBase}><StatusBadge status={p.status} size="sm" /></td>
                   <td style={tdBase}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <span title={atRiskNow ? 'À risque maintenant' : 'Pas de risque identifié maintenant'} style={{
-                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                        backgroundColor: atRiskNow ? '#EF4444' : '#00E5A0',
-                        boxShadow: atRiskNow ? '0 0 0 3px rgba(239,68,68,0.15)' : 'none',
-                      }} />
-                      {zone ? <Badge color={zone.color} label={ACWR_LABEL_BIS[zone.label] ?? zone.label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
-                    </span>
+                    {avgRpe !== null ? <Badge color={rpeColor(avgRpe)} label={rpeLabel(Math.round(avgRpe))} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
                   </td>
-                  <td style={{ ...tdBase, color: avgRpe === null ? '#334155' : rpeColor(avgRpe), fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                    {fmt1(avgRpe)}
+                  <td style={tdBase}>
+                    <Badge color={atRiskNow ? '#EF4444' : '#00E5A0'} label={atRiskNow ? 'À risque' : 'RAS'} size="sm" />
                   </td>
-                  <td style={{ ...tdBase, color: wellnessColor, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                    {fmt1(avgScore)}
+                  <td style={tdBase}>
+                    {avgScore !== null ? <Badge color={wellnessColor} label={wellnessTier(avgScore).label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
                   </td>
                   <td style={tdBase}>
                     {weakDim && <Badge color={weakDim.color} label={weakDim.label} size="sm" />}

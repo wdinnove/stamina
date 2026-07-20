@@ -19,14 +19,21 @@ interface Props {
   seasonEnd?: string;
 }
 
-/** Boîte de groupe à 2 lignes (joueur + période) — variante de GroupPickerBox (qui est à hauteur
- * fixe, une seule ligne) pour cet onglet, seul à avoir besoin d'un filtre de période par groupe. */
+/** Boîte de groupe (joueur + période) — variante de GroupPickerBox (qui est à hauteur fixe, une
+ * seule ligne) pour cet onglet, seul à avoir besoin d'un filtre de période par groupe. Le joueur
+ * et la période sont dans deux encadrés distincts (empilés) plutôt qu'un seul bloc, pour bien
+ * séparer visuellement les deux réglages. */
 function PlayerGroupBox({ color, children }: { color: string; children: ReactNode }) {
   return (
-    <div style={{
-      flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 8,
-      border: `1px solid ${color}40`, borderRadius: 8, padding: '10px 12px',
-    }}>
+    <div style={{ flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {children}
+    </div>
+  );
+}
+
+function GroupSubBox({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <div style={{ border: `1px solid ${color}40`, borderRadius: 8, padding: '10px 12px' }}>
       {children}
     </div>
   );
@@ -64,36 +71,54 @@ export function PlayerCompareByPlayer({ currentPlayerId, roster, seasonStart, se
         >Sélection</CardTitle>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <PlayerGroupBox color={GROUP_A_COLOR}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_A_COLOR, flexShrink: 0 }} />
-              {locked ? (
-                <select value={aId} disabled style={{ ...filterControlStyle, opacity: 0.7, cursor: 'default' }}>
-                  <option value={aId}>{a ? playerNameFull(a.player) : ''}</option>
-                </select>
-              ) : (
-                <select value={aId} onChange={e => setAId(e.target.value)} style={filterControlStyle}>
-                  <option value="">Choisir un joueur</option>
-                  {aOptions.map(r => <option key={r.player.id} value={r.player.id}>{playerNameFull(r.player)}</option>)}
-                </select>
-              )}
-            </div>
-            <PeriodFields
-              from={rangeA.from} to={rangeA.to} preset={rangeA.preset}
-              onPreset={p => rangeA.applyPreset(p, seasonStart, seasonEnd)} onFrom={rangeA.setFrom} onTo={rangeA.setTo}
-            />
+            <GroupSubBox color={GROUP_A_COLOR}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_A_COLOR, flexShrink: 0 }} />
+                {locked ? (
+                  <select value={aId} disabled style={{ ...filterControlStyle, opacity: 0.7, cursor: 'default' }}>
+                    <option value={aId}>{a ? playerNameFull(a.player) : ''}</option>
+                  </select>
+                ) : (
+                  <select value={aId} onChange={e => setAId(e.target.value)} style={filterControlStyle}>
+                    <option value="">Choisir un joueur</option>
+                    {aOptions.map(r => <option key={r.player.id} value={r.player.id}>{playerNameFull(r.player)}</option>)}
+                  </select>
+                )}
+              </div>
+            </GroupSubBox>
+            <GroupSubBox color={GROUP_A_COLOR}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_A_COLOR, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <PeriodFields
+                    from={rangeA.from} to={rangeA.to} preset={rangeA.preset}
+                    onPreset={p => rangeA.applyPreset(p, seasonStart, seasonEnd)} onFrom={rangeA.setFrom} onTo={rangeA.setTo}
+                  />
+                </div>
+              </div>
+            </GroupSubBox>
           </PlayerGroupBox>
           <PlayerGroupBox color={GROUP_B_COLOR}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_B_COLOR, flexShrink: 0 }} />
-              <select value={bId} onChange={e => setBId(e.target.value)} style={filterControlStyle}>
-                <option value="">Choisir un joueur</option>
-                {bOptions.map(r => <option key={r.player.id} value={r.player.id}>{playerNameFull(r.player)}</option>)}
-              </select>
-            </div>
-            <PeriodFields
-              from={rangeB.from} to={rangeB.to} preset={rangeB.preset}
-              onPreset={p => rangeB.applyPreset(p, seasonStart, seasonEnd)} onFrom={rangeB.setFrom} onTo={rangeB.setTo}
-            />
+            <GroupSubBox color={GROUP_B_COLOR}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_B_COLOR, flexShrink: 0 }} />
+                <select value={bId} onChange={e => setBId(e.target.value)} style={filterControlStyle}>
+                  <option value="">Choisir un joueur</option>
+                  {bOptions.map(r => <option key={r.player.id} value={r.player.id}>{playerNameFull(r.player)}</option>)}
+                </select>
+              </div>
+            </GroupSubBox>
+            <GroupSubBox color={GROUP_B_COLOR}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: GROUP_B_COLOR, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <PeriodFields
+                    from={rangeB.from} to={rangeB.to} preset={rangeB.preset}
+                    onPreset={p => rangeB.applyPreset(p, seasonStart, seasonEnd)} onFrom={rangeB.setFrom} onTo={rangeB.setTo}
+                  />
+                </div>
+              </div>
+            </GroupSubBox>
           </PlayerGroupBox>
         </div>
       </Card>

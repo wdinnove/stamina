@@ -25,17 +25,6 @@ function weeklyBuckets(points: { date: string; value: number }[], agg: 'mean' | 
     .map(([, vs]) => agg === 'sum' ? vs.reduce((s, v) => s + v, 0) : vs.reduce((s, v) => s + v, 0) / vs.length);
 }
 
-// Écart-type glissant (fenêtre pleine uniquement, cf. appelant) — mesure la variabilité locale
-// d'une série ; utilisé pour dériver un indicateur de régularité à partir d'une autre série.
-function rollingStdDev(values: number[], window = 3): number[] {
-  return values.map((_, i) => {
-    const slice = values.slice(Math.max(0, i - window + 1), i + 1);
-    if (slice.length < window) return null;
-    const m = slice.reduce((s, v) => s + v, 0) / slice.length;
-    return Math.sqrt(slice.reduce((s, v) => s + (v - m) ** 2, 0) / slice.length);
-  }).filter((v): v is number => v !== null);
-}
-
 function linregSlope(values: number[]): number {
   const n = values.length;
   const xMean = (n - 1) / 2;
@@ -86,17 +75,19 @@ function computeTrend(values: number[]): Trend {
   return { direction, pct, streakWeeks: Math.min(streakWeeks, values.length), values };
 }
 
-function directionMeta(direction: TrendDirection, pct: number) {
+// Gris = pas de données ; blanc = donnée réelle mais tendance non significative (distinct visuellement,
+// pour qu'un verdict "Stable" ne se confonde pas avec une carte vide/désactivée).
+function directionMeta(direction: TrendDirection, pct: number, higherIsBetter: boolean) {
   if (direction === 'insufficient') return { color: '#475569', Icon: Minus, label: 'Données insuffisantes' };
-  if (direction === 'stable')       return { color: '#475569', Icon: Minus, label: 'Stable' };
+  if (direction === 'stable')       return { color: '#F1F5F9', Icon: Minus, label: 'Stable' };
   return {
-    color: zoneColor(pct, true),
+    color: zoneColor(pct, higherIsBetter),
     Icon: direction === 'up' ? TrendingUp : TrendingDown,
     label: direction === 'up' ? 'En hausse' : 'En baisse',
   };
 }
 
-interface Metric { key: string; label: string; trend: Trend; color: string }
+interface Metric { key: string; label: string; trend: Trend; color: string; higherIsBetter: boolean }
 
 export interface PlayerTrendHeroProps {
   pd: PlayerCrossData;
@@ -117,35 +108,38 @@ export function TeamTrendHero({ data }: TeamTrendHeroProps) {
   return <TrendHeroBody scope={{ team: data }} />;
 }
 
-/** Verdict de forme (pente + durée) sur les {TRAILING_WEEKS} dernières semaines — perf/bien-être/
- * régularité, toutes higher-is-better. Volontairement distinct de "Par période" (qui compare
- * période choisie vs saison à 2 points) et de "Charge physique" (qui possède déjà ACWR/TSB). */
+/** Verdict de forme (pente + durée) sur les {TRAILING_WEEKS} dernières semaines — performance en
+ * match, charge physique (RPE) et bien-être. Volontairement distinct de "Par période" (qui
+ * compare période choisie vs saison à 2 points) et de "Charge physique" (qui possède déjà
+ * ACWR/TSB). Un seul indicateur disponible suffit à colorer le verdict — pas besoin des 3. */
 function TrendHeroBody({ scope }: { scope: CrossScope }) {
   const to = new Date().toLocaleDateString('sv');
   const from = isoWeeksAgo(TRAILING_WEEKS);
 
   const evalDef = indicatorByKey('eval')!;
   const wellDef = indicatorByKey('well_score')!;
-
-  const evalWeekly = weeklyBuckets(getSeries(evalDef, scope, from, to), evalDef.weeklyAgg);
-  // Régularité = tendance inverse de la variabilité locale de l'éval (écart-type glissant négé) :
-  // ainsi "en hausse" veut toujours dire "mieux", comme pour les deux autres cartes.
-  const regularitySeries = rollingStdDev(evalWeekly, 3).map(v => -v);
+  const rpeDef  = indicatorByKey('rpe')!;
 
   const metrics: Metric[] = [
-    { key: 'eval', label: 'Performance en match (éval)',  color: evalDef.color, trend: computeTrend(evalWeekly) },
-    { key: 'well', label: 'Bien-être',                    color: wellDef.color, trend: computeTrend(weeklyBuckets(getSeries(wellDef, scope, from, to), wellDef.weeklyAgg)) },
-    { key: 'reg',  label: 'Régularité (perf. en match)',  color: '#F59E0B',     trend: computeTrend(regularitySeries) },
+    { key: 'eval', label: 'Performance en match (éval)', color: evalDef.color, higherIsBetter: true,
+      trend: computeTrend(weeklyBuckets(getSeries(evalDef, scope, from, to), evalDef.weeklyAgg)) },
+    { key: 'rpe',  label: 'Charge physique (RPE)',       color: rpeDef.color,  higherIsBetter: false,
+      trend: computeTrend(weeklyBuckets(getSeries(rpeDef, scope, from, to), rpeDef.weeklyAgg)) },
+    { key: 'well', label: 'Bien-être',                   color: wellDef.color, higherIsBetter: true,
+      trend: computeTrend(weeklyBuckets(getSeries(wellDef, scope, from, to), wellDef.weeklyAgg)) },
   ];
 
   const meaningful = metrics.filter(m => m.trend.direction !== 'insufficient');
-  const improving  = meaningful.filter(m => m.trend.direction === 'up');
-  const declining  = meaningful.filter(m => m.trend.direction === 'down');
+  const improving  = meaningful.filter(m => m.trend.direction === (m.higherIsBetter ? 'up' : 'down'));
+  const declining  = meaningful.filter(m => m.trend.direction === (m.higherIsBetter ? 'down' : 'up'));
 
-  let verdict = { label: 'Stable', color: '#475569' };
+  // Blanc par défaut (pas gris) : "Stable" veut dire qu'on a une vraie donnée sans tendance
+  // marquée — un gris identique à "Données insuffisantes" donnerait l'impression d'une carte
+  // vide/cassée alors qu'elle a bien un verdict.
+  let verdict = { label: 'Stable', color: '#F1F5F9' };
   if (meaningful.length === 0) verdict = { label: 'Données insuffisantes', color: '#475569' };
-  else if (declining.length > improving.length && declining.length >= 2) verdict = { label: 'À surveiller', color: '#EF4444' };
-  else if (improving.length > declining.length && improving.length >= 2) verdict = { label: 'En progression', color: '#00E5A0' };
+  else if (declining.length > improving.length) verdict = { label: 'À surveiller', color: '#EF4444' };
+  else if (improving.length > declining.length) verdict = { label: 'En progression', color: '#00E5A0' };
 
   return (
     <Card accentColor={verdict.color}>
@@ -175,7 +169,7 @@ function TrendHeroBody({ scope }: { scope: CrossScope }) {
         </div>
         <div className="trend-hero-metrics" style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignSelf: 'center' }}>
           {metrics.map(m => {
-            const meta = directionMeta(m.trend.direction, m.trend.pct);
+            const meta = directionMeta(m.trend.direction, m.trend.pct, m.higherIsBetter);
             return (
               <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
                 <span className="text-[0.68rem] md:text-[0.78rem]" style={{ color: meta.color, fontWeight: meta.label === 'Stable' ? 400 : 700, textAlign: 'right' }}>

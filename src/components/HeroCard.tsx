@@ -62,6 +62,69 @@ export function HeroCardShell({ icon, iconBg, title, ctaLabel, onOpen, children,
   );
 }
 
+/**
+ * Carte "stat" du Dashboard — icône à gauche, puis un petit libellé discret, la valeur en gros/
+ * gras/coloré (même traitement que le verdict de `RiskVerdictCard`) et une ligne de contexte en
+ * dessous, flèche collée au bord droit. Bordure teintée + liseré gauche marqué selon la donnée
+ * (même convention que `Card`/`RiskVerdictCard`).
+ */
+export function MiniStatCard({ icon, iconBg, title, value, valueColor, subtitle, borderColor = '#475569', onOpen }: {
+  icon: ReactNode; iconBg: string;
+  /** Petit libellé discret au-dessus de la valeur (ex. "MATCHS"). */
+  title: string;
+  /** Chiffre (police mono) ou libellé texte — affiché en gros, gras, coloré. */
+  value: number | string;
+  /** Couleur de la valeur — grisée par défaut si non précisée. */
+  valueColor?: string;
+  /** Ligne de contexte discrète sous la valeur (ex. "vs Lakers · Domicile"). */
+  subtitle?: ReactNode;
+  /** Couleur du liseré gauche et de la teinte de bordure, reflétant l'état des données de la carte. */
+  borderColor?: string;
+  onOpen?: () => void;
+}) {
+  const isNumber = typeof value === 'number';
+  return (
+    <div
+      onClick={onOpen}
+      className="px-3 py-4 md:px-5 md:py-[22px]"
+      style={{
+        backgroundColor: '#161920', border: `1px solid ${borderColor}35`, borderLeft: `3px solid ${borderColor}`,
+        borderRadius: 10,
+        display: 'flex', alignItems: 'center', gap: 12,
+        cursor: onOpen ? 'pointer' : 'default',
+      }}
+    >
+      <div
+        className="w-8 h-8 md:w-12 md:h-12 [&>svg]:!w-4 [&>svg]:!h-4 md:[&>svg]:!w-6 md:[&>svg]:!h-6"
+        style={{ borderRadius: '50%', backgroundColor: iconBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        {icon}
+      </div>
+      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <p className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, margin: '0 0 2px' }}>
+          {title}
+        </p>
+        <div
+          className={isNumber ? 'text-[1.15rem] md:text-[1.35rem]' : 'text-[1.05rem] md:text-[1.2rem]'}
+          style={{
+            color: valueColor ?? '#475569', fontWeight: 800, lineHeight: 1.15, whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            fontFamily: isNumber ? 'JetBrains Mono, monospace' : undefined,
+          }}
+        >
+          {value}
+        </div>
+        {subtitle && (
+          <p className="text-[0.68rem] md:text-[0.72rem]" style={{ color: '#475569', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {subtitle}
+          </p>
+        )}
+      </div>
+      {onOpen && <ArrowRight size={17} color="#475569" style={{ flexShrink: 0 }} />}
+    </div>
+  );
+}
+
 /** Variante "stats" — N gros chiffres (ou libellés courts) côte à côte (ex. Infirmerie). */
 export function HeroCard({ icon, iconBg, title, stats, ctaLabel, onOpen, headerRight, borderColor }: {
   icon: ReactNode; iconBg: string; title: string;

@@ -9,7 +9,7 @@ export { PlayerAvatar }  from './PlayerAvatar';
 export { PlayerEditModal } from './PlayerEditModal';
 export { PlayerHero, playerStatusLabel, playerStatusColor } from './PlayerHero';
 export { TeamStatsHero } from './TeamStatsHero';
-export { HeroCard, HeroCardShell } from './HeroCard';
+export { HeroCard, HeroCardShell, MiniStatCard } from './HeroCard';
 export { PlayerSelect }  from './PlayerSelect';
 export { StaminaLogo }   from './StaminaLogo';
 export { Breadcrumb }    from './Breadcrumb';
