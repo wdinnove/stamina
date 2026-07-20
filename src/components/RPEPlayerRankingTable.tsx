@@ -140,7 +140,7 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
                 <tr key={p.playerId} style={{ borderBottom: '1px solid #1E2229' }}
                   onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                   onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
-                  <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{p.name}</td>
+                  <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}><span className="hidden md:inline">{p.nameFull}</span><span className="md:hidden">{p.name}</span></td>
                   <td style={{ padding: '8px 8px', color: rpeC, fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(p.avgRpe)}</td>
                   <td style={{ padding: '8px 8px' }}>
                     <Badge color={uaColor} bg={uaColor + '20'} label={uaLabel} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 5px' }} />

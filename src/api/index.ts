@@ -7,6 +7,7 @@ export { wellnessApi } from './wellness';
 export { rpeApi }      from './rpe';
 export { medicalApi }  from './medical';
 export { actionsApi }  from './actions';
+export { objectivesApi } from './objectives';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
 export { matchesApi }   from './matches';

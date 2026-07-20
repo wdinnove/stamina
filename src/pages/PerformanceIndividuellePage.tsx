@@ -9,7 +9,7 @@ import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, HeroCard, HeroCardShell, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
-  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav,
+  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel,
 } from '../components';
 import { daysBetween } from '../components/MedicalCard';
 import { FilterField, filterControlStyle } from '../components/FilterField';
@@ -34,7 +34,7 @@ const avg = (vals: number[]): number | null =>
   vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
 
 type Tab = 'overview' | 'stats-basic' | 'stats-advanced' | 'dynamic' | 'compare-match' | 'compare-season' | 'compare-player'
-         | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations';
+         | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations' | 'objectives';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':           'overview',
@@ -53,28 +53,30 @@ const TAB_SLUGS: Record<string, Tab> = {
   'bien-etre':              'wellness',
   'correlations':           'correlations',
   'medical':                'medical',
+  'objectifs':              'objectives',
   'risque-blessure':        'load', // ancien onglet, absorbé dans "Charge physique" — conservé pour ne pas casser les liens existants
 };
 const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
   { tabs: [{ key: 'overview', slug: 'vue-ensemble', label: "Vue d'ensemble" }] },
+  { label: 'Suivi', tabs: [
+    { key: 'load',      slug: 'charge-physique',  label: 'Charge physique' },
+    { key: 'rpe',       slug: 'rpe',              label: 'RPE' },
+    { key: 'wellness',  slug: 'bien-etre',        label: 'Bien-être' },
+    { key: 'medical',   slug: 'medical',          label: 'Médical' },
+  ] },
   { label: 'Statistiques', tabs: [
     { key: 'stats-basic',    slug: 'statistiques-brutes',   label: 'Brutes' },
     { key: 'stats-advanced', slug: 'statistiques-avancees', label: 'Avancées' },
   ] },
-  { label: 'Suivi', tabs: [
-    { key: 'load',     slug: 'charge-physique',  label: 'Charge physique' },
-    { key: 'rpe',      slug: 'rpe',              label: 'RPE' },
-    { key: 'wellness', slug: 'bien-etre',        label: 'Bien-être' },
-    { key: 'medical',  slug: 'medical',          label: 'Médical' },
+  { label: 'Analyse', tabs: [
+    { key: 'objectives',   slug: 'objectifs',    label: 'Objectifs' },
+    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
   ] },
   { label: 'Comparer', tabs: [
     { key: 'dynamic',         slug: 'par-periode', label: 'Par période' },
     { key: 'compare-match',   slug: 'par-match',   label: 'Par match' },
     { key: 'compare-season',  slug: 'par-saison',  label: 'Par saison' },
     { key: 'compare-player',  slug: 'par-joueur',  label: 'Par joueur' },
-  ] },
-  { label: 'Analyse', tabs: [
-    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
   ] },
 ];
 
@@ -85,7 +87,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
 const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'stats-basic': 'saison', 'stats-advanced': 'saison',
   dynamic: 'saison', 'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
-  load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison',
+  load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
 };
 
 export default function PerformanceIndividuellePage() {
@@ -268,7 +270,7 @@ export default function PerformanceIndividuellePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'stats-basic' && activeTab !== 'stats-advanced' && activeTab !== 'medical'
+          {activeTab !== 'dynamic' && activeTab !== 'medical' && activeTab !== 'objectives'
             && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
@@ -374,10 +376,10 @@ export default function PerformanceIndividuellePage() {
           key={`${id}-${selected?.season.id ?? ''}`}
           view={activeTab === 'stats-basic' ? 'basic' : 'advanced'}
           seasonGroupedStats={seasonGroupedStats}
-          currentSeasonLabel={selected?.season.label}
-          currentTeamId={selected?.team.id}
           teamStatsMap={teamStatsMap}
           statThresholds={statThresholds}
+          from={from}
+          to={to}
         />
       )}
 
@@ -404,9 +406,6 @@ export default function PerformanceIndividuellePage() {
       {/* ══ RPE ══════════════════════════════════════════════════════════════ */}
       {activeTab === 'rpe' && (
         <div>
-          <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px', lineHeight: 1.5 }}>
-            Détail séance par séance et historique de charge. Pour le verdict de risque de blessure, voir l'onglet Charge physique.
-          </p>
           {rpe.length === 0
             ? <EmptyState message={`Aucune donnée RPE pour ${playerNameFull(pd.player)}.`} />
             : <PlayerLoadPanel history={rpe} filtered={rpeFiltered} thresholds={thresholds} showSeasonDiff={showSeasonDiff} display={rpeDisplay} onDisplayChange={setRpeDisplay} />}
@@ -435,6 +434,11 @@ export default function PerformanceIndividuellePage() {
         />
       )}
 
+      {/* ══ OBJECTIFS ════════════════════════════════════════════════════════ */}
+      {activeTab === 'objectives' && (
+        <ObjectivesPanel playerId={pd.player.id} scope={{ player: pd }} seasonStart={seasonStart} seasonEnd={seasonEnd} />
+      )}
+
       {/* ══ MÉDICAL ══════════════════════════════════════════════════════════ */}
       {activeTab === 'medical' && (
         <PlayerMedicalOverview
@@ -451,9 +455,6 @@ export default function PerformanceIndividuellePage() {
       {/* ══ CHARGE PHYSIQUE (synthèse RPE × ACWR × Fraîcheur × Risque × Historique blessure) ══ */}
       {activeTab === 'load' && (
         <div>
-          <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '0 0 14px', lineHeight: 1.5 }}>
-            Vue d'ensemble décisionnelle : risque de blessure et charge en un coup d'œil. Pour le détail séance par séance, voir l'onglet RPE.
-          </p>
           {/* Verdict — à risque maintenant */}
           <RiskVerdictCard
             title="Risque de blessure — maintenant"

@@ -16,7 +16,7 @@ import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { playerStatusColor, playerStatusLabel } from './PlayerHero';
 import { rtpDaysLeft, severityConfig, typeLabels } from './MedicalCard';
 import { fmtDate } from '../utils/dateFormat';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
 
 const typeColors: Record<string, string> = {
@@ -313,7 +313,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
                   return (
                     <div key={r.id} onClick={() => navigate(`/performance-individuelle/${p.id}/vue-ensemble`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                       <PlayerAvatar player={p} size={26} />
-                      <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>{playerNameShort(p)}</span>
+                      <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></span>
                       <span style={{
                         color: playerStatusColor[p.status], backgroundColor: `${playerStatusColor[p.status]}18`,
                         fontSize: '0.66rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0,
@@ -375,7 +375,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
                     return (
                       <div key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/vue-ensemble`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                         <PlayerAvatar player={p} size={26} />
-                        <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flex: 1 }}>{playerNameShort(p)}</span>
+                        <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, flex: 1 }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 60, height: 5, backgroundColor: '#1E2229', borderRadius: 3, overflow: 'hidden' }}>
                             <div style={{ height: '100%', width: `${pct}%`, backgroundColor: '#EF4444', borderRadius: 3 }} />
@@ -429,7 +429,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
             className="w-full sm:w-auto"
             style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapPlayerFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box', flex: '0 1 140px' }}>
             <option value="">Tous joueurs</option>
-            {players.map(p => <option key={p.id} value={p.id}>{playerNameShort(p)}</option>)}
+            {players.map(p => <option key={p.id} value={p.id}>{playerNameFull(p)}</option>)}
           </select>
           <select value={recapStatusFilter} onChange={e => setRecapStatusFilter(e.target.value)}
             className="w-full sm:w-auto"
@@ -484,7 +484,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
                         <td style={{ padding: '8px 8px', overflow: 'hidden' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             {p && <PlayerAvatar player={p} size={18} />}
-                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? `${playerNameShort(p)}` : '—'}</span>
+                            <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? <><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></> : '—'}</span>
                           </div>
                         </td>
                         <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', textDecoration: r.status === 'resolved' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

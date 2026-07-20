@@ -7,7 +7,7 @@ import { evalColor } from '../data';
 import type { BulkStatRow, CollectiveStatInput, OpponentStatInput } from '../api/stats';
 import { Modal } from './Modal';
 import { DropzoneEmptyState } from './DropzoneEmptyState';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull } from '../utils/playerName';
 
 // ─── Types internes ───────────────────────────────────────────────────────────
 
@@ -354,7 +354,7 @@ function CsvTable({ rows, showMatch, players, playerMap, onPlayerChange }: {
                           .sort((a, b) => a.number - b.number)
                           .map(p => (
                             <option key={p.id} value={p.id}>
-                              #{p.number} {playerNameShort(p)}
+                              #{p.number} {playerNameFull(p)}
                             </option>
                           ))}
                       </select>

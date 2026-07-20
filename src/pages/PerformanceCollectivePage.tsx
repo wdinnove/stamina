@@ -10,7 +10,7 @@ import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, HeroCard, HeroCardShell,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
-  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT,
+  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
   TeamQuarterBreakdown,
 } from '../components';
@@ -24,7 +24,7 @@ import { rpeColor, rpeLabel, acwrZone, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_P
 import { wellnessScoreColor } from '../utils/wellness';
 import { mondayIso, getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 import { fmt1 } from '../utils/format';
 import {
@@ -92,7 +92,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
          | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
-         | 'compare-match' | 'compare-season' | 'compare-player';
+         | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':            'overview',
@@ -110,6 +110,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'bien-etre':               'wellness',
   'medical':                 'medical',
   'correlations':            'correlations',
+  'objectifs':               'objectives',
   'par-match':               'compare-match',
   'par-saison':              'compare-season',
   'par-joueur':              'compare-player',
@@ -121,6 +122,12 @@ const TAB_SLUGS: Record<string, Tab> = {
 
 const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
   { tabs: [{ key: 'overview', slug: 'vue-ensemble', label: "Vue d'ensemble" }] },
+  { label: 'Suivi', tabs: [
+    { key: 'load',      slug: 'charge-physique', label: 'Charge physique' },
+    { key: 'rpe',       slug: 'rpe',             label: 'RPE' },
+    { key: 'wellness',  slug: 'bien-etre',       label: 'Bien-être' },
+    { key: 'medical',   slug: 'medical',         label: 'Médical' },
+  ] },
   { label: 'Statistiques joueurs', tabs: [
     { key: 'players-basic',    slug: 'stats-joueurs',          label: 'Brutes' },
     { key: 'players-advanced', slug: 'stats-joueurs-avancees', label: 'Avancées' },
@@ -128,25 +135,20 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Statistiques matchs', tabs: [
     { key: 'matches-basic',    slug: 'stats-matchs',          label: 'Brutes' },
     { key: 'matches-advanced', slug: 'stats-matchs-avancees', label: 'Avancées' },
-    { key: 'matches-quarters', slug: 'qt-par-qt',             label: 'QT par QT' },
   ] },
-  { label: 'Suivi', tabs: [
-    { key: 'load',     slug: 'charge-physique', label: 'Charge physique' },
-    { key: 'rpe',      slug: 'rpe',             label: 'RPE' },
-    { key: 'wellness', slug: 'bien-etre',       label: 'Bien-être' },
-    { key: 'medical',  slug: 'medical',         label: 'Médical' },
+  { label: 'Analyse', tabs: [
+    { key: 'objectives',   slug: 'objectifs',          label: 'Objectifs' },
+    { key: 'ranking',      slug: 'classement-joueurs', label: 'Classement joueurs' },
+    { key: 'impact',       slug: 'impact',       label: 'Impact joueurs' },
+    { key: 'pca',          slug: 'acp',          label: 'Facteurs de victoire' },
+    { key: 'matches-quarters', slug: 'qt-par-qt', label: 'QT par QT' },
+    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
   ] },
   { label: 'Comparer', tabs: [
     { key: 'dynamic',        slug: 'par-periode',       label: 'Par période' },
     { key: 'compare-match',  slug: 'par-match',         label: 'Par match' },
     { key: 'compare-season', slug: 'par-saison',        label: 'Par saison' },
     { key: 'compare-player', slug: 'par-joueur',        label: 'Par joueur' },
-  ] },
-  { label: 'Analyse', tabs: [
-    { key: 'ranking',      slug: 'classement-joueurs', label: 'Classement joueurs' },
-    { key: 'impact',       slug: 'impact',       label: 'Impact joueurs' },
-    { key: 'pca',          slug: 'acp',          label: 'Facteurs de victoire' },
-    { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
   ] },
 ];
 
@@ -158,7 +160,7 @@ const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
   impact: 'saison', pca: 'saison', ranking: 'saison', dynamic: 'saison',
-  load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison',
+  load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
 };
 
@@ -639,7 +641,7 @@ export default function PerformanceCollectivePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && (
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
@@ -761,47 +763,47 @@ export default function PerformanceCollectivePage() {
                     <th onClick={() => setS1(p => tog(p, 'mj'))}   style={{ ...TH, color: thC('mj', s1)   }}>MJ{si('mj', s1)}</th>
                     <th onClick={() => setS1(p => tog(p, 'tit'))}  style={{ ...TH, color: thC('tit', s1)  }}>Tit{si('tit', s1)}</th>
                     <th onClick={() => setS1(p => tog(p, 'min'))}  style={{ ...TH, color: normalize25 ? '#F59E0B' : thC('min', s1) }}>Min{si('min', s1)}{normalize25 ? ' ⟳' : ''}</th>
-                    <th onClick={() => setS1(p => tog(p, 'pts'))}  style={{ ...TH, color: thC('pts', s1)  }}>Pts{si('pts', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'pts'))}  style={{ ...TH, color: thC('pts', s1) }}>Pts{si('pts', s1)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>2pts</th>
-                    <th onClick={() => setS1(p => tog(p, 'fg2'))}  style={{ ...TH, color: thC('fg2', s1)  }}>2%{si('fg2', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'fg2'))}  style={{ ...TH, color: thC('fg2', s1) }}>2%{si('fg2', s1)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>3pts</th>
-                    <th onClick={() => setS1(p => tog(p, 'fg3'))}  style={{ ...TH, color: thC('fg3', s1)  }}>3%{si('fg3', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'fg3'))}  style={{ ...TH, color: thC('fg3', s1) }}>3%{si('fg3', s1)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>LF</th>
-                    <th onClick={() => setS1(p => tog(p, 'ft'))}   style={{ ...TH, color: thC('ft', s1)   }}>LF%{si('ft', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'ro'))}   style={{ ...TH, color: thC('ro', s1)   }}>Ro{si('ro', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'rd'))}   style={{ ...TH, color: thC('rd', s1)   }}>Rd{si('rd', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'reb'))}  style={{ ...TH, color: thC('reb', s1)  }}>Rt{si('reb', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'pd'))}   style={{ ...TH, color: thC('pd', s1)   }}>Pd{si('pd', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'ct'))}   style={{ ...TH, color: thC('ct', s1)   }}>Ct{si('ct', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'int'))}  style={{ ...TH, color: thC('int', s1)  }}>Int{si('int', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'bp'))}   style={{ ...TH, color: thC('bp', s1)   }}>Bp{si('bp', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'ft'))}   style={{ ...TH, color: thC('ft', s1) }}>LF%{si('ft', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'ro'))}   style={{ ...TH, color: thC('ro', s1) }}>Ro{si('ro', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'rd'))}   style={{ ...TH, color: thC('rd', s1) }}>Rd{si('rd', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'reb'))}  style={{ ...TH, color: thC('reb', s1) }}>Rt{si('reb', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'pd'))}   style={{ ...TH, color: thC('pd', s1) }}>Pd{si('pd', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'ct'))}   style={{ ...TH, color: thC('ct', s1) }}>Ct{si('ct', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'int'))}  style={{ ...TH, color: thC('int', s1) }}>Int{si('int', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'bp'))}   style={{ ...TH, color: thC('bp', s1) }}>Bp{si('bp', s1)}</th>
                     <th onClick={() => setS1(p => tog(p, 'eval'))} style={{ ...TH, color: thC('eval', s1) }}>Eval{si('eval', s1)}</th>
-                    <th onClick={() => setS1(p => tog(p, 'pm'))}   style={{ ...TH, color: thC('pm', s1)   }}>±{si('pm', s1)}</th>
+                    <th onClick={() => setS1(p => tog(p, 'pm'))}   style={{ ...TH, color: thC('pm', s1) }}>±{si('pm', s1)}</th>
                   </tr></thead>
                   <tbody>
                     {sortedPJ.map(({ p, n, tit, avgMin, avgPts, fg2mPg, fg2aPg, fg3mPg, fg3aPg, ftmPg, ftaPg, fg2Pct, fg3Pct, ftPct, avgRo, avgRd, avgRt, avgPd, avgCt, avgInt, avgBp, evalAvg, avgPm }, i) => {
                       const pmCol = avgPm > 0 ? '#00E5A0' : avgPm < 0 ? '#EF4444' : '#475569';
                       return (
                         <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
-                          <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{playerNameShort(p)}</td>
+                          <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></td>
                           <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                           <td style={TD}>{tit}</td>
                           <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#F1F5F9' }}>{avgMin}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{fg2mPg}/{fg2aPg}</td>
-                          <td style={TD}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{fg3mPg}/{fg3aPg}</td>
-                          <td style={TD}>{fg3Pct !== null ? `${fg3Pct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{fg3Pct !== null ? `${fg3Pct}%` : '—'}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{ftmPg}/{ftaPg}</td>
-                          <td style={TD}>{ftPct !== null ? `${ftPct}%` : '—'}</td>
-                          <td style={TD}>{avgRo}</td>
-                          <td style={TD}>{avgRd}</td>
+                          <td style={{ ...TD }}>{ftPct !== null ? `${ftPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{avgRo}</td>
+                          <td style={{ ...TD }}>{avgRd}</td>
                           <td style={{ ...TD, color: '#F1F5F9' }}>{avgRt}</td>
-                          <td style={TD}>{avgPd}</td>
-                          <td style={TD}>{avgCt}</td>
-                          <td style={TD}>{avgInt}</td>
-                          <td style={TD}>{avgBp}</td>
+                          <td style={{ ...TD }}>{avgPd}</td>
+                          <td style={{ ...TD }}>{avgCt}</td>
+                          <td style={{ ...TD }}>{avgInt}</td>
+                          <td style={{ ...TD }}>{avgBp}</td>
                           <td style={{ ...TD, color: evalAvg !== null ? evalColor(evalAvg, statThresholds) : '#475569', fontWeight: evalAvg !== null ? 700 : 400 }}>{evalAvg !== null ? evalAvg : '—'}</td>
                           <td style={{ ...TD, color: pmCol, fontWeight: 700 }}>{avgPm > 0 ? `+${avgPm}` : avgPm !== 0 ? avgPm : '—'}</td>
                         </tr>
@@ -817,18 +819,18 @@ export default function PerformanceCollectivePage() {
                       <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pjFooter.avgMin)}</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjFooter.avgPts)}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.fg2mPg)}/{fmt(pjFooter.fg2aPg)}</td>
-                      <td style={TD}>{fmt(pjFooter.fg2Pct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.fg2Pct, '%')}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.fg3mPg)}/{fmt(pjFooter.fg3aPg)}</td>
-                      <td style={TD}>{fmt(pjFooter.fg3Pct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.fg3Pct, '%')}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.ftmPg)}/{fmt(pjFooter.ftaPg)}</td>
-                      <td style={TD}>{fmt(pjFooter.ftPct, '%')}</td>
-                      <td style={TD}>{fmt(pjFooter.avgRo)}</td>
-                      <td style={TD}>{fmt(pjFooter.avgRd)}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.ftPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.avgRo)}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.avgRd)}</td>
                       <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pjFooter.avgRt)}</td>
-                      <td style={TD}>{fmt(pjFooter.avgPd)}</td>
-                      <td style={TD}>{fmt(pjFooter.avgCt)}</td>
-                      <td style={TD}>{fmt(pjFooter.avgInt)}</td>
-                      <td style={TD}>{fmt(pjFooter.avgBp)}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.avgPd)}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.avgCt)}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.avgInt)}</td>
+                      <td style={{ ...TD }}>{fmt(pjFooter.avgBp)}</td>
                       <td style={{ ...TD, color: pjFooter.evalAvg !== null ? evalColor(pjFooter.evalAvg, statThresholds) : '#475569', fontWeight: 700 }}>{fmt(pjFooter.evalAvg)}</td>
                       <td style={{ ...TD, color: pjFooter.avgPm !== null && pjFooter.avgPm > 0 ? '#00E5A0' : pjFooter.avgPm !== null && pjFooter.avgPm < 0 ? '#EF4444' : '#475569', fontWeight: 700 }}>
                         {pjFooter.avgPm !== null ? (pjFooter.avgPm > 0 ? `+${pjFooter.avgPm}` : pjFooter.avgPm) : '—'}
@@ -870,22 +872,22 @@ export default function PerformanceCollectivePage() {
                   <tbody>
                     {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
                       <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
-                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{playerNameShort(p)}</td>
+                        <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></td>
                         <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
-                        <td style={TD}>{fmt(usagePct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(usagePct, '%')}</td>
                         <td style={{ ...TD, color: offRating !== null ? ortgColor(offRating, statThresholds) : '#475569' }}>{fmt(offRating)}</td>
-                        <td style={TD}>{fmt(efgPct, '%')}</td>
-                        <td style={TD}>{fmt(ftRate)}</td>
+                        <td style={{ ...TD }}>{fmt(efgPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(ftRate)}</td>
                         <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(ptsProd)}</td>
-                        <td style={TD}>{fmt(astPct, '%')}</td>
-                        <td style={TD}>{fmt(tovPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(astPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(tovPct, '%')}</td>
                         <td style={TD}>{fmt(bpPerPoss)}</td>
                         <td style={{ ...TD, ...SEP }}>{fmt(trebPct, '%')}</td>
-                        <td style={TD}>{fmt(drebPct, '%')}</td>
-                        <td style={TD}>{fmt(orebPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(drebPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(orebPct, '%')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -896,17 +898,17 @@ export default function PerformanceCollectivePage() {
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{fmt(pjAdvFooter.n)}</td>
                       <td style={{ ...TD, color: '#94A3B8' }}>{fmt(pjAdvFooter.avgMin)}</td>
                       <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjAdvFooter.avgPts)}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.usagePct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.usagePct, '%')}</td>
                       <td style={{ ...TD, color: pjAdvFooter.offRating !== null ? ortgColor(pjAdvFooter.offRating, statThresholds) : '#475569' }}>{fmt(pjAdvFooter.offRating)}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.efgPct, '%')}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.ftRate)}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.efgPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.ftRate)}</td>
                       <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(pjAdvFooter.ptsProd)}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.astPct, '%')}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.tovPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.astPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.tovPct, '%')}</td>
                       <td style={TD}>{fmt(pjAdvFooter.bpPerPoss)}</td>
                       <td style={{ ...TD, ...SEP }}>{fmt(pjAdvFooter.trebPct, '%')}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.drebPct, '%')}</td>
-                      <td style={TD}>{fmt(pjAdvFooter.orebPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.drebPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.orebPct, '%')}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -959,18 +961,18 @@ export default function PerformanceCollectivePage() {
                           <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{m.fg2m}/{m.fg2a}</td>
-                          <td style={TD}>{m.fg2Pct !== null ? `${m.fg2Pct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.fg2Pct !== null ? `${m.fg2Pct}%` : '—'}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{m.fg3m}/{m.fg3a}</td>
-                          <td style={TD}>{m.fg3Pct !== null ? `${m.fg3Pct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.fg3Pct !== null ? `${m.fg3Pct}%` : '—'}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{m.ftm}/{m.fta}</td>
-                          <td style={TD}>{m.ftPct !== null ? `${m.ftPct}%` : '—'}</td>
-                          <td style={TD}>{m.ro}</td>
-                          <td style={TD}>{m.rd}</td>
+                          <td style={{ ...TD }}>{m.ftPct !== null ? `${m.ftPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.ro}</td>
+                          <td style={{ ...TD }}>{m.rd}</td>
                           <td style={{ ...TD, color: '#F1F5F9' }}>{m.rt}</td>
-                          <td style={TD}>{m.pd}</td>
-                          <td style={TD}>{m.ct}</td>
-                          <td style={TD}>{m.intercepts}</td>
-                          <td style={TD}>{m.bp}</td>
+                          <td style={{ ...TD }}>{m.pd}</td>
+                          <td style={{ ...TD }}>{m.ct}</td>
+                          <td style={{ ...TD }}>{m.intercepts}</td>
+                          <td style={{ ...TD }}>{m.bp}</td>
                           <td style={{ ...TD, color: m.evalTeamAvg !== null ? evalColor(m.evalTeamAvg, statThresholds) : '#475569', fontWeight: m.evalTeamAvg !== null ? 700 : 400 }}>{m.evalTeamAvg ?? '—'}</td>
                         </tr>
                       );
@@ -984,18 +986,18 @@ export default function PerformanceCollectivePage() {
                       <td style={TD}>—</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pmFooter.pts)}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pmFooter.fg2m)}/{fmt(pmFooter.fg2a)}</td>
-                      <td style={TD}>{fmt(pmFooter.fg2Pct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.fg2Pct, '%')}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pmFooter.fg3m)}/{fmt(pmFooter.fg3a)}</td>
-                      <td style={TD}>{fmt(pmFooter.fg3Pct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.fg3Pct, '%')}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pmFooter.ftm)}/{fmt(pmFooter.fta)}</td>
-                      <td style={TD}>{fmt(pmFooter.ftPct, '%')}</td>
-                      <td style={TD}>{fmt(pmFooter.ro)}</td>
-                      <td style={TD}>{fmt(pmFooter.rd)}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.ftPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.ro)}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.rd)}</td>
                       <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pmFooter.rt)}</td>
-                      <td style={TD}>{fmt(pmFooter.pd)}</td>
-                      <td style={TD}>{fmt(pmFooter.ct)}</td>
-                      <td style={TD}>{fmt(pmFooter.intercepts)}</td>
-                      <td style={TD}>{fmt(pmFooter.bp)}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.pd)}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.ct)}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.intercepts)}</td>
+                      <td style={{ ...TD }}>{fmt(pmFooter.bp)}</td>
                       <td style={{ ...TD, color: pmFooter.evalTeamAvg !== null ? evalColor(pmFooter.evalTeamAvg, statThresholds) : '#475569', fontWeight: 700 }}>{fmt(pmFooter.evalTeamAvg)}</td>
                     </tr>
                   </tfoot>
@@ -1038,11 +1040,11 @@ export default function PerformanceCollectivePage() {
                           <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
                           <td style={{ ...TD, color: m.offRating > 0 ? ortgColor(m.offRating, statThresholds) : '#475569' }}>{m.offRating > 0 ? m.offRating : '—'}</td>
                           <td style={{ ...TD, color: m.defRating > 0 ? drtgColor(m.defRating, statThresholds) : '#475569' }}>{m.defRating > 0 ? m.defRating : '—'}</td>
-                          <td style={TD}>{m.efgPct > 0 ? `${m.efgPct}%` : '—'}</td>
-                          <td style={TD}>{m.ftRate > 0 ? m.ftRate : '—'}</td>
+                          <td style={{ ...TD }}>{m.efgPct > 0 ? `${m.efgPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.ftRate > 0 ? m.ftRate : '—'}</td>
                           <td style={{ ...TD, ...SEP }}>{m.toPct > 0 ? `${m.toPct}%` : '—'}</td>
-                          <td style={TD}>{m.orebPct > 0 ? `${m.orebPct}%` : '—'}</td>
-                          <td style={TD}>{m.drebPct > 0 ? `${m.drebPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.orebPct > 0 ? `${m.orebPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.drebPct > 0 ? `${m.drebPct}%` : '—'}</td>
                         </tr>
                       );
                     })}
@@ -1056,11 +1058,11 @@ export default function PerformanceCollectivePage() {
                       <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pmAdvFooter.pts)}</td>
                       <td style={{ ...TD, color: pmAdvFooter.offRating !== null ? ortgColor(pmAdvFooter.offRating, statThresholds) : '#475569' }}>{fmt(pmAdvFooter.offRating)}</td>
                       <td style={{ ...TD, color: pmAdvFooter.defRating !== null ? drtgColor(pmAdvFooter.defRating, statThresholds) : '#475569' }}>{fmt(pmAdvFooter.defRating)}</td>
-                      <td style={TD}>{fmt(pmAdvFooter.efgPct, '%')}</td>
-                      <td style={TD}>{fmt(pmAdvFooter.ftRate)}</td>
+                      <td style={{ ...TD }}>{fmt(pmAdvFooter.efgPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pmAdvFooter.ftRate)}</td>
                       <td style={{ ...TD, ...SEP }}>{fmt(pmAdvFooter.toPct, '%')}</td>
-                      <td style={TD}>{fmt(pmAdvFooter.orebPct, '%')}</td>
-                      <td style={TD}>{fmt(pmAdvFooter.drebPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pmAdvFooter.orebPct, '%')}</td>
+                      <td style={{ ...TD }}>{fmt(pmAdvFooter.drebPct, '%')}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1145,9 +1147,6 @@ export default function PerformanceCollectivePage() {
       {/* ══ CHARGE PHYSIQUE (synthèse RPE × ACWR × Fraîcheur × Risque, alignée sur PerformanceIndividuellePage) ══ */}
       {activeTab === 'load' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={{ color: '#64748B', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
-            Vue d'ensemble décisionnelle : risque de blessure et charge d'équipe en un coup d'œil. Pour le détail séance par séance et le classement joueurs, voir l'onglet RPE.
-          </p>
           {/* Verdict — à risque maintenant */}
           <RiskVerdictCard
             title="Risque de blessure — maintenant"
@@ -1240,9 +1239,6 @@ export default function PerformanceCollectivePage() {
           <EmptyState message="Aucune séance RPE enregistrée sur cette période." />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <p style={{ color: '#64748B', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
-              Détail séance par séance et classement des joueuses par charge. Pour le verdict de risque de blessure, voir l'onglet Charge physique.
-            </p>
             <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 10 }}>
               <RpeKpiCard
                 accent={weekTier ? weekTier.color : '#334155'}
@@ -1313,6 +1309,11 @@ export default function PerformanceCollectivePage() {
           roster={data.players} team={data} from={from} to={to} thresholds={thresholds}
           defaultSubjectId={TEAM_SUBJECT}
         />
+      )}
+
+      {/* ══ OBJECTIFS ════════════════════════════════════════════════════════ */}
+      {activeTab === 'objectives' && selected && (
+        <ObjectivesPanel teamId={selected.team.id} scope={{ team: data }} seasonStart={seasonStart} seasonEnd={seasonEnd} />
       )}
 
       {/* ══ PAR JOUEUR (même page que "Comparaison joueurs" — comparaison libre de 2 joueurs) ══ */}

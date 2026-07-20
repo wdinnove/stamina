@@ -4,7 +4,7 @@ import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Shie
 import { teamsApi, playersApi, configApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle, Modal, PlayerEditModal } from '../components';
-import { playerNameFull } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Team, Player, Organization } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -346,7 +346,7 @@ function PlayersTab() {
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <PlayerAvatar player={player} size={30} />
-                      <div style={{ fontWeight: 600 }}>{playerNameFull(player)}</div>
+                      <div style={{ fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></div>
                     </div>
                   </td>
                   <td style={tdStyle}>{player.position}</td>

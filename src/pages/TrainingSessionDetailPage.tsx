@@ -1232,7 +1232,8 @@ export default function TrainingSessionDetailPage() {
           <PlayerAvatar player={player} size={26} />
         </span>
         <span style={{ color: '#F1F5F9', fontSize: '0.78rem', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {playerNameShort(player)}
+          <span className="hidden md:inline">{playerNameFull(player)}</span>
+          <span className="md:hidden">{playerNameShort(player)}</span>
         </span>
         {statusCfg && (
           <span style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
@@ -1493,7 +1494,7 @@ export default function TrainingSessionDetailPage() {
                               style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>
-                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{playerNameShort(p)}</td>
+                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                                 {acwrTier ? tierBadge(acwrTier) : (
                                   <span title="Historique insuffisant (28 jours)" style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
@@ -1745,7 +1746,8 @@ export default function TrainingSessionDetailPage() {
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderBottom: '1px solid #1E2229' }}>
                   <PlayerAvatar player={p} size={30} />
                   <span style={{ flex: 1, minWidth: 0, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {playerNameFull(p)}
+                    <span className="hidden md:inline">{playerNameFull(p)}</span>
+                    <span className="md:hidden">{playerNameShort(p)}</span>
                   </span>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                     {(['present', 'absent', 'late'] as const).map(s => {

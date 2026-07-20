@@ -1,4 +1,4 @@
-import type { PlayerStatus, ActionCategory, ActionPriority } from './types';
+import type { PlayerStatus, ActionCategory, ActionPriority, ObjectiveImportance, ObjectiveComparator } from './types';
 
 export const CURRENT_DATE = '2026-01-15';
 
@@ -26,6 +26,18 @@ export const priorityConfig: Record<ActionPriority, { label: string; color: stri
   normal:   { label: 'Normale',  color: '#94A3B8' },
   high:     { label: 'Haute',    color: '#F59E0B' },
   critical: { label: 'Critique', color: '#EF4444' },
+};
+
+export const importanceConfig: Record<ObjectiveImportance, { label: string; color: string; bg: string }> = {
+  major:  { label: 'Majeur',  color: '#EF4444', bg: 'rgba(239,68,68,0.12)'  },
+  normal: { label: 'Normal',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  minor:  { label: 'Mineur',  color: '#475569', bg: 'rgba(71,85,105,0.10)'  },
+};
+
+export const comparatorConfig: Record<ObjectiveComparator, { label: string; symbol: string }> = {
+  gte: { label: 'Au moins',   symbol: '≥' },
+  lte: { label: 'Au maximum', symbol: '≤' },
+  eq:  { label: 'Exactement', symbol: '=' },
 };
 
 export const positionColors: Record<string, string> = {

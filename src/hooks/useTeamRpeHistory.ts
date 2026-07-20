@@ -4,7 +4,7 @@ import { computeAcwr, computeTsb, avgRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { mondayIso as getWeekMonday, averageWeeklyLoad } from '../utils/weeklyLoad';
 import { fmtDateShort } from '../utils/dateFormat';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Player, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
 
 export interface TeamChartDay {
@@ -318,7 +318,7 @@ export function useTeamRpeHistory(
   const playerRanking: PlayerRank[] = useMemo(() => playerStatsRaw
     .map(s => {
       const player = roster.find(p => p.id === s.playerId);
-      return { ...s, name: player ? playerNameShort(player) : '—' };
+      return { ...s, name: player ? playerNameShort(player) : '—', nameFull: player ? playerNameFull(player) : '—' };
     })
     .sort((a, b) => b.avgRpe - a.avgRpe),
   [playerStatsRaw, roster]);

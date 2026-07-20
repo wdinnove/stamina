@@ -491,7 +491,7 @@ function ActionCarouselCard({ actions, totalCount, players, today, onOpen }: {
           return (
             <div>
               <p style={{ color: '#CBD5E1', fontSize: '0.82rem', fontWeight: 600, margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {aa.title}{player ? ` · ${playerNameShort(player)}` : ''}
+                {aa.title}{player && <> · <span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></>}
               </p>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ color, fontSize: '1.3rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>

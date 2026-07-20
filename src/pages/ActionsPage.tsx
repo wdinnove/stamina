@@ -191,7 +191,7 @@ export default function ActionsPage() {
               {player && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <PlayerAvatar player={player} size={20} />
-                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playerNameShort(player)}</span>
+                  <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></span>
                 </div>
               )}
               {showDate && (
@@ -268,7 +268,7 @@ export default function ActionsPage() {
           <select value={playerFilter} onChange={e => setPlayerFilter(e.target.value)}
             style={{ width: '100%', padding: playerFilter ? '8px 52px 8px 10px' : '8px 10px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: playerFilter ? '#F1F5F9' : '#475569', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
             <option value="">Tous les joueurs</option>
-            {players.map(p => <option key={p.id} value={p.id}>{playerNameShort(p)}</option>)}
+            {players.map(p => <option key={p.id} value={p.id}>{playerNameFull(p)}</option>)}
           </select>
           {playerFilter && <button onClick={() => setPlayerFilter('')} style={{ position: 'absolute', right: 28, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex', lineHeight: 1 }}><X size={11} /></button>}
         </div>
@@ -417,7 +417,7 @@ export default function ActionsPage() {
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Joueur concerné</label>
                   <select value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} style={inputStyle}>
                     <option value="">-</option>
-                    {players.map(p => <option key={p.id} value={p.id}>{playerNameShort(p)}</option>)}
+                    {players.map(p => <option key={p.id} value={p.id}>{playerNameFull(p)}</option>)}
                   </select>
                 </div>
               </div>

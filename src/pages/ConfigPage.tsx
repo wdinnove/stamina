@@ -9,7 +9,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
 import { Card, CardTitle, StatusBadge, Modal, PlayerEditModal, PlayerAvatar } from '../components';
-import { playerNameFull } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { ExerciseCategory, Player, StaffMember, WellnessEntryMethod } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
@@ -482,7 +482,7 @@ function RosterTab() {
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <PlayerAvatar player={p} size={30} />
-                      <div style={{ fontWeight: 600 }}>{playerNameFull(p)}</div>
+                      <div style={{ fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></div>
                     </div>
                   </td>
                   <td style={tdStyle}>{p.position}</td>

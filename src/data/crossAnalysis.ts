@@ -28,7 +28,7 @@ import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEn
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, aggregateTeamWellnessDaily } from '../utils/wellness';
 import { correlatePairs, MIN_CORRELATION_PAIRS, type CorrelationPair, type CorrelationResult } from '../utils/correlation';
-import { playerNameFull } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
 
 // ── Données d'entrée ──────────────────────────────────────────────────────────
@@ -605,6 +605,7 @@ type RiskLevel = 'red' | 'amber';
 export interface RiskAlert {
   playerId: string;
   playerName: string;
+  playerNameShort: string;
   level: RiskLevel;
   /** Date de fin de l'épisode (tri et affichage) */
   date: string;
@@ -633,6 +634,7 @@ export function detectRiskAlerts(
   for (const p of players) {
     if (!p.rpe.length && !p.allTimeRpe.length) continue; // toutes les règles reposent sur la charge
     const playerName = playerNameFull(p.player);
+    const playerShortName = playerNameShort(p.player);
 
     // ACWR/TSB sur l'historique complet (pas juste la saison affichée) — sinon un épisode de
     // surcharge en tout début de saison peut être manqué faute des 28j de charge chronique.
@@ -659,7 +661,7 @@ export function detectRiskAlerts(
     }
     if (episode) {
       alerts.push({
-        playerId: p.player.id, playerName, level: 'red', date: episode.end,
+        playerId: p.player.id, playerName, playerNameShort: playerShortName, level: 'red', date: episode.end,
         title: 'Charge en zone rouge',
         detail: `Charge d'entraînement en forte hausse du ${fmtDayMonth(episode.start)} au ${fmtDayMonth(episode.end)} (jusqu'à ${episode.peak.toFixed(1)}× la charge habituelle)`,
       });
@@ -681,7 +683,7 @@ export function detectRiskAlerts(
       }
       if (hit) {
         alerts.push({
-          playerId: p.player.id, playerName, level: 'amber', date: hit.date,
+          playerId: p.player.id, playerName, playerNameShort: playerShortName, level: 'amber', date: hit.date,
           title: 'Baisse de perf après pic de charge',
           detail: `Éval ${hit.eval} vs ${round1(mean)} de moyenne saison (${hit.opponent}, ${fmtDayMonth(hit.date)}), après un pic de charge dans les 10 jours précédents`,
         });
@@ -694,7 +696,7 @@ export function detectRiskAlerts(
       const peaked = eachDay(shiftDate(rec.date, -14), rec.date).some(redDay);
       if (peaked) {
         alerts.push({
-          playerId: p.player.id, playerName, level: 'red', date: rec.date,
+          playerId: p.player.id, playerName, playerNameShort: playerShortName, level: 'red', date: rec.date,
           title: 'Blessure précédée d\'un pic de charge',
           detail: `${rec.location || rec.description || 'Blessure'} le ${fmtDayMonth(rec.date)} — charge d'entraînement ou fraîcheur en zone à risque dans les 14 jours précédents`,
         });
@@ -734,7 +736,7 @@ export function detectRiskAlerts(
       }
       if (drop) {
         alerts.push({
-          playerId: p.player.id, playerName, level: 'amber', date: drop.week,
+          playerId: p.player.id, playerName, playerNameShort: playerShortName, level: 'amber', date: drop.week,
           title: 'Bien-être en chute sous charge élevée',
           detail: `Score ${fmt1(drop.curr)}/10 vs ${fmt1(drop.prev)}/10 la semaine précédente, charge hebdo « ${drop.tier} » (semaine du ${fmtDayMonth(drop.week)})`,
         });

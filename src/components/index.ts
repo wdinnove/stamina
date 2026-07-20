@@ -64,3 +64,4 @@ export type { ExerciseImagePickerItem } from './ExerciseImagePicker';
 export { ExerciseDocumentPicker } from './ExerciseDocumentPicker';
 export { SocialVideoEmbed } from './SocialVideoEmbed';
 export { SlideCarousel, CarouselDots, useSwipeCarousel } from './SlideCarousel';
+export { ObjectivesPanel } from './ObjectivesPanel';

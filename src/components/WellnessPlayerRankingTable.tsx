@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
 import type { Player, WellnessEntry } from '../data/types';
 import { WELLNESS_DIMENSIONS, wellnessAvg, wellnessDimColor, wellnessScoreColor, type WellnessDimension } from '../utils/wellness';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
 
 interface WellnessPlayerRankingTableProps {
@@ -90,7 +90,7 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
               <tr key={player.id} style={{ borderBottom: '1px solid #1E2229' }}
                 onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                 onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
-                <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>{playerNameShort(player)}</td>
+                <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></td>
                 {WELLNESS_DIMENSIONS.map(dim => (
                   <td key={dim.key} style={{ padding: '8px 8px', color: wellnessDimColor(avg[dim.key], dim.inverted), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(avg[dim.key])}</td>
                 ))}

@@ -4,7 +4,7 @@ import { EmptyState, Modal, DropzoneEmptyState } from '../components';
 import { attendanceApi, playersApi, rpeApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Player, TrainingSession, TrainingAttendance } from '../data/types';
 
 type AttendanceStatus = TrainingAttendance['status'];
@@ -423,7 +423,8 @@ export default function AttendancePage() {
                         {p.firstName[0]}{p.lastName[0]}
                       </div>
                       <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500 }}>
-                        {playerNameShort(p)}
+                        <span className="hidden md:inline">{playerNameFull(p)}</span>
+                        <span className="md:hidden">{playerNameShort(p)}</span>
                       </span>
                     </div>
                   </td>

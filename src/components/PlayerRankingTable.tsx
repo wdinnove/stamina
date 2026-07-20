@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { PlayerAvatar } from './PlayerAvatar';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { IndicatorDef } from '../data/crossAnalysis';
 import type { Player } from '../data/types';
 
@@ -110,7 +110,7 @@ export function PlayerRankingTable({ rows, def, teamAvg, normalized25, onOpenPla
               <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: RANK_WIDTH, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <PlayerAvatar player={r.player} size={22} />
-                  <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(r.player)}</span>
+                  <span style={{ color: '#F1F5F9', fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(r.player)}</span><span className="md:hidden">{playerNameShort(r.player)}</span></span>
                 </span>
               </td>
               <td style={TD}>{r.player.position || '—'}</td>

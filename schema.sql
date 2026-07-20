@@ -907,6 +907,41 @@ CREATE INDEX ON exercise_images (exercise_id);
 
 
 -- ────────────────────────────────────────────────────────────────
+-- OBJECTIFS (joueur ou équipe)
+--     Seuil attendu sur un indicateur du registre INDICATORS (front),
+--     avec un niveau d'importance pour la mise en évidence visuelle.
+--     player_id et team_id sont indépendants (jamais de cascade entre eux) —
+--     même logique que player_actions.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TYPE objective_importance AS ENUM ('major', 'normal', 'minor');
+CREATE TYPE objective_comparator AS ENUM ('gte', 'lte', 'eq');
+
+CREATE TABLE objectives (
+  id              UUID                 PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id         UUID                 REFERENCES teams(id)   ON DELETE CASCADE,
+  player_id       UUID                 REFERENCES players(id) ON DELETE CASCADE,
+  indicator_key   TEXT                 NOT NULL,
+  importance      objective_importance NOT NULL DEFAULT 'normal',
+  comparator      objective_comparator NOT NULL,
+  threshold_value NUMERIC              NOT NULL,
+  active          BOOLEAN              NOT NULL DEFAULT TRUE,
+  created_by      UUID                 REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ          NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ          NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT objective_subject_required CHECK (team_id IS NOT NULL OR player_id IS NOT NULL)
+);
+
+CREATE INDEX ON objectives (player_id, indicator_key) WHERE active;
+CREATE INDEX ON objectives (team_id, indicator_key)   WHERE active;
+
+CREATE TRIGGER trg_objectives_updated_at
+  BEFORE UPDATE ON objectives
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ────────────────────────────────────────────────────────────────
 -- 22. ROW LEVEL SECURITY
 --     Cloisonnement par équipe / organisation (données de santé RGPD)
 -- ────────────────────────────────────────────────────────────────
@@ -928,6 +963,7 @@ ALTER TABLE rpe_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wellness_entries      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE medical_records       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_actions        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE objectives            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_stats           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE opponent_match_stats  ENABLE ROW LEVEL SECURITY;
@@ -1101,6 +1137,22 @@ CREATE POLICY "medical_access" ON medical_records
 -- Actions joueurs (player_id et team_id sont tous deux optionnels : l'accès est
 -- autorisé si l'un OU l'autre pointe vers l'organisation/équipe de l'utilisateur)
 CREATE POLICY "action_access" ON player_actions
+  FOR ALL TO authenticated
+  USING (
+    (player_id IS NOT NULL AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
+  )
+  WITH CHECK (
+    (player_id IS NOT NULL AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+-- Objectifs (player_id et team_id sont tous deux optionnels, même logique que player_actions)
+CREATE POLICY "objective_access" ON objectives
   FOR ALL TO authenticated
   USING (
     (player_id IS NOT NULL AND player_id IN (

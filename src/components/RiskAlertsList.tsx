@@ -57,7 +57,7 @@ export function RiskAlertsList({ alerts, onOpenPlayer, hidePlayerName, collapsib
                 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                    {!hidePlayerName && <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 700 }}>{a.playerName}</span>}
+                    {!hidePlayerName && <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 700 }}><span className="hidden md:inline">{a.playerName}</span><span className="md:hidden">{a.playerNameShort}</span></span>}
                     <span style={{ color: c, fontSize: '0.75rem', fontWeight: 700 }}>{a.title}</span>
                     <span style={{ color: '#475569', fontSize: '0.68rem', marginLeft: 'auto' }}>{fmtDayMonth(a.date)}</span>
                   </div>

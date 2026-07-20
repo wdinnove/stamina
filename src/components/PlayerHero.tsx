@@ -16,16 +16,12 @@ export const playerStatusColor: Record<Player['status'], string> = {
 export function PlayerHero({ player, marginBottom = 14 }: { player: Player; marginBottom?: number }) {
   const color = playerStatusColor[player.status];
   return (
-    <div style={{ backgroundColor: `${color}10`, border: `1px solid ${color}50`, borderLeft: `4px solid ${color}`, borderRadius: 8, padding: '14px 4px 14px 16px', marginBottom, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+    <div style={{ backgroundColor: `${color}10`, border: `1px solid ${color}50`, borderLeft: `4px solid ${color}`, borderRadius: 8, padding: '14px 16px', marginBottom, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
       <PlayerAvatar player={player} size={44} />
       <div style={{ flex: 1, minWidth: 160 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>{playerNameFull(player)}</span>
           <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '1rem' }}>#{player.number} · {player.position}</span>
-          <span style={{
-            color, backgroundColor: `${color}18`, border: `1px solid ${color}40`,
-            fontWeight: 700, fontSize: '0.82rem', borderRadius: 20, padding: '5px 14px', flexShrink: 0,
-          }}>{playerStatusLabel[player.status]}</span>
         </div>
         <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0' }}>
           {flagEmoji[player.nationality] ?? ''}
@@ -34,6 +30,10 @@ export function PlayerHero({ player, marginBottom = 14 }: { player: Player; marg
           {player.contractEnd ? ` · Contrat → ${formatDate(player.contractEnd)}` : ''}
         </p>
       </div>
+      <span style={{
+        color, backgroundColor: `${color}18`, border: `1px solid ${color}40`,
+        fontWeight: 700, fontSize: '0.82rem', borderRadius: 20, padding: '5px 14px', flexShrink: 0,
+      }}>{playerStatusLabel[player.status]}</span>
     </div>
   );
 }

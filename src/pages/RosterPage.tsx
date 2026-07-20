@@ -4,7 +4,6 @@ import { Search } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { StatusBadge, PlayerAvatar, EmptyState } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { playerNameFull } from '../utils/playerName';
 import type { Player } from '../data/types';
 
 export default function RosterPage() {
@@ -109,7 +108,7 @@ export default function RosterPage() {
                   onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2F3A')}>
                   <PlayerAvatar player={player} size={48} />
                   <div style={{ textAlign: 'center' }}>
-                    <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.82rem', margin: 0 }}>{playerNameFull(player)}</p>
+                    <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.82rem', margin: 0 }}>{player.firstName}<br />{player.lastName.toUpperCase()}</p>
                     <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>#{player.number} · {player.position.split(' ')[0]}</p>
                   </div>
                   <StatusBadge status={player.status} size="sm" />

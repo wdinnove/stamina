@@ -11,7 +11,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
-import { playerNameShort } from '../utils/playerName';
+import { playerNameFull, playerNameShort } from '../utils/playerName';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const DAYS_FR   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -421,9 +421,9 @@ export default function MatchDetailPage() {
                             const player = playerById.get(s.playerId);
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: player ? 'pointer' : undefined }} onClick={() => player && navigate(`/performance-individuelle/${player.id}/vue-ensemble`)}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
-                                <td style={TD}>{fmt1(s.min)}</td>
+                                <td style={{ ...TD }}>{fmt1(s.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{s.pts}</td>
                                 <td style={TD}>{s.fg2m}/{s.fg2a}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(s.fg2m, s.fg2a)}</td>
@@ -431,10 +431,10 @@ export default function MatchDetailPage() {
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(s.fg3m, s.fg3a)}</td>
                                 <td style={TD}>{s.ftm}/{s.fta}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(s.ftm, s.fta)}</td>
-                                <td style={TD}>{s.ro}</td><td style={TD}>{s.rd}</td>
+                                <td style={{ ...TD }}>{s.ro}</td><td style={{ ...TD }}>{s.rd}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{s.ro + s.rd}</td>
-                                <td style={TD}>{s.pd}</td><td style={TD}>{s.ct}</td><td style={TD}>{s.intercepts}</td>
-                                <td style={TD}>{s.bp}</td><td style={TD}>{s.fte}</td><td style={TD}>{s.fpr}</td>
+                                <td style={{ ...TD }}>{s.pd}</td><td style={{ ...TD }}>{s.ct}</td><td style={{ ...TD }}>{s.intercepts}</td>
+                                <td style={{ ...TD }}>{s.bp}</td><td style={{ ...TD }}>{s.fte}</td><td style={{ ...TD }}>{s.fpr}</td>
                                 <td style={{ ...TD, color: evalColor(s.eval ?? null) }}>{s.eval ?? '—'}</td>
                                 <td style={{ ...TD, color: (s.plusMinus ?? 0) > 0 ? '#00E5A0' : (s.plusMinus ?? 0) < 0 ? '#EF4444' : '#94A3B8' }}>{s.plusMinus != null ? (s.plusMinus > 0 ? `+${s.plusMinus}` : s.plusMinus) : '—'}</td>
                               </tr>
@@ -456,7 +456,7 @@ export default function MatchDetailPage() {
                               <tr key="totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
                                 <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
                                 <td style={{ ...TD, color: '#334155' }}>—</td>
-                                <td style={TD}>{fmt1(t.min)}</td>
+                                <td style={{ ...TD }}>{fmt1(t.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
                                 <td style={TD}>{t.fg2m}/{t.fg2a}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg2m, t.fg2a)}</td>
@@ -464,11 +464,11 @@ export default function MatchDetailPage() {
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg3m, t.fg3a)}</td>
                                 <td style={TD}>{t.ftm}/{t.fta}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.ftm, t.fta)}</td>
-                                <td style={TD}>{t.ro}</td>
-                                <td style={TD}>{t.rd}</td>
+                                <td style={{ ...TD }}>{t.ro}</td>
+                                <td style={{ ...TD }}>{t.rd}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.ro + t.rd}</td>
-                                <td style={TD}>{t.pd}</td><td style={TD}>{t.ct}</td><td style={TD}>{t.intercepts}</td>
-                                <td style={TD}>{t.bp}</td><td style={TD}>{t.fte}</td><td style={TD}>{t.fpr}</td>
+                                <td style={{ ...TD }}>{t.pd}</td><td style={{ ...TD }}>{t.ct}</td><td style={{ ...TD }}>{t.intercepts}</td>
+                                <td style={{ ...TD }}>{t.bp}</td><td style={{ ...TD }}>{t.fte}</td><td style={{ ...TD }}>{t.fpr}</td>
                                 <td style={{ ...TD, color: '#475569' }}>—</td>
                                 <td style={{ ...TD, color: '#475569' }}>—</td>
                               </tr>
@@ -601,19 +601,19 @@ export default function MatchDetailPage() {
                             const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{playerNameShort(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, textAlign: 'left', width: 160, minWidth: 160, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
                                 <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
-                                <td style={TD}>{fmt(adv.efgPct, '%')}</td>
-                                <td style={TD}>{fmt(adv.ftRate)}</td>
+                                <td style={{ ...TD }}>{fmt(adv.efgPct, '%')}</td>
+                                <td style={{ ...TD }}>{fmt(adv.ftRate)}</td>
                                 <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(adv.ptsProd)}</td>
-                                <td style={TD}>{fmt(adv.astPct, '%')}</td>
-                                <td style={TD}>{fmt(adv.tovPct, '%')}</td>
+                                <td style={{ ...TD }}>{fmt(adv.astPct, '%')}</td>
+                                <td style={{ ...TD }}>{fmt(adv.tovPct, '%')}</td>
                                 <td style={TD}>{fmt(adv.bpPerPoss)}</td>
                                 <td style={{ ...TD, ...SEP }}>{fmt(adv.trebPct, '%')}</td>
-                                <td style={TD}>{fmt(adv.drebPct, '%')}</td>
-                                <td style={TD}>{fmt(adv.orebPct, '%')}</td>
+                                <td style={{ ...TD }}>{fmt(adv.drebPct, '%')}</td>
+                                <td style={{ ...TD }}>{fmt(adv.orebPct, '%')}</td>
                               </tr>
                             );
                           })}
@@ -834,7 +834,7 @@ export default function MatchDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
                     <span style={{ fontSize: '0.72rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Joueur A</span>
                     <select value={playerA} onChange={e => setPlayerA(e.target.value)} style={{ ...selStyle, flex: 'unset', width: '100%' }}>
-                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${playerNameShort(p)}` : s.playerId.slice(0,8)}</option>; })}
+                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${playerNameFull(p)}` : s.playerId.slice(0,8)}</option>; })}
                     </select>
                     {pA && <span style={{ fontSize: '0.72rem', color: '#475569' }}>{pA.position} · #{pA.number}</span>}
                   </div>
@@ -842,7 +842,7 @@ export default function MatchDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                     <span style={{ fontSize: '0.72rem', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Joueur B</span>
                     <select value={playerB} onChange={e => setPlayerB(e.target.value)} style={{ ...selStyle, flex: 'unset', width: '100%', textAlign: 'right' }}>
-                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${playerNameShort(p)}` : s.playerId.slice(0,8)}</option>; })}
+                      {individualStats.map(s => { const p = playerById.get(s.playerId); return <option key={s.playerId} value={s.playerId}>{p ? `#${p.number} ${playerNameFull(p)}` : s.playerId.slice(0,8)}</option>; })}
                     </select>
                     {pB && <span style={{ fontSize: '0.72rem', color: '#475569' }}>{pB.position} · #{pB.number}</span>}
                   </div>
@@ -853,9 +853,9 @@ export default function MatchDetailPage() {
                     <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 360 }}>
                       <thead>
                         <tr>
-                          <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>{pA ? `${playerNameShort(pA)}` : '—'}</th>
+                          <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>{pA ? `${playerNameFull(pA)}` : '—'}</th>
                           <th style={{ ...TH, width: 90 }}>STAT</th>
-                          <th style={{ ...TH, textAlign: 'left', minWidth: 110, color: '#94A3B8' }}>{pB ? `${playerNameShort(pB)}` : '—'}</th>
+                          <th style={{ ...TH, textAlign: 'left', minWidth: 110, color: '#94A3B8' }}>{pB ? `${playerNameFull(pB)}` : '—'}</th>
                         </tr>
                       </thead>
                       <tbody>

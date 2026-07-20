@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart2, Filter } from 'lucide-react';
+import { BarChart2 } from 'lucide-react';
 import { Card, CardTitle, EmptyState } from '../components';
-import { FilterField, filterControlStyle } from './FilterField';
 import { evalColor, ortgColor, shotPct } from '../data';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
@@ -13,331 +12,51 @@ function fmtShortDate(iso: string) {
   return `${d} ${MONTHS[m - 1]}`;
 }
 
-const ALL_SEASONS = 'all';
-const ALL_TEAMS = 'all';
-
 type SeasonGroup = { seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] };
 
 interface PlayerStatsPanelProps {
-  view:                'basic' | 'advanced';
-  seasonGroupedStats:  SeasonGroup[];
-  currentSeasonLabel?: string;
-  currentTeamId?:      string;
-  teamStatsMap:        Map<string, TeamMatchStat>;
-  statThresholds:      StatThresholds;
+  view:               'basic' | 'advanced';
+  seasonGroupedStats: SeasonGroup[];
+  teamStatsMap:       Map<string, TeamMatchStat>;
+  statThresholds:     StatThresholds;
+  /** Plage de dates affichée (from/to) — mêmes filtres que les autres onglets de la page. */
+  from:               string;
+  to:                 string;
 }
 
 export function PlayerStatsPanel({
-  view: statsView, seasonGroupedStats, currentSeasonLabel, currentTeamId, teamStatsMap, statThresholds,
+  view: statsView, seasonGroupedStats, teamStatsMap, statThresholds, from, to,
 }: PlayerStatsPanelProps) {
-  const [seasonFilter, setSeasonFilter] = useState<string>(currentSeasonLabel ?? ALL_SEASONS);
-  const [teamFilter, setTeamFilter] = useState<string>(currentTeamId ?? ALL_TEAMS);
   const [normalize25, setNormalize25] = useState(false);
   const [basicSort, setBasicSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
   const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
-  const [seasonSort, setSeasonSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'season', dir: 'desc' });
 
-  const seasonLabels = useMemo(() => {
-    const seen = new Set<string>();
-    const labels: string[] = [];
-    for (const g of seasonGroupedStats) if (!seen.has(g.seasonLabel)) { seen.add(g.seasonLabel); labels.push(g.seasonLabel); }
-    return labels.sort((a, b) => b.localeCompare(a));
-  }, [seasonGroupedStats]);
-
-  // Toutes les équipes jamais rencontrées (toutes saisons confondues) — sert de liste quand
-  // "Toutes les saisons" est sélectionné, pour pouvoir filtrer par équipe même dans ce cas.
-  const allTeams = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const g of seasonGroupedStats) if (!seen.has(g.teamId)) seen.set(g.teamId, g.teamName || '—');
-    return [...seen.entries()].map(([teamId, teamName]) => ({ teamId, teamName }));
-  }, [seasonGroupedStats]);
-
-  const groupsForSeason = useMemo(
-    () => seasonFilter === ALL_SEASONS ? [] : seasonGroupedStats.filter(g => g.seasonLabel === seasonFilter),
-    [seasonGroupedStats, seasonFilter],
+  // Historique complet (toutes saisons/équipes confondues) filtré par la plage de dates affichée —
+  // remplace l'ancien filtre Saison/Équipe pour rester cohérent avec la période des autres onglets.
+  const effectiveMatchStats = useMemo(
+    () => seasonGroupedStats.flatMap(g => g.stats).filter(m => (!from || m.date >= from) && (!to || m.date <= to)),
+    [seasonGroupedStats, from, to],
   );
-
-  // Options du select Équipe : équipes de la saison choisie, ou toutes les équipes si "Toutes les saisons".
-  const teamOptions = seasonFilter === ALL_SEASONS
-    ? allTeams
-    : groupsForSeason.map(g => ({ teamId: g.teamId, teamName: g.teamName || '—' }));
-
-  const effectiveMatchStats = useMemo(() => {
-    if (seasonFilter === ALL_SEASONS) return [];
-    if (teamFilter === ALL_TEAMS) return groupsForSeason.flatMap(g => g.stats);
-    return groupsForSeason.find(g => g.teamId === teamFilter)?.stats ?? groupsForSeason.flatMap(g => g.stats);
-  }, [groupsForSeason, teamFilter, seasonFilter]);
-
-  // Groupes utilisés par la vue "Toutes les saisons" — filtrés par équipe si une équipe précise est choisie,
-  // pour pouvoir combiner "Toutes les saisons" + une équipe donnée (historique saison par saison de cette équipe).
-  const groupsForAllSeasonsView = useMemo(
-    () => teamFilter === ALL_TEAMS ? seasonGroupedStats : seasonGroupedStats.filter(g => g.teamId === teamFilter),
-    [seasonGroupedStats, teamFilter],
-  );
-
-  const handleSeasonChange = (label: string) => {
-    setSeasonFilter(label);
-    if (label === ALL_SEASONS) {
-      // Garde l'équipe déjà choisie si elle existe toujours parmi toutes les équipes, sinon "Toutes les équipes".
-      const stillValid = teamFilter !== ALL_TEAMS && allTeams.some(t => t.teamId === teamFilter);
-      setTeamFilter(stillValid ? teamFilter : ALL_TEAMS);
-      return;
-    }
-    const newGroups = seasonGroupedStats.filter(g => g.seasonLabel === label);
-    const hasCurrentTeam = !!currentTeamId && newGroups.some(g => g.teamId === currentTeamId);
-    setTeamFilter(hasCurrentTeam ? currentTeamId! : newGroups.length === 1 ? newGroups[0].teamId : ALL_TEAMS);
-  };
 
   return <>
 
-      {/* ── Filtres saison / équipe ── */}
-      <Card style={{ marginBottom: 14 }}>
-        <CardTitle
-          icon={<Filter size={12} style={{ color: '#3B82F6' }} />}
-          mb={0}
-          info="indépendant de la période sélectionnée sur les autres onglets"
-          right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button type="button" onClick={() => setNormalize25(v => !v)}
-                title="Recalculer toutes les stats comme si la joueuse jouait 25 min"
-                style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
-                25 min
-              </button>
-              <FilterField legend="Saison" width={160}>
-                <select value={seasonFilter} onChange={e => handleSeasonChange(e.target.value)} style={filterControlStyle}>
-                  {seasonLabels.map(label => <option key={label} value={label}>{label}</option>)}
-                  <option value={ALL_SEASONS}>Toutes les saisons</option>
-                </select>
-              </FilterField>
-              <FilterField legend="Équipe" width={160}>
-                <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} style={filterControlStyle}>
-                  <option value={ALL_TEAMS}>Toutes les équipes</option>
-                  {teamOptions.map(t => <option key={t.teamId} value={t.teamId}>{t.teamName}</option>)}
-                </select>
-              </FilterField>
-            </div>
-          }
-        >Filtres</CardTitle>
-      </Card>
-
-      {/* ── Ligne 5 : Statistiques par match ── */}
+      {/* ── Statistiques par match ── */}
       <Card style={{ marginBottom: 14 }}>
         <CardTitle
           icon={<BarChart2 size={12} style={{ color: '#3B82F6' }} />}
           mb={14}
-          info={seasonFilter !== ALL_SEASONS && effectiveMatchStats.length > 0
-            ? `${effectiveMatchStats.length} match${effectiveMatchStats.length > 1 ? 's' : ''}`
-            : undefined}
-        >Statistiques saison</CardTitle>
+          info={effectiveMatchStats.length > 0 ? `${effectiveMatchStats.length} match${effectiveMatchStats.length > 1 ? 's' : ''}` : undefined}
+          right={
+            <button type="button" onClick={() => setNormalize25(v => !v)}
+              title="Recalculer toutes les stats comme si la joueuse jouait 25 min"
+              style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
+              25 min
+            </button>
+          }
+        >Statistiques</CardTitle>
 
-        {seasonFilter === ALL_SEASONS ? (
-          groupsForAllSeasonsView.length === 0 ? (
-            <EmptyState message="Aucune statistique disponible." />
-          ) : (() => {
-            const TH: React.CSSProperties = {
-              padding: '7px 10px', color: '#475569', fontSize: '0.68rem', fontWeight: 700,
-              textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center',
-              whiteSpace: 'nowrap', borderBottom: '1px solid #2A2F3A',
-              position: 'sticky', top: 0, backgroundColor: '#161920', zIndex: 1,
-              cursor: 'pointer', userSelect: 'none',
-            };
-            const TD: React.CSSProperties = {
-              padding: '7px 10px', color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap',
-            };
-            const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
-            const fmt = (v: number | null, suffix = '') => v !== null ? `${v}${suffix}` : '—';
-            const si = (col: string) =>
-              seasonSort.col === col ? (seasonSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
-            const thC = (col: string) =>
-              seasonSort.col === col ? '#CBD5E1' : '#475569';
-            const toggle = (col: string) => setSeasonSort(prev =>
-              prev.col === col ? { ...prev, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }
-            );
-            const computed = groupsForAllSeasonsView.map(({ seasonId, seasonLabel, teamName, stats: ss }) => {
-              const n = ss.length;
-              const sum = (k: keyof MatchStat) => ss.reduce((acc, m) => acc + (((m[k] as number) || 0)), 0);
-              const avg = (k: keyof MatchStat) => n > 0 ? Math.round((sum(k) / n) * 10) / 10 : 0;
-              const withEval = ss.filter(s => s.eval !== null);
-              const evalAvg = withEval.length > 0
-                ? Math.round(withEval.reduce((a, s) => a + (s.eval ?? 0), 0) / withEval.length * 10) / 10
-                : null;
-              const withPm = ss.filter(s => s.plusMinus !== null);
-              const pmAvg = withPm.length > 0
-                ? Math.round(withPm.reduce((a, s) => a + (s.plusMinus ?? 0), 0) / withPm.length * 10) / 10
-                : null;
-              const advList = ss.map(m => calcPlayerAdvanced(m, teamStatsMap.get(m.matchId ?? '')));
-              const avgAdv = (key: string) => {
-                const vals = advList.map(a => (a as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
-                return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
-              };
-              const avgMinRaw = avg('min');
-              const sc = normalize25 && avgMinRaw > 0 ? 25 / avgMinRaw : 1;
-              const nr = (v: number) => Math.round(v * sc * 10) / 10;
-              return {
-                seasonId, seasonLabel, teamName: teamName || '', n,
-                fg2m: sum('fg2m'), fg2a: sum('fg2a'),
-                fg3m: sum('fg3m'), fg3a: sum('fg3a'),
-                ftm: sum('ftm'), fta: sum('fta'),
-                starters: ss.filter(s => s.starter).length,
-                evalAvg: evalAvg !== null ? nr(evalAvg) : null,
-                pmAvg: pmAvg !== null ? nr(pmAvg) : null,
-                avgMin: normalize25 && avgMinRaw > 0 ? 25 : avgMinRaw, avgPts: nr(avg('pts')),
-                avgRo: nr(avg('ro')), avgRd: nr(avg('rd')),
-                avgPd: nr(avg('pd')), avgCt: nr(avg('ct')),
-                avgInt: nr(avg('intercepts')), avgBp: nr(avg('bp')),
-                avgUsg: avgAdv('usagePct'), avgOrtg: avgAdv('offRating'), avgEfg: avgAdv('efgPct'), avgFtr: avgAdv('ftRate'),
-                avgPprod: (() => { const v = avgAdv('ptsProd'); return v !== null ? nr(v) : null; })(), avgAst: avgAdv('astPct'), avgTov: avgAdv('tovPct'), avgBppos: avgAdv('bpPerPoss'),
-                avgTreb: avgAdv('trebPct'), avgDreb: avgAdv('drebPct'), avgOreb: avgAdv('orebPct'),
-              };
-            });
-            const sorted = [...computed].sort((a, b) => {
-              const m = seasonSort.dir === 'asc' ? 1 : -1;
-              switch (seasonSort.col) {
-                case 'season': return m * a.seasonLabel.localeCompare(b.seasonLabel);
-                case 'mj':     return m * (a.n - b.n);
-                case 'tit':    return m * (a.starters - b.starters);
-                case 'min':    return m * (a.avgMin - b.avgMin);
-                case 'pts':    return m * (a.avgPts - b.avgPts);
-                case 'fg2':    return m * ((a.fg2a > 0 ? a.fg2m / a.fg2a : 0) - (b.fg2a > 0 ? b.fg2m / b.fg2a : 0));
-                case 'fg3':    return m * ((a.fg3a > 0 ? a.fg3m / a.fg3a : 0) - (b.fg3a > 0 ? b.fg3m / b.fg3a : 0));
-                case 'ft':     return m * ((a.fta  > 0 ? a.ftm  / a.fta  : 0) - (b.fta  > 0 ? b.ftm  / b.fta  : 0));
-                case 'rt':     return m * ((a.avgRo + a.avgRd) - (b.avgRo + b.avgRd));
-                case 'pd':     return m * (a.avgPd - b.avgPd);
-                case 'ct':     return m * (a.avgCt - b.avgCt);
-                case 'int':    return m * (a.avgInt - b.avgInt);
-                case 'bp':     return m * (a.avgBp - b.avgBp);
-                case 'eval':   return m * ((a.evalAvg ?? -99) - (b.evalAvg ?? -99));
-                case 'pm':     return m * ((a.pmAvg ?? -99) - (b.pmAvg ?? -99));
-                case 'usg':    return m * ((a.avgUsg ?? -1) - (b.avgUsg ?? -1));
-                case 'ortg':   return m * ((a.avgOrtg ?? -1) - (b.avgOrtg ?? -1));
-                case 'efg':    return m * ((a.avgEfg ?? -1) - (b.avgEfg ?? -1));
-                case 'ftr':    return m * ((a.avgFtr ?? -1) - (b.avgFtr ?? -1));
-                case 'pprod':  return m * ((a.avgPprod ?? -1) - (b.avgPprod ?? -1));
-                case 'ast':    return m * ((a.avgAst ?? -1) - (b.avgAst ?? -1));
-                case 'tov':    return m * ((a.avgTov ?? -1) - (b.avgTov ?? -1));
-                case 'bppos':  return m * ((a.avgBppos ?? -1) - (b.avgBppos ?? -1));
-                case 'treb':   return m * ((a.avgTreb ?? -1) - (b.avgTreb ?? -1));
-                case 'dreb':   return m * ((a.avgDreb ?? -1) - (b.avgDreb ?? -1));
-                case 'oreb':   return m * ((a.avgOreb ?? -1) - (b.avgOreb ?? -1));
-                default:       return 0;
-              }
-            });
-            return (
-              <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
-                {statsView === 'basic' ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
-                  <thead>
-                    <tr>
-                      <th onClick={() => toggle('season')} style={{ ...TH, textAlign: 'left', color: thC('season') }}>Saison{si('season')}</th>
-                      <th style={{ ...TH, textAlign: 'left', cursor: 'default' }}>Équipe</th>
-                      <th onClick={() => toggle('mj')}    style={{ ...TH, color: thC('mj') }}>MJ{si('mj')}</th>
-                      <th onClick={() => toggle('tit')}   style={{ ...TH, color: thC('tit') }}>Tit{si('tit')}</th>
-                      <th onClick={() => toggle('min')}   style={{ ...TH, color: normalize25 ? '#F59E0B' : thC('min') }}>MIN{si('min')}{normalize25 ? ' ⟳' : ''}</th>
-                      <th onClick={() => toggle('pts')}   style={{ ...TH, color: thC('pts') }}>PTS{si('pts')}</th>
-                      <th style={{ ...TH, cursor: 'default' }}>2PT</th>
-                      <th onClick={() => toggle('fg2')}   style={{ ...TH, color: thC('fg2') }}>2PT%{si('fg2')}</th>
-                      <th style={{ ...TH, cursor: 'default' }}>3PT</th>
-                      <th onClick={() => toggle('fg3')}   style={{ ...TH, color: thC('fg3') }}>3PT%{si('fg3')}</th>
-                      <th style={{ ...TH, cursor: 'default' }}>LF</th>
-                      <th onClick={() => toggle('ft')}    style={{ ...TH, color: thC('ft') }}>LF%{si('ft')}</th>
-                      <th style={{ ...TH, cursor: 'default' }}>RO</th>
-                      <th style={{ ...TH, cursor: 'default' }}>RD</th>
-                      <th onClick={() => toggle('rt')}    style={{ ...TH, color: thC('rt') }}>RT{si('rt')}</th>
-                      <th onClick={() => toggle('pd')}    style={{ ...TH, color: thC('pd') }}>PD{si('pd')}</th>
-                      <th onClick={() => toggle('ct')}    style={{ ...TH, color: thC('ct') }}>CT{si('ct')}</th>
-                      <th onClick={() => toggle('int')}   style={{ ...TH, color: thC('int') }}>INT{si('int')}</th>
-                      <th onClick={() => toggle('bp')}    style={{ ...TH, color: thC('bp') }}>BP{si('bp')}</th>
-                      <th onClick={() => toggle('eval')}  style={{ ...TH, color: thC('eval') }}>EVAL{si('eval')}</th>
-                      <th onClick={() => toggle('pm')}    style={{ ...TH, color: thC('pm') }}>±{si('pm')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map(({ seasonId, seasonLabel, teamName, n, fg2m, fg2a, fg3m, fg3a, ftm, fta, starters, evalAvg, pmAvg, avgMin, avgPts, avgRo, avgRd, avgPd, avgCt, avgInt, avgBp }, i) => {
-                      const fg2Pct = shotPct(fg2m, fg2a);
-                      const fg3Pct = shotPct(fg3m, fg3a);
-                      const ftPct  = shotPct(ftm, fta);
-                      return (
-                        <tr key={seasonId} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                          <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{seasonLabel}</td>
-                          <td style={{ ...TD, textAlign: 'left' }}>{teamName || '—'}</td>
-                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
-                          <td style={TD}>{starters}</td>
-                          <td style={TD}>{avgMin}</td>
-                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
-                          <td style={TD}>{fg2m}/{fg2a}</td>
-                          <td style={TD}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
-                          <td style={TD}>{fg3m}/{fg3a}</td>
-                          <td style={TD}>{fg3Pct !== null ? `${fg3Pct}%` : '—'}</td>
-                          <td style={TD}>{ftm}/{fta}</td>
-                          <td style={TD}>{ftPct  !== null ? `${ftPct}%`  : '—'}</td>
-                          <td style={TD}>{avgRo}</td>
-                          <td style={TD}>{avgRd}</td>
-                          <td style={{ ...TD, color: '#F1F5F9' }}>{Math.round((avgRo + avgRd) * 10) / 10}</td>
-                          <td style={TD}>{avgPd}</td>
-                          <td style={TD}>{avgCt}</td>
-                          <td style={TD}>{avgInt}</td>
-                          <td style={TD}>{avgBp}</td>
-                          <td style={{ ...TD, color: evalColor(evalAvg), fontWeight: evalAvg !== null ? 700 : 400 }}>{evalAvg !== null ? evalAvg : '—'}</td>
-                          <td style={{ ...TD, fontWeight: 700, color: pmAvg === null ? '#475569' : pmAvg > 0 ? '#00E5A0' : pmAvg < 0 ? '#EF4444' : '#94A3B8' }}>{pmAvg !== null ? (pmAvg > 0 ? `+${pmAvg}` : pmAvg) : '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
-                  <thead>
-                    <tr>
-                      <th rowSpan={2} onClick={() => toggle('season')} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', color: thC('season') }}>Saison{si('season')}</th>
-                      <th rowSpan={2} style={{ ...TH, cursor: 'default', textAlign: 'left', verticalAlign: 'middle' }}>Équipe</th>
-                      <th rowSpan={2} onClick={() => toggle('mj')} style={{ ...TH, verticalAlign: 'middle', color: thC('mj') }}>MJ{si('mj')}</th>
-                      <th colSpan={5} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
-                      <th colSpan={4} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Playmaking</th>
-                      <th colSpan={3} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Rebonds</th>
-                    </tr>
-                    <tr>
-                      <th onClick={() => toggle('pts')}   style={{ ...TH, ...SEP, color: thC('pts') }}>Pts{si('pts')}</th>
-                      <th onClick={() => toggle('usg')}   style={{ ...TH, color: thC('usg') }}>USG%{si('usg')}</th>
-                      <th onClick={() => toggle('ortg')}  style={{ ...TH, color: thC('ortg') }}>ORtg{si('ortg')}</th>
-                      <th onClick={() => toggle('efg')}   style={{ ...TH, color: thC('efg') }}>eFG%{si('efg')}</th>
-                      <th onClick={() => toggle('ftr')}   style={{ ...TH, color: thC('ftr') }}>FT Rate{si('ftr')}</th>
-                      <th onClick={() => toggle('pprod')} style={{ ...TH, ...SEP, color: thC('pprod') }}>Pts générés{si('pprod')}</th>
-                      <th onClick={() => toggle('ast')}   style={{ ...TH, color: thC('ast') }}>%PD{si('ast')}</th>
-                      <th onClick={() => toggle('tov')}   style={{ ...TH, color: thC('tov') }}>%BP{si('tov')}</th>
-                      <th onClick={() => toggle('bppos')} style={{ ...TH, color: thC('bppos') }}>BP/poss{si('bppos')}</th>
-                      <th onClick={() => toggle('treb')}  style={{ ...TH, ...SEP, color: thC('treb') }}>%TREB{si('treb')}</th>
-                      <th onClick={() => toggle('dreb')}  style={{ ...TH, color: thC('dreb') }}>%DREB{si('dreb')}</th>
-                      <th onClick={() => toggle('oreb')}  style={{ ...TH, color: thC('oreb') }}>%OREB{si('oreb')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map(({ seasonId, seasonLabel, teamName, n, avgPts, avgUsg, avgOrtg, avgEfg, avgFtr, avgPprod, avgAst, avgTov, avgBppos, avgTreb, avgDreb, avgOreb }, i) => (
-                      <tr key={seasonId} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                        <td style={{ ...TD, color: '#F1F5F9', textAlign: 'left', fontWeight: 600 }}>{seasonLabel}</td>
-                        <td style={{ ...TD, textAlign: 'left' }}>{teamName || '—'}</td>
-                        <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
-                        <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
-                        <td style={TD}>{fmt(avgUsg, '%')}</td>
-                        <td style={{ ...TD, color: avgOrtg === null ? '#475569' : ortgColor(avgOrtg, statThresholds) }}>{fmt(avgOrtg)}</td>
-                        <td style={TD}>{fmt(avgEfg, '%')}</td>
-                        <td style={TD}>{fmt(avgFtr)}</td>
-                        <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgPprod)}</td>
-                        <td style={TD}>{fmt(avgAst, '%')}</td>
-                        <td style={TD}>{fmt(avgTov, '%')}</td>
-                        <td style={TD}>{fmt(avgBppos)}</td>
-                        <td style={{ ...TD, ...SEP }}>{fmt(avgTreb, '%')}</td>
-                        <td style={TD}>{fmt(avgDreb, '%')}</td>
-                        <td style={TD}>{fmt(avgOreb, '%')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                )}
-              </div>
-            );
-          })()
-        ) : effectiveMatchStats.length === 0 ? (
-          <EmptyState message="Aucune statistique pour cette sélection." />
+        {effectiveMatchStats.length === 0 ? (
+          <EmptyState message="Aucune statistique pour cette période." />
         ) : (() => {
           const rows = effectiveMatchStats;
           // Vue "basic" recalculée comme si chaque match avait été joué en 25 min (percentages
@@ -518,15 +237,15 @@ export function PlayerStatsPanel({
                         <td style={{ ...TD, color: '#94A3B8' }}>{fg3p !== null ? `${fg3p}%` : '—'}</td>
                         <td style={TD}>{m.ftm}/{m.fta}</td>
                         <td style={{ ...TD, color: '#94A3B8' }}>{ftp !== null ? `${ftp}%` : '—'}</td>
-                        <td style={TD}>{m.ro}</td>
-                        <td style={TD}>{m.rd}</td>
+                        <td style={{ ...TD }}>{m.ro}</td>
+                        <td style={{ ...TD }}>{m.rd}</td>
                         <td style={{ ...TD, color: '#F1F5F9' }}>{m.ro + m.rd}</td>
-                        <td style={TD}>{m.pd}</td>
-                        <td style={TD}>{m.ct}</td>
-                        <td style={TD}>{m.intercepts}</td>
-                        <td style={TD}>{m.bp}</td>
-                        <td style={TD}>{m.fte}</td>
-                        <td style={TD}>{m.fpr}</td>
+                        <td style={{ ...TD }}>{m.pd}</td>
+                        <td style={{ ...TD }}>{m.ct}</td>
+                        <td style={{ ...TD }}>{m.intercepts}</td>
+                        <td style={{ ...TD }}>{m.bp}</td>
+                        <td style={{ ...TD }}>{m.fte}</td>
+                        <td style={{ ...TD }}>{m.fpr}</td>
                         <td style={{ ...TD, color: evalCol(m.eval ?? null), fontWeight: 700 }}>{m.eval ?? '—'}</td>
                         <td style={{ ...TD, color: pmCol, fontWeight: 700 }}>{m.plusMinus != null ? (m.plusMinus > 0 ? `+${m.plusMinus}` : m.plusMinus) : '—'}</td>
                       </tr>
@@ -538,7 +257,7 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={TD}>{rows.filter(m => m.starter).length}</td>
-                    <td style={TD}>{avgD('min')}</td>
+                    <td style={{ ...TD }}>{avgD('min')}</td>
                     <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{avgD('pts')}</td>
                     <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{avgD('fg2m')}/{avgD('fg2a')}</td>
                     <td style={{ ...TD, color: '#475569' }}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
@@ -546,15 +265,15 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#475569' }}>{fg3Pct !== null ? `${fg3Pct}%` : '—'}</td>
                     <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{avgD('ftm')}/{avgD('fta')}</td>
                     <td style={{ ...TD, color: '#475569' }}>{ftPct !== null ? `${ftPct}%` : '—'}</td>
-                    <td style={TD}>{avgD('ro')}</td>
-                    <td style={TD}>{avgD('rd')}</td>
+                    <td style={{ ...TD }}>{avgD('ro')}</td>
+                    <td style={{ ...TD }}>{avgD('rd')}</td>
                     <td style={{ ...TD, color: '#F1F5F9' }}>{Math.round((avgD('ro') + avgD('rd')) * 10) / 10}</td>
-                    <td style={TD}>{avgD('pd')}</td>
-                    <td style={TD}>{avgD('ct')}</td>
-                    <td style={TD}>{avgD('intercepts')}</td>
-                    <td style={TD}>{avgD('bp')}</td>
-                    <td style={TD}>{avgD('fte')}</td>
-                    <td style={TD}>{avgD('fpr')}</td>
+                    <td style={{ ...TD }}>{avgD('pd')}</td>
+                    <td style={{ ...TD }}>{avgD('ct')}</td>
+                    <td style={{ ...TD }}>{avgD('intercepts')}</td>
+                    <td style={{ ...TD }}>{avgD('bp')}</td>
+                    <td style={{ ...TD }}>{avgD('fte')}</td>
+                    <td style={{ ...TD }}>{avgD('fpr')}</td>
                     <td style={{ ...TD, color: evalCol(avgEval), fontWeight: 700 }}>{avgEval !== null ? avgEval : '—'}</td>
                     <td style={{ ...TD, color: avgPm > 0 ? '#00E5A0' : avgPm < 0 ? '#EF4444' : '#475569', fontWeight: 700 }}>{avgPm > 0 ? `+${avgPm}` : avgPm}</td>
                   </tr>
@@ -600,17 +319,17 @@ export function PlayerStatsPanel({
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{ptsDisp}</td>
-                        <td style={TD}>{fmt(m.adv.usagePct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.usagePct, '%')}</td>
                         <td style={{ ...TD, color: ortgCol(m.adv.offRating) }}>{fmt(m.adv.offRating)}</td>
-                        <td style={TD}>{fmt(m.adv.efgPct, '%')}</td>
-                        <td style={TD}>{fmt(m.adv.ftRate)}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.efgPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.ftRate)}</td>
                         <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(ptsProdDisp)}</td>
-                        <td style={TD}>{fmt(m.adv.astPct, '%')}</td>
-                        <td style={TD}>{fmt(m.adv.tovPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.astPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.tovPct, '%')}</td>
                         <td style={TD}>{fmt(m.adv.bpPerPoss)}</td>
                         <td style={{ ...TD, ...SEP }}>{fmt(m.adv.trebPct, '%')}</td>
-                        <td style={TD}>{fmt(m.adv.drebPct, '%')}</td>
-                        <td style={TD}>{fmt(m.adv.orebPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.drebPct, '%')}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.orebPct, '%')}</td>
                       </tr>
                     );
                   })}
@@ -620,17 +339,17 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 700 }}>{avgAdvPts}</td>
-                    <td style={TD}>{fmt(avgAdvField('usagePct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('usagePct'), '%')}</td>
                     {(() => { const v = avgAdvField('offRating'); return <td style={{ ...TD, color: ortgCol(v) }}>{fmt(v)}</td>; })()}
-                    <td style={TD}>{fmt(avgAdvField('efgPct'), '%')}</td>
-                    <td style={TD}>{fmt(avgAdvField('ftRate'))}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('efgPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('ftRate'))}</td>
                     <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgAdvPtsProd)}</td>
-                    <td style={TD}>{fmt(avgAdvField('astPct'), '%')}</td>
-                    <td style={TD}>{fmt(avgAdvField('tovPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('astPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('tovPct'), '%')}</td>
                     <td style={TD}>{fmt(avgAdvField('bpPerPoss'))}</td>
                     <td style={{ ...TD, ...SEP }}>{fmt(avgAdvField('trebPct'), '%')}</td>
-                    <td style={TD}>{fmt(avgAdvField('drebPct'), '%')}</td>
-                    <td style={TD}>{fmt(avgAdvField('orebPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('drebPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('orebPct'), '%')}</td>
                   </tr>
                 </tbody>
               </table>

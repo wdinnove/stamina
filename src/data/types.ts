@@ -8,6 +8,8 @@ export type ActionPriority    = 'low' | 'normal' | 'high' | 'critical';
 export type ActionCategory    =
   | 'medical' | 'physical' | 'mental' | 'tactical'
   | 'administrative' | 'interview' | 'video' | 'discussion';
+export type ObjectiveImportance = 'major' | 'normal' | 'minor';
+export type ObjectiveComparator = 'gte' | 'lte' | 'eq';
 
 // ─── New top-level entities ───────────────────────────────────────────────────
 export interface Organization {
@@ -166,6 +168,19 @@ export interface Action {
   dueDate: string;
   assignedTo?: string;
   status: ActionStatus;
+}
+
+/** Objectif : seuil attendu sur un indicateur (clé du registre INDICATORS), pour un joueur ou une équipe */
+export interface Objective {
+  id: string;
+  playerId?: string;
+  teamId?: string;
+  indicatorKey: string;
+  importance: ObjectiveImportance;
+  comparator: ObjectiveComparator;
+  thresholdValue: number;
+  active: boolean;
+  createdAt?: string;
 }
 
 /** Stats individuelles par match — nomenclature NF2 */
@@ -357,6 +372,7 @@ export interface TeamSessionRow {
 export interface PlayerRank {
   playerId: string;
   name: string;
+  nameFull: string;
   nbSessions: number;
   avgRpe: number;
   maxRpe: number;
