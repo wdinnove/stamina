@@ -21,8 +21,6 @@ interface RPEPlayerRankingTableProps {
 type SortKey = 'name' | 'rpe' | 'surcharge' | 'elevee' | 'soutenu' | 'legere' | 'charge';
 type SortDir = 'asc' | 'desc';
 
-const COL_WIDTH = `${100 / 7}%`;
-
 function ZoneDot({ color }: { color: string }) {
   return <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: color, marginRight: 3 }} />;
 }
@@ -83,8 +81,6 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
       <style>{`
         @media (max-width: 639px) {
-          .rpe-rank-table { table-layout: auto !important; }
-          .rpe-rank-table col { width: auto !important; }
           .rpe-rank-table th, .rpe-rank-table td { padding: 8px 12px !important; }
         }
       `}</style>
@@ -95,16 +91,7 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
         </div>
       )}
       <div style={{ overflowX: 'auto' }}>
-        <table className="rpe-rank-table" style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-          <colgroup>
-            <col style={{ width: COL_WIDTH }} />
-            <col style={{ width: COL_WIDTH }} />
-            <col style={{ width: COL_WIDTH }} />
-            <col style={{ width: COL_WIDTH }} />
-            <col style={{ width: COL_WIDTH }} />
-            <col style={{ width: COL_WIDTH }} />
-            <col style={{ width: COL_WIDTH }} />
-          </colgroup>
+        <table className="rpe-rank-table" style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: '#1A1E26', position: 'sticky', top: 0, zIndex: 1 }}>
               <th onClick={() => toggleSort('name')} style={{ ...thBase, whiteSpace: 'nowrap', color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26' }}>Nom{sortArrow('name')}</th>

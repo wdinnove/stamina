@@ -1451,15 +1451,7 @@ export default function TrainingSessionDetailPage() {
                     <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Détail par joueur</p>
                   </div>
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                      <colgroup>
-                        <col />
-                        <col style={{ width: '15%' }} />
-                        <col style={{ width: '13%' }} />
-                        <col style={{ width: '15%' }} />
-                        <col style={{ width: '13%' }} />
-                        <col style={{ width: '15%' }} />
-                      </colgroup>
+                    <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ backgroundColor: '#1A1E26' }}>
                           <th rowSpan={2} style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, color: '#475569', borderBottom: '1px solid #2A2F3A', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26', ...groupSep, borderRight: 'none' }}>Joueur</th>

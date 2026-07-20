@@ -714,10 +714,10 @@ export default function PerformanceCollectivePage() {
             borderColor={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569'}
           >
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <div style={{ color: rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569', fontSize: '1.7rem', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
+              <div className="text-[1.25rem] md:text-[1.7rem]" style={{ color: rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
                 {rpeAvgP !== null ? fmt1(rpeAvgP) : '—'}
               </div>
-              {rpeAvgP !== null && <div style={{ color: rpeColor(rpeAvgP), fontSize: '0.85rem', fontWeight: 700 }}>{rpeLabel(Math.round(rpeAvgP))}</div>}
+              {rpeAvgP !== null && <div className="text-[0.7rem] md:text-[0.85rem]" style={{ color: rpeColor(rpeAvgP), fontWeight: 700 }}>{rpeLabel(Math.round(rpeAvgP))}</div>}
             </div>
             <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5 }}>RPE moyen /10</div>
           </HeroCardShell>
@@ -728,10 +728,10 @@ export default function PerformanceCollectivePage() {
             borderColor={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569'}
           >
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <div style={{ color: wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569', fontSize: '1.7rem', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
+              <div className="text-[1.25rem] md:text-[1.7rem]" style={{ color: wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
                 {wellAvgP !== null ? fmt1(wellAvgP) : '—'}
               </div>
-              {wellAvgP !== null && <div style={{ color: wellnessTier(wellAvgP).color, fontSize: '0.85rem', fontWeight: 700 }}>{wellnessTier(wellAvgP).label}</div>}
+              {wellAvgP !== null && <div className="text-[0.7rem] md:text-[0.85rem]" style={{ color: wellnessTier(wellAvgP).color, fontWeight: 700 }}>{wellnessTier(wellAvgP).label}</div>}
             </div>
             <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5 }}>Score moyen /10</div>
           </HeroCardShell>
@@ -930,7 +930,7 @@ export default function PerformanceCollectivePage() {
               <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead><tr>
-                    <th onClick={() => setS4(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, color: thC('opp', s4), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', s4)}</th>
+                    <th onClick={() => setS4(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', color: thC('opp', s4), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', s4)}</th>
                     <th onClick={() => setS4(p => tog(p, 'date'))} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, color: thC('date', s4) }}>Date{si('date', s4)}</th>
                     <th style={{ ...TH, cursor: 'default' }}>L/E</th>
                     <th style={{ ...TH, cursor: 'default' }}>Score</th>
@@ -955,7 +955,7 @@ export default function PerformanceCollectivePage() {
                       const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                       return (
                         <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
-                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
+                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                           <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                           <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
@@ -1010,7 +1010,7 @@ export default function PerformanceCollectivePage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                   <thead>
                     <tr>
-                      <th rowSpan={2} onClick={() => setS5(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', width: 140, minWidth: 140, verticalAlign: 'middle', color: thC('opp', s5), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', s5)}</th>
+                      <th rowSpan={2} onClick={() => setS5(p => tog(p, 'opp'))}  style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', color: thC('opp', s5), position: 'sticky', left: 0, zIndex: 2 }}>Adv{si('opp', s5)}</th>
                       <th rowSpan={2} onClick={() => setS5(p => tog(p, 'date'))} style={{ ...TH, textAlign: 'left', width: 60, minWidth: 60, verticalAlign: 'middle', color: thC('date', s5) }}>Date{si('date', s5)}</th>
                       <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>L/E</th>
                       <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>Score</th>
@@ -1033,7 +1033,7 @@ export default function PerformanceCollectivePage() {
                       const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                       return (
                         <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
-                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', width: 140, minWidth: 140, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
+                          <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                           <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                           <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>

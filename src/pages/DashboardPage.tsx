@@ -451,16 +451,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
   return (
     <div style={{ border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap', tableLayout: 'fixed' }}>
-          <colgroup>
-            <col style={{ width: 220 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-            <col style={{ width: 130 }} />
-          </colgroup>
+        <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
           <thead>
             <tr>
               <th style={{ ...thSortable, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }} onClick={() => toggleSort('name')}>Joueur{arrow('name')}</th>

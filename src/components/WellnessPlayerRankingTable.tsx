@@ -12,8 +12,6 @@ interface WellnessPlayerRankingTableProps {
 
 type SortKey = 'name' | 'score' | WellnessDimension['key'];
 
-const COL_WIDTH = `${100 / 8}%`;
-
 export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRankingTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -60,8 +58,6 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
     <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
       <style>{`
         @media (max-width: 639px) {
-          .wellness-rank-table { table-layout: auto !important; }
-          .wellness-rank-table col { width: auto !important; }
           .wellness-rank-table th, .wellness-rank-table td { padding: 8px 12px !important; }
         }
       `}</style>
@@ -70,12 +66,7 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
         <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Classement joueurs</p>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table className="wellness-rank-table" style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-          <colgroup>
-            <col style={{ width: COL_WIDTH }} />
-            {WELLNESS_DIMENSIONS.map(d => <col key={d.key} style={{ width: COL_WIDTH }} />)}
-            <col style={{ width: COL_WIDTH }} />
-          </colgroup>
+        <table className="wellness-rank-table" style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: '#1A1E26', position: 'sticky', top: 0, zIndex: 1 }}>
               <th onClick={() => toggleSort('name')} style={{ ...thBase, whiteSpace: 'nowrap', color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26' }}>Nom{sortArrow('name')}</th>

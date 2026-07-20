@@ -19,7 +19,7 @@ export function PlayerHero({ player, marginBottom = 14 }: { player: Player; marg
     <div style={{ backgroundColor: `${color}10`, border: `1px solid ${color}50`, borderLeft: `4px solid ${color}`, borderRadius: 8, padding: '14px 16px', marginBottom, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
       <PlayerAvatar player={player} size={44} />
       <div style={{ flex: 1, minWidth: 160 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px 10px', flexWrap: 'wrap' }}>
           <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>{playerNameFull(player)}</span>
           <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '1rem' }}>#{player.number} · {player.position}</span>
         </div>
