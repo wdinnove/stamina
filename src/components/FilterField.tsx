@@ -37,9 +37,11 @@ export function FilterField({ legend, width = FILTER_FIELD_WIDTH, disabled, chil
 
 // Couleurs fixes par groupe (identité A/B, pas de sémantique bien/mal) — partagées par tous les
 // sélecteurs des onglets Comparer (par période, par match, par saison, par joueur) et par le rendu
-// graphique de PlayerCompareStatBlocks, pour que le violet/vert désigne toujours "groupe A/B".
+// graphique de PlayerCompareStatBlocks, pour que le violet/bleu désigne toujours "groupe A/B".
+// Volontairement hors du vert/rouge utilisés par `zoneColor`/`trendVerdict` (amélioration/
+// dégradation) pour ne pas laisser croire à un lien entre "qui est B" et "bon signe".
 export const GROUP_A_COLOR = '#8B5CF6';
-export const GROUP_B_COLOR = '#00E5A0';
+export const GROUP_B_COLOR = '#3B82F6';
 
 /** Hauteur fixe des containers de groupe (période/joueur/saison/match des onglets Comparer),
  * pour un centrage vertical identique quel que soit le contenu (select, bouton, ou trio de champs). */
