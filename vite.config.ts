@@ -26,6 +26,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // On enregistre le SW nous-mêmes (voir src/pwa.ts) pour pouvoir vérifier
+      // périodiquement les mises à jour et recharger la page automatiquement,
+      // au lieu du simple register() one-shot injecté par défaut.
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Stamina — Management App',
