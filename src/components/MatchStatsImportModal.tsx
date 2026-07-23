@@ -743,7 +743,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
                   {oppRows.length > 0 && (
                     <div>
                       <p style={{ color: '#475569', fontSize: '0.72rem', margin: '10px 0 0' }}>
-                        {oppRows.length} ligne{oppRows.length > 1 ? 's' : ''} · Stats collectives calculées automatiquement
+                        {oppRows.length} ligne{oppRows.length > 1 ? 's' : ''} · Statistiques collectives calculées automatiquement
                       </p>
                       <ColDetectionBadges detected={oppDetected} />
                       <CsvTable rows={oppRows} showMatch={false} players={[]} playerMap={{}} onPlayerChange={() => {}} />

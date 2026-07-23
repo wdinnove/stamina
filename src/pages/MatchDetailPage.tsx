@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Calendar, BarChart3, Pencil, X, AlertCircle, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, ChevronDown } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { statsApi } from '../api/stats';
 import { playersApi } from '../api/players';
 import { notifyOrg } from '../api/notifications';
 import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
-import { EmptyState, Modal } from '../components';
+import { TacticalImportModal } from '../components/TacticalImportModal';
+import { tacticalConfigApi } from '../api/tacticalConfig';
+import { tacticalEventsApi } from '../api/tacticalEvents';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
+import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
@@ -30,12 +33,6 @@ function fmt1(v: number): string {
   return String(parseFloat(v.toFixed(1)));
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
-  border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
-  fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
-};
-
 const TH: React.CSSProperties = {
   padding: '7px 10px', color: '#475569', fontSize: '0.68rem', fontWeight: 700,
   textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center',
@@ -45,6 +42,91 @@ const TH: React.CSSProperties = {
 const TD: React.CSSProperties = {
   padding: '7px 10px', color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap',
 };
+
+interface MatchActionsMenuProps {
+  hasStats: boolean;
+  hasTactical: boolean;
+  onImportStats: () => void;
+  onDeleteStats: () => void;
+  onImportTactical: () => void;
+  onDeleteTactical: () => void;
+  onEditMatch: () => void;
+  onDeleteMatch: () => void;
+}
+
+function MatchActionsMenu({
+  hasStats, hasTactical, onImportStats, onDeleteStats, onImportTactical, onDeleteTactical, onEditMatch, onDeleteMatch,
+}: MatchActionsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  function run(action: () => void) {
+    setOpen(false);
+    action();
+  }
+
+  const itemStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '9px 14px',
+    background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.82rem', color: '#E2E8F0',
+    textAlign: 'left', whiteSpace: 'nowrap',
+  };
+  const dangerStyle: React.CSSProperties = { ...itemStyle, color: '#EF4444' };
+  const divider = <div style={{ height: 1, backgroundColor: '#2A2F3A', margin: '4px 0' }} />;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', backgroundColor: open ? '#1E2229' : 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+        <Settings size={13} /><span>Actions</span>
+        <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 240,
+          backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 300, padding: '4px 0',
+        }}>
+          <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportStats)}>
+            <Upload size={13} />{hasStats ? 'Modifier les statistiques' : 'Importer les statistiques'}
+          </button>
+          {hasStats && (
+            <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteStats)}>
+              <Trash2 size={13} />Supprimer les statistiques
+            </button>
+          )}
+
+          {divider}
+
+          <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportTactical)}>
+            <Upload size={13} />{hasTactical ? 'Modifier les statistiques tactiques' : 'Importer les statistiques tactiques'}
+          </button>
+          {hasTactical && (
+            <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteTactical)}>
+              <Trash2 size={13} />Supprimer les statistiques tactiques
+            </button>
+          )}
+
+          {divider}
+
+          <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onEditMatch)}>
+            <Pencil size={13} />Modifier le match
+          </button>
+          <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteMatch)}>
+            <Trash2 size={13} />Supprimer le match
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MatchDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -60,14 +142,23 @@ export default function MatchDetailPage() {
   const [error,            setError]           = useState('');
 
   const [showEdit,  setShowEdit]  = useState(false);
-  const [form,      setForm]      = useState({ date: '', opponent: '', homeAway: 'home' as 'home' | 'away', competition: '', result: 'win' as 'win' | 'loss', scoreUs: '', scoreThem: '', gameNumber: '' });
-  const [saving,    setSaving]    = useState(false);
-  const [formError, setFormError] = useState('');
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
 
+  const [confirmDeleteStats, setConfirmDeleteStats] = useState(false);
+  const [deletingStats,      setDeletingStats]      = useState(false);
+  const [confirmDeleteTactical, setConfirmDeleteTactical] = useState(false);
+  const [deletingTactical,      setDeletingTactical]      = useState(false);
+
   const [showImport, setShowImport] = useState(false);
+  const [showTacticalImport, setShowTacticalImport] = useState(false);
+  const [tacticalEvents, setTacticalEvents]         = useState<TacticalEvent[]>([]);
+  const [tacticalCategories, setTacticalCategories] = useState<TacticalCategory[]>([]);
+  const [tacticalDimensions, setTacticalDimensions] = useState<TacticalDimension[]>([]);
+  const [tacticalOptions, setTacticalOptions]       = useState<TacticalDimensionOption[]>([]);
+  const [tacticalLoaded, setTacticalLoaded]         = useState(false);
+  const [loadingTactical, setLoadingTactical]       = useState(false);
 
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -95,6 +186,32 @@ export default function MatchDetailPage() {
       .finally(() => setLoadingSeasonStats(false));
   }, [activeTab, match]);
 
+  const loadTactical = useCallback(async (matchId: string, teamId: string) => {
+    setLoadingTactical(true);
+    try {
+      const [{ categories, dimensions, options }, events] = await Promise.all([
+        tacticalConfigApi.getForTeam(teamId),
+        tacticalEventsApi.getByMatchId(matchId),
+      ]);
+      setTacticalCategories(categories);
+      setTacticalDimensions(dimensions);
+      setTacticalOptions(options);
+      setTacticalEvents(events);
+      setTacticalLoaded(true);
+    } finally {
+      setLoadingTactical(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'tactical' || !match || tacticalLoaded || loadingTactical) return;
+    loadTactical(match.id, match.teamId);
+  }, [activeTab, match, tacticalLoaded, loadingTactical, loadTactical]);
+
+  useEffect(() => {
+    setTacticalLoaded(false);
+  }, [id]);
+
   const loadStats = useCallback(async (matchId: string) => {
     const [ind, team, opp] = await Promise.all([
       statsApi.listByMatchId(matchId),
@@ -113,46 +230,25 @@ export default function MatchDetailPage() {
       .then(async m => {
         setMatch(m);
         if (m) {
-          setForm({
-            date: m.date, opponent: m.opponent, homeAway: m.homeAway,
-            competition: m.competition, result: m.result,
-            scoreUs: String(m.scoreUs), scoreThem: String(m.scoreThem),
-            gameNumber: m.gameNumber ? String(m.gameNumber) : '',
-          });
           const [seasonPlayers] = await Promise.all([
             playersApi.listBySeason(m.seasonId),
             loadStats(m.id),
           ]);
           setPlayers(seasonPlayers);
+          // Chargé en arrière-plan (pas dans le Promise.all bloquant ci-dessus) : sert seulement à
+          // savoir si des données tactiques existent (menu Actions), sans retarder l'affichage du boxscore.
+          // Erreur ignorée ici : si ça échoue, tacticalLoaded reste false et l'onglet Tactique réessaiera.
+          loadTactical(m.id, m.teamId).catch(() => {});
         }
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, [id, loadStats]);
+  }, [id, loadStats, loadTactical]);
 
   useEffect(() => {
     // Le match dans l'URL n'appartient pas à l'équipe sélectionnée (ex. bascule dans la TopBar).
     if (match && selected && match.teamId !== selected.team.id) navigate('/', { replace: true });
   }, [match, selected?.team.id]);
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!match) return;
-    setSaving(true); setFormError('');
-    try {
-      const updates = {
-        date: form.date, opponent: form.opponent.trim(),
-        homeAway: form.homeAway, competition: form.competition.trim() || 'NF2',
-        result: form.result, scoreUs: parseInt(form.scoreUs), scoreThem: parseInt(form.scoreThem),
-        gameNumber: form.gameNumber ? parseInt(form.gameNumber) : undefined,
-      };
-      await matchesApi.update(match.id, updates);
-      setMatch(prev => prev ? { ...prev, ...updates } : prev);
-      setShowEdit(false);
-    } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde.');
-    } finally { setSaving(false); }
-  }
 
   async function handleDelete() {
     if (!match) return;
@@ -162,8 +258,38 @@ export default function MatchDetailPage() {
       notifyOrg('match_deleted', `vs ${match.opponent}`, match.date, 'match', match.id);
       navigate('/matches', { replace: true });
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : 'Erreur lors de la suppression.');
+      setError(err instanceof Error ? err.message : 'Erreur lors de la suppression.');
       setConfirmDelete(false); setDeleting(false);
+    }
+  }
+
+  async function handleDeleteStats() {
+    if (!match) return;
+    setDeletingStats(true);
+    try {
+      await statsApi.deleteForMatch(match.id);
+      setIndividualStats([]);
+      setTeamStats(null);
+      setOpponentStats([]);
+      setConfirmDeleteStats(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la suppression des statistiques.');
+    } finally {
+      setDeletingStats(false);
+    }
+  }
+
+  async function handleDeleteTactical() {
+    if (!match) return;
+    setDeletingTactical(true);
+    try {
+      await tacticalEventsApi.deleteForMatch(match.id);
+      setTacticalEvents([]);
+      setConfirmDeleteTactical(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la suppression des données tactiques.');
+    } finally {
+      setDeletingTactical(false);
     }
   }
 
@@ -306,18 +432,16 @@ export default function MatchDetailPage() {
           <span className="sm:hidden">Retour</span>
           <span className="hidden sm:inline">Tous les matchs</span>
         </button>
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button onClick={() => setShowImport(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.78rem' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00E5A0'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#00E5A040'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#475569'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#2A2F3A'; }}>
-            <Upload size={12} /><span className="hidden sm:inline"> {teamStats || individualStats.length > 0 ? 'Modifier les stats' : 'Importer les stats'}</span>
-          </button>
-          <button onClick={() => { setShowEdit(true); setFormError(''); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.78rem' }}>
-            <Pencil size={12} /><span className="hidden sm:inline"> Modifier</span>
-          </button>
-        </div>
+        <MatchActionsMenu
+          hasStats={!!(teamStats || individualStats.length > 0)}
+          hasTactical={tacticalLoaded && tacticalEvents.length > 0}
+          onImportStats={() => setShowImport(true)}
+          onDeleteStats={() => setConfirmDeleteStats(true)}
+          onImportTactical={() => setShowTacticalImport(true)}
+          onDeleteTactical={() => setConfirmDeleteTactical(true)}
+          onEditMatch={() => setShowEdit(true)}
+          onDeleteMatch={() => setConfirmDelete(true)}
+        />
       </div>
 
       {/* Hero card */}
@@ -370,11 +494,12 @@ export default function MatchDetailPage() {
           <div className="tabs-scroll" style={{ flex: 1, minWidth: 0, display: 'flex', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
             {([
               { id: 'boxscore',      label: 'Boxscore',        short: 'Box'       },
-              { id: 'advanced',      label: 'Stats avancées',  short: 'Avancées'  },
+              { id: 'advanced',      label: 'Statistiques avancées',  short: 'Avancées'  },
               { id: 'four_factors',  label: 'Four Factors',    short: '4 Factors' },
               { id: 'comp_players',  label: 'Compar. joueurs', short: 'Joueurs'   },
               { id: 'comp_teams',    label: 'Compar. équipes', short: 'Équipes'   },
               { id: 'comp_matches',  label: 'Compar. saison',  short: 'Saison'    },
+              { id: 'tactical',      label: 'Tactique',        short: 'Tactique'  },
             ] as const).map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className="px-3 sm:px-[18px] py-2.5 sm:py-3"
@@ -398,7 +523,7 @@ export default function MatchDetailPage() {
                 {individualStats.length > 0 && (
                   <div>
                     <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
-                      Stats individuelles · {individualStats.length} joueur{individualStats.length > 1 ? 's' : ''}
+                      Statistiques individuelles · {individualStats.length} joueur{individualStats.length > 1 ? 's' : ''}
                     </p>
                     <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
@@ -482,7 +607,7 @@ export default function MatchDetailPage() {
                 {opponentStats.length > 0 && (
                   <div>
                     <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
-                      Stats individuelles {match.opponent} · {opponentStats.length} joueur{opponentStats.length > 1 ? 's' : ''}
+                      Statistiques individuelles {match.opponent} · {opponentStats.length} joueur{opponentStats.length > 1 ? 's' : ''}
                     </p>
                     <div style={{ overflowX: 'auto', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8 }}>
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
@@ -572,7 +697,7 @@ export default function MatchDetailPage() {
                 {individualStats.length > 0 && (
                   <div>
                     <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>
-                      Stats avancées · {individualStats.length} joueur{individualStats.length > 1 ? 's' : ''}
+                      Statistiques avancées · {individualStats.length} joueur{individualStats.length > 1 ? 's' : ''}
                     </p>
                     <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
@@ -633,7 +758,7 @@ export default function MatchDetailPage() {
                   return (
                     <div>
                       <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
-                        Stats avancées {match.opponent} · {opponentStats.length} joueur{opponentStats.length > 1 ? 's' : ''}
+                        Statistiques avancées {match.opponent} · {opponentStats.length} joueur{opponentStats.length > 1 ? 's' : ''}
                       </p>
                       <div style={{ overflowX: 'auto', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8 }}>
                         <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
@@ -689,7 +814,7 @@ export default function MatchDetailPage() {
 
           {/* ── FOUR FACTORS ── */}
           {activeTab === 'four_factors' && (() => {
-            if (!teamStats) return <EmptyState message="Stats collectives requises." />;
+            if (!teamStats) return <EmptyState message="Statistiques collectives requises." />;
             const oppFga = teamStats.opp_fg2a + teamStats.opp_fg3a;
             const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : null;
             const factors: { label: string; desc: string; weight: string; own: number | null; opp: number | null; higherIsBetter: boolean; fmt: (v: number) => string }[] = [
@@ -854,7 +979,7 @@ export default function MatchDetailPage() {
                       <thead>
                         <tr>
                           <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>{pA ? `${playerNameFull(pA)}` : '—'}</th>
-                          <th style={{ ...TH, width: 90 }}>STAT</th>
+                          <th style={{ ...TH, width: 90 }}>STATISTIQUE</th>
                           <th style={{ ...TH, textAlign: 'left', minWidth: 110, color: '#94A3B8' }}>{pB ? `${playerNameFull(pB)}` : '—'}</th>
                         </tr>
                       </thead>
@@ -935,7 +1060,7 @@ export default function MatchDetailPage() {
                   <thead>
                     <tr>
                       <th style={{ ...TH, textAlign: 'right', minWidth: 110, color: '#F1F5F9' }}>Mon équipe</th>
-                      <th style={{ ...TH, width: 80, color: '#475569' }}>STAT</th>
+                      <th style={{ ...TH, width: 100, color: '#475569' }}>STATISTIQUE</th>
                       <th style={{ ...TH, textAlign: 'left', minWidth: 110, color: '#94A3B8' }}>{match.opponent}</th>
                     </tr>
                   </thead>
@@ -1024,7 +1149,7 @@ export default function MatchDetailPage() {
                     <thead>
                       <tr>
                         <th style={{ ...TH, textAlign: 'right', minWidth: 100, color: '#F1F5F9' }}>CE MATCH</th>
-                        <th style={{ ...TH, width: 110 }}>STAT</th>
+                        <th style={{ ...TH, width: 130 }}>STATISTIQUE</th>
                         <th style={{ ...TH, textAlign: 'left', minWidth: 100, color: '#475569' }}>MOY. SAISON <span style={{ color: '#334155', fontWeight: 400 }}>({n})</span></th>
                       </tr>
                     </thead>
@@ -1054,91 +1179,38 @@ export default function MatchDetailPage() {
             );
           })()}
 
+          {/* ── TACTIQUE ── */}
+          {activeTab === 'tactical' && (
+            loadingTactical ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+                <div style={{ width: 20, height: 20, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              </div>
+            ) : (
+              <TacticalStatsSection
+                teamId={match.teamId}
+                events={tacticalEvents}
+                categories={tacticalCategories}
+                dimensions={tacticalDimensions}
+                options={tacticalOptions}
+                matches={[{ id: match.id, date: match.date, label: `vs ${match.opponent}` }]}
+                emptyMessage="Aucune donnée tactique importée."
+              />
+            )
+          )}
+
         </div>
       </div>
 
       {/* Edit modal */}
       {showEdit && (
-        <Modal onClose={() => setShowEdit(false)} closeOnBackdropClick maxWidth={460} overlayOpacity={0.7} scrollOverlay={false} style={{ padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem' }}>Modifier le match</h2>
-              <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            {formError && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
-                <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{formError}</span>
-              </div>
-            )}
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
-                  <input type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Journée</label>
-                  <input type="number" min={1} placeholder="J14…" value={form.gameNumber} onChange={e => setForm(f => ({ ...f, gameNumber: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Adversaire *</label>
-                <input type="text" required value={form.opponent} onChange={e => setForm(f => ({ ...f, opponent: e.target.value }))} style={inputStyle} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Lieu</label>
-                  <select value={form.homeAway} onChange={e => setForm(f => ({ ...f, homeAway: e.target.value as 'home' | 'away' }))} style={inputStyle}>
-                    <option value="home">Domicile</option>
-                    <option value="away">Extérieur</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compétition</label>
-                  <input type="text" value={form.competition} onChange={e => setForm(f => ({ ...f, competition: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Résultat</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(['win', 'loss'] as const).map(r => (
-                    <button key={r} type="button" onClick={() => setForm(f => ({ ...f, result: r }))}
-                      style={{ flex: 1, padding: '8px', borderRadius: 6, border: '1px solid', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                        borderColor:     form.result === r ? (r === 'win' ? '#00E5A0' : '#EF4444') : '#2A2F3A',
-                        backgroundColor: form.result === r ? (r === 'win' ? 'rgba(0,229,160,0.12)' : 'rgba(239,68,68,0.12)') : '#1E2229',
-                        color:           form.result === r ? (r === 'win' ? '#00E5A0' : '#EF4444') : '#94A3B8',
-                      }}>
-                      {r === 'win' ? 'Victoire' : 'Défaite'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Score nous *</label>
-                  <input type="number" required min={0} value={form.scoreUs} onChange={e => setForm(f => ({ ...f, scoreUs: e.target.value }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Score eux *</label>
-                  <input type="number" required min={0} value={form.scoreThem} onChange={e => setForm(f => ({ ...f, scoreThem: e.target.value }))} style={inputStyle} />
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => { setShowEdit(false); setConfirmDelete(true); }}
-                  style={{ padding: '10px 12px', backgroundColor: '#1E2229', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' }}>
-                  <Trash2 size={14} />
-                </button>
-                <button type="button" onClick={() => setShowEdit(false)}
-                  style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
-                  Annuler
-                </button>
-                <button type="submit" disabled={saving}
-                  style={{ flex: 2, padding: '10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                  {saving ? 'Sauvegarde…' : 'Enregistrer'}
-                </button>
-              </div>
-            </form>
-        </Modal>
+        <MatchFormModal
+          match={match}
+          teamId={match.teamId}
+          seasonId={match.seasonId}
+          onClose={() => setShowEdit(false)}
+          onSaved={saved => { setMatch(saved); setShowEdit(false); }}
+          onRequestDelete={() => { setShowEdit(false); setConfirmDelete(true); }}
+        />
       )}
 
       {/* Confirm delete */}
@@ -1157,6 +1229,40 @@ export default function MatchDetailPage() {
         </Modal>
       )}
 
+      {/* Confirm delete stats */}
+      {confirmDeleteStats && (
+        <Modal onClose={() => setConfirmDeleteStats(false)} closeOnBackdropClick maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+            <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer les statistiques de ce match ?</h3>
+            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px' }}>
+              Les statistiques individuelles, collectives et adverses importées seront supprimées. Le match et les statistiques tactiques ne sont pas affectés.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmDeleteStats(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={handleDeleteStats} disabled={deletingStats}
+                style={{ flex: 1, padding: '10px', backgroundColor: deletingStats ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deletingStats ? '#475569' : '#fff', cursor: deletingStats ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {deletingStats ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+        </Modal>
+      )}
+
+      {/* Confirm delete tactical */}
+      {confirmDeleteTactical && (
+        <Modal onClose={() => setConfirmDeleteTactical(false)} closeOnBackdropClick maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+            <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer les statistiques tactiques de ce match ?</h3>
+            <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px' }}>
+              Tous les événements tactiques importés pour ce match seront supprimés. Les statistiques et le match ne sont pas affectés.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmDeleteTactical(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={handleDeleteTactical} disabled={deletingTactical}
+                style={{ flex: 1, padding: '10px', backgroundColor: deletingTactical ? '#1E2229' : '#EF4444', border: 'none', borderRadius: 6, color: deletingTactical ? '#475569' : '#fff', cursor: deletingTactical ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                {deletingTactical ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+        </Modal>
+      )}
+
       {/* Import modal */}
       {showImport && match && (
         <MatchStatsImportModal
@@ -1168,11 +1274,22 @@ export default function MatchDetailPage() {
             setShowImport(false);
             loadStats(match.id);
             matchesApi.getById(match.id).then(m => {
-              if (m) {
-                setMatch(m);
-                setForm(prev => ({ ...prev, result: m.result, scoreUs: String(m.scoreUs), scoreThem: String(m.scoreThem) }));
-              }
+              if (m) setMatch(m);
             });
+          }}
+        />
+      )}
+
+      {/* Import tactique */}
+      {showTacticalImport && match && (
+        <TacticalImportModal
+          match={match}
+          hasExistingData={tacticalEvents.length > 0}
+          onClose={() => setShowTacticalImport(false)}
+          onSaved={() => {
+            setShowTacticalImport(false);
+            setTacticalLoaded(false);
+            loadTactical(match.id, match.teamId);
           }}
         />
       )}

@@ -258,6 +258,69 @@ export interface OpponentMatchStat {
   plusMinus: number | null;
 }
 
+// ─── Données tactiques (import CSV vidéo) ─────────────────────────────────────
+
+/** Catégorie tactique connue d'une équipe (ex. "Offense M2M") — auto-créée à l'import. */
+export interface TacticalCategory {
+  id: string;
+  teamId: string;
+  name: string;
+  sortOrder: number;
+  /** Couleur d'accent choisie librement, pour distinguer visuellement les blocs catégorie. */
+  color: string;
+  /** Seuils de coloration de la rentabilité (échelle liée à SA dimension "Valeur"). */
+  rentabiliteSeuilVert: number;
+  rentabiliteSeuilBleu: number;
+  rentabiliteSeuilAmbre: number;
+}
+
+/** Dimension d'une catégorie (ex. "Valeur", "Temps fort", "Finalité") — auto-créée à l'import. */
+export interface TacticalDimension {
+  id: string;
+  teamId: string;
+  categoryId: string;
+  name: string;
+  sortOrder: number;
+}
+
+/** Option attendue d'une dimension — curée à la main, jamais auto-créée par l'import. */
+export interface TacticalDimensionOption {
+  id: string;
+  teamId: string;
+  dimensionId: string;
+  label: string;
+  sortOrder: number;
+}
+
+/** Une ligne de données du CSV brut, pour une catégorie d'un match. */
+export interface TacticalEvent {
+  id: string;
+  matchId: string;
+  categoryId: string;
+  sequenceNumber: number;
+  values: TacticalEventValue[];
+}
+
+/** La valeur texte d'une dimension pour un événement (libre, pas de contrainte au catalogue d'options). */
+export interface TacticalEventValue {
+  dimensionId: string;
+  label: string;
+}
+
+export type TacticalWidgetType = 'dimension_table' | 'evolution_chart' | 'cross_matrix' | 'pie_chart' | 'period_comparison';
+
+/** Un bloc du tableau de bord tactique personnalisé, composé par l'équipe. */
+export interface TacticalDashboardWidget {
+  id: string;
+  teamId: string;
+  type: TacticalWidgetType;
+  categoryId: string;
+  title: string | null;
+  /** Contenu spécifique au type — voir tacticalDashboard.ts pour les formes attendues par type. */
+  config: Record<string, unknown>;
+  sortOrder: number;
+}
+
 export interface TrainingSession {
   id: string;
   teamId: string;

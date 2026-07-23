@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { playersApi, statsApi, wellnessApi, medicalApi, rpeApi, attendanceApi } from '../api';
+import { tacticalConfigApi } from '../api/tacticalConfig';
+import { tacticalEventsApi } from '../api/tacticalEvents';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { isoToday } from '../components/DateRangeCard';
 import type { TeamCrossData } from '../data/crossAnalysis';
@@ -21,8 +23,10 @@ export function usePerformanceData() {
       statsApi.listTeamStatsBySeason(team.id, season.id),
       rpeApi.list({ seasonId: season.id }),
       attendanceApi.listSessions(team.id, season.id),
-    ]).then(async ([players, matchStats, teamMatchStats, rpe, sessions]) => {
-      const [medical, attendance, allTimeRpeRows, wellness] = await Promise.all([
+      tacticalConfigApi.getForTeam(team.id),
+    ]).then(async ([players, matchStats, teamMatchStats, rpe, sessions, tacticalConfig]) => {
+      const seasonMatchIds = teamMatchStats.filter(t => t.matchId).map(t => t.matchId as string);
+      const [medical, attendance, allTimeRpeRows, wellness, tacticalEvents] = await Promise.all([
         players.length ? medicalApi.list({ playerIds: players.map(p => p.id) }) : Promise.resolve([]),
         attendanceApi.listAttendance(sessions.map(s => s.id)),
         // Toutes saisons confondues — nécessaire pour un ACWR/TSB fiable (28j de charge
@@ -35,6 +39,7 @@ export function usePerformanceData() {
         players.length
           ? wellnessApi.list({ playerIds: players.map(p => p.id), from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() })
           : Promise.resolve([]),
+        tacticalEventsApi.getForMatches(seasonMatchIds),
       ]);
       if (cancelled) return;
       const sessionDate = new Map(sessions.map(s => [s.id, s.date]));
@@ -56,6 +61,12 @@ export function usePerformanceData() {
             .filter(a => a.playerId === pl.id && sessionDate.has(a.sessionId))
             .map(a => ({ date: sessionDate.get(a.sessionId)!, status: a.status })),
         })),
+        tactical: {
+          events: tacticalEvents,
+          categories: tacticalConfig.categories,
+          dimensions: tacticalConfig.dimensions,
+          options: tacticalConfig.options,
+        },
       });
       setLoading(false);
     }).catch(() => { if (!cancelled) setLoading(false); });

@@ -1785,3 +1785,141 @@ WHERE ms.match_id = m.id
     OR ms.result      IS DISTINCT FROM m.result::TEXT
     OR ms.score_us    IS DISTINCT FROM m.score_us
     OR ms.score_them  IS DISTINCT FROM m.score_them);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- DONNÉES TACTIQUES (import CSV du logiciel vidéo)
+--
+-- Format CSV : une ligne "Category: <nom>", une ligne d'en-tête listant des
+-- dimensions nommées par l'équipe (ex. Valeur, Temps fort, Forme de jeu,
+-- Finalité — le nombre et les noms varient librement par catégorie), puis des
+-- lignes de données où chaque cellule contient directement le libellé choisi
+-- (pas un flag binaire). Catégories et dimensions sont auto-créées à l'import
+-- (retrouvées par nom normalisé pour éviter les doublons d'une saison/casse à
+-- l'autre) ; les options de chaque dimension sont du texte libre, jamais
+-- cataloguées à part.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE tactical_categories (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id         UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  sort_order      SMALLINT NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (team_id, normalized_name)
+);
+
+CREATE TABLE tactical_dimensions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id         UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,      -- dénormalisé (RLS)
+  category_id     UUID NOT NULL REFERENCES tactical_categories(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  sort_order      SMALLINT NOT NULL DEFAULT 0,   -- ordre de colonne dans le CSV de cette catégorie
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (category_id, normalized_name)
+);
+
+-- Un événement = une ligne de données du CSV, pour une catégorie d'un match.
+CREATE TABLE tactical_events (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id        UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  category_id     UUID NOT NULL REFERENCES tactical_categories(id),   -- pas de CASCADE : protège l'historique
+  sequence_number SMALLINT NOT NULL,   -- position de la ligne dans le bloc de la catégorie
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (match_id, category_id, sequence_number)
+);
+CREATE INDEX ON tactical_events (match_id);
+
+-- La valeur texte d'une dimension pour un événement (libre, pas de catalogue d'options).
+CREATE TABLE tactical_event_values (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id     UUID NOT NULL REFERENCES tactical_events(id) ON DELETE CASCADE,
+  match_id     UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,   -- dénormalisé (RLS)
+  dimension_id UUID NOT NULL REFERENCES tactical_dimensions(id),
+  label        TEXT NOT NULL,   -- valeur brute de la cellule CSV (ex. "Handoff", "Swing", "3")
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (event_id, dimension_id)
+);
+CREATE INDEX ON tactical_event_values (match_id);
+CREATE INDEX ON tactical_event_values (dimension_id, label);
+
+ALTER TABLE tactical_categories   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tactical_dimensions   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tactical_events       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tactical_event_values ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "tactical_categories_access" ON tactical_categories
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "tactical_dimensions_access" ON tactical_dimensions
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "tactical_events_access" ON tactical_events
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+CREATE POLICY "tactical_event_values_access" ON tactical_event_values
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- TABLEAU DE BORD TACTIQUE (blocs configurables par l'équipe, en plus du
+-- rapport automatique par catégorie/dimension) — config flexible en JSONB
+-- selon le type de bloc plutôt que 5 tables différentes.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE tactical_dashboard_widgets (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL CHECK (type IN ('dimension_table', 'evolution_chart', 'cross_matrix', 'pie_chart', 'period_comparison')),
+  category_id UUID NOT NULL REFERENCES tactical_categories(id) ON DELETE CASCADE,
+  title       TEXT,               -- libellé personnalisé optionnel (sinon généré depuis catégorie/dimension)
+  config      JSONB NOT NULL DEFAULT '{}',  -- ex. dimension_table: {dimensionId}, cross_matrix: {dimensionIdX, dimensionIdY}
+  sort_order  SMALLINT NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ON tactical_dashboard_widgets (team_id, sort_order);
+
+ALTER TABLE tactical_dashboard_widgets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "tactical_dashboard_widgets_access" ON tactical_dashboard_widgets
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Seuils de couleur de la rentabilité, par catégorie (l'échelle est liée à SA dimension
+-- "Valeur" — un seuil par dimension serait incohérent, une seule échelle par catégorie).
+ALTER TABLE tactical_categories
+  ADD COLUMN rentabilite_seuil_vert  NUMERIC NOT NULL DEFAULT 1,
+  ADD COLUMN rentabilite_seuil_bleu  NUMERIC NOT NULL DEFAULT 0.6,
+  ADD COLUMN rentabilite_seuil_ambre NUMERIC NOT NULL DEFAULT 0.3;
+
+-- Options attendues d'une dimension — curées à la main, JAMAIS auto-créées par l'import
+-- (contrairement aux catégories/dimensions) : sert (a) à afficher des lignes à 0 pour ce
+-- qui n'apparaît pas dans le match/la période, (b) à détecter à l'import les valeurs
+-- inattendues (sans jamais bloquer ni perdre de données).
+CREATE TABLE tactical_dimension_options (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id          UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,   -- dénormalisé (RLS)
+  dimension_id     UUID NOT NULL REFERENCES tactical_dimensions(id) ON DELETE CASCADE,
+  label            TEXT NOT NULL,
+  normalized_label TEXT NOT NULL,
+  sort_order       SMALLINT NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (dimension_id, normalized_label)
+);
+CREATE INDEX ON tactical_dimension_options (team_id);
+
+ALTER TABLE tactical_dimension_options ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "tactical_dimension_options_access" ON tactical_dimension_options
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+
+-- Couleur d'accent par catégorie (choisie librement dans la config), pour distinguer visuellement
+-- les blocs catégorie du rapport tactique.
+ALTER TABLE tactical_categories ADD COLUMN color TEXT NOT NULL DEFAULT '#3B82F6';

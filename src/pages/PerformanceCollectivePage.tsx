@@ -12,10 +12,11 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown,
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { FilterField, filterControlStyle } from '../components/FilterField';
+import type { TacticalHomeAwayFilter, TacticalResultFilter } from '../components/TacticalFilterBar';
 import type { DatePreset } from '../components/DateRangeCard';
 import { evalColor, ortgColor, drtgColor } from '../data';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
@@ -91,7 +92,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
-         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations' | 'tactical'
          | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
 const TAB_SLUGS: Record<string, Tab> = {
@@ -110,6 +111,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'bien-etre':               'wellness',
   'medical':                 'medical',
   'correlations':            'correlations',
+  'tendances-tactiques':     'tactical',
   'objectifs':               'objectives',
   'par-match':               'compare-match',
   'par-saison':              'compare-season',
@@ -135,6 +137,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Statistiques matchs', tabs: [
     { key: 'matches-basic',    slug: 'stats-matchs',          label: 'Brutes' },
     { key: 'matches-advanced', slug: 'stats-matchs-avancees', label: 'Avancées' },
+    { key: 'tactical',         slug: 'tendances-tactiques',   label: 'Tactiques' },
   ] },
   { label: 'Analyse', tabs: [
     { key: 'objectives',   slug: 'objectifs',          label: 'Objectifs' },
@@ -161,6 +164,7 @@ const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
   impact: 'saison', pca: 'saison', ranking: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
+  tactical: 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
 };
 
@@ -186,6 +190,24 @@ export default function PerformanceCollectivePage() {
 
   const filteredAllStats  = useMemo(() => from ? allStats.filter(s => s.date >= from && s.date <= to) : allStats, [allStats, from, to]);
   const filteredTeamStats = useMemo(() => from ? teamStats.filter(t => t.date >= from && t.date <= to) : teamStats, [teamStats, from, to]);
+
+  // ── Tendances tactiques : chargées avec le reste des données de la page (usePerformanceData),
+  // filtrées côté client par période ──
+  const tacticalCategories = data?.tactical?.categories ?? [];
+  const tacticalDimensions = data?.tactical?.dimensions ?? [];
+  const tacticalOptions    = data?.tactical?.options ?? [];
+  const tacticalEvents     = data?.tactical?.events ?? [];
+  const [tacticalOpponents, setTacticalOpponents]   = useState<Set<string>>(new Set());
+  const [tacticalHomeAway, setTacticalHomeAway]     = useState<TacticalHomeAwayFilter>('all');
+  const [tacticalResult, setTacticalResult]         = useState<TacticalResultFilter>('all');
+
+  function toggleTacticalOpponent(opponent: string) {
+    setTacticalOpponents(prev => {
+      const next = new Set(prev);
+      if (next.has(opponent)) next.delete(opponent); else next.add(opponent);
+      return next;
+    });
+  }
 
   const openPlayer = (playerId: string) => navigate(`/performance-individuelle/${playerId}/vue-ensemble`);
 
@@ -654,6 +676,14 @@ export default function PerformanceCollectivePage() {
                     <option value="table">Tableau</option>
                   </select>
                 </FilterField>
+              ) : activeTab === 'tactical' ? (
+                <TacticalFilterBar
+                  opponents={[...new Set(teamStats.map(t => t.opponent))].sort((a, b) => a.localeCompare(b))}
+                  selectedOpponents={tacticalOpponents}
+                  onToggleOpponent={toggleTacticalOpponent}
+                  homeAway={tacticalHomeAway} onHomeAway={setTacticalHomeAway}
+                  result={tacticalResult} onResult={setTacticalResult}
+                />
               ) : undefined}
             />
           )}
@@ -668,7 +698,7 @@ export default function PerformanceCollectivePage() {
           <HeroCard
             icon={<BarChart2 size={20} color="#3B82F6" />} iconBg="#3B82F622"
             title="Statistiques"
-            ctaLabel="Voir les stats" onOpen={() => setActiveTab('stats-joueurs')}
+            ctaLabel="Voir les statistiques" onOpen={() => setActiveTab('stats-joueurs')}
             borderColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
             stats={[
               { value: ptsAvgP ?? 0, label: 'Points / match', color: '#F1F5F9' },
@@ -746,7 +776,7 @@ export default function PerformanceCollectivePage() {
             info={sortedPJ.length > 0 ? <>{sortedPJ.length} joueur{sortedPJ.length > 1 ? 's' : ''}</> : undefined}
             right={
               <button type="button" onClick={() => setNormalize25(v => !v)}
-                title="Recalculer toutes les stats comme si chaque joueur jouait 25 min"
+                title="Recalculer toutes les statistiques comme si chaque joueur jouait 25 min"
                 style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
                 25 min
               </button>
@@ -1132,7 +1162,7 @@ export default function PerformanceCollectivePage() {
             right={
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setNormalize25(v => !v)}
-                  title="Recalculer toutes les stats comme si chaque joueur jouait 25 min"
+                  title="Recalculer toutes les statistiques comme si chaque joueur jouait 25 min"
                   style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
                   25 min
                 </button>
@@ -1309,6 +1339,41 @@ export default function PerformanceCollectivePage() {
           roster={data.players} team={data} from={from} to={to} thresholds={thresholds}
           defaultSubjectId={TEAM_SUBJECT}
         />
+      )}
+
+      {/* ══ TENDANCES TACTIQUES ══════════════════════════════════════════════ */}
+      {activeTab === 'tactical' && (
+        loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+            <div style={{ width: 20, height: 20, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+          </div>
+        ) : tacticalEvents.length === 0 ? (
+          <EmptyState message="Aucune donnée tactique importée pour cette saison." />
+        ) : (() => {
+          const inRange = filteredTeamStats
+            .filter(t => t.matchId)
+            .filter(t => tacticalOpponents.size === 0 || tacticalOpponents.has(t.opponent))
+            .filter(t => tacticalHomeAway === 'all' || t.homeAway === tacticalHomeAway)
+            .filter(t => tacticalResult === 'all' || t.result === tacticalResult);
+
+          const matchIdsInRange = new Set(inRange.map(t => t.matchId));
+          const eventsInRange = tacticalEvents.filter(e => matchIdsInRange.has(e.matchId));
+          const matchRefs = inRange
+            .slice()
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .map(t => ({ id: t.matchId as string, date: t.date, label: `vs ${t.opponent}` }));
+          return (
+            <TacticalStatsSection
+              teamId={selected.team.id}
+              events={eventsInRange}
+              categories={tacticalCategories}
+              dimensions={tacticalDimensions}
+              options={tacticalOptions}
+              matches={matchRefs}
+              emptyMessage="Aucune donnée tactique pour ces filtres."
+            />
+          );
+        })()
       )}
 
       {/* ══ OBJECTIFS ════════════════════════════════════════════════════════ */}

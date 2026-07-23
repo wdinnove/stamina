@@ -424,6 +424,19 @@ export const statsApi = {
       if (error) throw error;
     }
   },
+
+  // Supprime toutes les stats importées d'un match (individuelles + collectives + adverses),
+  // sans toucher au match lui-même ni aux données tactiques.
+  async deleteForMatch(matchId: string): Promise<void> {
+    const [{ error: e1 }, { error: e2 }, { error: e3 }] = await Promise.all([
+      supabase.from('match_stats').delete().eq('match_id', matchId),
+      supabase.from('team_match_stats').delete().eq('match_id', matchId),
+      supabase.from('opponent_match_stats').delete().eq('match_id', matchId),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    if (e3) throw e3;
+  },
 };
 
 // ─── Mappers ─────────────────────────────────────────────────────────────────

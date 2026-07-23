@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart } from 'lucide-react';
+import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart, Video } from 'lucide-react';
+import { TacticalConfigManager } from '../components/TacticalConfigManager';
+import { ResponsiveTabNav, type TabNavGroup } from '../components/ResponsiveTabNav';
 import { teamsApi } from '../api';
 import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
 import { playersApi } from '../api/players';
@@ -232,7 +234,7 @@ function CategoryRow({
   );
 }
 
-type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'categories';
+type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'categories' | 'tactical';
 
 const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'info',       label: 'Informations', icon: Shield },
@@ -241,6 +243,11 @@ const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'thresholds', label: 'Seuils',       icon: Sliders },
   { key: 'wellness',   label: 'Bien-être',    icon: Heart },
   { key: 'categories', label: 'Catégories',   icon: Tag },
+  { key: 'tactical',   label: 'Tactique',     icon: Video },
+];
+
+const TAB_GROUPS: TabNavGroup[] = [
+  { tabs: TABS.map(t => ({ key: t.key, slug: t.key, label: t.label })) },
 ];
 
 const thStyle: React.CSSProperties = {
@@ -1076,20 +1083,12 @@ export function TeamConfigTab() {
   }
 
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', width: '100%', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 3, overflowX: 'auto' }}>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
-              style={{ flex: '1 1 0', minWidth: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '7px 14px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, lineHeight: 1, backgroundColor: activeTab === t.key ? '#1E2229' : 'transparent', color: activeTab === t.key ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
-              <t.icon size={13} color={activeTab === t.key ? '#00E5A0' : 'currentColor'} style={{ flexShrink: 0, display: 'block' }} />
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
+    <div className="flex flex-col lg:flex-row" style={{ gap: 20 }}>
+      <div style={{ marginBottom: 4 }}>
+        <ResponsiveTabNav groups={TAB_GROUPS} activeKey={activeTab} onSelect={slug => setActiveTab(slug as Tab)} />
       </div>
 
-      <div style={{ width: '100%' }}>
+      <div style={{ width: '100%', minWidth: 0, flex: 1 }}>
 
       {/* Infos équipe */}
       {activeTab === 'info' && (
@@ -1364,6 +1363,11 @@ export function TeamConfigTab() {
         </form>
         {addCatError && <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{addCatError}</p>}
       </Card>
+      )}
+
+      {/* Données tactiques */}
+      {activeTab === 'tactical' && selected && (
+        <TacticalConfigManager teamId={selected.team.id} />
       )}
 
       </div>{/* fin container centré */}

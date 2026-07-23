@@ -11,7 +11,7 @@ import { useObjectives } from '../hooks/useObjectives';
 import { evaluateObjectiveWindows } from '../utils/objectiveStatus';
 import { fmt1 } from '../utils/format';
 import { importanceConfig, comparatorConfig } from '../data/config';
-import { DOMAIN_LABELS, indicatorByKey, type CrossScope } from '../data/crossAnalysis';
+import { DOMAIN_LABELS, indicatorByKey, buildTacticalIndicators, type CrossScope } from '../data/crossAnalysis';
 import type { Objective, ObjectiveImportance, ObjectiveComparator } from '../data/types';
 
 interface ObjectivesPanelProps {
@@ -53,9 +53,13 @@ const TEAM_MATCH_ORDER = [
 
 export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEnd }: ObjectivesPanelProps) {
   const { objectives, loading, reload } = useObjectives({ playerId, teamId });
-  const indicators = (playerId ? PLAYER_MATCH_ORDER : TEAM_MATCH_ORDER)
-    .map(indicatorByKey)
-    .filter((i): i is NonNullable<typeof i> => i != null);
+  const tacticalIndicators = buildTacticalIndicators(scope.team?.tactical);
+  const indicators = playerId
+    ? PLAYER_MATCH_ORDER.map(key => indicatorByKey(key)).filter((i): i is NonNullable<typeof i> => i != null)
+    : [
+        ...TEAM_MATCH_ORDER.map(key => indicatorByKey(key)).filter((i): i is NonNullable<typeof i> => i != null),
+        ...tacticalIndicators,
+      ];
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Objective | null>(null);
@@ -114,7 +118,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
 
   const grouped = new Map<string, Objective[]>();
   objectives.forEach(o => {
-    const def = indicatorByKey(o.indicatorKey);
+    const def = indicatorByKey(o.indicatorKey, tacticalIndicators);
     const group = def ? (def.group ?? DOMAIN_LABELS[def.domain]) : 'Autre';
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group)!.push(o);
@@ -142,8 +146,8 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
             <CardTitle mb={10}>{group}</CardTitle>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {objs.map(o => {
-                const def = indicatorByKey(o.indicatorKey);
-                const { windows } = evaluateObjectiveWindows(o, scope, seasonStart, seasonEnd);
+                const def = indicatorByKey(o.indicatorKey, tacticalIndicators);
+                const { windows } = evaluateObjectiveWindows(o, scope, seasonStart, seasonEnd, tacticalIndicators);
                 const imp = importanceConfig[o.importance];
                 const cmp = comparatorConfig[o.comparator];
                 return (
@@ -241,7 +245,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
         <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
           <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cet objectif ?</h2>
           <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-            <strong style={{ color: '#F1F5F9' }}>{indicatorByKey(confirmDelete.indicatorKey)?.label ?? confirmDelete.indicatorKey}</strong>
+            <strong style={{ color: '#F1F5F9' }}>{indicatorByKey(confirmDelete.indicatorKey, tacticalIndicators)?.label ?? confirmDelete.indicatorKey}</strong>
           </p>
           <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cet objectif sera définitivement supprimé.</p>
           <div style={{ display: 'flex', gap: 10 }}>

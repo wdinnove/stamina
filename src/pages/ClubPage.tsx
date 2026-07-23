@@ -4,6 +4,7 @@ import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Shie
 import { teamsApi, playersApi, configApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle, Modal, PlayerEditModal } from '../components';
+import { ResponsiveTabNav, type TabNavGroup } from '../components/ResponsiveTabNav';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Team, Player, Organization } from '../data/types';
 
@@ -597,6 +598,10 @@ const TABS = [
 ] as const;
 type Tab = typeof TABS[number]['key'];
 
+const TAB_GROUPS: TabNavGroup[] = [
+  { tabs: TABS.map(t => ({ key: t.key, slug: t.key, label: t.key })) },
+];
+
 export function ClubConfigTab() {
   const { orgId, orgRole } = useTeamSeason();
   const [tab, setTab] = useState<Tab>('Informations');
@@ -621,21 +626,12 @@ export function ClubConfigTab() {
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', width: '100%', gap: 4, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, padding: 3, overflowX: 'auto' }}>
-          {TABS.map(({ key, icon: Icon }) => (
-            <button key={key} onClick={() => setTab(key)}
-              style={{ flex: '1 1 0', minWidth: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '7px 14px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, lineHeight: 1, backgroundColor: tab === key ? '#1E2229' : 'transparent', color: tab === key ? '#F1F5F9' : '#94A3B8', whiteSpace: 'nowrap' }}>
-              <Icon size={13} color={tab === key ? '#00E5A0' : 'currentColor'} style={{ flexShrink: 0, display: 'block' }} />
-              <span>{key}</span>
-            </button>
-          ))}
-        </div>
+    <div className="flex flex-col lg:flex-row" style={{ gap: 20 }}>
+      <div style={{ marginBottom: 4 }}>
+        <ResponsiveTabNav groups={TAB_GROUPS} activeKey={tab} onSelect={slug => setTab(slug as Tab)} />
       </div>
 
-      <div style={{ width: '100%' }}>
+      <div style={{ width: '100%', minWidth: 0, flex: 1 }}>
         {tab === 'Informations' && <OrgConfigTab />}
         {tab === 'Équipes'      && <TeamsTab />}
         {tab === 'Joueurs'      && <PlayersTab />}

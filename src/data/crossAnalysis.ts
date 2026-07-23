@@ -21,6 +21,7 @@
  */
 import type {
   MatchStat, MedicalRecord, Player, RPEEntry, TeamMatchStat, TrainingAttendance, WellnessEntry,
+  TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption,
 } from './types';
 import { VARIABLES } from './pca';
 import { calcPlayerAdvanced, type PlayerAdvancedStats } from './playerAdvanced';
@@ -30,6 +31,8 @@ import { WELLNESS_DIMENSIONS, wellnessScoreColor, aggregateTeamWellnessDaily } f
 import { correlatePairs, MIN_CORRELATION_PAIRS, type CorrelationPair, type CorrelationResult } from '../utils/correlation';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
+import { findValueDimension, buildValueByEvent } from './tacticalAnalysis';
+import { normalizeTacticalName } from '../utils/tacticalCsvParser';
 
 // ── Données d'entrée ──────────────────────────────────────────────────────────
 
@@ -48,9 +51,19 @@ export interface PlayerCrossData {
   teamStatsByMatchId?: Map<string, TeamMatchStat>;
 }
 
+/** Données tactiques de l'équipe pour la saison — facultatif : absent tant que non chargé,
+ *  les attributs "Rentabilité de ..." dynamiques n'apparaissent alors simplement pas. */
+export interface TeamTacticalCrossData {
+  events: TacticalEvent[];
+  categories: TacticalCategory[];
+  dimensions: TacticalDimension[];
+  options: TacticalDimensionOption[];
+}
+
 export interface TeamCrossData {
   players: PlayerCrossData[];
   teamMatchStats: TeamMatchStat[];
+  tactical?: TeamTacticalCrossData;
 }
 
 /** Périmètre d'une analyse : un joueur OU une équipe */
@@ -243,6 +256,80 @@ function playerAdvStat(
 
 const TEAM_COLORS = ['#60A5FA', '#00E5A0', '#F59E0B', '#EC4899', '#8B5CF6', '#38BDF8', '#F97316', '#EAB308', '#2DD4BF', '#A78BFA'];
 
+/**
+ * Un attribut dynamique par (catégorie, dimension, option) réellement observée dans les
+ * événements tactiques de l'équipe — contrairement aux attributs de `INDICATORS` ci-dessous
+ * (liste statique connue à la compilation), ceux-ci dépendent des données propres à chaque
+ * équipe et sont donc reconstruits à la volée, jamais mémorisés dans `INDICATORS`. Seules les
+ * catégories ayant une dimension "Valeur" produisent des attributs (rentabilité incalculable
+ * sinon). Valeur = rentabilité de CETTE option précise (valeur/nb occurrences), pas de toute
+ * la dimension ni de toute la catégorie — même calcul que la ligne `DimensionOptionRow`
+ * correspondante dans `buildDimensionTable` (tacticalAnalysis.ts), mais un match à la fois.
+ */
+export function buildTacticalIndicators(tactical: TeamTacticalCrossData | undefined): IndicatorDef[] {
+  if (!tactical) return [];
+  const { categories, dimensions } = tactical;
+  const defs: IndicatorDef[] = [];
+
+  for (const category of categories) {
+    const categoryDimensions = dimensions.filter(d => d.categoryId === category.id);
+    const valueDimension = findValueDimension(categoryDimensions, category.id);
+    if (!valueDimension) continue;
+
+    for (const dimension of categoryDimensions) {
+      if (dimension.id === valueDimension.id) continue;
+
+      const observedLabels = new Set<string>();
+      for (const event of tactical.events) {
+        if (event.categoryId !== category.id) continue;
+        const v = event.values.find(vv => vv.dimensionId === dimension.id);
+        if (v) observedLabels.add(v.label);
+      }
+
+      for (const label of observedLabels) {
+        defs.push({
+          key: `tactical_${category.id}_${dimension.id}_${normalizeTacticalName(label)}`,
+          label: `Rentabilité de ${category.name} / ${dimension.name} / ${label}`,
+          shortLabel: `${label} (${dimension.name})`,
+          domain: 'match',
+          group: 'Tactique',
+          unit: '',
+          color: '#00E5A0',
+          chart: 'dots',
+          anchor: { window: 1, agg: 'last' },
+          weeklyAgg: 'mean',
+          teamSeries: (d, from, to) => {
+            if (!d.tactical) return [];
+            const matchIdToDate = new Map(d.teamMatchStats.filter(t => t.matchId).map(t => [t.matchId as string, t.date]));
+            const catDims = d.tactical.dimensions.filter(dd => dd.categoryId === category.id);
+            const valDim = findValueDimension(catDims, category.id);
+            const valueByEvent = buildValueByEvent(d.tactical.events, category.id, valDim);
+            const byMatch = new Map<string, { sum: number; count: number }>();
+            for (const event of d.tactical.events) {
+              if (event.categoryId !== category.id) continue;
+              const val = event.values.find(vv => vv.dimensionId === dimension.id);
+              if (!val || val.label !== label) continue;
+              const date = matchIdToDate.get(event.matchId);
+              if (!date || date < from || date > to) continue;
+              const numeric = valueByEvent.get(event.id);
+              if (numeric === undefined) continue;
+              if (!byMatch.has(date)) byMatch.set(date, { sum: 0, count: 0 });
+              const agg = byMatch.get(date)!;
+              agg.sum += numeric;
+              agg.count += 1;
+            }
+            return [...byMatch.entries()]
+              .map(([date, { sum, count }]) => ({ date, value: round2(sum / count) }))
+              .sort((a, b) => a.date.localeCompare(b.date));
+          },
+        });
+      }
+    }
+  }
+
+  return defs;
+}
+
 const INDICATORS: IndicatorDef[] = [
   // ── Match — Contexte (catégoriel, encodé en 0/1 pour être corrélable) ──
   {
@@ -399,16 +486,25 @@ const INDICATORS: IndicatorDef[] = [
 ];
 
 export const teamIndicators   = () => INDICATORS.filter(i => i.teamSeries || i.playerSeries);
-export const indicatorByKey   = (key: string) => INDICATORS.find(i => i.key === key);
+
+/** `extraTeamIndicators` : attributs dynamiques par équipe (ex. `buildTacticalIndicators`),
+ *  absents de la liste statique `INDICATORS` — cherchés en second, jamais prioritaires. */
+export const indicatorByKey = (key: string, extraTeamIndicators: IndicatorDef[] = []) =>
+  INDICATORS.find(i => i.key === key) ?? extraTeamIndicators.find(i => i.key === key);
 
 /** Attributs propres à UN joueur (stats de match individuelles, charge, bien-être, assiduité — sa valeur à lui) */
 export const playerAttributeIndicators = () => INDICATORS.filter(i => i.playerSeries);
 /**
  * Attributs de L'ÉQUIPE : stats collectives dédiées (groupe « Match — équipe ») + moyenne d'équipe
- * pour les indicateurs non-match (charge/bien-être/assiduité). Les stats de match individuelles
- * (éval, +/-…) sont exclues : leur équivalent collectif existe déjà comme attribut équipe dédié.
+ * pour les indicateurs non-match (charge/bien-être/assiduité), + attributs tactiques dynamiques de
+ * cette équipe (`extraTeamIndicators`, ex. `buildTacticalIndicators`). Les stats de match
+ * individuelles (éval, +/-…) sont exclues : leur équivalent collectif existe déjà comme attribut
+ * équipe dédié.
  */
-export const teamAttributeIndicators = () => INDICATORS.filter(i => i.teamSeries || (i.domain !== 'match' && i.playerSeries));
+export const teamAttributeIndicators = (extraTeamIndicators: IndicatorDef[] = []) => [
+  ...INDICATORS.filter(i => i.teamSeries || (i.domain !== 'match' && i.playerSeries)),
+  ...extraTeamIndicators,
+];
 
 // ── Extraction de séries ──────────────────────────────────────────────────────
 

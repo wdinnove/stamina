@@ -298,7 +298,7 @@ export default function PerformanceIndividuellePage() {
           <HeroCard
             icon={<BarChart2 size={20} color="#3B82F6" />} iconBg="#3B82F622"
             title="Statistiques"
-            ctaLabel="Voir les stats" onOpen={() => setActiveTab('statistiques-brutes')}
+            ctaLabel="Voir les statistiques" onOpen={() => setActiveTab('statistiques-brutes')}
             borderColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
             stats={[
               { value: avgMinP ?? 0, label: 'Min / match', color: '#F1F5F9' },

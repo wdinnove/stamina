@@ -11,6 +11,10 @@ export { objectivesApi } from './objectives';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
 export { matchesApi }   from './matches';
+export { tacticalConfigApi } from './tacticalConfig';
+export { tacticalEventsApi } from './tacticalEvents';
+export { tacticalImportApi } from './tacticalImport';
+export { tacticalDashboardApi } from './tacticalDashboard';
 export {
   NotificationService, isPushSupported, getNotificationPermission,
   getExistingSubscription, subscribeToPush, unsubscribeFromPush,

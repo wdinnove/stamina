@@ -1,4 +1,4 @@
-import { indicatorByKey, getSeries, type CrossScope } from '../data/crossAnalysis';
+import { indicatorByKey, getSeries, type CrossScope, type IndicatorDef } from '../data/crossAnalysis';
 import type { Objective, ObjectiveComparator } from '../data/types';
 
 export interface ObjectiveWindowResult {
@@ -31,8 +31,11 @@ function windowResult(label: string, values: number[], comparator: ObjectiveComp
 
 /** Valeur d'un objectif (domaine Match uniquement) sur 3 fenêtres fixes — dernier match, 3 derniers
  * matchs, saison — indépendamment du filtre de période actif ailleurs sur la page. */
-export function evaluateObjectiveWindows(objective: Objective, scope: CrossScope, seasonStart?: string, seasonEnd?: string): ObjectiveWindows {
-  const def = indicatorByKey(objective.indicatorKey);
+export function evaluateObjectiveWindows(
+  objective: Objective, scope: CrossScope, seasonStart?: string, seasonEnd?: string,
+  extraTeamIndicators: IndicatorDef[] = [],
+): ObjectiveWindows {
+  const def = indicatorByKey(objective.indicatorKey, extraTeamIndicators);
   if (!def) return { objective, windows: [] };
 
   const today = new Date().toLocaleDateString('sv');

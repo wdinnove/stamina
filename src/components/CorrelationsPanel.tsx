@@ -7,7 +7,7 @@ import { CrossTimelineChart } from './CrossTimelineChart';
 import { CorrelationScatterChart } from './CorrelationScatterChart';
 import { CorrelationCard } from './CorrelationCard';
 import {
-  playerAttributeIndicators, teamAttributeIndicators, getSeriesFor, correlateAcrossSubjects, injuryEpisodes,
+  playerAttributeIndicators, teamAttributeIndicators, buildTacticalIndicators, getSeriesFor, correlateAcrossSubjects, injuryEpisodes,
   type PlayerCrossData, type TeamCrossData, type IndicatorDef, type LagMode, type Subject,
 } from '../data/crossAnalysis';
 import type { LoadThresholds } from '../contexts/TeamSeasonContext';
@@ -107,8 +107,9 @@ export function CorrelationsPanel({ roster, team, from, to, thresholds, defaultS
   // Liste d'attributs affichée sous chaque sélecteur de sujet : bascule joueur ↔ équipe
   const aIsTeamSubject = aSubjectId === TEAM_SUBJECT;
   const bIsTeamSubject = bSubjectId === TEAM_SUBJECT;
-  const aIndicators = useMemo(() => aIsTeamSubject ? teamAttributeIndicators() : playerAttributeIndicators(), [aIsTeamSubject]);
-  const bIndicators = useMemo(() => bIsTeamSubject ? teamAttributeIndicators() : playerAttributeIndicators(), [bIsTeamSubject]);
+  const tacticalIndicators = useMemo(() => buildTacticalIndicators(team?.tactical), [team?.tactical]);
+  const aIndicators = useMemo(() => aIsTeamSubject ? teamAttributeIndicators(tacticalIndicators) : playerAttributeIndicators(), [aIsTeamSubject, tacticalIndicators]);
+  const bIndicators = useMemo(() => bIsTeamSubject ? teamAttributeIndicators(tacticalIndicators) : playerAttributeIndicators(), [bIsTeamSubject, tacticalIndicators]);
   // Si l'attribut choisi n'existe pas dans la nouvelle liste (ex. bascule vers Équipe), on retombe
   // sur le premier attribut de cette liste plutôt que de garder une sélection invalide.
   useEffect(() => {
