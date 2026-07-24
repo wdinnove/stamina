@@ -3,6 +3,7 @@ export { Modal }        from './Modal';
 export { Badge }        from './Badge';
 export { DropzoneEmptyState } from './DropzoneEmptyState';
 export { EmptyState }    from './EmptyState';
+export { AccessRestricted } from './AccessRestricted';
 export { RequireAuth }   from './RequireAuth';
 export { StatusBadge }   from './StatusBadge';
 export { PlayerAvatar }  from './PlayerAvatar';

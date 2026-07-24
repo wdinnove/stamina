@@ -69,7 +69,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 export default function RPEPage() {
-  const { selected, thresholds, loading: teamLoading } = useTeamSeason();
+  const { selected, thresholds, loading: teamLoading, canEditTeamData } = useTeamSeason();
   const navigate     = useNavigate();
   const location     = useLocation();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
@@ -574,9 +574,9 @@ export default function RPEPage() {
                           </div>
                           <div className="rpe-buttons" style={{ flex: 1, display: 'flex', gap: 4, minWidth: 0, overflow: 'hidden' }}>
                             {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
-                              <button key={v}
+                              <button key={v} disabled={!canEditTeamData}
                                 onClick={() => setRpeValues(prev => ({ ...prev, [player.id]: prev[player.id] === v ? null : v }))}
-                                style={{ flex: 1, height: 30, borderRadius: 5, border: '1px solid', borderColor: val === v ? rpeColor(v) : '#2A2F3A', backgroundColor: val === v ? rpeColor(v) + '22' : 'transparent', color: val === v ? rpeColor(v) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}>
+                                style={{ flex: 1, height: 30, borderRadius: 5, border: '1px solid', borderColor: val === v ? rpeColor(v) : '#2A2F3A', backgroundColor: val === v ? rpeColor(v) + '22' : 'transparent', color: val === v ? rpeColor(v) : '#94A3B8', cursor: canEditTeamData ? 'pointer' : 'not-allowed', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s', opacity: canEditTeamData ? 1 : 0.5 }}>
                                 {v}
                               </button>
                             ))}
@@ -592,10 +592,12 @@ export default function RPEPage() {
                   </div>
                   <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
                     {saveError && <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{saveError}</span>}
+                    {canEditTeamData && (
                     <button onClick={handleSave} disabled={activeEntries.length === 0 || saving}
                       style={{ padding: '10px 24px', backgroundColor: saved ? '#1E2229' : activeEntries.length === 0 ? '#1A1F27' : '#00E5A0', border: saved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: saved ? '#00E5A0' : activeEntries.length === 0 ? '#334155' : '#0D0F14', cursor: activeEntries.length === 0 || saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
                       {saved ? <><Check size={15} /> Enregistré !</> : <><Save size={15} /> {saving ? 'Enregistrement…' : `Enregistrer (${activeEntries.length})`}</>}
                     </button>
+                    )}
                   </div>
                 </>
               )

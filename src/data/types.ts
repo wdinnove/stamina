@@ -1,5 +1,6 @@
 // ─── Primitive types ──────────────────────────────────────────────────────────
-export type OrgRole           = 'admin' | 'editor';
+export type OrgRole           = 'superadmin' | 'member';
+export type TeamRole          = 'admin' | 'editor' | 'viewer';
 export type PlayerStatus      = 'active' | 'injured' | 'limited' | 'suspended' | 'unavailable';
 export type BasketballPosition = 'Meneur' | 'Arrière' | 'Ailier' | 'Ailier Fort' | 'Pivot';
 export type SessionType       = 'training' | 'match' | 'gym' | 'rest';
@@ -55,6 +56,15 @@ export interface StaffMember {
   firstName: string;
   lastName: string;
   role: string;
+}
+
+export interface TeamRoleAssignment {
+  teamId:      string;
+  teamName?:   string;
+  profileId:   string;
+  firstName:   string;
+  lastName:    string;
+  role:        TeamRole;
 }
 
 export interface StaffMeeting {

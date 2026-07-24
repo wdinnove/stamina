@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { teamsApi, seasonsApi } from '../api';
 import { supabase } from '../api/client';
-import type { Team, Season, OrgRole, WellnessEntryMethod } from '../data/types';
+import type { Team, Season, OrgRole, TeamRole, WellnessEntryMethod } from '../data/types';
 
 export interface TeamSeasonOption {
   team: Team;
@@ -35,7 +35,18 @@ interface Ctx {
   defaultWellnessMethod: WellnessEntryMethod;
   publicWellnessMethod:  WellnessEntryMethod;
   orgId:          string | null;
-  orgRole:        OrgRole | null;
+  /** Superadmin : accès total à l'organisation (config club, toutes les équipes). */
+  isSuperadmin:   boolean;
+  /** true tant que org_role n'a pas encore été chargé (évite le flash "accès restreint"). */
+  roleLoading:    boolean;
+  /** Rôle du profil courant sur l'équipe sélectionnée (null = aucun accès, superadmin = 'admin' implicite). */
+  teamRole:       TeamRole | null;
+  /** true tant que teamRole n'a pas encore été chargé pour l'équipe sélectionnée (évite le flash "accès restreint" pour un admin/editor légitime). */
+  teamRoleLoading: boolean;
+  /** Droit d'éditer les données opérationnelles de l'équipe sélectionnée (superadmin, admin ou editor). */
+  canEditTeamData:   boolean;
+  /** Droit de configurer l'équipe sélectionnée (superadmin ou admin). */
+  canConfigureTeam:  boolean;
 }
 
 const DEFAULT_THRESHOLDS: LoadThresholds = { lightMax: 2750, normalMax: 4250, sessionsPerWeek: 3 };
@@ -50,7 +61,8 @@ const TeamSeasonContext = createContext<Ctx>({
   options: [], selected: null, setSelected: () => {}, loading: true, reload: () => {},
   thresholds: DEFAULT_THRESHOLDS, statThresholds: DEFAULT_STAT_THRESHOLDS,
   defaultWellnessMethod: 'detailed', publicWellnessMethod: 'detailed',
-  orgId: null, orgRole: null,
+  orgId: null, isSuperadmin: false, roleLoading: true, teamRole: null, teamRoleLoading: true,
+  canEditTeamData: false, canConfigureTeam: false,
 });
 
 function storageKey(userId: string) {
@@ -77,8 +89,12 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
   const [userId,   setUserId]   = useState<string | null>(null);
   const [tick,     setTick]     = useState(0);
   const [orgRole,  setOrgRole]  = useState<OrgRole | null>(null);
+  const [teamRole, setTeamRole] = useState<TeamRole | null>(null);
+  const [teamRoleLoading, setTeamRoleLoading] = useState(true);
 
   const reload = () => setTick(t => t + 1);
+  const isSuperadmin = orgRole === 'superadmin';
+  const roleLoading  = orgRole === null;
 
   // Suit les changements d'auth : reset à la déconnexion, recharge à la connexion
   useEffect(() => {
@@ -91,6 +107,7 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
         setSelected(null);
         setOptions([]);
         setOrgRole(null);
+        setTeamRole(null);
       } else {
         reload();
       }
@@ -105,10 +122,32 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
     supabase.from('profiles').select('org_role').eq('id', userId).single()
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
-        setOrgRole((data.org_role as OrgRole) ?? 'editor');
+        setOrgRole((data.org_role as OrgRole) ?? 'member');
       }, () => { /* réseau : orgRole reste null, le guard bloquera */ });
     return () => { cancelled = true; };
   }, [userId]);
+
+  // Charge le rôle par équipe de l'utilisateur connecté sur l'équipe sélectionnée
+  // (superadmin : accès total implicite, pas besoin de ligne team_roles)
+  useEffect(() => {
+    // Reset immédiat : sans ça, changer d'équipe dans le sélecteur laisse
+    // brièvement le rôle de l'équipe PRÉCÉDENTE actif (canEditTeamData/
+    // canConfigureTeam calculés dessus) le temps du round-trip réseau.
+    setTeamRole(null);
+    if (!userId || !selected) { setTeamRoleLoading(false); return; }
+    if (isSuperadmin) { setTeamRole('admin'); setTeamRoleLoading(false); return; }
+    let cancelled = false;
+    setTeamRoleLoading(true);
+    supabase.from('team_roles').select('role')
+      .eq('team_id', selected.team.id).eq('profile_id', userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setTeamRole(error || !data ? null : (data.role as TeamRole));
+        setTeamRoleLoading(false);
+      }, () => { if (!cancelled) { setTeamRole(null); setTeamRoleLoading(false); } });
+    return () => { cancelled = true; };
+  }, [userId, selected, isSuperadmin]);
 
   function handleSetSelected(opt: TeamSeasonOption) {
     setSelected(opt);
@@ -163,8 +202,15 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
 
   const orgId = selected?.team.organizationId ?? options[0]?.team.organizationId ?? null;
 
+  const canEditTeamData  = isSuperadmin || teamRole === 'admin' || teamRole === 'editor';
+  const canConfigureTeam = isSuperadmin || teamRole === 'admin';
+
   return (
-    <TeamSeasonContext.Provider value={{ options, selected, setSelected: handleSetSelected, loading, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, orgId, orgRole }}>
+    <TeamSeasonContext.Provider value={{
+      options, selected, setSelected: handleSetSelected, loading, reload,
+      thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod,
+      orgId, isSuperadmin, roleLoading, teamRole, teamRoleLoading, canEditTeamData, canConfigureTeam,
+    }}>
       {children}
     </TeamSeasonContext.Provider>
   );

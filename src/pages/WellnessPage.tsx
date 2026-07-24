@@ -37,7 +37,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 export default function WellnessPage() {
-  const { selected, defaultWellnessMethod } = useTeamSeason();
+  const { selected, defaultWellnessMethod, canEditTeamData } = useTeamSeason();
   const navigate     = useNavigate();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
@@ -293,7 +293,7 @@ export default function WellnessPage() {
           <PlayerSelect players={roster} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} />
         )}
 
-        {activeTab === 'entry' && (
+        {activeTab === 'entry' && canEditTeamData && (
           <button onClick={openLinkModal} disabled={roster.length === 0}
             style={{ marginLeft: 'auto', padding: '6px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: roster.length === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
             <Mail size={13} />
@@ -325,8 +325,9 @@ export default function WellnessPage() {
                 {WELLNESS_QUICK_SCALE.map(opt => {
                   const Icon = QUICK_ICONS[opt.icon];
                   return (
-                    <button key={opt.v} onClick={() => { setSingleValue(opt.v); setValues(wellnessBroadcastValues(opt.v)); }}
-                      style={{ width: 72, height: 72, borderRadius: 12, border: `2px solid ${singleValue === opt.v ? opt.color : '#2A2F3A'}`, backgroundColor: singleValue === opt.v ? opt.color + '22' : '#161920', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, transition: 'all 0.1s' }}>
+                    <button key={opt.v} disabled={!canEditTeamData}
+                      onClick={() => { setSingleValue(opt.v); setValues(wellnessBroadcastValues(opt.v)); }}
+                      style={{ width: 72, height: 72, borderRadius: 12, border: `2px solid ${singleValue === opt.v ? opt.color : '#2A2F3A'}`, backgroundColor: singleValue === opt.v ? opt.color + '22' : '#161920', cursor: canEditTeamData ? 'pointer' : 'not-allowed', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, transition: 'all 0.1s', opacity: canEditTeamData ? 1 : 0.5 }}>
                       <Icon size={26} color={singleValue === opt.v ? opt.color : '#475569'} />
                       <span style={{ fontSize: '0.68rem', color: singleValue === opt.v ? opt.color : '#94A3B8', fontWeight: 600 }}>{opt.label}</span>
                     </button>
@@ -360,8 +361,8 @@ export default function WellnessPage() {
                               const active = val === raw;
                               const Icon = QUICK_ICONS[opt.icon];
                               return (
-                                <button key={opt.v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: raw }))}
-                                  style={{ flex: 1, height: 44, borderRadius: 8, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#1E2229', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.1s' }}>
+                                <button key={opt.v} disabled={!canEditTeamData} onClick={() => setValues(prev => ({ ...prev, [dim.key]: raw }))}
+                                  style={{ flex: 1, height: 44, borderRadius: 8, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#1E2229', cursor: canEditTeamData ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.1s', opacity: canEditTeamData ? 1 : 0.5 }}>
                                   <Icon size={20} color={active ? opt.color : '#475569'} />
                                 </button>
                               );
@@ -370,8 +371,8 @@ export default function WellnessPage() {
                         ) : (
                           <div style={{ display: 'flex', gap: 4 }}>
                             {Array.from({ length: 10 }, (_, i) => i + 1).map(v => (
-                              <button key={v} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
-                                style={{ flex: 1, minWidth: 0, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s' }}
+                              <button key={v} disabled={!canEditTeamData} onClick={() => setValues(prev => ({ ...prev, [dim.key]: v }))}
+                                style={{ flex: 1, minWidth: 0, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${val === v ? dimColor(v, dim.inverted) : '#2A2F3A'}`, backgroundColor: val === v ? dimColor(v, dim.inverted) + '22' : '#1E2229', color: val === v ? dimColor(v, dim.inverted) : '#94A3B8', cursor: canEditTeamData ? 'pointer' : 'not-allowed', fontSize: '0.82rem', fontWeight: val === v ? 700 : 400, transition: 'all 0.1s', opacity: canEditTeamData ? 1 : 0.5 }}
                               >{v}</button>
                             ))}
                           </div>
@@ -404,10 +405,12 @@ export default function WellnessPage() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               {saveError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{saveError}</span>}
+              {canEditTeamData && (
               <button onClick={handleSave} disabled={saving}
                 style={{ padding: '10px 24px', backgroundColor: saved ? '#1E2229' : '#00E5A0', border: saved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: saved ? '#00E5A0' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
                 {saved ? <><Check size={15} /> Enregistré !</> : <><Save size={15} /> {saving ? 'Enregistrement…' : 'Enregistrer'}</>}
               </button>
+              )}
             </div>
           </div>
         </div>

@@ -35,7 +35,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function ActionsPage() {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const location = useLocation();
   const navigate = useNavigate();
   const locState = location.state as { playerId?: string; playerName?: string; from?: string } | null;
@@ -181,7 +181,8 @@ export default function ActionsPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <button
             onClick={() => toggleDone(action.id)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDone ? '#00E5A0' : '#475569', padding: 0, marginTop: 2, flexShrink: 0 }}
+            disabled={!canEditTeamData}
+            style={{ background: 'none', border: 'none', cursor: canEditTeamData ? 'pointer' : 'not-allowed', color: isDone ? '#00E5A0' : '#475569', padding: 0, marginTop: 2, flexShrink: 0, opacity: canEditTeamData ? 1 : 0.5 }}
           >
             {isDone ? <CheckCircle size={18} /> : <Circle size={18} />}
           </button>
@@ -225,9 +226,10 @@ export default function ActionsPage() {
           </div>
           <button
             onClick={() => setConfirmDelete(action)}
+            disabled={!canEditTeamData}
             title="Supprimer"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: '2px', flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 1 }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+            style={{ background: 'none', border: 'none', cursor: canEditTeamData ? 'pointer' : 'not-allowed', color: '#334155', padding: '2px', flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 1, opacity: canEditTeamData ? 1 : 0.5 }}
+            onMouseEnter={e => { if (canEditTeamData) e.currentTarget.style.color = '#EF4444'; }}
             onMouseLeave={e => (e.currentTarget.style.color = '#334155')}
           >
             <Trash2 size={14} />
@@ -245,12 +247,14 @@ export default function ActionsPage() {
           <span className="hidden sm:inline">Tâches  </span>
           <span className="sm:hidden">Tâches</span>
         </h1>
-        <button
-          onClick={() => setShowForm(true)}
-          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
-        >
-          <Plus size={16} /><span className="hidden sm:inline">Nouvelle tâche</span>
-        </button>
+        {canEditTeamData && (
+          <button
+            onClick={() => setShowForm(true)}
+            style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+          >
+            <Plus size={16} /><span className="hidden sm:inline">Nouvelle tâche</span>
+          </button>
+        )}
       </div>
 
       <style>{`@media (max-width: 639px) { .act-filters { flex-direction: column !important; } .act-filters > * { flex: none !important; width: 100% !important; } }`}</style>

@@ -64,7 +64,7 @@ function substringFilter(value: string, search: string, keywords?: string[]): nu
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const { selected, orgRole, options, setSelected } = useTeamSeason();
+  const { selected, isSuperadmin, canConfigureTeam, options, setSelected } = useTeamSeason();
   const [query, setQuery] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   const [otherSeasonPlayers, setOtherSeasonPlayers] = useState<PlayerHit[]>([]);
@@ -247,7 +247,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           </Command.Group>
         ))}
 
-        {orgRole === 'admin' && (
+        {(isSuperadmin || canConfigureTeam) && (
           <Command.Group heading="Réglages" style={groupStyle}>
             <Command.Item value="Configuration" onSelect={() => go('/configuration')} style={itemStyle}>
               <Settings size={16} style={{ color: '#3B82F6', flexShrink: 0 }} />

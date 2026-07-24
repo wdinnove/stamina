@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, X, ChevronUp, ChevronDown, Settings2, AlertCircle, LayoutGrid, Pencil, Copy } from 'lucide-react';
 import { tacticalDashboardApi } from '../api/tacticalDashboard';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption, TacticalDashboardWidget } from '../data/types';
 import type { TacticalMatchRef } from './TacticalReport';
 import { renderTacticalWidgetContent, tacticalWidgetTitle, EmptyNote } from './tacticalWidgetRenderer';
@@ -65,6 +66,7 @@ type EditorState =
  * partagés pour toute l'équipe.
  */
 export function TacticalDashboard({ teamId, events, categories, dimensions, options = [], matches }: Props) {
+  const { canEditTeamData } = useTeamSeason();
   const [widgets, setWidgets] = useState<TacticalDashboardWidget[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -120,10 +122,12 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
         <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>Mon tableau de bord</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <ColumnPicker value={columns} onChange={handleColumnsChange} />
+          {canEditTeamData && (
           <button type="button" onClick={() => setEditing(e => !e)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: editing ? '#1E2229' : 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: editing ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.78rem' }}>
             <Settings2 size={13} /> {editing ? 'Terminer' : 'Personnaliser'}
           </button>
+          )}
         </div>
       </div>
 

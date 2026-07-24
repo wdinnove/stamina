@@ -6,7 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
 import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
-import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem, Modal, Badge } from '../components';
+import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem, Modal, Badge, AccessRestricted } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
@@ -91,7 +91,7 @@ function SectionLabel({ icon, children }: { icon: React.ReactNode; children: Rea
 export default function ExerciseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
 
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
   const [images,     setImages]     = useState<ExerciseImage[]>([]);
@@ -119,7 +119,7 @@ export default function ExerciseDetailPage() {
     setLoading(true);
     Promise.all([exercisesApi.getById(id), exercisesApi.listImages(id)])
       .then(([ex, imgs]) => {
-        if (!ex) { setError('Exercice introuvable.'); return; }
+        if (!ex) return;
         setExercise(ex);
         setImages(imgs);
       })
@@ -260,7 +260,11 @@ export default function ExerciseDetailPage() {
 
   if (error || !exercise) return (
     <div className="p-4 md:p-6" style={{ maxWidth: 960, margin: '0 auto' }}>
-      <p style={{ color: '#EF4444', fontSize: '0.85rem' }}>{error || 'Exercice introuvable.'}</p>
+      {error ? (
+        <p style={{ color: '#EF4444', fontSize: '0.85rem' }}>{error}</p>
+      ) : (
+        <AccessRestricted message="Cet exercice n'existe pas ou vous n'avez pas accès à l'équipe concernée." />
+      )}
     </div>
   );
 
@@ -272,6 +276,7 @@ export default function ExerciseDetailPage() {
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>
           <ArrowLeft size={15} /> Tous les exercices
         </button>
+        {canEditTeamData && (
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={openEdit}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.78rem' }}
@@ -284,6 +289,7 @@ export default function ExerciseDetailPage() {
             <Trash2 size={12} /> Supprimer
           </button>
         </div>
+        )}
       </div>
 
       {/* Contenu — container centré */}

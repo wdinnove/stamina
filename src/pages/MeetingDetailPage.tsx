@@ -6,7 +6,7 @@ import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { fmtDateFull } from '../utils/dateFormat';
 import { sanitizeHtml } from '../utils/sanitize';
-import { Modal } from '../components';
+import { Modal, AccessRestricted } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StaffMeeting } from '../data/types';
 
@@ -20,7 +20,7 @@ const inputStyle: React.CSSProperties = {
 export default function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
 
   const [meeting,  setMeeting]  = useState<StaffMeeting | null>(null);
   const [loading,  setLoading]  = useState(true);
@@ -43,11 +43,11 @@ export default function MeetingDetailPage() {
     if (!id) return;
     meetingsApi.getById(id)
       .then(m => {
-        if (!m) { setFetchErr('Réunion introuvable.'); setLoading(false); return; }
+        if (!m) { setLoading(false); return; }
         setMeeting(m);
         setNotesDraft(m.notes ?? '');
         setLoading(false);
-      }, (err: { message?: string }) => { setFetchErr(err?.message ?? 'Réunion introuvable.'); setLoading(false); });
+      }, (err: { message?: string }) => { setFetchErr(err?.message ?? 'Erreur de chargement.'); setLoading(false); });
   }, [id]);
 
   useEffect(() => {
@@ -67,7 +67,11 @@ export default function MeetingDetailPage() {
       <button onClick={() => navigate('/meetings')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
         <ArrowLeft size={14} /> Retour aux réunions
       </button>
-      <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{fetchErr || 'Réunion introuvable.'}</div>
+      {fetchErr ? (
+        <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{fetchErr}</div>
+      ) : (
+        <AccessRestricted message="Cette réunion n'existe pas ou vous n'avez pas accès à l'équipe concernée." />
+      )}
     </div>
   );
 
@@ -147,6 +151,7 @@ export default function MeetingDetailPage() {
                 )}
               </div>
             </div>
+            {canEditTeamData && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <button onClick={() => { setMetaForm({ title: meeting.title, date: meeting.date, time: meeting.time }); setMetaError(''); setEditing(true); }}
                 style={{ padding: '7px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -157,6 +162,7 @@ export default function MeetingDetailPage() {
                 <Trash2 size={13} /> Supprimer
               </button>
             </div>
+            )}
           </div>
         </div>
       ) : (
@@ -201,10 +207,12 @@ export default function MeetingDetailPage() {
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.95rem' }}>Compte rendu / Notes</h2>
           {!notesEdit ? (
+            canEditTeamData && (
             <button onClick={() => { setNotesDraft(meeting.notes ?? ''); setNotesError(''); setNotesEdit(true); }}
               style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 5 }}>
               <Edit size={12} /> Éditer
             </button>
+            )
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setNotesEdit(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}><X size={12} /> Annuler</button>

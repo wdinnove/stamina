@@ -20,7 +20,8 @@ const readonlyStyle: React.CSSProperties = {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { orgRole } = useTeamSeason();
+  const { isSuperadmin, teamRole } = useTeamSeason();
+  const roleLabel = isSuperadmin ? 'Superadmin' : teamRole === 'admin' ? 'Admin' : teamRole === 'editor' ? 'Éditeur' : teamRole === 'viewer' ? 'Lecture seule' : null;
   const [email,     setEmail]     = useState('');
   const [orgName,   setOrgName]   = useState('');
   const [firstName, setFirstName] = useState('');
@@ -157,15 +158,15 @@ export default function ProfilePage() {
             <p style={{ color: '#F1F5F9', fontWeight: 600, margin: '0 0 2px', fontSize: '1rem' }}>
               {firstName} {lastName}
             </p>
-            {orgRole && (
+            {roleLabel && (
               <span style={{
-                color: orgRole === 'admin' ? '#00E5A0' : '#94A3B8',
-                backgroundColor: orgRole === 'admin' ? 'rgba(0,229,160,0.1)' : 'rgba(148,163,184,0.1)',
-                border: `1px solid ${orgRole === 'admin' ? 'rgba(0,229,160,0.3)' : 'rgba(148,163,184,0.25)'}`,
+                color: isSuperadmin ? '#00E5A0' : '#94A3B8',
+                backgroundColor: isSuperadmin ? 'rgba(0,229,160,0.1)' : 'rgba(148,163,184,0.1)',
+                border: `1px solid ${isSuperadmin ? 'rgba(0,229,160,0.3)' : 'rgba(148,163,184,0.25)'}`,
                 fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
                 padding: '2px 8px', borderRadius: 4, marginBottom: 2,
               }}>
-                {orgRole === 'admin' ? 'Admin' : 'Éditeur'}
+                {roleLabel}
               </span>
             )}
           </div>

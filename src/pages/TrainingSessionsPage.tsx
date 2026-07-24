@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Plus, X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
-import { Modal, DropzoneEmptyState } from '../components';
+import { Modal, DropzoneEmptyState, EmptyState } from '../components';
 import { rpeApi } from '../api/rpe';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { playersApi } from '../api';
@@ -47,7 +47,7 @@ function fmtDate(dateStr: string) {
 }
 
 export default function TrainingSessionsPage() {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const navigate = useNavigate();
 
   const [sessions,         setSessions]         = useState<TrainingSession[]>([]);
@@ -224,7 +224,7 @@ export default function TrainingSessionsPage() {
     <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Séances</h1>
-        {selected && (
+        {selected && canEditTeamData && (
           <button onClick={() => setShowAdd(true)}
             style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={15} /><span className="hidden sm:inline">Nouvelle séance</span>
@@ -244,7 +244,11 @@ export default function TrainingSessionsPage() {
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : sessions.length === 0 ? (
-        <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAdd(true)} />
+        canEditTeamData ? (
+          <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAdd(true)} />
+        ) : (
+          <EmptyState message="Aucune séance. Seuls les rôles Admin et Éditeur peuvent en créer." size="lg" />
+        )
       ) : (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

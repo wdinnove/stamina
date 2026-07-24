@@ -38,7 +38,7 @@ const TAB_SLUGS: Record<string, Tab> = {
 const TODAY = new Date().toISOString().split('T')[0];
 
 export default function MedicalPage() {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const navigate     = useNavigate();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
@@ -328,19 +328,19 @@ export default function MedicalPage() {
           </div>
         )}
 
-        {activeTab === 'infirmary' && (
+        {activeTab === 'infirmary' && canEditTeamData && (
           <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
           </button>
         )}
 
-        {activeTab === 'record' && selectedPlayerId && (
+        {activeTab === 'record' && selectedPlayerId && canEditTeamData && (
           <button onClick={() => playerMedicalViewRef.current?.openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
           </button>
         )}
 
-        {activeTab === 'team' && (
+        {activeTab === 'team' && canEditTeamData && (
           <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
           </button>
@@ -367,8 +367,8 @@ export default function MedicalPage() {
               key={record.id}
               record={record}
               player={player}
-              onEdit={() => openEdit(record)}
-              onClose={() => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' })}
+              onEdit={() => { if (canEditTeamData) openEdit(record); }}
+              onClose={canEditTeamData ? () => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' }) : undefined}
               onClick={() => setDetailRecord(record)}
               navigate={navigate}
             />
@@ -756,8 +756,8 @@ export default function MedicalPage() {
           record={detailRecord}
           player={teamPlayers.find(pl => pl.id === detailRecord.playerId)}
           onClose={() => setDetailRecord(null)}
-          onEdit={() => { const r = detailRecord; setDetailRecord(null); openEdit(r); }}
-          onCloseRecord={detailRecord.status === 'active' && detailRecord.type !== 'checkup'
+          onEdit={() => { if (!canEditTeamData) return; const r = detailRecord; setDetailRecord(null); openEdit(r); }}
+          onCloseRecord={canEditTeamData && detailRecord.status === 'active' && detailRecord.type !== 'checkup'
             ? () => { const r = detailRecord; setDetailRecord(null); setCloseModal({ recordId: r.id, playerId: r.playerId, date: TODAY, playerStatus: 'active' }); }
             : undefined}
         />
