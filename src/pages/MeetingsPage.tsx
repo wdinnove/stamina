@@ -5,7 +5,7 @@ import { meetingsApi } from '../api/meetings';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notifyOrg } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
-import { Modal, DropzoneEmptyState } from '../components';
+import { Modal, DropzoneEmptyState, EmptyState } from '../components';
 import { MONTHS_ABBR3, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { StaffMeeting } from '../data/types';
 
@@ -25,7 +25,7 @@ function fmtMeetDate(dateStr: string) {
 const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '' };
 
 export default function MeetingsPage() {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const navigate = useNavigate();
 
   const [meetings,      setMeetings]      = useState<StaffMeeting[]>([]);
@@ -79,7 +79,7 @@ export default function MeetingsPage() {
     <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Réunions</h1>
-        {selected && (
+        {selected && canEditTeamData && (
           <button
             onClick={() => setShowMeetForm(true)}
             style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
@@ -102,7 +102,11 @@ export default function MeetingsPage() {
 
       {selected && (
         meetings.length === 0 ? (
-          <DropzoneEmptyState label="Cliquer pour ajouter une réunion" onClick={() => setShowMeetForm(true)} />
+          canEditTeamData ? (
+            <DropzoneEmptyState label="Cliquer pour ajouter une réunion" onClick={() => setShowMeetForm(true)} />
+          ) : (
+            <EmptyState message="Aucune réunion. Seuls les rôles Admin et Éditeur peuvent en planifier." size="lg" />
+          )
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[...upcomingMeetings, ...pastMeetings].map(m => {

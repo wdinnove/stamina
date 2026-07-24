@@ -9,7 +9,7 @@ import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
 import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalEventsApi } from '../api/tacticalEvents';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced } from '../data/playerAdvanced';
@@ -131,7 +131,7 @@ function MatchActionsMenu({
 export default function MatchDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
 
   const [match,            setMatch]           = useState<Match | null>(null);
   const [players,          setPlayers]         = useState<Player[]>([]);
@@ -317,7 +317,11 @@ export default function MatchDetailPage() {
       <button onClick={() => navigate('/matches')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', marginBottom: 16, fontSize: '0.85rem' }}>
         <ArrowLeft size={16} /> Retour
       </button>
-      <p style={{ color: '#EF4444' }}>{error || 'Match introuvable.'}</p>
+      {error ? (
+        <p style={{ color: '#EF4444' }}>{error}</p>
+      ) : (
+        <AccessRestricted message="Ce match n'existe pas ou vous n'avez pas accès à l'équipe concernée." />
+      )}
     </div>
   );
 
@@ -444,16 +448,18 @@ export default function MatchDetailPage() {
           <span className="sm:hidden">Retour</span>
           <span className="hidden sm:inline">Tous les matchs</span>
         </button>
-        <MatchActionsMenu
-          hasStats={!!(teamStats || individualStats.length > 0)}
-          hasTactical={tacticalLoaded && tacticalEvents.length > 0}
-          onImportStats={() => setShowImport(true)}
-          onDeleteStats={() => setConfirmDeleteStats(true)}
-          onImportTactical={() => setShowTacticalImport(true)}
-          onDeleteTactical={() => setConfirmDeleteTactical(true)}
-          onEditMatch={() => setShowEdit(true)}
-          onDeleteMatch={() => setConfirmDelete(true)}
-        />
+        {canEditTeamData && (
+          <MatchActionsMenu
+            hasStats={!!(teamStats || individualStats.length > 0)}
+            hasTactical={tacticalLoaded && tacticalEvents.length > 0}
+            onImportStats={() => setShowImport(true)}
+            onDeleteStats={() => setConfirmDeleteStats(true)}
+            onImportTactical={() => setShowTacticalImport(true)}
+            onDeleteTactical={() => setConfirmDeleteTactical(true)}
+            onEditMatch={() => setShowEdit(true)}
+            onDeleteMatch={() => setConfirmDelete(true)}
+          />
+        )}
       </div>
 
       {/* Hero card */}

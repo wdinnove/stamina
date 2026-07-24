@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Plus, Search, Users, Edit, X, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
 import { teamsApi, seasonsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { Breadcrumb, EmptyState, Modal } from '../components';
+import { Breadcrumb, EmptyState, Modal, AccessRestricted } from '../components';
 import type { Team, Season } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -448,6 +448,23 @@ function TeamsList() {
 
 export default function TeamsPage() {
   const { id } = useParams();
+  const { isSuperadmin, roleLoading } = useTeamSeason();
+
+  // Cette page (création/édition d'équipe, gestion des saisons) n'est reliée
+  // nulle part dans l'UI en dehors de l'onglet Club > Équipes, déjà réservé au
+  // superadmin — mais reste atteignable par URL directe, d'où ce garde-fou.
+  if (roleLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}>
+        <div style={{ width: 24, height: 24, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+  if (!isSuperadmin) {
+    return <div className="p-4 md:p-6"><AccessRestricted message="La gestion des équipes est réservée au superadmin de l'organisation." /></div>;
+  }
+
   if (id) return <TeamDetail teamId={id} />;
   return <TeamsList />;
 }

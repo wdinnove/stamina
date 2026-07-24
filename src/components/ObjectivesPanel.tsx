@@ -7,6 +7,7 @@ import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
 import { IndicatorSelect } from './IndicatorSelect';
 import { objectivesApi } from '../api';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useObjectives } from '../hooks/useObjectives';
 import { evaluateObjectiveWindows } from '../utils/objectiveStatus';
 import { fmt1 } from '../utils/format';
@@ -59,6 +60,7 @@ function orphanIndicatorLabel(indicatorKey: string): string {
 }
 
 export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEnd }: ObjectivesPanelProps) {
+  const { canEditTeamData } = useTeamSeason();
   const { objectives, loading, reload } = useObjectives({ playerId, teamId });
   // Mémoïsé comme dans CorrelationsPanel : sans ça, ce scan (catégories × dimensions × événements)
   // est refait à chaque rendu — y compris à chaque frappe dans le formulaire de création/édition,
@@ -138,9 +140,11 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
     <div>
       <Card style={{ marginBottom: 14 }}>
         <CardTitle icon={<Target size={12} style={{ color: '#3B82F6' }} />} mb={0} right={
+          canEditTeamData && (
           <button onClick={openCreate} style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={16} /><span>Ajouter un objectif</span>
           </button>
+          )
         }>
           Objectifs
         </CardTitle>
@@ -149,7 +153,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
       {loading ? (
         <div style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>
       ) : objectives.length === 0 ? (
-        <EmptyState message="Aucun objectif défini pour le moment." />
+        <EmptyState message={canEditTeamData ? 'Aucun objectif défini pour le moment.' : 'Aucun objectif. Seuls les rôles Admin et Éditeur peuvent en créer.'} />
       ) : (
         [...grouped.entries()].map(([group, objs]) => (
           <Card key={group} style={{ marginBottom: 14 }}>
@@ -191,6 +195,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
                         </div>
                       ))}
                     </div>
+                    {canEditTeamData && (
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <button onClick={() => openEdit(o)} title="Modifier"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: 2, display: 'flex' }}
@@ -205,6 +210,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
                         <Trash2 size={14} />
                       </button>
                     </div>
+                    )}
                   </div>
                 );
               })}

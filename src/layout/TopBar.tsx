@@ -10,7 +10,7 @@ import { NotificationBell } from '../components/NotificationCenter';
 interface TopBarProps { onOpenSearch: () => void; }
 
 export function TopBar({ onOpenSearch }: TopBarProps) {
-  const { options, selected, setSelected, loading, orgRole } = useTeamSeason();
+  const { options, selected, setSelected, loading, isSuperadmin, canConfigureTeam } = useTeamSeason();
   const [dropOpen, setDropOpen]   = useState(false);
   const [initials, setInitials]   = useState('');
   const dropRef  = useRef<HTMLDivElement>(null);
@@ -167,7 +167,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
       {/* Desktop right: notifications + configuration + avatar */}
       <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <NotificationBell />
-        {orgRole === 'admin' && (
+        {(isSuperadmin || canConfigureTeam) && (
           <button onClick={() => navigate('/configuration')} title="Configuration"
             style={{
               width: 34, height: 34, borderRadius: '50%',
@@ -198,7 +198,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
 export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { options, selected, setSelected, loading, orgRole } = useTeamSeason();
+  const { options, selected, setSelected, loading, isSuperadmin, canConfigureTeam } = useTeamSeason();
   const [initials, setInitials] = useState('');
   const [fullName, setFullName] = useState('');
 
@@ -317,8 +317,8 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
             Mon profil
           </Link>
           {/* Configuration */}
-          {(orgRole === 'admin') && <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />}
-          {orgRole === 'admin' && (
+          {(isSuperadmin || canConfigureTeam) && <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />}
+          {(isSuperadmin || canConfigureTeam) && (
             <Link to="/configuration" onClick={onClose} style={navLinkStyle(configActive)}>
               <Settings size={18} style={{ flexShrink: 0 }} />
               Configuration

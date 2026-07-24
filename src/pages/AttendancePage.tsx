@@ -32,7 +32,7 @@ const NAME_W = 200;
 const CELL_W = 76;
 
 export default function AttendancePage() {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const popoverRef        = useRef<HTMLDivElement>(null);
   const partnerPopoverRef = useRef<HTMLDivElement>(null);
 
@@ -305,7 +305,7 @@ export default function AttendancePage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0, gap: 12 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Présences</h1>
-        {selected && (
+        {selected && canEditTeamData && (
           <button
             onClick={() => setShowAddForm(true)}
             style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
@@ -332,7 +332,11 @@ export default function AttendancePage() {
       )}
 
       {selected && !loading && sessions.length === 0 && (
-        <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAddForm(true)} />
+        canEditTeamData ? (
+          <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAddForm(true)} />
+        ) : (
+          <EmptyState message="Aucune séance. Seuls les rôles Admin et Éditeur peuvent en ajouter." size="lg" />
+        )
       )}
 
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
@@ -436,13 +440,14 @@ export default function AttendancePage() {
                     return (
                       <td
                         key={s.id}
-                        onClick={e => handleCellClick(e, s.id, p.id)}
+                        onClick={canEditTeamData ? (e => handleCellClick(e, s.id, p.id)) : undefined}
                         style={{
                           borderBottom: '1px solid #1E2229', borderRight: '1px solid #1E2229',
-                          height: 48, textAlign: 'center', cursor: 'pointer',
+                          height: 48, textAlign: 'center', cursor: canEditTeamData ? 'pointer' : 'default',
                           backgroundColor: cfg ? cfg.bg : 'transparent',
+                          opacity: canEditTeamData ? 1 : 0.75,
                         }}
-                        onMouseEnter={e => { if (!cfg) (e.currentTarget as HTMLElement).style.backgroundColor = '#1E2229'; }}
+                        onMouseEnter={e => { if (canEditTeamData && !cfg) (e.currentTarget as HTMLElement).style.backgroundColor = '#1E2229'; }}
                         onMouseLeave={e => { if (!cfg) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                       >
                         {cfg && <cfg.Icon size={16} style={{ color: cfg.color, display: 'block', margin: '0 auto' }} />}
@@ -466,13 +471,14 @@ export default function AttendancePage() {
                   return (
                     <td
                       key={s.id}
-                      onClick={e => handlePartnerCellClick(e, s.id)}
+                      onClick={canEditTeamData ? (e => handlePartnerCellClick(e, s.id)) : undefined}
                       style={{
                         borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229', borderRight: '1px solid #1E2229',
                         backgroundColor: '#13171E', textAlign: 'center', height: 44,
-                        cursor: 'pointer',
+                        cursor: canEditTeamData ? 'pointer' : 'default',
+                        opacity: canEditTeamData ? 1 : 0.75,
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
+                      onMouseEnter={e => { if (canEditTeamData) (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#13171E'; }}
                     >
                       <span style={{ fontSize: '0.9rem', fontWeight: 700, color: count > 0 ? '#F59E0B' : '#334155' }}>

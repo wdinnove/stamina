@@ -9,6 +9,7 @@
 --   4.  Teams
 --   5.  Seasons
 --   6.  Profiles  (+ trigger handle_new_user)
+--   6b. Team Roles (droits par équipe : admin/editor/viewer)
 --   7.  Staff
 --   8.  Players
 --   9.  Player Season
@@ -151,8 +152,11 @@ CREATE UNIQUE INDEX one_current_season_per_team
 -- 6. PROFILES
 --    Extension de auth.users — comptes staff de l'application
 --    org_role : rôle dans l'organisation
---      'admin'  → accès total (dont configuration club)
---      'editor' → accès standard (sans configuration club)
+--      'superadmin' → accès total sur l'organisation (config club, création
+--                     d'équipes, assignation des rôles sur toutes les équipes,
+--                     accès total aux données de toutes les équipes)
+--      'member'     → aucun droit propre ; les droits viennent uniquement des
+--                     lignes team_roles (admin/editor/viewer par équipe, cf. 6b)
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE profiles (
@@ -160,10 +164,10 @@ CREATE TABLE profiles (
   organization_id UUID REFERENCES organizations(id),
   first_name      TEXT NOT NULL DEFAULT '',
   last_name       TEXT NOT NULL DEFAULT '',
-  role            TEXT NOT NULL DEFAULT 'staff'   -- 'admin' | 'coach' | 'staff' | 'medical'
-                    CHECK (role IN ('admin', 'coach', 'staff', 'medical')),
-  org_role        TEXT NOT NULL DEFAULT 'editor'  -- 'admin' | 'editor'
-                    CHECK (org_role IN ('admin', 'editor')),
+  role            TEXT NOT NULL DEFAULT 'staff'   -- 'admin' | 'staff' | valeurs du poste (cf. staff.role)
+                    CHECK (role IN ('admin', 'coach', 'staff', 'medical', 'kine', 'medecin', 'prep_physique', 'assistant', 'autre')),
+  org_role        TEXT NOT NULL DEFAULT 'member'  -- 'superadmin' | 'member'
+                    CHECK (org_role IN ('superadmin', 'member')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -171,6 +175,26 @@ CREATE TABLE profiles (
 CREATE TRIGGER trg_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- own_profile (plus bas) autorise chaque utilisateur à modifier sa propre ligne
+-- en écriture directe — sans ce garde-fou, n'importe qui pourrait s'auto-promouvoir
+-- superadmin via un simple update() côté client, en contournant set_user_org_role().
+-- org_role/organization_id ne sont donc modifiables QUE via set_user_org_role()
+-- (qui lève le drapeau de session le temps de son propre UPDATE).
+CREATE OR REPLACE FUNCTION protect_profile_privileged_columns()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF (NEW.org_role IS DISTINCT FROM OLD.org_role OR NEW.organization_id IS DISTINCT FROM OLD.organization_id)
+     AND current_setting('app.bypass_profile_role_guard', true) IS DISTINCT FROM 'on' THEN
+    RAISE EXCEPTION 'org_role et organization_id ne peuvent être modifiés que via set_user_org_role()';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_protect_profile_privileged_columns
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION protect_profile_privileged_columns();
 
 -- Création automatique du profil à l'inscription Supabase Auth
 CREATE OR REPLACE FUNCTION handle_new_user()
@@ -184,7 +208,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
     COALESCE(NEW.raw_user_meta_data->>'last_name',  ''),
     COALESCE(NEW.raw_user_meta_data->>'role',     'staff'),
-    COALESCE(NEW.raw_user_meta_data->>'org_role', 'editor')
+    COALESCE(NEW.raw_user_meta_data->>'org_role', 'member')
   );
   RETURN NEW;
 END;
@@ -213,6 +237,36 @@ CREATE TABLE staff (
 );
 
 CREATE INDEX ON staff (team_id);
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 6b. TEAM ROLES
+--     Droits par équipe : 'admin' | 'editor' | 'viewer'
+--     profile_id référence n'importe quel profil de l'organisation
+--     (pas besoin d'une ligne staff correspondante). Seul un profil
+--     org_role = 'superadmin' peut créer/modifier/supprimer ces lignes
+--     (cf. policies "team_roles_write" plus bas) — l'admin d'une équipe
+--     peut les consulter mais jamais les modifier.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE team_roles (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  profile_id  UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
+  assigned_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (team_id, profile_id)
+);
+
+CREATE INDEX ON team_roles (team_id);
+CREATE INDEX ON team_roles (profile_id);
+
+CREATE TRIGGER trg_team_roles_updated_at
+  BEFORE UPDATE ON team_roles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -488,6 +542,7 @@ FROM medical_records;
 CREATE TABLE player_actions (
   id           UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
   player_id    UUID            REFERENCES players(id) ON DELETE CASCADE,
+  team_id      UUID            REFERENCES teams(id) ON DELETE CASCADE,
   title        TEXT            NOT NULL,
   description  TEXT,
   category     action_category,
@@ -502,6 +557,7 @@ CREATE TABLE player_actions (
 );
 
 CREATE INDEX ON player_actions (player_id, status, due_date);
+CREATE INDEX ON player_actions (team_id, status, due_date);
 CREATE INDEX ON player_actions (assigned_to, status);
 CREATE INDEX ON player_actions (due_date) WHERE status != 'done';
 
@@ -950,6 +1006,7 @@ ALTER TABLE organizations         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE seasons               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_roles            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE players               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_season         ENABLE ROW LEVEL SECURITY;
@@ -983,6 +1040,13 @@ CREATE POLICY "own_profile" ON profiles
   USING  (id = auth.uid())
   WITH CHECK (id = auth.uid());
 
+-- Profils : lecture des autres membres de l'organisation (noms affichés dans
+-- l'assignation des rôles par équipe et la liste des superadmins) — écriture
+-- toujours restreinte à own_profile ci-dessus.
+CREATE POLICY "profiles_org_visible" ON profiles
+  FOR SELECT TO authenticated
+  USING (organization_id = my_organization_id());
+
 -- Organisations : lecture pour tous les membres, écriture pour les admins uniquement
 CREATE POLICY "org_access" ON organizations
   FOR SELECT TO authenticated
@@ -993,102 +1057,174 @@ CREATE POLICY "org_update" ON organizations
   USING (
     id IN (
       SELECT organization_id FROM profiles
-      WHERE id = auth.uid() AND org_role = 'admin'
+      WHERE id = auth.uid() AND org_role = 'superadmin'
     )
   )
   WITH CHECK (
     id IN (
       SELECT organization_id FROM profiles
-      WHERE id = auth.uid() AND org_role = 'admin'
+      WHERE id = auth.uid() AND org_role = 'superadmin'
     )
   );
 
--- Équipes : accès limité aux équipes de l'organisation
-CREATE POLICY "team_access" ON teams
+-- Rôles par équipe : lecture ouverte à quiconque a un rôle sur l'équipe
+-- (admin d'équipe inclus), écriture réservée au superadmin uniquement.
+CREATE POLICY "team_roles_select" ON team_roles
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "team_roles_write" ON team_roles
   FOR ALL TO authenticated
-  USING (id IN (SELECT * FROM accessible_team_ids()))
+  USING      (is_superadmin())
+  WITH CHECK (is_superadmin());
+
+-- Équipes : lecture = équipes accessibles ; création/suppression = superadmin
+-- uniquement ; modification (seuils, nom...) = admin d'équipe ou superadmin.
+CREATE POLICY "teams_select" ON teams
+  FOR SELECT TO authenticated
+  USING (id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "teams_insert" ON teams
+  FOR INSERT TO authenticated
   WITH CHECK (
     organization_id = (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    AND is_superadmin()
   );
 
--- Saisons : suivent les équipes
-CREATE POLICY "season_access" ON seasons
-  FOR ALL TO authenticated
-  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+CREATE POLICY "teams_update" ON teams
+  FOR UPDATE TO authenticated
+  USING      (id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (id IN (SELECT * FROM admin_team_ids()));
 
--- Joueuses : cloisonnement par organisation
+CREATE POLICY "teams_delete" ON teams
+  FOR DELETE TO authenticated
+  USING (is_superadmin() AND id IN (SELECT * FROM accessible_team_ids()));
+
+-- Saisons : suivent les équipes ; écriture réservée à l'admin d'équipe (config)
+CREATE POLICY "season_select" ON seasons
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "season_write" ON seasons
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+
+-- Joueuses : cloisonnement par organisation (traitement par équipe : cf. plan, phase 8)
 CREATE POLICY "player_access" ON players
   FOR ALL TO authenticated
   USING    (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()))
   WITH CHECK (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
 
--- Inscription joueuse/saison
-CREATE POLICY "player_season_access" ON player_season
-  FOR ALL TO authenticated
+-- Inscription joueuse/saison : lecture = équipes accessibles, écriture = editor+
+CREATE POLICY "player_season_select" ON player_season
+  FOR SELECT TO authenticated
   USING (
-    season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids()))
-  )
-  WITH CHECK (
     season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
--- Sessions d'entraînement
-CREATE POLICY "training_session_access" ON training_sessions
+CREATE POLICY "player_season_write" ON player_season
   FOR ALL TO authenticated
+  USING (
+    season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  );
+
+-- Sessions d'entraînement : lecture = équipes accessibles, écriture = editor+
+CREATE POLICY "training_session_select" ON training_sessions
+  FOR SELECT TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
--- Blocs de séance
-CREATE POLICY "session_blocks_access" ON session_blocks
+CREATE POLICY "training_session_write" ON training_sessions
   FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+-- Blocs de séance
+CREATE POLICY "session_blocks_select" ON session_blocks
+  FOR SELECT TO authenticated
   USING (
     session_id IN (
       SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
+  );
+
+CREATE POLICY "session_blocks_write" ON session_blocks
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
   )
   WITH CHECK (
     session_id IN (
-      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
     )
   );
 
 -- Équipes du jour (sparring)
-CREATE POLICY "session_team_blocks_access" ON session_team_blocks
-  FOR ALL TO authenticated
+CREATE POLICY "session_team_blocks_select" ON session_team_blocks
+  FOR SELECT TO authenticated
   USING (
-    session_id IN (
-      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
-  )
-  WITH CHECK (
     session_id IN (
       SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
   );
 
-CREATE POLICY "session_teams_access" ON session_teams
+CREATE POLICY "session_team_blocks_write" ON session_team_blocks
   FOR ALL TO authenticated
   USING (
     session_id IN (
-      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
     )
   )
   WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
+  );
+
+CREATE POLICY "session_teams_select" ON session_teams
+  FOR SELECT TO authenticated
+  USING (
     session_id IN (
       SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
   );
 
-CREATE POLICY "session_team_players_access" ON session_team_players
+CREATE POLICY "session_teams_write" ON session_teams
   FOR ALL TO authenticated
   USING (
     session_id IN (
-      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
     )
   )
   WITH CHECK (
     session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
+  );
+
+CREATE POLICY "session_team_players_select" ON session_team_players
+  FOR SELECT TO authenticated
+  USING (
+    session_id IN (
       SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+    )
+  );
+
+CREATE POLICY "session_team_players_write" ON session_team_players
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
+  )
+  WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
     )
   );
 
@@ -1135,80 +1271,139 @@ CREATE POLICY "medical_access" ON medical_records
   );
 
 -- Actions joueurs (player_id et team_id sont tous deux optionnels : l'accès est
--- autorisé si l'un OU l'autre pointe vers l'organisation/équipe de l'utilisateur)
-CREATE POLICY "action_access" ON player_actions
-  FOR ALL TO authenticated
+-- autorisé si l'un OU l'autre pointe vers l'organisation/équipe de l'utilisateur).
+-- Branche player_id : org-scoped inchangée (cf. plan, phase 8). Branche team_id :
+-- lecture = équipes accessibles, écriture = editor+.
+CREATE POLICY "action_select" ON player_actions
+  FOR SELECT TO authenticated
   USING (
     (player_id IS NOT NULL AND player_id IN (
       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     ))
     OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
-  )
-  WITH CHECK (
-    (player_id IS NOT NULL AND player_id IN (
+  );
+
+CREATE POLICY "action_write" ON player_actions
+  FOR ALL TO authenticated
+  USING (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     ))
-    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
   );
 
 -- Objectifs (player_id et team_id sont tous deux optionnels, même logique que player_actions)
-CREATE POLICY "objective_access" ON objectives
-  FOR ALL TO authenticated
+CREATE POLICY "objective_select" ON objectives
+  FOR SELECT TO authenticated
   USING (
     (player_id IS NOT NULL AND player_id IN (
       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     ))
     OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
-  )
-  WITH CHECK (
-    (player_id IS NOT NULL AND player_id IN (
+  );
+
+CREATE POLICY "objective_write" ON objectives
+  FOR ALL TO authenticated
+  USING (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
     ))
-    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
   );
 
 -- Matches
-CREATE POLICY "match_access" ON matches
-  FOR ALL TO authenticated
+CREATE POLICY "match_select" ON matches
+  FOR SELECT TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
--- Stats individuelles
-CREATE POLICY "match_stats_access" ON match_stats
+CREATE POLICY "match_write" ON matches
   FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+-- Stats individuelles
+CREATE POLICY "match_stats_select" ON match_stats
+  FOR SELECT TO authenticated
   USING (
     match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+CREATE POLICY "match_stats_write" ON match_stats
+  FOR ALL TO authenticated
+  USING (
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
   );
 
 -- Stats collectives
-CREATE POLICY "team_match_stats_access" ON team_match_stats
-  FOR ALL TO authenticated
+CREATE POLICY "team_match_stats_select" ON team_match_stats
+  FOR SELECT TO authenticated
   USING (
     match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
--- Staff
-CREATE POLICY "staff_access" ON staff
+CREATE POLICY "team_match_stats_write" ON team_match_stats
   FOR ALL TO authenticated
-  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+  USING (
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  );
+
+-- Staff : consultable par tous les rôles de l'équipe, géré par l'admin d'équipe
+CREATE POLICY "staff_select" ON staff
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "staff_write" ON staff
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
 
 -- Réunions staff
-CREATE POLICY "staff_meetings_access" ON staff_meetings
+CREATE POLICY "staff_meetings_select" ON staff_meetings
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "staff_meetings_write" ON staff_meetings
   FOR ALL TO authenticated
-  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
 -- Présences aux entraînements
-CREATE POLICY "training_attendance_access" ON training_attendance
-  FOR ALL TO authenticated
+CREATE POLICY "training_attendance_select" ON training_attendance
+  FOR SELECT TO authenticated
   USING (
     session_id IN (
       SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
+  );
+
+CREATE POLICY "training_attendance_write" ON training_attendance
+  FOR ALL TO authenticated
+  USING (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
   )
   WITH CHECK (
     session_id IN (
-      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
     )
   );
 
@@ -1217,46 +1412,77 @@ CREATE POLICY "notifications_user_own" ON notifications
   FOR ALL USING (user_id = auth.uid());
 
 -- Stats adverses
-CREATE POLICY "opponent_match_stats_access" ON opponent_match_stats
-  FOR ALL TO authenticated
+CREATE POLICY "opponent_match_stats_select" ON opponent_match_stats
+  FOR SELECT TO authenticated
   USING (
     match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
--- Documents de séance
-CREATE POLICY "session_documents_access" ON session_documents
+CREATE POLICY "opponent_match_stats_write" ON opponent_match_stats
   FOR ALL TO authenticated
   USING (
-    session_id IN (
-      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
-    )
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
   )
   WITH CHECK (
+    match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  );
+
+-- Documents de séance
+CREATE POLICY "session_documents_select" ON session_documents
+  FOR SELECT TO authenticated
+  USING (
     session_id IN (
       SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())
     )
   );
 
--- Exercices
-CREATE POLICY "exercises_access" ON exercises
-  FOR ALL TO authenticated
-  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
-
--- Catégories d'exercices : par équipe
-CREATE POLICY "exercise_categories_access" ON exercise_categories
-  FOR ALL TO authenticated
-  USING    (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
-
--- Images d'exercices : suivent l'exercice parent
-CREATE POLICY "exercise_images_access" ON exercise_images
+CREATE POLICY "session_documents_write" ON session_documents
   FOR ALL TO authenticated
   USING (
-    exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
   )
   WITH CHECK (
+    session_id IN (
+      SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())
+    )
+  );
+
+-- Exercices : bibliothèque éditable par editor+
+CREATE POLICY "exercises_select" ON exercises
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "exercises_write" ON exercises
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+-- Catégories d'exercices : par équipe, config réservée à l'admin d'équipe
+CREATE POLICY "exercise_categories_select" ON exercise_categories
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "exercise_categories_write" ON exercise_categories
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+
+-- Images d'exercices : suivent l'exercice parent
+CREATE POLICY "exercise_images_select" ON exercise_images
+  FOR SELECT TO authenticated
+  USING (
     exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+CREATE POLICY "exercise_images_write" ON exercise_images
+  FOR ALL TO authenticated
+  USING (
+    exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids()))
   );
 
 
@@ -1331,14 +1557,85 @@ CREATE POLICY "exercises_storage_delete"
 -- 23. FONCTIONS SECURITY DEFINER
 -- ────────────────────────────────────────────────────────────────
 
--- Helper RLS : équipes accessibles pour l'utilisateur courant
+-- Helper RLS : organisation de l'utilisateur courant (évite la récursion RLS
+-- d'une sous-requête directe sur profiles dans une policy de profiles)
+CREATE OR REPLACE FUNCTION my_organization_id()
+RETURNS UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT organization_id FROM profiles WHERE id = auth.uid()
+$$;
+
+-- Helper RLS : l'utilisateur courant est-il superadmin de son organisation ?
+CREATE OR REPLACE FUNCTION is_superadmin()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND org_role = 'superadmin'
+  )
+$$;
+
+-- Helper RLS : équipes accessibles en LECTURE (superadmin → toutes les équipes
+-- de l'org, sinon → équipes où l'utilisateur a une ligne team_roles, quel que
+-- soit le rôle admin/editor/viewer)
 CREATE OR REPLACE FUNCTION accessible_team_ids()
-RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT t.id
   FROM   teams         t
   JOIN   organizations o ON o.id = t.organization_id
   JOIN   profiles      p ON p.organization_id = o.id
   WHERE  p.id = auth.uid()
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (SELECT 1 FROM team_roles tr WHERE tr.team_id = t.id AND tr.profile_id = p.id)
+    )
+$$;
+
+-- Helper RLS : équipes accessibles en ÉCRITURE OPÉRATIONNELLE (séances, matchs,
+-- présences, tactique...) — superadmin, ou rôle admin/editor sur l'équipe
+CREATE OR REPLACE FUNCTION writable_team_ids()
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.id
+  FROM   teams         t
+  JOIN   organizations o ON o.id = t.organization_id
+  JOIN   profiles      p ON p.organization_id = o.id
+  WHERE  p.id = auth.uid()
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (
+        SELECT 1 FROM team_roles tr
+        WHERE tr.team_id = t.id AND tr.profile_id = p.id AND tr.role IN ('admin', 'editor')
+      )
+    )
+$$;
+
+-- Helper RLS : équipes accessibles en CONFIGURATION (seuils, staff, catégories,
+-- assignation des rôles) — superadmin, ou rôle admin sur l'équipe
+CREATE OR REPLACE FUNCTION admin_team_ids()
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.id
+  FROM   teams         t
+  JOIN   organizations o ON o.id = t.organization_id
+  JOIN   profiles      p ON p.organization_id = o.id
+  WHERE  p.id = auth.uid()
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (
+        SELECT 1 FROM team_roles tr
+        WHERE tr.team_id = t.id AND tr.profile_id = p.id AND tr.role = 'admin'
+      )
+    )
+$$;
+
+-- Helper RLS : le profil courant a-t-il un rôle admin/editor sur AU MOINS UNE
+-- équipe (ou est superadmin) ? Utilisé pour fermer le contournement de la branche
+-- player_id de action_write/objective_write : sans ce garde-fou, un Viewer (ou un
+-- profil sans aucune ligne team_roles) pouvait écrire des actions/objectifs
+-- "joueur" librement, car cette branche reste org-wide (players non rattachés à
+-- une équipe unique — cf. phase 8). Contrôle plus grossier qu'un vrai rattachement
+-- par joueur, mais exclut correctement les Viewers et les comptes sans rôle.
+CREATE OR REPLACE FUNCTION is_editor_anywhere()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT is_superadmin() OR EXISTS (
+    SELECT 1 FROM team_roles WHERE profile_id = auth.uid() AND role IN ('admin', 'editor')
+  )
 $$;
 
 -- Création de profil pour un nouveau compte staff
@@ -1357,7 +1654,7 @@ BEGIN
 END;
 $$;
 
--- Changement de rôle organisation : réservé aux admins
+-- Changement de rôle organisation (superadmin/member) : réservé aux superadmins
 -- Appel client : supabase.rpc('set_user_org_role', { p_user_id, p_org_role })
 CREATE OR REPLACE FUNCTION set_user_org_role(p_user_id UUID, p_org_role TEXT)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -1369,8 +1666,8 @@ BEGIN
   SELECT organization_id, org_role INTO v_caller_org, v_caller_role
     FROM profiles WHERE id = auth.uid();
 
-  IF v_caller_role != 'admin' THEN
-    RAISE EXCEPTION 'Permission refusée : seul un admin peut modifier les rôles';
+  IF v_caller_role != 'superadmin' THEN
+    RAISE EXCEPTION 'Permission refusée : seul un superadmin peut modifier les rôles';
   END IF;
 
   SELECT organization_id INTO v_target_org
@@ -1384,10 +1681,13 @@ BEGIN
     RAISE EXCEPTION 'Permission refusée : utilisateur hors de votre organisation';
   END IF;
 
-  IF p_org_role NOT IN ('admin', 'editor') THEN
-    RAISE EXCEPTION 'Rôle invalide : admin ou editor attendu';
+  IF p_org_role NOT IN ('superadmin', 'member') THEN
+    RAISE EXCEPTION 'Rôle invalide : superadmin ou member attendu';
   END IF;
 
+  -- Lève le drapeau de session (scope transaction) pour passer le garde-fou
+  -- trg_protect_profile_privileged_columns le temps de cet UPDATE.
+  PERFORM set_config('app.bypass_profile_role_guard', 'on', true);
   UPDATE profiles SET org_role = p_org_role WHERE id = p_user_id;
 END;
 $$;
@@ -1849,23 +2149,41 @@ ALTER TABLE tactical_dimensions   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tactical_events       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tactical_event_values ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "tactical_categories_access" ON tactical_categories
-  FOR ALL TO authenticated
-  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+-- Taxonomie et événements tactiques : auto-créés à l'import CSV (cf. commentaire plus
+-- haut) par quiconque saisit un match, donc écriture = editor+ (pas admin_team_ids).
+CREATE POLICY "tactical_categories_select" ON tactical_categories
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
-CREATE POLICY "tactical_dimensions_access" ON tactical_dimensions
+CREATE POLICY "tactical_categories_write" ON tactical_categories
   FOR ALL TO authenticated
-  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
-CREATE POLICY "tactical_events_access" ON tactical_events
+CREATE POLICY "tactical_dimensions_select" ON tactical_dimensions
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "tactical_dimensions_write" ON tactical_dimensions
   FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+CREATE POLICY "tactical_events_select" ON tactical_events
+  FOR SELECT TO authenticated
   USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
 
-CREATE POLICY "tactical_event_values_access" ON tactical_event_values
+CREATE POLICY "tactical_events_write" ON tactical_events
   FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+CREATE POLICY "tactical_event_values_select" ON tactical_event_values
+  FOR SELECT TO authenticated
   USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+CREATE POLICY "tactical_event_values_write" ON tactical_event_values
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- TABLEAU DE BORD TACTIQUE (blocs configurables par l'équipe, en plus du
@@ -1886,10 +2204,14 @@ CREATE TABLE tactical_dashboard_widgets (
 CREATE INDEX ON tactical_dashboard_widgets (team_id, sort_order);
 
 ALTER TABLE tactical_dashboard_widgets ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "tactical_dashboard_widgets_access" ON tactical_dashboard_widgets
+CREATE POLICY "tactical_dashboard_widgets_select" ON tactical_dashboard_widgets
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "tactical_dashboard_widgets_write" ON tactical_dashboard_widgets
   FOR ALL TO authenticated
-  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
 -- Seuils de couleur de la rentabilité, par catégorie (l'échelle est liée à SA dimension
 -- "Valeur" — un seuil par dimension serait incohérent, une seule échelle par catégorie).
@@ -1915,11 +2237,637 @@ CREATE TABLE tactical_dimension_options (
 CREATE INDEX ON tactical_dimension_options (team_id);
 
 ALTER TABLE tactical_dimension_options ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "tactical_dimension_options_access" ON tactical_dimension_options
+CREATE POLICY "tactical_dimension_options_select" ON tactical_dimension_options
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "tactical_dimension_options_write" ON tactical_dimension_options
   FOR ALL TO authenticated
-  USING      (team_id IN (SELECT * FROM accessible_team_ids()))
-  WITH CHECK (team_id IN (SELECT * FROM accessible_team_ids()));
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
 -- Couleur d'accent par catégorie (choisie librement dans la config), pour distinguer visuellement
 -- les blocs catégorie du rapport tactique.
 ALTER TABLE tactical_categories ADD COLUMN color TEXT NOT NULL DEFAULT '#3B82F6';
+
+
+-- ================================================================
+-- MIGRATION — Gestion des droits par équipe (superadmin/admin/editor/viewer)
+-- Sur une base existante antérieure à cette fonctionnalité.
+-- Script exécutable directement dans Supabase SQL Editor, tel quel.
+-- La section 16 (RLS tactique) ne s'applique que si les tables tactical_*
+-- existent déjà dans votre base (fonctionnalité tactique déjà déployée) ;
+-- sinon commentez/supprimez cette section avant d'exécuter.
+-- ================================================================
+
+-- 1. Nouvelle table team_roles
+CREATE TABLE IF NOT EXISTS team_roles (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  profile_id  UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
+  assigned_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (team_id, profile_id)
+);
+
+CREATE INDEX IF NOT EXISTS team_roles_team_id_idx    ON team_roles (team_id);
+CREATE INDEX IF NOT EXISTS team_roles_profile_id_idx ON team_roles (profile_id);
+
+DROP TRIGGER IF EXISTS trg_team_roles_updated_at ON team_roles;
+CREATE TRIGGER trg_team_roles_updated_at
+  BEFORE UPDATE ON team_roles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- 2. profiles.org_role : 'admin'/'editor' → 'superadmin'/'member'
+--    (les droits opérationnels viennent désormais de team_roles, pas de org_role)
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_org_role_check;
+
+UPDATE profiles SET org_role = 'superadmin' WHERE org_role = 'admin';
+UPDATE profiles SET org_role = 'member'     WHERE org_role = 'editor';
+
+ALTER TABLE profiles ALTER COLUMN org_role SET DEFAULT 'member';
+ALTER TABLE profiles ADD CONSTRAINT profiles_org_role_check
+  CHECK (org_role IN ('superadmin', 'member'));
+
+-- 1b. Garde-fou critique : own_profile (déjà en place) autorise chaque utilisateur
+--     à modifier sa propre ligne en écriture directe, y compris org_role — donc
+--     n'importe qui pouvait s'auto-promouvoir superadmin via un simple update()
+--     côté client, en contournant set_user_org_role(). org_role/organization_id
+--     ne sont désormais modifiables QUE via cette fonction.
+CREATE OR REPLACE FUNCTION protect_profile_privileged_columns()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF (NEW.org_role IS DISTINCT FROM OLD.org_role OR NEW.organization_id IS DISTINCT FROM OLD.organization_id)
+     AND current_setting('app.bypass_profile_role_guard', true) IS DISTINCT FROM 'on' THEN
+    RAISE EXCEPTION 'org_role et organization_id ne peuvent être modifiés que via set_user_org_role()';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_profile_privileged_columns ON profiles;
+CREATE TRIGGER trg_protect_profile_privileged_columns
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION protect_profile_privileged_columns();
+
+-- 2a. handle_new_user() : le trigger de création de compte insérait encore
+--     org_role = 'editor' par défaut (ancienne valeur), ce qui viole désormais
+--     la contrainte ci-dessus et fait échouer TOUTE création de compte
+--     ("Database error saving new user").
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  INSERT INTO profiles (id, organization_id, first_name, last_name, role, org_role)
+  VALUES (
+    NEW.id,
+    (NEW.raw_user_meta_data->>'organization_id')::UUID,
+    COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'last_name',  ''),
+    COALESCE(NEW.raw_user_meta_data->>'role',     'staff'),
+    COALESCE(NEW.raw_user_meta_data->>'org_role', 'member')
+  );
+  RETURN NEW;
+END;
+$$;
+
+-- 2b. profiles.role (intitulé de poste) : bug préexistant, la contrainte n'acceptait
+--     pas les valeurs de staff.role (kine/medecin/prep_physique/assistant/autre),
+--     ce qui fait échouer la création de compte pour un membre du staff non-coach.
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
+  CHECK (role IN ('admin', 'coach', 'staff', 'medical', 'kine', 'medecin', 'prep_physique', 'assistant', 'autre'));
+
+-- 3. Backfill : les anciens 'editor' déjà rattachés à une équipe via staff
+--    récupèrent le rôle 'editor' sur cette équipe (pas de perte d'accès au déploiement)
+INSERT INTO team_roles (team_id, profile_id, role)
+SELECT DISTINCT s.team_id, s.profile_id, 'editor'
+FROM staff s
+JOIN profiles p ON p.id = s.profile_id
+WHERE p.org_role = 'member'
+ON CONFLICT (team_id, profile_id) DO NOTHING;
+
+-- 4. Fonctions SECURITY DEFINER (CREATE OR REPLACE, sans risque)
+CREATE OR REPLACE FUNCTION my_organization_id()
+RETURNS UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT organization_id FROM profiles WHERE id = auth.uid()
+$$;
+
+CREATE OR REPLACE FUNCTION is_superadmin()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles WHERE id = auth.uid() AND org_role = 'superadmin'
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION accessible_team_ids()
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.id
+  FROM   teams         t
+  JOIN   organizations o ON o.id = t.organization_id
+  JOIN   profiles      p ON p.organization_id = o.id
+  WHERE  p.id = auth.uid()
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (SELECT 1 FROM team_roles tr WHERE tr.team_id = t.id AND tr.profile_id = p.id)
+    )
+$$;
+
+CREATE OR REPLACE FUNCTION writable_team_ids()
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.id
+  FROM   teams         t
+  JOIN   organizations o ON o.id = t.organization_id
+  JOIN   profiles      p ON p.organization_id = o.id
+  WHERE  p.id = auth.uid()
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (
+        SELECT 1 FROM team_roles tr
+        WHERE tr.team_id = t.id AND tr.profile_id = p.id AND tr.role IN ('admin', 'editor')
+      )
+    )
+$$;
+
+CREATE OR REPLACE FUNCTION admin_team_ids()
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT t.id
+  FROM   teams         t
+  JOIN   organizations o ON o.id = t.organization_id
+  JOIN   profiles      p ON p.organization_id = o.id
+  WHERE  p.id = auth.uid()
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (
+        SELECT 1 FROM team_roles tr
+        WHERE tr.team_id = t.id AND tr.profile_id = p.id AND tr.role = 'admin'
+      )
+    )
+$$;
+
+-- Helper RLS : le profil courant a-t-il un rôle admin/editor sur AU MOINS UNE
+-- équipe (ou est superadmin) ? Utilisé pour fermer le contournement de la branche
+-- player_id de action_write/objective_write : sans ce garde-fou, un Viewer (ou un
+-- profil sans aucune ligne team_roles) pouvait écrire des actions/objectifs
+-- "joueur" librement, car cette branche reste org-wide (players non rattachés à
+-- une équipe unique — cf. phase 8). Contrôle plus grossier qu'un vrai rattachement
+-- par joueur, mais exclut correctement les Viewers et les comptes sans rôle.
+CREATE OR REPLACE FUNCTION is_editor_anywhere()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT is_superadmin() OR EXISTS (
+    SELECT 1 FROM team_roles WHERE profile_id = auth.uid() AND role IN ('admin', 'editor')
+  )
+$$;
+
+-- Changement de rôle organisation (superadmin/member) : réservé aux superadmins
+CREATE OR REPLACE FUNCTION set_user_org_role(p_user_id UUID, p_org_role TEXT)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_caller_org  UUID;
+  v_caller_role TEXT;
+  v_target_org  UUID;
+BEGIN
+  SELECT organization_id, org_role INTO v_caller_org, v_caller_role
+    FROM profiles WHERE id = auth.uid();
+
+  IF v_caller_role != 'superadmin' THEN
+    RAISE EXCEPTION 'Permission refusée : seul un superadmin peut modifier les rôles';
+  END IF;
+
+  SELECT organization_id INTO v_target_org
+    FROM profiles WHERE id = p_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Utilisateur introuvable : %', p_user_id;
+  END IF;
+
+  IF v_caller_org IS DISTINCT FROM v_target_org THEN
+    RAISE EXCEPTION 'Permission refusée : utilisateur hors de votre organisation';
+  END IF;
+
+  IF p_org_role NOT IN ('superadmin', 'member') THEN
+    RAISE EXCEPTION 'Rôle invalide : superadmin ou member attendu';
+  END IF;
+
+  -- Lève le drapeau de session (scope transaction) pour passer le garde-fou
+  -- trg_protect_profile_privileged_columns le temps de cet UPDATE.
+  PERFORM set_config('app.bypass_profile_role_guard', 'on', true);
+  UPDATE profiles SET org_role = p_org_role WHERE id = p_user_id;
+END;
+$$;
+
+-- 4b. RLS : profiles — lecture des autres membres de l'organisation (sinon
+--     les noms n'apparaissent pas dans l'assignation des rôles par équipe)
+DROP POLICY IF EXISTS "profiles_org_visible" ON profiles;
+CREATE POLICY "profiles_org_visible" ON profiles
+  FOR SELECT TO authenticated
+  USING (organization_id = my_organization_id());
+
+-- 5. RLS : team_roles (nouvelle table)
+ALTER TABLE team_roles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "team_roles_select" ON team_roles;
+CREATE POLICY "team_roles_select" ON team_roles
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+DROP POLICY IF EXISTS "team_roles_write" ON team_roles;
+CREATE POLICY "team_roles_write" ON team_roles
+  FOR ALL TO authenticated
+  USING      (is_superadmin())
+  WITH CHECK (is_superadmin());
+
+-- 6. RLS : organizations (org_update passe à superadmin)
+DROP POLICY IF EXISTS "org_update" ON organizations;
+CREATE POLICY "org_update" ON organizations
+  FOR UPDATE TO authenticated
+  USING (
+    id IN (SELECT organization_id FROM profiles WHERE id = auth.uid() AND org_role = 'superadmin')
+  )
+  WITH CHECK (
+    id IN (SELECT organization_id FROM profiles WHERE id = auth.uid() AND org_role = 'superadmin')
+  );
+
+-- 7. RLS : teams (split select/insert/update/delete)
+DROP POLICY IF EXISTS "team_access" ON teams;
+
+DROP POLICY IF EXISTS "teams_select" ON teams;
+CREATE POLICY "teams_select" ON teams
+  FOR SELECT TO authenticated
+  USING (id IN (SELECT * FROM accessible_team_ids()));
+
+DROP POLICY IF EXISTS "teams_insert" ON teams;
+CREATE POLICY "teams_insert" ON teams
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    organization_id = (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    AND is_superadmin()
+  );
+
+DROP POLICY IF EXISTS "teams_update" ON teams;
+CREATE POLICY "teams_update" ON teams
+  FOR UPDATE TO authenticated
+  USING      (id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (id IN (SELECT * FROM admin_team_ids()));
+
+DROP POLICY IF EXISTS "teams_delete" ON teams;
+CREATE POLICY "teams_delete" ON teams
+  FOR DELETE TO authenticated
+  USING (is_superadmin() AND id IN (SELECT * FROM accessible_team_ids()));
+
+-- 8. RLS : seasons
+DROP POLICY IF EXISTS "season_access" ON seasons;
+
+DROP POLICY IF EXISTS "season_select" ON seasons;
+CREATE POLICY "season_select" ON seasons
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+DROP POLICY IF EXISTS "season_write" ON seasons;
+CREATE POLICY "season_write" ON seasons
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+
+-- 9. RLS : player_season
+DROP POLICY IF EXISTS "player_season_access" ON player_season;
+
+DROP POLICY IF EXISTS "player_season_select" ON player_season;
+CREATE POLICY "player_season_select" ON player_season
+  FOR SELECT TO authenticated
+  USING (season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "player_season_write" ON player_season;
+CREATE POLICY "player_season_write" ON player_season
+  FOR ALL TO authenticated
+  USING      (season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (season_id IN (SELECT id FROM seasons WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 10. RLS : training_sessions
+DROP POLICY IF EXISTS "training_session_access" ON training_sessions;
+
+DROP POLICY IF EXISTS "training_session_select" ON training_sessions;
+CREATE POLICY "training_session_select" ON training_sessions
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+DROP POLICY IF EXISTS "training_session_write" ON training_sessions;
+CREATE POLICY "training_session_write" ON training_sessions
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+-- 11. RLS : session_blocks / session_team_blocks / session_teams / session_team_players
+DROP POLICY IF EXISTS "session_blocks_access" ON session_blocks;
+DROP POLICY IF EXISTS "session_blocks_select" ON session_blocks;
+CREATE POLICY "session_blocks_select" ON session_blocks
+  FOR SELECT TO authenticated
+  USING (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "session_blocks_write" ON session_blocks;
+CREATE POLICY "session_blocks_write" ON session_blocks
+  FOR ALL TO authenticated
+  USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "session_team_blocks_access" ON session_team_blocks;
+DROP POLICY IF EXISTS "session_team_blocks_select" ON session_team_blocks;
+CREATE POLICY "session_team_blocks_select" ON session_team_blocks
+  FOR SELECT TO authenticated
+  USING (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "session_team_blocks_write" ON session_team_blocks;
+CREATE POLICY "session_team_blocks_write" ON session_team_blocks
+  FOR ALL TO authenticated
+  USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "session_teams_access" ON session_teams;
+DROP POLICY IF EXISTS "session_teams_select" ON session_teams;
+CREATE POLICY "session_teams_select" ON session_teams
+  FOR SELECT TO authenticated
+  USING (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "session_teams_write" ON session_teams;
+CREATE POLICY "session_teams_write" ON session_teams
+  FOR ALL TO authenticated
+  USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "session_team_players_access" ON session_team_players;
+DROP POLICY IF EXISTS "session_team_players_select" ON session_team_players;
+CREATE POLICY "session_team_players_select" ON session_team_players
+  FOR SELECT TO authenticated
+  USING (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "session_team_players_write" ON session_team_players;
+CREATE POLICY "session_team_players_write" ON session_team_players
+  FOR ALL TO authenticated
+  USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 11b. player_actions.team_id manquait dans le CREATE TABLE canonique (dérive de
+--      doc préexistante, non causée par ce chantier) — sans impact si la colonne
+--      existe déjà chez vous (ajoutée hors-bande), sinon nécessaire pour les
+--      policies ci-dessous.
+ALTER TABLE player_actions ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS player_actions_team_id_idx ON player_actions (team_id, status, due_date);
+
+-- 12. RLS : player_actions / objectives (branche team_id → writable_team_ids ;
+--     branche player_id fermée aux profils sans rôle admin/editor nulle part
+--     via is_editor_anywhere() — cf. plan phase 8 pour le rattachement précis
+--     par équipe via player_season, traité séparément)
+DROP POLICY IF EXISTS "action_access" ON player_actions;
+
+DROP POLICY IF EXISTS "action_select" ON player_actions;
+CREATE POLICY "action_select" ON player_actions
+  FOR SELECT TO authenticated
+  USING (
+    (player_id IS NOT NULL AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+DROP POLICY IF EXISTS "action_write" ON player_actions;
+CREATE POLICY "action_write" ON player_actions
+  FOR ALL TO authenticated
+  USING (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
+  );
+
+DROP POLICY IF EXISTS "objective_access" ON objectives;
+
+DROP POLICY IF EXISTS "objective_select" ON objectives;
+CREATE POLICY "objective_select" ON objectives
+  FOR SELECT TO authenticated
+  USING (
+    (player_id IS NOT NULL AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM accessible_team_ids()))
+  );
+
+DROP POLICY IF EXISTS "objective_write" ON objectives;
+CREATE POLICY "objective_write" ON objectives
+  FOR ALL TO authenticated
+  USING (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
+  )
+  WITH CHECK (
+    (player_id IS NOT NULL AND is_editor_anywhere() AND player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    ))
+    OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
+  );
+
+-- 13. RLS : matches / match_stats / team_match_stats / opponent_match_stats
+DROP POLICY IF EXISTS "match_access" ON matches;
+DROP POLICY IF EXISTS "match_select" ON matches;
+CREATE POLICY "match_select" ON matches
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "match_write" ON matches;
+CREATE POLICY "match_write" ON matches
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+DROP POLICY IF EXISTS "match_stats_access" ON match_stats;
+DROP POLICY IF EXISTS "match_stats_select" ON match_stats;
+CREATE POLICY "match_stats_select" ON match_stats
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "match_stats_write" ON match_stats;
+CREATE POLICY "match_stats_write" ON match_stats
+  FOR ALL TO authenticated
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "team_match_stats_access" ON team_match_stats;
+DROP POLICY IF EXISTS "team_match_stats_select" ON team_match_stats;
+CREATE POLICY "team_match_stats_select" ON team_match_stats
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "team_match_stats_write" ON team_match_stats;
+CREATE POLICY "team_match_stats_write" ON team_match_stats
+  FOR ALL TO authenticated
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "opponent_match_stats_access" ON opponent_match_stats;
+DROP POLICY IF EXISTS "opponent_match_stats_select" ON opponent_match_stats;
+CREATE POLICY "opponent_match_stats_select" ON opponent_match_stats
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "opponent_match_stats_write" ON opponent_match_stats;
+CREATE POLICY "opponent_match_stats_write" ON opponent_match_stats
+  FOR ALL TO authenticated
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 14. RLS : staff / staff_meetings / training_attendance / session_documents
+DROP POLICY IF EXISTS "staff_access" ON staff;
+DROP POLICY IF EXISTS "staff_select" ON staff;
+CREATE POLICY "staff_select" ON staff
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "staff_write" ON staff;
+CREATE POLICY "staff_write" ON staff
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+
+DROP POLICY IF EXISTS "staff_meetings_access" ON staff_meetings;
+DROP POLICY IF EXISTS "staff_meetings_select" ON staff_meetings;
+CREATE POLICY "staff_meetings_select" ON staff_meetings
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "staff_meetings_write" ON staff_meetings;
+CREATE POLICY "staff_meetings_write" ON staff_meetings
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+DROP POLICY IF EXISTS "training_attendance_access" ON training_attendance;
+DROP POLICY IF EXISTS "training_attendance_select" ON training_attendance;
+CREATE POLICY "training_attendance_select" ON training_attendance
+  FOR SELECT TO authenticated
+  USING (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "training_attendance_write" ON training_attendance;
+CREATE POLICY "training_attendance_write" ON training_attendance
+  FOR ALL TO authenticated
+  USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "session_documents_access" ON session_documents;
+DROP POLICY IF EXISTS "session_documents_select" ON session_documents;
+CREATE POLICY "session_documents_select" ON session_documents
+  FOR SELECT TO authenticated
+  USING (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "session_documents_write" ON session_documents;
+CREATE POLICY "session_documents_write" ON session_documents
+  FOR ALL TO authenticated
+  USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 15. RLS : exercises / exercise_categories / exercise_images
+DROP POLICY IF EXISTS "exercises_access" ON exercises;
+DROP POLICY IF EXISTS "exercises_select" ON exercises;
+CREATE POLICY "exercises_select" ON exercises
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "exercises_write" ON exercises;
+CREATE POLICY "exercises_write" ON exercises
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+DROP POLICY IF EXISTS "exercise_categories_access" ON exercise_categories;
+DROP POLICY IF EXISTS "exercise_categories_select" ON exercise_categories;
+CREATE POLICY "exercise_categories_select" ON exercise_categories
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "exercise_categories_write" ON exercise_categories;
+CREATE POLICY "exercise_categories_write" ON exercise_categories
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+
+DROP POLICY IF EXISTS "exercise_images_access" ON exercise_images;
+DROP POLICY IF EXISTS "exercise_images_select" ON exercise_images;
+CREATE POLICY "exercise_images_select" ON exercise_images
+  FOR SELECT TO authenticated
+  USING (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "exercise_images_write" ON exercise_images;
+CREATE POLICY "exercise_images_write" ON exercise_images
+  FOR ALL TO authenticated
+  USING      (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 16. RLS TACTIQUE — n'exécutez cette section QUE SI vous avez déjà les tables
+--     tactical_categories / tactical_dimensions / tactical_events /
+--     tactical_event_values / tactical_dashboard_widgets / tactical_dimension_options
+--     dans votre base (fonctionnalité tactique déjà déployée). Sinon, supprimez-la.
+DROP POLICY IF EXISTS "tactical_categories_access" ON tactical_categories;
+DROP POLICY IF EXISTS "tactical_categories_select" ON tactical_categories;
+CREATE POLICY "tactical_categories_select" ON tactical_categories
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "tactical_categories_write" ON tactical_categories;
+CREATE POLICY "tactical_categories_write" ON tactical_categories
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+DROP POLICY IF EXISTS "tactical_dimensions_access" ON tactical_dimensions;
+DROP POLICY IF EXISTS "tactical_dimensions_select" ON tactical_dimensions;
+CREATE POLICY "tactical_dimensions_select" ON tactical_dimensions
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "tactical_dimensions_write" ON tactical_dimensions;
+CREATE POLICY "tactical_dimensions_write" ON tactical_dimensions
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+DROP POLICY IF EXISTS "tactical_events_access" ON tactical_events;
+DROP POLICY IF EXISTS "tactical_events_select" ON tactical_events;
+CREATE POLICY "tactical_events_select" ON tactical_events
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "tactical_events_write" ON tactical_events;
+CREATE POLICY "tactical_events_write" ON tactical_events
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "tactical_event_values_access" ON tactical_event_values;
+DROP POLICY IF EXISTS "tactical_event_values_select" ON tactical_event_values;
+CREATE POLICY "tactical_event_values_select" ON tactical_event_values
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+DROP POLICY IF EXISTS "tactical_event_values_write" ON tactical_event_values;
+CREATE POLICY "tactical_event_values_write" ON tactical_event_values
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "tactical_dashboard_widgets_access" ON tactical_dashboard_widgets;
+DROP POLICY IF EXISTS "tactical_dashboard_widgets_select" ON tactical_dashboard_widgets;
+CREATE POLICY "tactical_dashboard_widgets_select" ON tactical_dashboard_widgets
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "tactical_dashboard_widgets_write" ON tactical_dashboard_widgets;
+CREATE POLICY "tactical_dashboard_widgets_write" ON tactical_dashboard_widgets
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+DROP POLICY IF EXISTS "tactical_dimension_options_access" ON tactical_dimension_options;
+DROP POLICY IF EXISTS "tactical_dimension_options_select" ON tactical_dimension_options;
+CREATE POLICY "tactical_dimension_options_select" ON tactical_dimension_options
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+DROP POLICY IF EXISTS "tactical_dimension_options_write" ON tactical_dimension_options;
+CREATE POLICY "tactical_dimension_options_write" ON tactical_dimension_options
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+
+-- 17. Vérifications suggérées après exécution :
+--   SELECT id, org_role FROM profiles;                    -- doit être 'superadmin'/'member'
+--   SELECT * FROM team_roles;                              -- backfill des anciens editors
+--   SELECT * FROM pg_policies WHERE tablename = 'teams';   -- 4 policies : select/insert/update/delete
+--
+-- players, wellness_entries, medical_records, rpe_entries restent INCHANGÉS
+-- (cloisonnement par organisation) — cf. plan, phase 8, traité séparément.

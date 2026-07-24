@@ -10,7 +10,7 @@ import { sessionTeamsApi } from '../api/sessionTeams';
 import { exercisesApi } from '../api/exercises';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, DropzoneEmptyState } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, DropzoneEmptyState, AccessRestricted, EmptyState } from '../components';
 import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform } from '../utils/socialVideo';
@@ -68,12 +68,12 @@ const STATUS_CFG = {
   late:    { label: 'Retard',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
 } as const;
 
-function PlayerChip({ player, status }: { player: Player; status?: TrainingAttendance['status'] }) {
+function PlayerChip({ player, status, canEdit = true }: { player: Player; status?: TrainingAttendance['status']; canEdit?: boolean }) {
   const cfg = status ? STATUS_CFG[status] : null;
   return (
-    <div draggable
-      onDragStart={e => { e.dataTransfer.setData('text/plain', player.id); e.dataTransfer.effectAllowed = 'move'; }}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, cursor: 'grab', userSelect: 'none' }}>
+    <div draggable={canEdit}
+      onDragStart={e => { if (!canEdit) { e.preventDefault(); return; } e.dataTransfer.setData('text/plain', player.id); e.dataTransfer.effectAllowed = 'move'; }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, cursor: canEdit ? 'grab' : 'default', userSelect: 'none', opacity: canEdit ? 1 : 0.85 }}>
       <PlayerAvatar player={player} size={22} />
       <span style={{ color: '#F1F5F9', fontSize: '0.8rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {playerNameShort(player)}
@@ -248,7 +248,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   blocks: SessionBlock[];
   onBlocksChange: (blocks: SessionBlock[]) => void;
 }) {
-  const { thresholds } = useTeamSeason();
+  const { thresholds, canEditTeamData } = useTeamSeason();
   const [showForm,       setShowForm]       = useState(false);
   const [saving,         setSaving]         = useState(false);
   const [blockError,     setBlockError]     = useState('');
@@ -526,8 +526,8 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                       {/* Ligne 1 : grip + numéro + label + actions */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                         <div
-                          onPointerDown={e => startDrag(e, i)}
-                          style={{ color: '#475569', flexShrink: 0, cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
+                          onPointerDown={e => { if (canEditTeamData) startDrag(e, i); }}
+                          style={{ color: '#475569', flexShrink: 0, cursor: canEditTeamData ? 'grab' : 'default', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
                           <GripVertical size={14} />
                         </div>
                         <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -543,18 +543,22 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                               <BookOpen size={14} />
                             </button>
                           )}
+                          {canEditTeamData && (
                           <button onClick={() => openEdit(block)}
                             style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2 }}
                             onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
                             onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
                             <Edit size={14} />
                           </button>
+                          )}
+                          {canEditTeamData && (
                           <button onClick={() => handleDelete(block.id)}
                             style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2 }}
                             onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
                             onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
                             <Trash2 size={14} />
                           </button>
+                          )}
                         </div>
                       </div>
                       {/* Ligne 2 : badges, indentés */}
@@ -571,8 +575,8 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                     {/* === Desktop / tablette (≥ md) : 1 ligne === */}
                     <div className="hidden md:flex" style={{ alignItems: 'center', gap: 10 }}>
                       <div
-                        onPointerDown={e => startDrag(e, i)}
-                        style={{ color: '#475569', flexShrink: 0, cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
+                        onPointerDown={e => { if (canEditTeamData) startDrag(e, i); }}
+                        style={{ color: '#475569', flexShrink: 0, cursor: canEditTeamData ? 'grab' : 'default', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
                         <GripVertical size={14} />
                       </div>
                       <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -594,18 +598,22 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                           <BookOpen size={14} />
                         </button>
                       )}
+                      {canEditTeamData && (
                       <button onClick={() => openEdit(block)}
                         style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
                         onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
                         onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
                         <Edit size={14} />
                       </button>
+                      )}
+                      {canEditTeamData && (
                       <button onClick={() => handleDelete(block.id)}
                         style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
                         onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
                         onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
                         <Trash2 size={14} />
                       </button>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2"
@@ -722,11 +730,15 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
       )}
 
       {!showForm && (
-        <DropzoneEmptyState
-          label="Cliquer pour ajouter une séquence"
-          onClick={() => { setShowForm(true); setBlockError(''); }}
-          style={{ marginTop: blocks.length > 0 ? 8 : 0 }}
-        />
+        canEditTeamData ? (
+          <DropzoneEmptyState
+            label="Cliquer pour ajouter une séquence"
+            onClick={() => { setShowForm(true); setBlockError(''); }}
+            style={{ marginTop: blocks.length > 0 ? 8 : 0 }}
+          />
+        ) : (
+          blocks.length === 0 && <EmptyState message="Aucune séquence. Seuls les rôles Admin et Éditeur peuvent en ajouter." />
+        )
       )}
 
       {/* Modal détail exercice — même format que la fiche exercice */}
@@ -818,6 +830,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
 }
 
 function SessionDocuments({ sessionId }: { sessionId: string }) {
+  const { canEditTeamData } = useTeamSeason();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [docs,      setDocs]      = useState<SessionDocument[]>([]);
@@ -885,14 +898,18 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
       />
 
       {docs.length === 0 && !uploading ? (
-        <DropzoneEmptyState
-          label="Cliquer pour ajouter un document"
-          onClick={() => fileRef.current?.click()}
-          onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          dragOver={dragOver}
-        />
+        canEditTeamData ? (
+          <DropzoneEmptyState
+            label="Cliquer pour ajouter un document"
+            onClick={() => fileRef.current?.click()}
+            onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            dragOver={dragOver}
+          />
+        ) : (
+          <EmptyState message="Aucun document. Seuls les rôles Admin et Éditeur peuvent en ajouter." />
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {docs.map(doc => (
@@ -906,16 +923,18 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
                 onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
                 <ExternalLink size={13} />
               </button>
+              {canEditTeamData && (
               <button onClick={() => handleDelete(doc)}
                 style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}
                 onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
                 onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
                 <Trash2 size={13} />
               </button>
+              )}
             </div>
           ))}
 
-          {!uploading && (
+          {!uploading && canEditTeamData && (
             <DropzoneEmptyState
               label="Ajouter un document"
               onClick={() => fileRef.current?.click()}
@@ -935,7 +954,7 @@ function SessionDocuments({ sessionId }: { sessionId: string }) {
 export default function TrainingSessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { thresholds, selected } = useTeamSeason();
+  const { thresholds, selected, canEditTeamData } = useTeamSeason();
 
   const [session,    setSession]    = useState<TrainingSession | null>(null);
   const [players,    setPlayers]    = useState<Player[]>([]);
@@ -1060,7 +1079,11 @@ export default function TrainingSessionDetailPage() {
       <button onClick={() => navigate('/sessions')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
         <ArrowLeft size={14} /> Toutes les séances
       </button>
-      <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{error || 'Séance introuvable.'}</div>
+      {error ? (
+        <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{error}</div>
+      ) : (
+        <AccessRestricted message="Cette séance n'existe pas ou vous n'avez pas accès à l'équipe concernée." />
+      )}
     </div>
   );
 
@@ -1270,6 +1293,7 @@ export default function TrainingSessionDetailPage() {
           style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
           <ArrowLeft size={14} /> Toutes les séances
         </button>
+        {canEditTeamData && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
             style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
@@ -1279,6 +1303,7 @@ export default function TrainingSessionDetailPage() {
             <Edit size={13} /> Modifier
           </button>
         </div>
+        )}
       </div>
 
       {/* Header */}
@@ -1357,7 +1382,7 @@ export default function TrainingSessionDetailPage() {
           })()}
         </div>
         )}
-        {!presencesCollapsed && (
+        {!presencesCollapsed && canEditTeamData && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
             <button onClick={() => { setAttError(''); setShowAttendance(true); }} style={{ padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Edit size={13} /> Modifier
@@ -1406,7 +1431,7 @@ export default function TrainingSessionDetailPage() {
                     {estimatedRpe !== null && avgRpe > estimatedRpe && <ArrowUp size={16} style={{ color: '#EF4444' }} />}
                     {estimatedRpe !== null && avgRpe < estimatedRpe && <ArrowDown size={16} style={{ color: '#00E5A0' }} />}
                   </span>
-                ) : (
+                ) : canEditTeamData ? (
                   <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 400, fontFamily: 'Inter, sans-serif', padding: 0 }}
                     onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
@@ -1414,7 +1439,7 @@ export default function TrainingSessionDetailPage() {
                     Saisir le RPE
                     <ArrowRight size={11} />
                   </button>
-                )}
+                ) : '—'}
               />
               <RpeKpiCard accent={blockLoadUa > 0 ? getWeekTier(blockLoadUa, sessionLoadLight, sessionLoadNormal).color : '#334155'} label="Charge planifiée" value={blockLoadUa > 0 ? blockLoadUa : '—'} />
               <RpeKpiCard
@@ -1537,8 +1562,9 @@ export default function TrainingSessionDetailPage() {
             return (
               <div key={block.localId} style={{ backgroundColor: '#14171D', border: '1px solid #2A2F3A', borderRadius: 8, padding: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
-                  <input value={block.label} onChange={e => renameBlock(block.localId, e.target.value)}
-                    style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 700, outline: 'none', minWidth: 120 }} />
+                  <input value={block.label} onChange={e => renameBlock(block.localId, e.target.value)} disabled={!canEditTeamData}
+                    style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 700, outline: 'none', minWidth: 120, opacity: canEditTeamData ? 1 : 0.6 }} />
+                  {canEditTeamData && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ color: '#94A3B8', fontSize: '0.76rem' }}>Nombre d'équipes</span>
@@ -1555,15 +1581,16 @@ export default function TrainingSessionDetailPage() {
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
 
                   {/* Colonne effectif (joueurs non assignés dans ce bloc) */}
                   <div
-                    onDragOver={e => { e.preventDefault(); setDragOver({ block: block.localId, col: '__pool' }); }}
-                    onDragLeave={() => setDragOver(cur => (cur?.block === block.localId && cur.col === '__pool') ? null : cur)}
-                    onDrop={e => { e.preventDefault(); const pid = e.dataTransfer.getData('text/plain'); if (pid) assignPlayer(block.localId, pid, ''); setDragOver(null); }}
+                    onDragOver={canEditTeamData ? (e => { e.preventDefault(); setDragOver({ block: block.localId, col: '__pool' }); }) : undefined}
+                    onDragLeave={canEditTeamData ? (() => setDragOver(cur => (cur?.block === block.localId && cur.col === '__pool') ? null : cur)) : undefined}
+                    onDrop={canEditTeamData ? (e => { e.preventDefault(); const pid = e.dataTransfer.getData('text/plain'); if (pid) assignPlayer(block.localId, pid, ''); setDragOver(null); }) : undefined}
                     style={{ flex: '0 0 200px', minWidth: 200, height: 300, backgroundColor: '#1A1D24', border: `1px solid ${poolOver ? '#00E5A0' : '#2A2F3A'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -1571,7 +1598,7 @@ export default function TrainingSessionDetailPage() {
                       <span style={{ color: '#475569', fontSize: '0.7rem' }}>{unassigned.length}</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                      {unassigned.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} />)}
+                      {unassigned.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} />)}
                       {unassigned.length === 0 && (
                         <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Tout le monde est assigné</span>
                       )}
@@ -1584,16 +1611,16 @@ export default function TrainingSessionDetailPage() {
                     const isOver  = dragOver?.block === block.localId && dragOver.col === team.localId;
                     return (
                       <div key={team.localId}
-                        onDragOver={e => { e.preventDefault(); setDragOver({ block: block.localId, col: team.localId }); }}
-                        onDragLeave={() => setDragOver(cur => (cur?.block === block.localId && cur.col === team.localId) ? null : cur)}
-                        onDrop={e => { e.preventDefault(); const pid = e.dataTransfer.getData('text/plain'); if (pid) assignPlayer(block.localId, pid, team.localId); setDragOver(null); }}
+                        onDragOver={canEditTeamData ? (e => { e.preventDefault(); setDragOver({ block: block.localId, col: team.localId }); }) : undefined}
+                        onDragLeave={canEditTeamData ? (() => setDragOver(cur => (cur?.block === block.localId && cur.col === team.localId) ? null : cur)) : undefined}
+                        onDrop={canEditTeamData ? (e => { e.preventDefault(); const pid = e.dataTransfer.getData('text/plain'); if (pid) assignPlayer(block.localId, pid, team.localId); setDragOver(null); }) : undefined}
                         style={{ flex: '0 0 200px', minWidth: 200, height: 300, backgroundColor: '#1A1D24', border: `1px solid ${isOver ? team.color : team.color + '40'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
                       >
-                        <input value={team.name} onChange={e => renameTeam(block.localId, team.localId, e.target.value)}
-                          style={{ padding: '5px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 700, outline: 'none', flexShrink: 0 }} />
+                        <input value={team.name} onChange={e => renameTeam(block.localId, team.localId, e.target.value)} disabled={!canEditTeamData}
+                          style={{ padding: '5px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 700, outline: 'none', flexShrink: 0, opacity: canEditTeamData ? 1 : 0.6 }} />
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                           <div style={{ display: 'flex', gap: 5 }}>
-                            {TEAM_COLORS.map(c => (
+                            {canEditTeamData && TEAM_COLORS.map(c => (
                               <button key={c} type="button" onClick={() => recolorTeam(block.localId, team.localId, c)}
                                 style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: c, border: team.color === c ? '2px solid #F1F5F9' : '1px solid #3A4454', cursor: 'pointer', padding: 0 }} />
                             ))}
@@ -1601,7 +1628,7 @@ export default function TrainingSessionDetailPage() {
                           <span style={{ color: '#475569', fontSize: '0.7rem' }}>{members.length}</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                          {members.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} />)}
+                          {members.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} />)}
                           {members.length === 0 && (
                             <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Déposez des joueurs ici</span>
                           )}
@@ -1615,16 +1642,20 @@ export default function TrainingSessionDetailPage() {
           })}
 
           {blockDrafts.length === 0 && (
-            <DropzoneEmptyState
-              label="Cliquer pour ajouter"
-              onClick={addBlock}
-              style={{ width: '100%', background: 'none' }}
-            />
+            canEditTeamData ? (
+              <DropzoneEmptyState
+                label="Cliquer pour ajouter"
+                onClick={addBlock}
+                style={{ width: '100%', background: 'none' }}
+              />
+            ) : (
+              <EmptyState message="Aucun groupe. Seuls les rôles Admin et Éditeur peuvent en créer." />
+            )
           )}
         </div>
         </>
         )}
-        {!teamsCollapsed && (
+        {!teamsCollapsed && canEditTeamData && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
             {teamsError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{teamsError}</span>}
             <button type="button" onClick={addBlock}
@@ -1651,15 +1682,17 @@ export default function TrainingSessionDetailPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {notesError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{notesError}</span>}
+              {canEditTeamData && (
               <button type="button" onClick={handleSaveNotes} disabled={notesSaving || notesDraft === (session.notes ?? '')}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: notesSaved ? '#1E2229' : (notesSaving || notesDraft === (session.notes ?? '')) ? '#1E2229' : '#00E5A0', border: notesSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: notesSaved ? '#00E5A0' : (notesSaving || notesDraft === (session.notes ?? '')) ? '#475569' : '#0D0F14', cursor: (notesSaving || notesDraft === (session.notes ?? '')) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
                 {notesSaved ? <><Check size={13} /> Enregistré</> : <><Save size={13} /> {notesSaving ? 'Enregistrement…' : 'Enregistrer'}</>}
               </button>
+              )}
             </div>
           </div>
-          <textarea value={notesDraft} onChange={e => setNotesDraft(e.target.value)}
+          <textarea value={notesDraft} onChange={e => setNotesDraft(e.target.value)} disabled={!canEditTeamData}
             placeholder="Notes sur la séance…"
-            style={{ width: '100%', minHeight: 70, padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+            style={{ width: '100%', minHeight: 70, padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', opacity: canEditTeamData ? 1 : 0.6 }} />
         </div>
 
         <SessionDocuments sessionId={session.id} />
@@ -1747,14 +1780,15 @@ export default function TrainingSessionDetailPage() {
                       const active = status === s;
                       const Icon = s === 'present' ? Check : s === 'absent' ? X : Clock;
                       return (
-                        <button key={s} type="button" title={cfg.label} disabled={attSavingId === p.id}
+                        <button key={s} type="button" title={cfg.label} disabled={attSavingId === p.id || !canEditTeamData}
                           onClick={() => toggleAttendance(p.id, s)}
                           style={{
                             width: 32, height: 32, borderRadius: 7,
                             border: `1px solid ${active ? cfg.color : '#2A2F3A'}`,
                             backgroundColor: active ? cfg.bg : 'transparent',
                             color: active ? cfg.color : '#475569',
-                            cursor: attSavingId === p.id ? 'not-allowed' : 'pointer',
+                            cursor: attSavingId === p.id || !canEditTeamData ? 'not-allowed' : 'pointer',
+                            opacity: canEditTeamData ? 1 : 0.5,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                           }}>
                           <Icon size={14} />

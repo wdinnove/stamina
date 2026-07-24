@@ -8,7 +8,7 @@ import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge, DropzoneEmptyState } from '../components';
+import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge, DropzoneEmptyState, EmptyState } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
@@ -386,7 +386,7 @@ function ExerciseModal({
 
 /* ── Page principale ─────────────────────────────────────────────────────── */
 export default function ExercisesPage() {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const navigate = useNavigate();
   const [exercises,      setExercises]      = useState<Exercise[]>([]);
   const [categories,     setCategories]     = useState<ExerciseCategory[]>([]);
@@ -435,10 +435,12 @@ export default function ExercisesPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ color: '#F1F5F9', margin: 0 }}>Exercices</h1>
         </div>
-        <button onClick={() => setShowModal(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 7, color: '#0D0F14', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
-          <Plus size={15} /><span className="hidden sm:inline">Ajouter</span>
-        </button>
+        {canEditTeamData && (
+          <button onClick={() => setShowModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 7, color: '#0D0F14', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+            <Plus size={15} /><span className="hidden sm:inline">Ajouter</span>
+          </button>
+        )}
       </div>
 
       {/* Filtres */}
@@ -466,11 +468,15 @@ export default function ExercisesPage() {
       {error && <div style={{ color: '#EF4444', fontSize: '0.85rem', marginBottom: 16 }}>{error}</div>}
 
       {!loading && filtered.length === 0 && (
-        <DropzoneEmptyState
-          label={search ? 'Aucun exercice trouvé' : 'Cliquer pour ajouter un exercice'}
-          icon={search ? null : undefined}
-          onClick={search ? undefined : () => setShowModal(true)}
-        />
+        canEditTeamData ? (
+          <DropzoneEmptyState
+            label={search ? 'Aucun exercice trouvé' : 'Cliquer pour ajouter un exercice'}
+            icon={search ? null : undefined}
+            onClick={search ? undefined : () => setShowModal(true)}
+          />
+        ) : (
+          <EmptyState message={search ? 'Aucun exercice trouvé.' : 'Aucun exercice. Seuls les rôles Admin et Éditeur peuvent en ajouter.'} size="lg" />
+        )
       )}
 
       {/* Table */}

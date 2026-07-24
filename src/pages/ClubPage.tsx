@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Shield, Settings, Pencil, Trash2 } from 'lucide-react';
-import { teamsApi, playersApi, configApi } from '../api';
+import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Shield, Settings, Pencil, Trash2, Lock, UserCog } from 'lucide-react';
+import { teamsApi, playersApi, configApi, teamRolesApi } from '../api';
+import type { AssignableProfile } from '../api/teamRoles';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle, Modal, PlayerEditModal } from '../components';
 import { ResponsiveTabNav, type TabNavGroup } from '../components/ResponsiveTabNav';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { Team, Player, Organization } from '../data/types';
+import type { Team, Player, Organization, TeamRole, TeamRoleAssignment } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
@@ -500,6 +501,177 @@ function PlayersTab() {
   );
 }
 
+// ── Onglet Rôles (superadmin uniquement) : assignation libre profil × équipe × rôle ──
+const ROLE_LABELS: Record<TeamRole, string> = { admin: 'Admin', editor: 'Éditeur', viewer: 'Lecture seule' };
+
+function RolesTab() {
+  const { orgId } = useTeamSeason();
+  const [teams,       setTeams]       = useState<Team[]>([]);
+  const [profiles,    setProfiles]    = useState<AssignableProfile[]>([]);
+  const [assignments, setAssignments] = useState<TeamRoleAssignment[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [fetchErr,    setFetchErr]    = useState('');
+  const [saving,      setSaving]      = useState(false);
+
+  const [form, setForm] = useState({ teamId: '', profileId: '', role: 'editor' as TeamRole });
+
+  function load() {
+    if (!orgId) return;
+    setLoading(true);
+    Promise.all([teamsApi.list(), teamRolesApi.listAssignableProfiles(orgId), teamRolesApi.listByOrg(orgId)])
+      .then(([t, p, a]) => { setTeams(t); setProfiles(p); setAssignments(a); })
+      .catch(e => setFetchErr(e.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [orgId]);
+
+  function profileLabel(id: string) {
+    const p = profiles.find(pr => pr.id === id);
+    return p ? `${p.firstName} ${p.lastName}` : '—';
+  }
+
+  async function handleAssign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.teamId || !form.profileId) return;
+    setSaving(true);
+    setFetchErr('');
+    try {
+      await teamRolesApi.upsert(form.teamId, form.profileId, form.role);
+      setForm(f => ({ ...f, profileId: '' }));
+      load();
+    } catch (err: unknown) {
+      setFetchErr(err instanceof Error ? err.message : 'Erreur.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRoleChange(a: TeamRoleAssignment, role: TeamRole) {
+    try {
+      await teamRolesApi.upsert(a.teamId, a.profileId, role);
+      setAssignments(prev => prev.map(x => x.teamId === a.teamId && x.profileId === a.profileId ? { ...x, role } : x));
+    } catch (err: unknown) {
+      setFetchErr(err instanceof Error ? err.message : 'Erreur.');
+    }
+  }
+
+  async function handleRemove(a: TeamRoleAssignment) {
+    try {
+      await teamRolesApi.remove(a.teamId, a.profileId);
+      setAssignments(prev => prev.filter(x => !(x.teamId === a.teamId && x.profileId === a.profileId)));
+    } catch (err: unknown) {
+      setFetchErr(err instanceof Error ? err.message : 'Erreur.');
+    }
+  }
+
+  async function handleToggleSuperadmin(p: AssignableProfile) {
+    const next = p.orgRole === 'superadmin' ? 'member' : 'superadmin';
+    try {
+      await teamRolesApi.setOrgRole(p.id, next);
+      setProfiles(prev => prev.map(x => x.id === p.id ? { ...x, orgRole: next } : x));
+    } catch (err: unknown) {
+      setFetchErr(err instanceof Error ? err.message : 'Erreur.');
+    }
+  }
+
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}><Spinner /></div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {fetchErr && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px' }}>
+          <AlertCircle size={13} style={{ color: '#EF4444' }} />
+          <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{fetchErr}</span>
+        </div>
+      )}
+
+      <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 14, paddingBottom: 14 }}>
+          <CardTitle icon={<UserCog size={14} color="#00E5A0" />}>Superadmins</CardTitle>
+        </div>
+        <p style={{ color: '#64748B', fontSize: '0.8rem', margin: '0 0 14px' }}>
+          Accès total à l'organisation : configuration club, toutes les équipes, assignation des rôles.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {profiles.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6 }}>
+              <span style={{ color: '#F1F5F9', fontSize: '0.85rem' }}>{p.firstName} {p.lastName}</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.78rem', color: p.orgRole === 'superadmin' ? '#00E5A0' : '#64748B' }}>
+                <input type="checkbox" checked={p.orgRole === 'superadmin'} onChange={() => handleToggleSuperadmin(p)} />
+                Superadmin
+              </label>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
+        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 14, paddingBottom: 14 }}>
+          <CardTitle icon={<Lock size={14} color="#00E5A0" />}>Rôles par équipe</CardTitle>
+        </div>
+        <p style={{ color: '#64748B', fontSize: '0.8rem', margin: '0 0 14px' }}>
+          Tous les utilisateurs de l'organisation peuvent être assignés à n'importe quelle équipe.
+        </p>
+
+        <form onSubmit={handleAssign} className="flex flex-col sm:flex-row" style={{ gap: 8, marginBottom: 16 }}>
+          <select required value={form.teamId} onChange={e => setForm(f => ({ ...f, teamId: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
+            <option value="">Équipe…</option>
+            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <select required value={form.profileId} onChange={e => setForm(f => ({ ...f, profileId: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
+            <option value="">Utilisateur…</option>
+            {profiles.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+          </select>
+          <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as TeamRole }))} style={{ ...inputStyle, flex: 1 }}>
+            {(Object.keys(ROLE_LABELS) as TeamRole[]).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+          </select>
+          <button type="submit" disabled={saving}
+            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: saving ? 0.6 : 1 }}>
+            <Plus size={14} />Assigner
+          </button>
+        </form>
+
+        {assignments.length === 0 ? (
+          <EmptyState message="Aucun rôle assigné." size="lg" />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                  <th style={thStyle}>Équipe</th>
+                  <th style={thStyle}>Utilisateur</th>
+                  <th style={thStyle}>Rôle</th>
+                  <th style={thStyle} />
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map(a => (
+                  <tr key={`${a.teamId}-${a.profileId}`} style={{ borderBottom: '1px solid #1E2229' }}>
+                    <td style={tdStyle}>{a.teamName ?? teams.find(t => t.id === a.teamId)?.name ?? '—'}</td>
+                    <td style={tdStyle}>{a.firstName || a.lastName ? `${a.firstName} ${a.lastName}` : profileLabel(a.profileId)}</td>
+                    <td style={tdStyle}>
+                      <select value={a.role} onChange={e => handleRoleChange(a, e.target.value as TeamRole)} style={{ ...inputStyle, padding: '4px 8px', width: 'auto' }}>
+                        {(Object.keys(ROLE_LABELS) as TeamRole[]).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <button onClick={() => handleRemove(a)} title="Retirer"
+                        style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ── Onglet Configuration club ──────────────────────────────────────────────────
 const labelStyle: React.CSSProperties = {
   color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600,
@@ -595,6 +767,7 @@ const TABS = [
   { key: 'Informations', icon: Building2 },
   { key: 'Équipes',      icon: Shield },
   { key: 'Joueurs',      icon: Users },
+  { key: 'Rôles',        icon: Lock },
 ] as const;
 type Tab = typeof TABS[number]['key'];
 
@@ -603,14 +776,14 @@ const TAB_GROUPS: TabNavGroup[] = [
 ];
 
 export function ClubConfigTab() {
-  const { orgId, orgRole } = useTeamSeason();
+  const { isSuperadmin, roleLoading } = useTeamSeason();
   const [tab, setTab] = useState<Tab>('Informations');
 
-  // null = rôle en cours de chargement → on bloque aussi (évite le flash de l'UI admin)
-  if (orgRole !== 'admin') {
+  // roleLoading = org_role en cours de chargement → on bloque aussi (évite le flash de l'UI admin)
+  if (!isSuperadmin) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-        {orgRole === null ? (
+        {roleLoading ? (
           <Spinner />
         ) : (
           <div style={{ textAlign: 'center', maxWidth: 360 }}>
@@ -618,7 +791,7 @@ export function ClubConfigTab() {
               <Settings size={22} style={{ color: '#EF4444' }} />
             </div>
             <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Accès restreint</h2>
-            <p style={{ color: '#64748B', fontSize: '0.85rem', margin: 0 }}>La configuration du club est réservée aux administrateurs de l'organisation.</p>
+            <p style={{ color: '#64748B', fontSize: '0.85rem', margin: 0 }}>La configuration du club est réservée au superadmin de l'organisation.</p>
           </div>
         )}
       </div>
@@ -635,6 +808,7 @@ export function ClubConfigTab() {
         {tab === 'Informations' && <OrgConfigTab />}
         {tab === 'Équipes'      && <TeamsTab />}
         {tab === 'Joueurs'      && <PlayersTab />}
+        {tab === 'Rôles'        && <RolesTab />}
       </div>
     </div>
   );
