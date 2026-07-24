@@ -186,6 +186,12 @@ export default function MatchDetailPage() {
       .finally(() => setLoadingSeasonStats(false));
   }, [activeTab, match]);
 
+  // Sert à ignorer une réponse de loadTactical devenue obsolète (match changé entre-temps) —
+  // sans ça, naviguer rapidement d'un match à l'autre peut afficher brièvement (ou durablement,
+  // si la réponse de l'ancien match arrive après celle du nouveau) les données tactiques du
+  // mauvais match sous l'en-tête du nouveau.
+  const currentMatchIdRef = useRef<string | undefined>(undefined);
+
   const loadTactical = useCallback(async (matchId: string, teamId: string) => {
     setLoadingTactical(true);
     try {
@@ -193,13 +199,14 @@ export default function MatchDetailPage() {
         tacticalConfigApi.getForTeam(teamId),
         tacticalEventsApi.getByMatchId(matchId),
       ]);
+      if (currentMatchIdRef.current !== matchId) return;
       setTacticalCategories(categories);
       setTacticalDimensions(dimensions);
       setTacticalOptions(options);
       setTacticalEvents(events);
       setTacticalLoaded(true);
     } finally {
-      setLoadingTactical(false);
+      if (currentMatchIdRef.current === matchId) setLoadingTactical(false);
     }
   }, []);
 
@@ -209,7 +216,12 @@ export default function MatchDetailPage() {
   }, [activeTab, match, tacticalLoaded, loadingTactical, loadTactical]);
 
   useEffect(() => {
+    currentMatchIdRef.current = id;
     setTacticalLoaded(false);
+    setTacticalEvents([]);
+    setTacticalCategories([]);
+    setTacticalDimensions([]);
+    setTacticalOptions([]);
   }, [id]);
 
   const loadStats = useCallback(async (matchId: string) => {

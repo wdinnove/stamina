@@ -51,10 +51,13 @@ export const tacticalConfigApi = {
     if (error) throw error;
   },
 
-  /** Retrouve une catégorie par nom normalisé, ou la crée (dernière position). */
+  /** Retrouve une catégorie par nom normalisé, ou la crée (dernière position). Matche sur
+   *  `normalizedName` (figé à la création), jamais sur le nom d'affichage courant — sinon un
+   *  renommage dans la config casse le rapprochement avec les futurs imports du même libellé
+   *  brut vidéo. */
   async ensureCategory(teamId: string, rawName: string, existing: TacticalCategory[]): Promise<{ category: TacticalCategory; created: boolean }> {
     const normalized = normalizeTacticalName(rawName);
-    const found = existing.find(c => normalizeTacticalName(c.name) === normalized);
+    const found = existing.find(c => c.normalizedName === normalized);
     if (found) return { category: found, created: false };
     const nextOrder = existing.reduce((max, c) => Math.max(max, c.sortOrder), -1) + 1;
     const color = NEW_CATEGORY_PALETTE[nextOrder % NEW_CATEGORY_PALETTE.length];
@@ -86,10 +89,11 @@ export const tacticalConfigApi = {
     if (error) throw error;
   },
 
-  /** Retrouve une dimension (au sein d'une catégorie) par nom normalisé, ou la crée (dernière position). */
+  /** Retrouve une dimension (au sein d'une catégorie) par nom normalisé, ou la crée (dernière
+   *  position). Matche sur `normalizedName` figé — voir `ensureCategory`. */
   async ensureDimension(teamId: string, categoryId: string, rawName: string, existing: TacticalDimension[]): Promise<{ dimension: TacticalDimension; created: boolean }> {
     const normalized = normalizeTacticalName(rawName);
-    const found = existing.find(d => d.categoryId === categoryId && normalizeTacticalName(d.name) === normalized);
+    const found = existing.find(d => d.categoryId === categoryId && d.normalizedName === normalized);
     if (found) return { dimension: found, created: false };
     const siblings = existing.filter(d => d.categoryId === categoryId);
     const nextOrder = siblings.reduce((max, d) => Math.max(max, d.sortOrder), -1) + 1;
@@ -173,6 +177,7 @@ function toTacticalCategory(row: Record<string, unknown>): TacticalCategory {
     id:                    row.id                     as string,
     teamId:                row.team_id                as string,
     name:                  row.name                   as string,
+    normalizedName:        row.normalized_name         as string,
     sortOrder:             row.sort_order              as number,
     color:                 (row.color as string | undefined) ?? '#3B82F6',
     rentabiliteSeuilVert:  Number(row.rentabilite_seuil_vert  ?? 1),
@@ -183,11 +188,12 @@ function toTacticalCategory(row: Record<string, unknown>): TacticalCategory {
 
 function toTacticalDimension(row: Record<string, unknown>): TacticalDimension {
   return {
-    id:         row.id          as string,
-    teamId:     row.team_id     as string,
-    categoryId: row.category_id as string,
-    name:       row.name        as string,
-    sortOrder:  row.sort_order  as number,
+    id:             row.id            as string,
+    teamId:         row.team_id       as string,
+    categoryId:     row.category_id   as string,
+    name:           row.name          as string,
+    normalizedName: row.normalized_name as string,
+    sortOrder:      row.sort_order    as number,
   };
 }
 

@@ -12,7 +12,7 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, TacticalMatchManager, TacticalIndicatorCatalog,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { FilterField, filterControlStyle } from '../components/FilterField';
@@ -29,7 +29,7 @@ import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 import { fmt1 } from '../utils/format';
 import {
-  playerAttributeIndicators, getSeries, detectRiskAlerts,
+  playerAttributeIndicators, getSeries, detectRiskAlerts, buildTacticalIndicators,
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
 import type { MatchStat, TeamMatchStat, Action, Match } from '../data/types';
@@ -175,7 +175,7 @@ export default function PerformanceCollectivePage() {
   const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'overview';
   const setActiveTab = (slug: string) => navigate(`/performance-collective/${slug}`, { replace: true });
 
-  const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
+  const { data, loading, seasonStart, seasonEnd, reload: reloadPerformanceData } = usePerformanceData();
   const dateRange = useDateRange(seasonStart, TAB_DEFAULT_PRESET[activeTab], seasonEnd);
   const { from, to } = dateRange;
   const showSeasonDiff = dateRange.preset !== 'saison';
@@ -197,6 +197,7 @@ export default function PerformanceCollectivePage() {
   const tacticalDimensions = data?.tactical?.dimensions ?? [];
   const tacticalOptions    = data?.tactical?.options ?? [];
   const tacticalEvents     = data?.tactical?.events ?? [];
+  const tacticalIndicators = useMemo(() => buildTacticalIndicators(data?.tactical), [data?.tactical]);
   const [tacticalOpponents, setTacticalOpponents]   = useState<Set<string>>(new Set());
   const [tacticalHomeAway, setTacticalHomeAway]     = useState<TacticalHomeAwayFilter>('all');
   const [tacticalResult, setTacticalResult]         = useState<TacticalResultFilter>('all');
@@ -208,6 +209,16 @@ export default function PerformanceCollectivePage() {
       return next;
     });
   }
+
+  // Sans ça, un adversaire sélectionné pour une équipe reste appliqué après bascule vers une
+  // autre équipe/saison (dropdown reconstruit avec les adversaires de la nouvelle équipe, mais
+  // sélection de l'ancienne conservée) — donne un "aucune donnée" trompeur si le nom ne matche
+  // pas, ou un filtre actif sans que l'utilisateur l'ait choisi pour cette équipe s'il matche.
+  useEffect(() => {
+    setTacticalOpponents(new Set());
+    setTacticalHomeAway('all');
+    setTacticalResult('all');
+  }, [selected?.team.id, selected?.season.id]);
 
   const openPlayer = (playerId: string) => navigate(`/performance-individuelle/${playerId}/vue-ensemble`);
 
@@ -1350,28 +1361,52 @@ export default function PerformanceCollectivePage() {
         ) : tacticalEvents.length === 0 ? (
           <EmptyState message="Aucune donnée tactique importée pour cette saison." />
         ) : (() => {
-          const inRange = filteredTeamStats
-            .filter(t => t.matchId)
-            .filter(t => tacticalOpponents.size === 0 || tacticalOpponents.has(t.opponent))
-            .filter(t => tacticalHomeAway === 'all' || t.homeAway === tacticalHomeAway)
-            .filter(t => tacticalResult === 'all' || t.result === tacticalResult);
+          const passesFilters = (opponent: string, homeAway: string, result: string) =>
+            (tacticalOpponents.size === 0 || tacticalOpponents.has(opponent)) &&
+            (tacticalHomeAway === 'all' || homeAway === tacticalHomeAway) &&
+            (tacticalResult === 'all' || result === tacticalResult);
+
+          // Un match avec données tactiques importées mais sans stats d'équipe saisies (import
+          // indépendant, workflow séparé sur la page match) ne doit pas disparaître silencieusement
+          // des tendances — on le récupère via `filteredSeasonMatches` (déjà chargé pour l'onglet
+          // QT par QT), qui porte les mêmes champs adversaire/lieu/résultat indépendamment des stats.
+          const matchIdsWithTeamStats = new Set(filteredTeamStats.filter(t => t.matchId).map(t => t.matchId as string));
+          const matchIdsWithTacticalData = new Set(tacticalEvents.map(e => e.matchId));
+          const orphanTacticalMatches = filteredSeasonMatches.filter(
+            m => matchIdsWithTacticalData.has(m.id) && !matchIdsWithTeamStats.has(m.id),
+          );
+
+          const inRange = [
+            ...filteredTeamStats
+              .filter((t): t is typeof t & { matchId: string } => !!t.matchId && passesFilters(t.opponent, t.homeAway, t.result))
+              .map(t => ({ matchId: t.matchId, date: t.date, opponent: t.opponent })),
+            ...orphanTacticalMatches
+              .filter(m => passesFilters(m.opponent, m.homeAway, m.result))
+              .map(m => ({ matchId: m.id, date: m.date, opponent: m.opponent })),
+          ];
 
           const matchIdsInRange = new Set(inRange.map(t => t.matchId));
           const eventsInRange = tacticalEvents.filter(e => matchIdsInRange.has(e.matchId));
           const matchRefs = inRange
             .slice()
             .sort((a, b) => a.date.localeCompare(b.date))
-            .map(t => ({ id: t.matchId as string, date: t.date, label: `vs ${t.opponent}` }));
+            .map(t => ({ id: t.matchId, date: t.date, label: `vs ${t.opponent}` }));
           return (
-            <TacticalStatsSection
-              teamId={selected.team.id}
-              events={eventsInRange}
-              categories={tacticalCategories}
-              dimensions={tacticalDimensions}
-              options={tacticalOptions}
-              matches={matchRefs}
-              emptyMessage="Aucune donnée tactique pour ces filtres."
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {matchRefs.length > 0 && (
+                <TacticalMatchManager matches={matchRefs} onDeleted={reloadPerformanceData} />
+              )}
+              <TacticalIndicatorCatalog indicators={tacticalIndicators} />
+              <TacticalStatsSection
+                teamId={selected.team.id}
+                events={eventsInRange}
+                categories={tacticalCategories}
+                dimensions={tacticalDimensions}
+                options={tacticalOptions}
+                matches={matchRefs}
+                emptyMessage="Aucune donnée tactique pour ces filtres."
+              />
+            </div>
           );
         })()
       )}

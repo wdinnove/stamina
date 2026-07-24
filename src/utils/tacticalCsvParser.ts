@@ -62,6 +62,12 @@ export function parseTacticalCsv(text: string): ParsedCategoryBlock[] {
   const blocks: ParsedCategoryBlock[] = [];
   let current: ParsedCategoryBlock | null = null;
   let expectHeader = false;
+  // Déterminé une seule fois depuis la ligne d'en-tête de chaque bloc, jamais re-détecté par ligne
+  // de données : les noms de dimensions ne contiennent normalement pas de virgule décimale,
+  // contrairement à certaines valeurs numériques françaises ("2,5") qui pourraient sinon faire
+  // choisir à tort la virgule comme séparateur pour une ligne de données et décaler toutes les
+  // colonnes suivantes.
+  let currentSep = ',';
 
   for (const rawLine of lines) {
     if (!rawLine.trim()) continue;
@@ -75,10 +81,9 @@ export function parseTacticalCsv(text: string): ParsedCategoryBlock[] {
     }
     if (!current) continue;
 
-    const sep = rawLine.includes('\t') ? '\t' : rawLine.includes(';') ? ';' : ',';
-    const cells = splitCsvLine(rawLine, sep);
-
     if (expectHeader) {
+      currentSep = rawLine.includes('\t') ? '\t' : rawLine.includes(';') ? ';' : ',';
+      const cells = splitCsvLine(rawLine, currentSep);
       const trimmed = [...cells];
       while (trimmed.length && trimmed[trimmed.length - 1] === '') trimmed.pop();
       current.dimensionNames = trimmed;
@@ -86,8 +91,13 @@ export function parseTacticalCsv(text: string): ParsedCategoryBlock[] {
       continue;
     }
 
-    // Ligne "toutes cellules vides" = séparateur entre catégories, pas une ligne de données.
-    if (cells.every(c => c.trim() === '')) { current = null; continue; }
+    const cells = splitCsvLine(rawLine, currentSep);
+
+    // Ligne "toutes cellules vides" : ignorée sans effet sur le bloc en cours (qu'il s'agisse d'un
+    // séparateur visuel de certains exports, ou d'une ligne d'événement où rien n'a été tagué) —
+    // un nouveau bloc démarre de toute façon explicitement à la prochaine ligne "Category:", pas
+    // besoin de deviner une fin de bloc ici (ça faisait perdre à tort toutes les lignes suivantes).
+    if (cells.every(c => c.trim() === '')) continue;
 
     current.rows.push(cells.slice(0, current.dimensionNames.length));
   }

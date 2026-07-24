@@ -265,6 +265,10 @@ export interface TacticalCategory {
   id: string;
   teamId: string;
   name: string;
+  /** Nom normalisé figé à la création — ne change JAMAIS au renommage, pour que les imports
+   *  futurs continuent à matcher sur le libellé d'origine du fichier vidéo, indépendamment
+   *  des renommages d'affichage faits ensuite dans la config. */
+  normalizedName: string;
   sortOrder: number;
   /** Couleur d'accent choisie librement, pour distinguer visuellement les blocs catégorie. */
   color: string;
@@ -280,6 +284,8 @@ export interface TacticalDimension {
   teamId: string;
   categoryId: string;
   name: string;
+  /** Nom normalisé figé à la création — voir `TacticalCategory.normalizedName`. */
+  normalizedName: string;
   sortOrder: number;
 }
 

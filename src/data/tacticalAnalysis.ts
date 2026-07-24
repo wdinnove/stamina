@@ -149,7 +149,10 @@ export function buildCategoryReport(
   const categoryEvents = events.filter(e => e.categoryId === category.id);
 
   const valueDimension = findValueDimension(categoryDimensions, category.id);
-  const valueByEvent = buildValueByEvent(events, category.id, valueDimension);
+  // categoryEvents (déjà filtrés), pas events : buildValueByEvent/buildDimensionTable refiltrent
+  // de toute façon par categoryId en interne, mais partir de la liste complète de la saison leur
+  // ferait rescanner inutilement tous les événements des AUTRES catégories, à chaque dimension.
+  const valueByEvent = buildValueByEvent(categoryEvents, category.id, valueDimension);
 
   const dimensionTables = categoryDimensions
     .filter(d => d.id !== valueDimension?.id)
@@ -158,7 +161,7 @@ export function buildCategoryReport(
         .filter(o => o.dimensionId === d.id)
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map(o => o.label);
-      return buildDimensionTable(events, category.id, d, valueByEvent, expectedOptions);
+      return buildDimensionTable(categoryEvents, category.id, d, valueByEvent, expectedOptions);
     });
 
   const values = categoryEvents.map(e => valueByEvent.get(e.id)).filter((v): v is number => v !== undefined);

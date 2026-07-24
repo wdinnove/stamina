@@ -45,6 +45,7 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
   );
   const [dimensionIdY, setDimensionIdY] = useState(typeof initialWidget?.config.dimensionIdY === 'string' ? initialWidget.config.dimensionIdY : '');
   const [displayMode, setDisplayMode] = useState<'table' | 'chart'>(initialWidget?.config.displayMode === 'chart' ? 'chart' : 'table');
+  const [widthSpan, setWidthSpan] = useState<1 | 2>(initialWidget?.config.widthSpan === 2 ? 2 : 1);
   const [title, setTitle] = useState(initialWidget?.title ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -78,19 +79,28 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
   const needsTwoDimensions = type === 'cross_matrix';
   const optionalDimension = type === 'evolution_chart';
 
-  function buildConfig(): Record<string, unknown> | null {
-    if (!categoryId) return null;
+  // true si la catégorie/dimension choisie (ou pré-remplie depuis un widget existant) n'existe
+  // plus — ex. supprimée dans la config entretemps — pour ne jamais ré-enregistrer une référence
+  // cassée telle quelle ; l'utilisateur doit alors resélectionner explicitement.
+  const categoryIsDangling = !!categoryId && !categories.some(c => c.id === categoryId);
+  const dimensionIsDangling = (id: string) => !!id && !categoryDimensions.some(d => d.id === id);
+
+  function buildTypeConfig(): Record<string, unknown> | null {
+    if (!categoryId || categoryIsDangling) return null;
     if (needsTwoDimensions) {
       if (!dimensionId || !dimensionIdY || dimensionId === dimensionIdY) return null;
+      if (dimensionIsDangling(dimensionId) || dimensionIsDangling(dimensionIdY)) return null;
       return { dimensionIdX: dimensionId, dimensionIdY, displayMode };
     }
     if (optionalDimension) {
+      if (dimensionIsDangling(dimensionId)) return null;
       return dimensionId ? { dimensionId } : {};
     }
     if (needsOneDimension) {
-      if (!dimensionId) return null;
+      if (!dimensionId || dimensionIsDangling(dimensionId)) return null;
       if (type === 'period_comparison') {
         if (!rangeA.from || !rangeA.to || !rangeB.from || !rangeB.to) return null;
+        if (rangeA.from > rangeA.to || rangeB.from > rangeB.to) return null;
         return { dimensionId, periodA: { from: rangeA.from, to: rangeA.to }, periodB: { from: rangeB.from, to: rangeB.to } };
       }
       return { dimensionId };
@@ -98,16 +108,31 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
     return {};
   }
 
+  function buildConfig(): Record<string, unknown> | null {
+    const typeConfig = buildTypeConfig();
+    return typeConfig ? { ...typeConfig, widthSpan } : null;
+  }
+
   const draftConfig = buildConfig();
   const draftWidget: WidgetLike | null = draftConfig ? { type, categoryId, title: title || null, config: draftConfig } : null;
 
+  function invalidMessage(): string {
+    if (categoryIsDangling) return 'La catégorie de ce bloc a été supprimée — choisissez-en une autre.';
+    if (needsTwoDimensions && (dimensionIsDangling(dimensionId) || dimensionIsDangling(dimensionIdY))) {
+      return 'Une des dimensions de ce bloc a été supprimée — resélectionnez-la.';
+    }
+    if (needsTwoDimensions) return 'Choisissez une catégorie et deux dimensions différentes.';
+    if (dimensionIsDangling(dimensionId)) return 'La dimension de ce bloc a été supprimée — resélectionnez-la.';
+    if (type === 'period_comparison') {
+      if (rangeA.from > rangeA.to || rangeB.from > rangeB.to) return 'Chaque période doit avoir une date de début antérieure ou égale à sa date de fin.';
+      return 'Choisissez une catégorie, une dimension, et les deux périodes à comparer.';
+    }
+    return 'Choisissez une catégorie et une dimension.';
+  }
+
   async function handleSave() {
     if (!draftWidget) {
-      setError(
-        needsTwoDimensions ? 'Choisissez une catégorie et deux dimensions différentes.'
-        : type === 'period_comparison' ? 'Choisissez une catégorie, une dimension, et les deux périodes à comparer.'
-        : 'Choisissez une catégorie et une dimension.'
-      );
+      setError(invalidMessage());
       return;
     }
     setSaving(true);
@@ -201,6 +226,13 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
             </div>
           )}
           <div>
+            <label style={labelStyle}>Largeur</label>
+            <select value={widthSpan} onChange={e => setWidthSpan(Number(e.target.value) === 2 ? 2 : 1)} style={selectStyle}>
+              <option value={1}>1 colonne</option>
+              <option value={2}>2 colonnes</option>
+            </select>
+          </div>
+          <div>
             <label style={labelStyle}>Titre (optionnel)</label>
             <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Laisser vide pour un titre automatique" style={selectStyle} />
           </div>
@@ -227,8 +259,12 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
           style={{ padding: '9px 18px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
           Annuler
         </button>
-        <button type="button" onClick={handleSave} disabled={!draftWidget || saving}
-          style={{ padding: '9px 22px', backgroundColor: (!draftWidget || saving) ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: (!draftWidget || saving) ? '#475569' : '#0D0F14', fontWeight: 700, cursor: (!draftWidget || saving) ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
+        {/* `disabled` ne dépend que de `saving` (pas de `!draftWidget`) : un formulaire incomplet ou
+            invalide reste cliquable pour afficher le message d'erreur précis — un bouton désactivé
+            n'aurait jamais pu déclencher `handleSave` et expliquer pourquoi. La teinte grisée reste
+            un indice visuel via `!draftWidget` sans bloquer le clic. */}
+        <button type="button" onClick={handleSave} disabled={saving}
+          style={{ padding: '9px 22px', backgroundColor: (!draftWidget || saving) ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: (!draftWidget || saving) ? '#475569' : '#0D0F14', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
           {saving ? 'Enregistrement…' : mode === 'edit' ? 'Enregistrer' : 'Ajouter'}
         </button>
       </div>

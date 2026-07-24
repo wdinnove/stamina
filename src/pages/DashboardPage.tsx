@@ -30,7 +30,7 @@ interface SessionSummary  { id: string; date: string; duration: number; load: nu
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { selected, loading: teamLoading, thresholds } = useTeamSeason();
-  const { data: perfData, loading: perfLoading } = usePerformanceData();
+  const { data: perfData, loading: perfLoading } = usePerformanceData({ tactical: false });
 
   const today = useMemo(() => localDate(0), []);
   const todayLabel = useMemo(() => new Date().toLocaleDateString('fr-FR', {

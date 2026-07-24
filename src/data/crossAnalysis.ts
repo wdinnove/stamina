@@ -279,18 +279,26 @@ export function buildTacticalIndicators(tactical: TeamTacticalCrossData | undefi
     for (const dimension of categoryDimensions) {
       if (dimension.id === valueDimension.id) continue;
 
-      const observedLabels = new Set<string>();
+      // Regroupées par libellé NORMALISÉ (accents/casse/espaces), pas par libellé brut : deux
+      // variantes du même libellé réel observées dans des exports CSV différents (ex. "Panier" /
+      // "panier") doivent fusionner en un seul attribut — sinon la clé générée (elle-même
+      // normalisée, cf. ci-dessous) entrerait en collision entre les deux variantes, et
+      // `indicatorByKey` ne renverrait toujours que la première rencontrée, avec des chiffres
+      // ne comptant qu'une des deux variantes au lieu des deux réunies.
+      const byNormalizedLabel = new Map<string, string>(); // normalisé -> libellé d'affichage (1er observé)
       for (const event of tactical.events) {
         if (event.categoryId !== category.id) continue;
         const v = event.values.find(vv => vv.dimensionId === dimension.id);
-        if (v) observedLabels.add(v.label);
+        if (!v) continue;
+        const normalized = normalizeTacticalName(v.label);
+        if (!byNormalizedLabel.has(normalized)) byNormalizedLabel.set(normalized, v.label);
       }
 
-      for (const label of observedLabels) {
+      for (const [normalizedLabel, displayLabel] of byNormalizedLabel) {
         defs.push({
-          key: `tactical_${category.id}_${dimension.id}_${normalizeTacticalName(label)}`,
-          label: `Rentabilité de ${category.name} / ${dimension.name} / ${label}`,
-          shortLabel: `${label} (${dimension.name})`,
+          key: `tactical_${category.id}_${dimension.id}_${normalizedLabel}`,
+          label: `Rentabilité de ${category.name} / ${dimension.name} / ${displayLabel}`,
+          shortLabel: `${displayLabel} (${dimension.name})`,
           domain: 'match',
           group: 'Tactique',
           unit: '',
@@ -308,7 +316,7 @@ export function buildTacticalIndicators(tactical: TeamTacticalCrossData | undefi
             for (const event of d.tactical.events) {
               if (event.categoryId !== category.id) continue;
               const val = event.values.find(vv => vv.dimensionId === dimension.id);
-              if (!val || val.label !== label) continue;
+              if (!val || normalizeTacticalName(val.label) !== normalizedLabel) continue;
               const date = matchIdToDate.get(event.matchId);
               if (!date || date < from || date > to) continue;
               const numeric = valueByEvent.get(event.id);

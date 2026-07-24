@@ -71,6 +71,7 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
   const [error, setError] = useState('');
   const [columns, setColumns] = useState<ColumnCount>(() => loadColumnPreference(teamId));
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setColumns(loadColumnPreference(teamId));
@@ -90,17 +91,31 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
   }, [teamId]);
 
   async function handleDelete(id: string) {
+    const prevWidgets = widgets;
     setWidgets(prev => prev.filter(w => w.id !== id));
-    try { await tacticalDashboardApi.deleteWidget(id); } catch (e) { setError(e instanceof Error ? e.message : 'Erreur'); }
+    try { await tacticalDashboardApi.deleteWidget(id); } catch (e) { setWidgets(prevWidgets); setError(e instanceof Error ? e.message : 'Erreur'); }
   }
 
   async function handleMove(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= widgets.length) return;
+    const prevWidgets = widgets;
     const reordered = [...widgets];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     setWidgets(reordered);
-    try { await tacticalDashboardApi.reorderWidgets(reordered.map(w => w.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Erreur'); }
+    try { await tacticalDashboardApi.reorderWidgets(reordered.map(w => w.id)); } catch (e) { setWidgets(prevWidgets); setError(e instanceof Error ? e.message : 'Erreur'); }
+  }
+
+  /** Glisser-déposer (en plus des boutons haut/bas) : déplace le bloc `fromIndex` à la position
+   *  `toIndex`, pas juste un échange avec le voisin immédiat. */
+  async function handleReorder(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const prevWidgets = widgets;
+    const reordered = [...widgets];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setWidgets(reordered);
+    try { await tacticalDashboardApi.reorderWidgets(reordered.map(w => w.id)); } catch (e) { setWidgets(prevWidgets); setError(e instanceof Error ? e.message : 'Erreur'); }
   }
 
   function handleSaved(saved: TacticalDashboardWidget) {
@@ -147,23 +162,38 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
         !editing && <EmptyNote>Aucun bloc personnalisé — cliquez "Personnaliser" pour en ajouter.</EmptyNote>
       ) : (
         <div className="tactical-dashboard-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 16 }}>
-          {widgets.map((widget, i) => (
-            <div key={widget.id} style={{ backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8, padding: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6 }}>
-                <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.82rem' }}>{tacticalWidgetTitle(widget, categories, dimensions)}</span>
-                {editing && (
-                  <span style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                    <button type="button" onClick={() => setEditor({ mode: 'edit', initialWidget: widget })} style={iconBtnStyle} title="Modifier"><Pencil size={13} /></button>
-                    <button type="button" onClick={() => setEditor({ mode: 'create', initialWidget: { type: widget.type, categoryId: widget.categoryId, title: widget.title, config: widget.config } })} style={iconBtnStyle} title="Dupliquer"><Copy size={13} /></button>
-                    <button type="button" onClick={() => handleMove(i, -1)} disabled={i === 0} style={{ ...iconBtnStyle, color: i === 0 ? '#2A2F3A' : '#94A3B8' }} title="Monter"><ChevronUp size={13} /></button>
-                    <button type="button" onClick={() => handleMove(i, 1)} disabled={i === widgets.length - 1} style={{ ...iconBtnStyle, color: i === widgets.length - 1 ? '#2A2F3A' : '#94A3B8' }} title="Descendre"><ChevronDown size={13} /></button>
-                    <button type="button" onClick={() => handleDelete(widget.id)} style={iconBtnStyle} title="Supprimer"><X size={13} /></button>
-                  </span>
-                )}
+          {widgets.map((widget, i) => {
+            // Clampé à `columns` : une largeur de 2 colonnes n'a pas de sens si l'affichage
+            // global est réglé sur 1 seule colonne (le picker en haut de page).
+            const widthSpan = Math.min(widget.config.widthSpan === 2 ? 2 : 1, columns);
+            return (
+              <div key={widget.id}
+                draggable={editing}
+                onDragStart={() => setDragIndex(i)}
+                onDragOver={e => { if (editing && dragIndex !== null) e.preventDefault(); }}
+                onDrop={e => { e.preventDefault(); if (dragIndex !== null) handleReorder(dragIndex, i); setDragIndex(null); }}
+                onDragEnd={() => setDragIndex(null)}
+                style={{
+                  backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8, padding: 16,
+                  gridColumn: `span ${widthSpan}`, opacity: dragIndex === i ? 0.4 : 1,
+                  cursor: editing ? 'grab' : 'default', transition: 'opacity 0.1s',
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6 }}>
+                  <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.82rem' }}>{tacticalWidgetTitle(widget, categories, dimensions)}</span>
+                  {editing && (
+                    <span style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                      <button type="button" onClick={() => setEditor({ mode: 'edit', initialWidget: widget })} style={iconBtnStyle} title="Modifier"><Pencil size={13} /></button>
+                      <button type="button" onClick={() => setEditor({ mode: 'create', initialWidget: { type: widget.type, categoryId: widget.categoryId, title: widget.title, config: widget.config } })} style={iconBtnStyle} title="Dupliquer"><Copy size={13} /></button>
+                      <button type="button" onClick={() => handleMove(i, -1)} disabled={i === 0} style={{ ...iconBtnStyle, color: i === 0 ? '#2A2F3A' : '#94A3B8' }} title="Monter"><ChevronUp size={13} /></button>
+                      <button type="button" onClick={() => handleMove(i, 1)} disabled={i === widgets.length - 1} style={{ ...iconBtnStyle, color: i === widgets.length - 1 ? '#2A2F3A' : '#94A3B8' }} title="Descendre"><ChevronDown size={13} /></button>
+                      <button type="button" onClick={() => handleDelete(widget.id)} style={iconBtnStyle} title="Supprimer"><X size={13} /></button>
+                    </span>
+                  )}
+                </div>
+                {renderTacticalWidgetContent(widget, renderContext)}
               </div>
-              {renderTacticalWidgetContent(widget, renderContext)}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

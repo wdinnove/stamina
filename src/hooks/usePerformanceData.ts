@@ -6,11 +6,24 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { isoToday } from '../components/DateRangeCard';
 import type { TeamCrossData } from '../data/crossAnalysis';
 
+export interface UsePerformanceDataOptions {
+  /** Charge aussi la config + les événements tactiques de la saison (2 requêtes de plus) —
+   *  activé par défaut car Performance collective/individuelle en ont besoin pour "Tendances
+   *  tactiques" et les attributs "Rentabilité de ..." d'Objectifs/Corrélations. Le Dashboard ne
+   *  s'en sert jamais : y passer `{ tactical: false }` pour éviter ce coût à chaque visite. */
+  tactical?: boolean;
+}
+
 /** Charge toutes les données de la saison sélectionnée, fusionnées par joueur (croisement multi-domaines). */
-export function usePerformanceData() {
+export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
+  const { tactical: includeTactical = true } = options;
   const { selected } = useTeamSeason();
   const [data, setData] = useState<TeamCrossData | null>(null);
   const [loading, setLoading] = useState(true);
+  // Incrémenté par `reload()` pour forcer un rechargement complet (ex. après suppression des
+  // données tactiques d'un match depuis "Tendances tactiques" — plus simple et plus sûr qu'une
+  // mise à jour locale partielle vu le nombre de champs dérivés de ces données).
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!selected) return;
@@ -23,7 +36,7 @@ export function usePerformanceData() {
       statsApi.listTeamStatsBySeason(team.id, season.id),
       rpeApi.list({ seasonId: season.id }),
       attendanceApi.listSessions(team.id, season.id),
-      tacticalConfigApi.getForTeam(team.id),
+      includeTactical ? tacticalConfigApi.getForTeam(team.id) : Promise.resolve(null),
     ]).then(async ([players, matchStats, teamMatchStats, rpe, sessions, tacticalConfig]) => {
       const seasonMatchIds = teamMatchStats.filter(t => t.matchId).map(t => t.matchId as string);
       const [medical, attendance, allTimeRpeRows, wellness, tacticalEvents] = await Promise.all([
@@ -39,7 +52,7 @@ export function usePerformanceData() {
         players.length
           ? wellnessApi.list({ playerIds: players.map(p => p.id), from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() })
           : Promise.resolve([]),
-        tacticalEventsApi.getForMatches(seasonMatchIds),
+        tacticalConfig ? tacticalEventsApi.getForMatches(seasonMatchIds) : Promise.resolve([]),
       ]);
       if (cancelled) return;
       const sessionDate = new Map(sessions.map(s => [s.id, s.date]));
@@ -61,17 +74,20 @@ export function usePerformanceData() {
             .filter(a => a.playerId === pl.id && sessionDate.has(a.sessionId))
             .map(a => ({ date: sessionDate.get(a.sessionId)!, status: a.status })),
         })),
-        tactical: {
+        tactical: tacticalConfig ? {
           events: tacticalEvents,
           categories: tacticalConfig.categories,
           dimensions: tacticalConfig.dimensions,
           options: tacticalConfig.options,
-        },
+        } : undefined,
       });
       setLoading(false);
     }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [selected?.team.id, selected?.season.id]);
+  }, [selected?.team.id, selected?.season.id, includeTactical, reloadToken]);
 
-  return { data, loading, seasonStart: selected?.season.startDate, seasonEnd: selected?.season.endDate };
+  return {
+    data, loading, seasonStart: selected?.season.startDate, seasonEnd: selected?.season.endDate,
+    reload: () => setReloadToken(t => t + 1),
+  };
 }

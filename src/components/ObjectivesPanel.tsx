@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Target } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Target, AlertTriangle } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
@@ -51,9 +51,19 @@ const TEAM_MATCH_ORDER = [
   'team_opp_efgPct', 'team_opp_toPct', 'team_opp_orebPct',
 ];
 
+// Un objectif tactique dont la catégorie/dimension/option a été supprimée entretemps ne doit
+// jamais afficher la clé technique brute (`tactical_<uuid>_<uuid>_...`) comme s'il s'agissait
+// d'un nom de stat — un message explicite est plus clair qu'un identifiant opaque.
+function orphanIndicatorLabel(indicatorKey: string): string {
+  return indicatorKey.startsWith('tactical_') ? 'Attribut tactique supprimé' : 'Attribut supprimé';
+}
+
 export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEnd }: ObjectivesPanelProps) {
   const { objectives, loading, reload } = useObjectives({ playerId, teamId });
-  const tacticalIndicators = buildTacticalIndicators(scope.team?.tactical);
+  // Mémoïsé comme dans CorrelationsPanel : sans ça, ce scan (catégories × dimensions × événements)
+  // est refait à chaque rendu — y compris à chaque frappe dans le formulaire de création/édition,
+  // qui vit dans ce même composant et déclenche donc un re-render de tout l'écran.
+  const tacticalIndicators = useMemo(() => buildTacticalIndicators(scope.team?.tactical), [scope.team?.tactical]);
   const indicators = playerId
     ? PLAYER_MATCH_ORDER.map(key => indicatorByKey(key)).filter((i): i is NonNullable<typeof i> => i != null)
     : [
@@ -157,7 +167,13 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
                   }}>
                     <Badge color={imp.color} label={imp.label} size="sm" />
                     <div style={{ flex: 1, minWidth: 140 }}>
-                      <div style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600 }}>{def?.label ?? o.indicatorKey}</div>
+                      {def ? (
+                        <div style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600 }}>{def.label}</div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#F59E0B', fontSize: '0.85rem', fontWeight: 600, fontStyle: 'italic' }}>
+                          <AlertTriangle size={13} />{orphanIndicatorLabel(o.indicatorKey)}
+                        </div>
+                      )}
                       <div style={{ color: '#64748B', fontSize: '0.72rem' }}>
                         Objectif : {cmp.symbol} {o.thresholdValue}{def?.unit ? ` ${def.unit}` : ''}
                       </div>
@@ -245,7 +261,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
         <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
           <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cet objectif ?</h2>
           <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
-            <strong style={{ color: '#F1F5F9' }}>{indicatorByKey(confirmDelete.indicatorKey, tacticalIndicators)?.label ?? confirmDelete.indicatorKey}</strong>
+            <strong style={{ color: '#F1F5F9' }}>{indicatorByKey(confirmDelete.indicatorKey, tacticalIndicators)?.label ?? orphanIndicatorLabel(confirmDelete.indicatorKey)}</strong>
           </p>
           <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 20px' }}>Cet objectif sera définitivement supprimé.</p>
           <div style={{ display: 'flex', gap: 10 }}>
