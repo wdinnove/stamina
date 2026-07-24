@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare, BarChart2, Users } from 'lucide-react';
+import { Dumbbell, Trophy, Stethoscope, Activity, Heart, CheckSquare } from 'lucide-react';
 import { Badge, StatusBadge, PlayerAvatar, MiniStatCard } from '../components';
 import { playersApi, actionsApi, matchesApi, rpeApi } from '../api';
 import { staffApi } from '../api/staff';
@@ -334,30 +334,6 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* 2 cartes d'accès aux analyses détaillées */}
-      <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10, marginBottom: 16 }}>
-        <MiniStatCard
-          icon={<BarChart2 size={18} color="#3B82F6" />}
-          iconBg="#3B82F622"
-          title="Analyse collective"
-          value="Vue d'ensemble équipe"
-          valueColor="#F1F5F9"
-          subtitle="Charge, RPE, bien-être et risque à l'échelle de l'équipe"
-          borderColor="#3B82F6"
-          onOpen={() => navigate('/performance-collective/vue-ensemble')}
-        />
-        <MiniStatCard
-          icon={<Users size={18} color="#8B5CF6" />}
-          iconBg="#8B5CF622"
-          title="Analyse individuelle"
-          value="Fiche joueur détaillée"
-          valueColor="#F1F5F9"
-          subtitle="Statistiques, charge, bien-être et risque par joueur"
-          borderColor="#8B5CF6"
-          onOpen={() => navigate('/performance-individuelle')}
-        />
-      </div>
-
       {/* Tableau par joueur — vue d'ensemble à 6 notions */}
       {perfData && (
         <PlayerOverviewTable
@@ -480,14 +456,14 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
                     </span>
                   </td>
                   <td style={tdBase}><StatusBadge status={p.status} size="sm" /></td>
-                  <td style={tdBase}>
-                    {avgRpe !== null ? <Badge color={rpeColor(avgRpe)} label={rpeLabel(Math.round(avgRpe))} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
+                  <td style={{ ...tdBase, color: avgRpe === null ? '#334155' : rpeColor(avgRpe), fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {avgRpe ?? '—'}
                   </td>
                   <td style={tdBase}>
                     <Badge color={atRiskNow ? '#EF4444' : '#00E5A0'} label={atRiskNow ? 'À risque' : 'RAS'} size="sm" />
                   </td>
-                  <td style={tdBase}>
-                    {avgScore !== null ? <Badge color={wellnessColor} label={wellnessTier(avgScore).label} size="sm" /> : <span style={{ color: '#334155' }}>—</span>}
+                  <td style={{ ...tdBase, color: avgScore === null ? '#334155' : wellnessColor, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {avgScore ?? '—'}
                   </td>
                   <td style={tdBase}>
                     {weakDim && <Badge color={weakDim.color} label={weakDim.label} size="sm" />}

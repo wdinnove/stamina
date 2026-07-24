@@ -6,7 +6,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { usePlayerAllTimeHistory } from '../hooks/usePlayerAllTimeHistory';
 import {
-  Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, HeroCard, HeroCardShell, Badge,
+  Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, MiniStatCard, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
   CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel,
@@ -294,78 +294,60 @@ export default function PerformanceIndividuellePage() {
         <div style={{ marginBottom: 16 }}>
           <PlayerTrendHero pd={pd} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 12, marginBottom: 16 }}>
-          <HeroCard
-            icon={<BarChart2 size={20} color="#3B82F6" />} iconBg="#3B82F622"
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 16 }}>
+          <MiniStatCard
+            icon={<BarChart2 size={18} color="#3B82F6" />} iconBg="#3B82F622"
             title="Statistiques"
-            ctaLabel="Voir les statistiques" onOpen={() => setActiveTab('statistiques-brutes')}
+            value={evalAvgP !== null ? fmt1(evalAvgP) : '—'}
+            valueColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
+            subtitle={`${avgMinP ?? 0} min / match`}
             borderColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
-            stats={[
-              { value: avgMinP ?? 0, label: 'Min / match', color: '#F1F5F9' },
-              { value: evalAvgP ?? 0, label: 'Éval moyenne', color: evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569', decimals: 1 },
-            ]}
+            onOpen={() => setActiveTab('statistiques-brutes')}
           />
-          <HeroCard
-            icon={<UserCheck size={20} color="#06B6D4" />} iconBg="#06B6D622"
+          <MiniStatCard
+            icon={<UserCheck size={18} color="#06B6D4" />} iconBg="#06B6D622"
             title="Présences"
+            value={presencePct !== null ? `${presencePct}%` : '—'}
+            valueColor={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569'}
+            subtitle={`${attP.length} séance${attP.length > 1 ? 's' : ''}`}
             borderColor={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569'}
-            stats={[
-              { value: presencePct ?? 0, label: 'Présence %', color: presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569' },
-              { value: attP.length, label: 'Séances', color: '#F1F5F9' },
-            ]}
           />
-          <HeroCard
-            icon={<CheckSquare size={20} color="#F59E0B" />} iconBg="#F59E0B22"
-            title="Actions à faire"
-            ctaLabel="Voir les actions"
-            onOpen={() => navigate('/actions', { state: { playerId: id, playerName: playerNameFull(pd.player), from: `/performance-individuelle/${id}/vue-ensemble` } })}
+          <MiniStatCard
+            icon={<CheckSquare size={18} color="#F59E0B" />} iconBg="#F59E0B22"
+            title="Actions"
+            value={`${openActions} à faire`}
+            valueColor={openActions === 0 ? '#00E5A0' : '#F59E0B'}
+            subtitle={`${doneActions} faite${doneActions > 1 ? 's' : ''}`}
             borderColor={openActions === 0 ? '#00E5A0' : '#F59E0B'}
-            stats={[
-              { value: openActions, label: 'À faire', color: openActions === 0 ? '#475569' : '#F59E0B' },
-              { value: doneActions, label: 'Faites', color: '#00E5A0' },
-            ]}
+            onOpen={() => navigate('/actions', { state: { playerId: id, playerName: playerNameFull(pd.player), from: `/performance-individuelle/${id}/vue-ensemble` } })}
           />
-          <HeroCardShell
-            icon={<ShieldAlert size={20} color={atRiskNow ? '#EF4444' : '#00E5A0'} />} iconBg={atRiskNow ? '#EF444422' : '#00E5A022'}
+          <MiniStatCard
+            icon={<ShieldAlert size={18} color={atRiskNow ? '#EF4444' : '#00E5A0'} />} iconBg={atRiskNow ? '#EF444422' : '#00E5A022'}
             title="Risque blessure"
-            ctaLabel="Voir le risque" onOpen={() => setActiveTab('charge-physique')}
+            value={atRiskNow ? 'À risque' : 'RAS'}
+            valueColor={atRiskNow ? '#EF4444' : '#00E5A0'}
+            subtitle={atRiskNow ? 'Blessure active ou charge à surveiller' : 'Aucun facteur de risque identifié'}
             borderColor={atRiskNow ? '#EF4444' : '#00E5A0'}
-          >
-            <div className="text-[1.1rem] md:text-[1.4rem]" style={{ color: atRiskNow ? '#EF4444' : '#00E5A0', fontWeight: 800, lineHeight: 1 }}>
-              {atRiskNow ? 'À risque' : 'RAS'}
-            </div>
-            <div className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', marginTop: 5 }}>
-              {atRiskNow ? 'Blessure active ou charge à surveiller' : 'Aucun facteur de risque identifié'}
-            </div>
-          </HeroCardShell>
-          <HeroCardShell
-            icon={<Activity size={20} color="#8B5CF6" />} iconBg="#8B5CF622"
+            onOpen={() => setActiveTab('charge-physique')}
+          />
+          <MiniStatCard
+            icon={<Activity size={18} color="#8B5CF6" />} iconBg="#8B5CF622"
             title="RPE moyen"
-            ctaLabel="Voir la charge" onOpen={() => setActiveTab('rpe')}
+            value={rpeAvgP !== null ? `${fmt1(rpeAvgP)}/10` : '—'}
+            valueColor={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569'}
+            subtitle={rpeAvgP !== null ? rpeLabel(Math.round(rpeAvgP)) : undefined}
             borderColor={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569'}
-          >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <div className="text-[1.1rem] md:text-[1.4rem]" style={{ color: rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
-                {rpeAvgP !== null ? fmt1(rpeAvgP) : '—'}
-              </div>
-              {rpeAvgP !== null && <div className="text-[0.7rem] md:text-[0.85rem]" style={{ color: rpeColor(rpeAvgP), fontWeight: 700 }}>{rpeLabel(Math.round(rpeAvgP))}</div>}
-            </div>
-            <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5 }}>RPE moyen /10</div>
-          </HeroCardShell>
-          <HeroCardShell
-            icon={<Heart size={20} color="#EC4899" />} iconBg="#EC489922"
+            onOpen={() => setActiveTab('rpe')}
+          />
+          <MiniStatCard
+            icon={<Heart size={18} color="#EC4899" />} iconBg="#EC489922"
             title="Bien-être"
-            ctaLabel="Voir le bien-être" onOpen={() => setActiveTab('bien-etre')}
+            value={wellAvgP !== null ? `${fmt1(wellAvgP)}/10` : '—'}
+            valueColor={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569'}
+            subtitle={wellAvgP !== null ? wellnessTier(wellAvgP).label : undefined}
             borderColor={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569'}
-          >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <div className="text-[1.1rem] md:text-[1.4rem]" style={{ color: wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569', fontWeight: 800, lineHeight: 1, fontFamily: 'JetBrains Mono, monospace' }}>
-                {wellAvgP !== null ? fmt1(wellAvgP) : '—'}
-              </div>
-              {wellAvgP !== null && <div className="text-[0.7rem] md:text-[0.85rem]" style={{ color: wellnessTier(wellAvgP).color, fontWeight: 700 }}>{wellnessTier(wellAvgP).label}</div>}
-            </div>
-            <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: 5 }}>Score moyen /10</div>
-          </HeroCardShell>
+            onOpen={() => setActiveTab('bien-etre')}
+          />
         </div>
         </>
       )}
