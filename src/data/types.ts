@@ -323,14 +323,15 @@ export interface TacticalEventValue {
   label: string;
 }
 
-export type TacticalWidgetType = 'dimension_table' | 'evolution_chart' | 'cross_matrix' | 'pie_chart' | 'period_comparison';
+export type TacticalWidgetType = 'dimension_table' | 'evolution_chart' | 'cross_matrix' | 'pie_chart' | 'period_comparison' | 'custom_table';
 
 /** Un bloc du tableau de bord tactique personnalisé, composé par l'équipe. */
 export interface TacticalDashboardWidget {
   id: string;
   teamId: string;
   type: TacticalWidgetType;
-  categoryId: string;
+  /** Null pour un bloc "custom_table" — les catégories réelles utilisées sont dans config.dimensions[].categoryId. */
+  categoryId: string | null;
   title: string | null;
   /** Contenu spécifique au type — voir tacticalDashboard.ts pour les formes attendues par type. */
   config: Record<string, unknown>;

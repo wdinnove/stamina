@@ -2871,3 +2871,16 @@ CREATE POLICY "tactical_dimension_options_write" ON tactical_dimension_options
 --
 -- players, wellness_entries, medical_records, rpe_entries restent INCHANGÉS
 -- (cloisonnement par organisation) — cf. plan, phase 8, traité séparément.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 18. Bloc tableau de bord "Tableau personnalisé" (type = 'custom_table') :
+--     compose librement chaque ligne à partir d'options choisies par l'utilisateur
+--     (catégorie/dimension/option), y compris de catégories différentes, avec
+--     fusion de plusieurs options en une ligne sommée. category_id devient
+--     nullable (NULL pour ce type — les catégories réelles utilisées sont
+--     listées dans config.rows[].refs[].categoryId, cf. tacticalWidgetRenderer.tsx).
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tactical_dashboard_widgets ALTER COLUMN category_id DROP NOT NULL;
+ALTER TABLE tactical_dashboard_widgets DROP CONSTRAINT tactical_dashboard_widgets_type_check;
+ALTER TABLE tactical_dashboard_widgets ADD CONSTRAINT tactical_dashboard_widgets_type_check
+  CHECK (type IN ('dimension_table', 'evolution_chart', 'cross_matrix', 'pie_chart', 'period_comparison', 'custom_table'));

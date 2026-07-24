@@ -3,7 +3,7 @@ import type { TacticalDashboardWidget, TacticalWidgetType } from '../data/types'
 
 export interface TacticalWidgetInput {
   type: TacticalWidgetType;
-  categoryId: string;
+  categoryId: string | null;
   title?: string | null;
   config: Record<string, unknown>;
 }
@@ -69,7 +69,7 @@ function toTacticalDashboardWidget(row: Record<string, unknown>): TacticalDashbo
     id:         row.id          as string,
     teamId:     row.team_id     as string,
     type:       row.type        as TacticalWidgetType,
-    categoryId: row.category_id as string,
+    categoryId: row.category_id as string | null,
     title:      row.title       as string | null,
     config:     (row.config as Record<string, unknown>) ?? {},
     sortOrder:  row.sort_order  as number,

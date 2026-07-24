@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, ChevronUp, ChevronDown, Settings2, AlertCircle, LayoutGrid, Pencil, Copy } from 'lucide-react';
+import { Plus, X, ChevronUp, ChevronDown, Settings2, AlertCircle, Pencil, Copy } from 'lucide-react';
 import { tacticalDashboardApi } from '../api/tacticalDashboard';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption, TacticalDashboardWidget } from '../data/types';
@@ -11,40 +11,6 @@ import { TacticalWidgetEditorModal } from './TacticalWidgetEditorModal';
 const iconBtnStyle: React.CSSProperties = {
   background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2,
 };
-
-type ColumnCount = 1 | 2 | 3;
-const COLUMN_OPTIONS: ColumnCount[] = [1, 2, 3];
-
-function columnsStorageKey(teamId: string) {
-  return `tactical-dashboard-columns-${teamId}`;
-}
-
-function loadColumnPreference(teamId: string): ColumnCount {
-  const raw = localStorage.getItem(columnsStorageKey(teamId));
-  const parsed = raw ? parseInt(raw, 10) : NaN;
-  return (COLUMN_OPTIONS as number[]).includes(parsed) ? (parsed as ColumnCount) : 2;
-}
-
-function ColumnPicker({ value, onChange }: { value: ColumnCount; onChange: (v: ColumnCount) => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <LayoutGrid size={13} color="#475569" />
-      <div style={{ display: 'flex', backgroundColor: '#0D0F14', borderRadius: 6, padding: 2, gap: 2 }}>
-        {COLUMN_OPTIONS.map(n => (
-          <button key={n} type="button" onClick={() => onChange(n)}
-            style={{
-              padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
-              fontSize: '0.75rem', fontWeight: value === n ? 700 : 400,
-              backgroundColor: value === n ? '#1E2229' : 'transparent',
-              color: value === n ? '#00E5A0' : '#475569',
-            }}>
-            {n}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 interface Props {
   teamId: string;
@@ -71,18 +37,8 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
-  const [columns, setColumns] = useState<ColumnCount>(() => loadColumnPreference(teamId));
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    setColumns(loadColumnPreference(teamId));
-  }, [teamId]);
-
-  function handleColumnsChange(n: ColumnCount) {
-    setColumns(n);
-    localStorage.setItem(columnsStorageKey(teamId), String(n));
-  }
 
   useEffect(() => {
     setLoading(true);
@@ -136,7 +92,6 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
         <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>Mon tableau de bord</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <ColumnPicker value={columns} onChange={handleColumnsChange} />
           {canEditTeamData && (
           <button type="button" onClick={() => setEditing(e => !e)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: editing ? '#1E2229' : 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: editing ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.78rem' }}>
@@ -165,11 +120,9 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
       ) : widgets.length === 0 ? (
         !editing && <EmptyNote>Aucun bloc personnalisé — cliquez "Personnaliser" pour en ajouter.</EmptyNote>
       ) : (
-        <div className="tactical-dashboard-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 16 }}>
+        <div className="tactical-dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
           {widgets.map((widget, i) => {
-            // Clampé à `columns` : une largeur de 2 colonnes n'a pas de sens si l'affichage
-            // global est réglé sur 1 seule colonne (le picker en haut de page).
-            const widthSpan = Math.min(widget.config.widthSpan === 2 ? 2 : 1, columns);
+            const widthSpan = widget.config.widthSpan === 2 ? 2 : 1;
             return (
               <div key={widget.id}
                 draggable={editing}

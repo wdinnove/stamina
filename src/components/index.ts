@@ -11,8 +11,6 @@ export { PlayerEditModal } from './PlayerEditModal';
 export { MatchFormModal } from './MatchFormModal';
 export { TacticalStatsSection } from './TacticalStatsSection';
 export { TacticalFilterBar } from './TacticalFilterBar';
-export { TacticalMatchManager } from './TacticalMatchManager';
-export { TacticalIndicatorCatalog } from './TacticalIndicatorCatalog';
 export { PlayerHero, playerStatusLabel, playerStatusColor } from './PlayerHero';
 export { TeamStatsHero } from './TeamStatsHero';
 export { HeroCard, HeroCardShell, MiniStatCard } from './HeroCard';

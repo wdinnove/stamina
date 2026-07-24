@@ -1,7 +1,8 @@
+import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { buildCategoryReport, rentabiliteColor, categoryThresholds } from '../data/tacticalAnalysis';
-import type { DimensionTable, RentabiliteThresholds } from '../data/tacticalAnalysis';
+import type { DimensionTable, DimensionOptionRow, RentabiliteThresholds } from '../data/tacticalAnalysis';
 
 export interface TacticalMatchRef {
   id: string;
@@ -35,14 +36,72 @@ function fmtValeur(v: number | null) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
-export function DimensionTableView({ table, thresholds, borderColor }: { table: DimensionTable; thresholds?: RentabiliteThresholds; borderColor?: string }) {
-  if (table.rows.length === 0) return null;
+type SortKey = keyof Pick<DimensionOptionRow, 'label' | 'actions' | 'sharePct' | 'valeur' | 'rentabilite'>;
+type SortDir = 'asc' | 'desc';
+
+function compareRows(a: DimensionOptionRow, b: DimensionOptionRow, key: SortKey, dir: SortDir): number {
+  const mul = dir === 'asc' ? 1 : -1;
+  if (key === 'label') return a.label.localeCompare(b.label) * mul;
+  const av = a[key];
+  const bv = b[key];
+  if (av === null && bv === null) return 0;
+  if (av === null) return 1; // nulls toujours en fin, quel que soit le sens du tri
+  if (bv === null) return -1;
+  return (av - bv) * mul;
+}
+
+function SortableTh({ label, active, dir, onClick, textAlign }: { label: string; active: boolean; dir: SortDir; onClick: () => void; textAlign?: React.CSSProperties['textAlign'] }) {
+  return (
+    <th
+      style={{ ...TH, textAlign: textAlign ?? TH.textAlign, cursor: 'pointer', userSelect: 'none' }}
+      onClick={onClick}
+    >
+      {label}
+      <span style={{ display: 'inline-block', width: 10, marginLeft: 2, color: active ? '#94A3B8' : '#2A2F3A' }}>
+        {active ? (dir === 'asc' ? '▲' : '▼') : '▲'}
+      </span>
+    </th>
+  );
+}
+
+/**
+ * Rendu bas niveau d'une table Option/Actions/Répartition/Valeur/Rentabilité, indépendant du
+ * concept de "dimension" — réutilisé par `DimensionTableView` (une dimension) et par les blocs
+ * de tableau de bord "tableau personnalisé" (lignes composées librement, éventuellement fusionnées).
+ */
+export function DimensionRowsTable({ label, rows, totalActions, totalValeur, totalRentabilite, thresholds, borderColor }: {
+  label: string;
+  rows: DimensionOptionRow[];
+  totalActions: number;
+  totalValeur: number | null;
+  totalRentabilite: number | null;
+  thresholds?: RentabiliteThresholds;
+  borderColor?: string;
+}) {
+  const [sortKey, setSortKey] = useState<SortKey | null>('sharePct');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir));
+  }, [rows, sortKey, sortDir]);
+
+  function handleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }
+
+  if (rows.length === 0) return null;
   return (
     <div style={{ marginBottom: 14 }}>
       <p style={{ color: '#64748B', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>
-        {table.dimension.name}
+        {label}
       </p>
-      <div style={{ overflowX: 'auto', border: `1px solid ${borderColor ?? '#2A2F3A'}`, borderRadius: 6 }}>
+      <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 6 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <colgroup>
             <col />
@@ -53,15 +112,15 @@ export function DimensionTableView({ table, thresholds, borderColor }: { table: 
           </colgroup>
           <thead>
             <tr>
-              <th style={{ ...TH, textAlign: 'left' }}>Option</th>
-              <th style={TH}>Actions</th>
-              <th style={TH}>Répartition</th>
-              <th style={TH}>Valeur</th>
-              <th style={TH}>Rentabilité</th>
+              <SortableTh label="Option" textAlign="left" active={sortKey === 'label'} dir={sortDir} onClick={() => handleSort('label')} />
+              <SortableTh label="Actions" active={sortKey === 'actions'} dir={sortDir} onClick={() => handleSort('actions')} />
+              <SortableTh label="Répartition" active={sortKey === 'sharePct'} dir={sortDir} onClick={() => handleSort('sharePct')} />
+              <SortableTh label="Valeur" active={sortKey === 'valeur'} dir={sortDir} onClick={() => handleSort('valeur')} />
+              <SortableTh label="Rentabilité" active={sortKey === 'rentabilite'} dir={sortDir} onClick={() => handleSort('rentabilite')} />
             </tr>
           </thead>
           <tbody>
-            {table.rows.map((r, i) => (
+            {sortedRows.map((r, i) => (
               <tr key={r.label} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                 <td style={{ ...OPTION_TD, color: '#F1F5F9', fontWeight: 600 }} title={r.label}>{r.label}</td>
                 <td style={{ ...TD, fontWeight: 700 }}>{r.actions}</td>
@@ -74,17 +133,32 @@ export function DimensionTableView({ table, thresholds, borderColor }: { table: 
             ))}
             <tr style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
               <td style={{ ...OPTION_TD, color: '#94A3B8', fontWeight: 700 }}>Total</td>
-              <td style={{ ...TD, fontWeight: 700 }}>{table.totalActions}</td>
+              <td style={{ ...TD, fontWeight: 700 }}>{totalActions}</td>
               <td style={TD}>—</td>
-              <td style={{ ...TD, fontWeight: 700 }}>{fmtValeur(table.totalValeur)}</td>
-              <td style={{ ...TD, color: table.totalRentabilite !== null ? rentabiliteColor(table.totalRentabilite, thresholds) : '#334155', fontWeight: 700 }}>
-                {fmtRentabilite(table.totalRentabilite)}
+              <td style={{ ...TD, fontWeight: 700 }}>{fmtValeur(totalValeur)}</td>
+              <td style={{ ...TD, color: totalRentabilite !== null ? rentabiliteColor(totalRentabilite, thresholds) : '#334155', fontWeight: 700 }}>
+                {fmtRentabilite(totalRentabilite)}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+export function DimensionTableView({ table, thresholds, borderColor }: { table: DimensionTable; thresholds?: RentabiliteThresholds; borderColor?: string }) {
+  if (table.rows.length === 0) return null;
+  return (
+    <DimensionRowsTable
+      label={table.dimension.name}
+      rows={table.rows}
+      totalActions={table.totalActions}
+      totalValeur={table.totalValeur}
+      totalRentabilite={table.totalRentabilite}
+      thresholds={thresholds}
+      borderColor={borderColor}
+    />
   );
 }
 

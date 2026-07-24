@@ -1,13 +1,14 @@
 import { AlertTriangle } from 'lucide-react';
 import {
   buildDimensionTable, buildCrossMatrix, buildCategoryEvolution, buildDimensionEvolution, buildCategoryReport,
-  findValueDimension, buildValueByEvent, categoryThresholds, rentabiliteColor,
+  buildCustomTableRows, findValueDimension, buildValueByEvent, categoryThresholds, rentabiliteColor,
 } from '../data/tacticalAnalysis';
+import type { RowGroupDef, CustomTableRowDef } from '../data/tacticalAnalysis';
 import type {
   TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption,
   TacticalWidgetType,
 } from '../data/types';
-import { DimensionTableView } from './TacticalReport';
+import { DimensionTableView, DimensionRowsTable } from './TacticalReport';
 import type { TacticalMatchRef } from './TacticalReport';
 import { TacticalEvolutionChart } from './TacticalEvolutionChart';
 import { TacticalCrossMatrix } from './TacticalCrossMatrix';
@@ -28,15 +29,43 @@ export const WIDGET_TYPE_LABELS: Record<TacticalWidgetType, string> = {
   cross_matrix:      'Matrice croisée (2 dimensions)',
   pie_chart:         'Camembert de répartition',
   period_comparison: 'Comparaison de 2 périodes',
+  custom_table:      'Tableau personnalisé (dimensions multiples)',
 };
 
 export function EmptyNote({ children }: { children: React.ReactNode }) {
   return <p style={{ color: '#475569', fontSize: '0.8rem', margin: 0 }}>{children}</p>;
 }
 
+function customTableRowDefs(config: Record<string, unknown>): CustomTableRowDef[] {
+  const raw = Array.isArray(config.rows) ? config.rows : [];
+  return raw
+    .filter((r): r is { label?: unknown; refs?: unknown } => !!r && typeof r === 'object')
+    .map(r => ({
+      label: typeof r.label === 'string' ? r.label : undefined,
+      refs: Array.isArray(r.refs)
+        ? r.refs.filter((x): x is { categoryId: string; dimensionId: string; option: string } =>
+            !!x && typeof x === 'object' && typeof x.categoryId === 'string' && typeof x.dimensionId === 'string' && typeof x.option === 'string'
+          )
+        : [],
+    }))
+    .filter(r => r.refs.length > 0);
+}
+
+function rowGroupsFromConfig(config: Record<string, unknown>): RowGroupDef[] {
+  const raw = Array.isArray(config.groups) ? config.groups : [];
+  return raw
+    .filter((g): g is { label?: unknown; options?: unknown } => !!g && typeof g === 'object')
+    .map(g => ({
+      label: typeof g.label === 'string' ? g.label : undefined,
+      options: Array.isArray(g.options) ? g.options.filter((o): o is string => typeof o === 'string') : [],
+    }))
+    .filter(g => g.options.length >= 2);
+}
+
 export interface WidgetLike {
   type: TacticalWidgetType;
-  categoryId: string;
+  /** Null pour un bloc "custom_table" — les catégories réelles sont dans config.dimensions[].categoryId. */
+  categoryId: string | null;
   title?: string | null;
   config: Record<string, unknown>;
 }
@@ -47,6 +76,12 @@ export function tacticalWidgetTitle(
   dimensions: TacticalDimension[],
 ): string {
   if (widget.title) return widget.title;
+  if (widget.type === 'custom_table') {
+    const rowDefs = customTableRowDefs(widget.config);
+    const names = rowDefs.map(r => r.label?.trim() || r.refs.map(ref => ref.option).join(' + ')).filter(Boolean);
+    if (names.length === 0) return 'Tableau personnalisé';
+    return names.length > 3 ? `${names.slice(0, 3).join(' · ')}…` : names.join(' · ');
+  }
   const category = categories.find(c => c.id === widget.categoryId);
   const catName = category?.name ?? 'Catégorie inconnue';
   const dim = typeof widget.config.dimensionId === 'string' ? dimensions.find(d => d.id === widget.config.dimensionId) : undefined;
@@ -67,6 +102,29 @@ interface RenderContext {
 }
 
 export function renderTacticalWidgetContent(widget: WidgetLike, { events, categories, dimensions, options, matches }: RenderContext): React.ReactNode {
+  if (widget.type === 'custom_table') {
+    const rowDefs = customTableRowDefs(widget.config);
+    if (rowDefs.length === 0) return <EmptyNote>Choisissez au moins une option.</EmptyNote>;
+    const hasDanglingRef = rowDefs.some(r => r.refs.some(ref => !dimensions.some(d => d.id === ref.dimensionId && d.categoryId === ref.categoryId)));
+    const result = buildCustomTableRows(events, dimensions, rowDefs);
+    return (
+      <>
+        {hasDanglingRef && (
+          <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#F59E0B', fontSize: '0.74rem', margin: '0 0 8px', padding: '5px 8px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 5 }}>
+            <AlertTriangle size={12} /> Une option combinée dans ce bloc a été supprimée — vérifiez sa configuration.
+          </p>
+        )}
+        <DimensionRowsTable
+          label={tacticalWidgetTitle(widget, categories, dimensions)}
+          rows={result.rows}
+          totalActions={result.totalActions}
+          totalValeur={result.totalValeur}
+          totalRentabilite={result.totalRentabilite}
+        />
+      </>
+    );
+  }
+
   const category = categories.find(c => c.id === widget.categoryId);
   if (!category) return <EmptyNote>Catégorie introuvable.</EmptyNote>;
   const categoryDimensions = dimensions.filter(d => d.categoryId === category.id);
@@ -91,7 +149,7 @@ export function renderTacticalWidgetContent(widget: WidgetLike, { events, catego
   if (widget.type === 'dimension_table' || widget.type === 'pie_chart') {
     const dim = dimensions.find(d => d.id === widget.config.dimensionId);
     if (!dim) return <EmptyNote>Choisissez une dimension.</EmptyNote>;
-    const table = buildDimensionTable(events, category.id, dim, valueByEvent, expectedOptionsFor(dim.id));
+    const table = buildDimensionTable(events, category.id, dim, valueByEvent, expectedOptionsFor(dim.id), rowGroupsFromConfig(widget.config));
     return <>{warning}{widget.type === 'pie_chart' ? <TacticalPieChart table={table} /> : <DimensionTableView table={table} thresholds={thresholds} borderColor={borderColor} />}</>;
   }
 

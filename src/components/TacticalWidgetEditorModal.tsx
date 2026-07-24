@@ -47,8 +47,97 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
   const [displayMode, setDisplayMode] = useState<'table' | 'chart'>(initialWidget?.config.displayMode === 'chart' ? 'chart' : 'table');
   const [widthSpan, setWidthSpan] = useState<1 | 2>(initialWidget?.config.widthSpan === 2 ? 2 : 1);
   const [title, setTitle] = useState(initialWidget?.title ?? '');
+
+  type CustomRef = { categoryId: string; dimensionId: string; option: string };
+  type CustomRow = { label: string; refs: CustomRef[] };
+  const [rows, setRows] = useState<CustomRow[]>(() => {
+    const raw = initialWidget?.config.rows;
+    const parsed = Array.isArray(raw)
+      ? raw
+          .filter((r): r is { label?: unknown; refs?: unknown } => !!r && typeof r === 'object')
+          .map(r => ({
+            label: typeof r.label === 'string' ? r.label : '',
+            refs: Array.isArray(r.refs)
+              ? r.refs.filter((x): x is CustomRef =>
+                  !!x && typeof x === 'object' && typeof x.categoryId === 'string' && typeof x.dimensionId === 'string' && typeof x.option === 'string'
+                )
+              : [],
+          }))
+          .filter(r => r.refs.length > 0)
+      : [];
+    return parsed.length > 0 ? parsed : [{ label: '', refs: [{ categoryId: '', dimensionId: '', option: '' }] }];
+  });
+
+  type OptionGroup = { label: string; options: string[] };
+  const [groups, setGroups] = useState<OptionGroup[]>(() => {
+    const raw = initialWidget?.config.groups;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((g): g is { label?: unknown; options?: unknown } => !!g && typeof g === 'object')
+      .map(g => ({
+        label: typeof g.label === 'string' ? g.label : '',
+        options: Array.isArray(g.options) ? g.options.filter((o): o is string => typeof o === 'string') : [],
+      }))
+      .filter(g => g.options.length >= 2);
+  });
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  function addRow() {
+    setRows(prev => [...prev, { label: '', refs: [{ categoryId: '', dimensionId: '', option: '' }] }]);
+  }
+  function removeRow(ri: number) {
+    setRows(prev => prev.length === 1 ? prev : prev.filter((_, j) => j !== ri));
+  }
+  function updateRowLabel(ri: number, label: string) {
+    setRows(prev => prev.map((row, j) => j === ri ? { ...row, label } : row));
+  }
+  function addRefToRow(ri: number) {
+    setRows(prev => prev.map((row, j) => j === ri ? { ...row, refs: [...row.refs, { categoryId: '', dimensionId: '', option: '' }] } : row));
+  }
+  function removeRefFromRow(ri: number, refi: number) {
+    setRows(prev => prev.map((row, j) => j === ri
+      ? (row.refs.length === 1 ? row : { ...row, refs: row.refs.filter((_, k) => k !== refi) })
+      : row));
+  }
+  function updateRef(ri: number, refi: number, patch: Partial<CustomRef>) {
+    setRows(prev => prev.map((row, j) => j === ri
+      ? { ...row, refs: row.refs.map((ref, k) => k === refi ? { ...ref, ...patch } : ref) }
+      : row));
+  }
+
+  function addGroup() {
+    setGroups(prev => [...prev, { label: '', options: [] }]);
+  }
+  function removeGroup(gi: number) {
+    setGroups(prev => prev.filter((_, j) => j !== gi));
+  }
+  function updateGroupLabel(gi: number, label: string) {
+    setGroups(prev => prev.map((g, j) => j === gi ? { ...g, label } : g));
+  }
+  function addOptionToGroup(gi: number, opt: string) {
+    setGroups(prev => prev.map((g, j) => j === gi ? { ...g, options: [...g.options, opt] } : g));
+  }
+  function removeOptionFromGroup(gi: number, oi: number) {
+    setGroups(prev => prev.map((g, j) => j === gi ? { ...g, options: g.options.filter((_, k) => k !== oi) } : g));
+  }
+
+  /** Libellés d'option proposés pour une catégorie/dimension : catalogue curé (`options`) en tête,
+   *  puis tout libellé observé dans les événements mais non curé (les valeurs restent libres, cf.
+   *  `TacticalEventValue`) — pour ne jamais bloquer sur une dimension sans catalogue configuré. */
+  function optionLabelsFor(catId: string, dimId: string): string[] {
+    if (!catId || !dimId) return [];
+    const curated = options.filter(o => o.dimensionId === dimId).sort((a, b) => a.sortOrder - b.sortOrder).map(o => o.label);
+    const seen = new Set(curated);
+    const observed: string[] = [];
+    for (const e of events) {
+      if (e.categoryId !== catId) continue;
+      const v = e.values.find(v => v.dimensionId === dimId);
+      if (v && !seen.has(v.label)) { seen.add(v.label); observed.push(v.label); }
+    }
+    return [...curated, ...observed.sort((a, b) => a.localeCompare(b))];
+  }
 
   // Bornes approximatives de la période disponible, dérivées des matchs déjà chargés (pas de
   // dépendance à des bornes de saison passées en prop) — servent de repère aux préréglages des
@@ -86,6 +175,18 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
   const dimensionIsDangling = (id: string) => !!id && !categoryDimensions.some(d => d.id === id);
 
   function buildTypeConfig(): Record<string, unknown> | null {
+    if (type === 'custom_table') {
+      const validRows = rows
+        .map(row => ({
+          label: row.label.trim() || undefined,
+          refs: row.refs.filter(r => r.categoryId && r.dimensionId && r.option &&
+            categories.some(c => c.id === r.categoryId) &&
+            dimensions.some(d => d.id === r.dimensionId && d.categoryId === r.categoryId)
+          ),
+        }))
+        .filter(row => row.refs.length > 0);
+      return validRows.length > 0 ? { rows: validRows } : null;
+    }
     if (!categoryId || categoryIsDangling) return null;
     if (needsTwoDimensions) {
       if (!dimensionId || !dimensionIdY || dimensionId === dimensionIdY) return null;
@@ -103,6 +204,12 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
         if (rangeA.from > rangeA.to || rangeB.from > rangeB.to) return null;
         return { dimensionId, periodA: { from: rangeA.from, to: rangeA.to }, periodB: { from: rangeB.from, to: rangeB.to } };
       }
+      if (type === 'dimension_table' || type === 'pie_chart') {
+        const validGroups = groups
+          .map(g => ({ label: g.label.trim() || undefined, options: g.options }))
+          .filter(g => g.options.length >= 2);
+        return validGroups.length > 0 ? { dimensionId, groups: validGroups } : { dimensionId };
+      }
       return { dimensionId };
     }
     return {};
@@ -114,9 +221,12 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
   }
 
   const draftConfig = buildConfig();
-  const draftWidget: WidgetLike | null = draftConfig ? { type, categoryId, title: title || null, config: draftConfig } : null;
+  const draftWidget: WidgetLike | null = draftConfig
+    ? { type, categoryId: type === 'custom_table' ? null : categoryId, title: title || null, config: draftConfig }
+    : null;
 
   function invalidMessage(): string {
+    if (type === 'custom_table') return 'Choisissez au moins une catégorie, une dimension et une option pour chaque ligne.';
     if (categoryIsDangling) return 'La catégorie de ce bloc a été supprimée — choisissez-en une autre.';
     if (needsTwoDimensions && (dimensionIsDangling(dimensionId) || dimensionIsDangling(dimensionIdY))) {
       return 'Une des dimensions de ce bloc a été supprimée — resélectionnez-la.';
@@ -137,7 +247,7 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
     }
     setSaving(true);
     setError('');
-    const input: TacticalWidgetInput = { type, categoryId, title: title || null, config: draftWidget.config };
+    const input: TacticalWidgetInput = { type, categoryId: draftWidget.categoryId, title: title || null, config: draftWidget.config };
     try {
       const saved = mode === 'edit' && initialWidget?.id
         ? await tacticalDashboardApi.updateWidget(initialWidget.id, input)
@@ -166,12 +276,18 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
         <div style={{ flex: '1 1 280px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <label style={labelStyle}>Type de bloc</label>
-            <select value={type} onChange={e => { setType(e.target.value as TacticalWidgetType); setDimensionId(''); setDimensionIdY(''); }} style={selectStyle}>
+            <select value={type} onChange={e => {
+              setType(e.target.value as TacticalWidgetType);
+              setDimensionId(''); setDimensionIdY('');
+              setGroups([]);
+              setRows([{ label: '', refs: [{ categoryId: '', dimensionId: '', option: '' }] }]);
+            }} style={selectStyle}>
               {(Object.entries(WIDGET_TYPE_LABELS) as [TacticalWidgetType, string][]).map(([t, label]) => (
                 <option key={t} value={t}>{label}</option>
               ))}
             </select>
           </div>
+          {type !== 'custom_table' && (
           <div>
             <label style={labelStyle}>Catégorie</label>
             <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setDimensionId(''); setDimensionIdY(''); }} style={selectStyle}>
@@ -179,16 +295,17 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
               {availableCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          {(needsOneDimension || needsTwoDimensions || optionalDimension) && categoryId && (
+          )}
+          {type !== 'custom_table' && (needsOneDimension || needsTwoDimensions || optionalDimension) && categoryId && (
             <div>
               <label style={labelStyle}>{needsTwoDimensions ? 'Dimension X' : 'Dimension'}</label>
-              <select value={dimensionId} onChange={e => setDimensionId(e.target.value)} style={selectStyle}>
+              <select value={dimensionId} onChange={e => { setDimensionId(e.target.value); setGroups([]); }} style={selectStyle}>
                 <option value="">{optionalDimension ? 'Toute la catégorie' : 'Choisir…'}</option>
                 {categoryDimensions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
           )}
-          {needsTwoDimensions && categoryId && (
+          {type !== 'custom_table' && needsTwoDimensions && categoryId && (
             <div>
               <label style={labelStyle}>Dimension Y</label>
               <select value={dimensionIdY} onChange={e => setDimensionIdY(e.target.value)} style={selectStyle}>
@@ -197,13 +314,105 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
               </select>
             </div>
           )}
-          {needsTwoDimensions && categoryId && (
+          {type !== 'custom_table' && needsTwoDimensions && categoryId && (
             <div>
               <label style={labelStyle}>Affichage</label>
               <select value={displayMode} onChange={e => setDisplayMode(e.target.value as 'table' | 'chart')} style={selectStyle}>
                 <option value="table">Tableau croisé</option>
                 <option value="chart">Graphique (une ligne par option Y)</option>
               </select>
+            </div>
+          )}
+          {type === 'custom_table' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label style={labelStyle}>Lignes du tableau</label>
+              {rows.map((row, ri) => (
+                <div key={ri} style={{ border: '1px solid #2A2F3A', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input value={row.label} onChange={e => updateRowLabel(ri, e.target.value)} placeholder="Libellé de la ligne (optionnel)" style={{ ...selectStyle, flex: 1 }} />
+                    <button type="button" onClick={() => removeRow(ri)} disabled={rows.length === 1}
+                      style={{ background: 'none', border: 'none', color: rows.length === 1 ? '#2A2F3A' : '#94A3B8', cursor: rows.length === 1 ? 'not-allowed' : 'pointer', padding: 4, flexShrink: 0 }}
+                      title="Retirer la ligne">
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {row.refs.map((ref, refi) => {
+                    const refDimensions = dimensions.filter(d => d.categoryId === ref.categoryId).sort((a, b) => a.sortOrder - b.sortOrder);
+                    const refOptions = optionLabelsFor(ref.categoryId, ref.dimensionId);
+                    return (
+                      <div key={refi} style={{ display: 'flex', gap: 6, alignItems: 'center', paddingLeft: row.refs.length > 1 ? 10 : 0 }}>
+                        {row.refs.length > 1 && <span style={{ color: '#475569', fontSize: '0.7rem', flexShrink: 0 }}>+</span>}
+                        <select value={ref.categoryId} onChange={e => updateRef(ri, refi, { categoryId: e.target.value, dimensionId: '', option: '' })} style={{ ...selectStyle, flex: 1 }}>
+                          <option value="">Catégorie…</option>
+                          {availableCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <select value={ref.dimensionId} onChange={e => updateRef(ri, refi, { dimensionId: e.target.value, option: '' })} style={{ ...selectStyle, flex: 1 }} disabled={!ref.categoryId}>
+                          <option value="">Dimension…</option>
+                          {refDimensions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                        <select value={ref.option} onChange={e => updateRef(ri, refi, { option: e.target.value })} style={{ ...selectStyle, flex: 1 }} disabled={!ref.dimensionId}>
+                          <option value="">Option…</option>
+                          {refOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                        <button type="button" onClick={() => removeRefFromRow(ri, refi)} disabled={row.refs.length === 1}
+                          style={{ background: 'none', border: 'none', color: row.refs.length === 1 ? '#2A2F3A' : '#94A3B8', cursor: row.refs.length === 1 ? 'not-allowed' : 'pointer', padding: 4, flexShrink: 0 }}
+                          title="Retirer cette option">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button type="button" onClick={() => addRefToRow(ri)}
+                    style={{ alignSelf: 'flex-start', padding: '4px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem' }}>
+                    + Fusionner avec une autre option
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={addRow}
+                style={{ alignSelf: 'flex-start', padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.74rem' }}>
+                + Ajouter une ligne
+              </button>
+            </div>
+          )}
+          {(type === 'dimension_table' || type === 'pie_chart') && categoryId && dimensionId && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={labelStyle}>Regrouper des options (optionnel)</label>
+              {groups.map((g, gi) => {
+                const usedElsewhere = new Set(groups.flatMap((other, oi) => oi === gi ? [] : other.options));
+                const available = optionLabelsFor(categoryId, dimensionId).filter(o => !g.options.includes(o) && !usedElsewhere.has(o));
+                return (
+                  <div key={gi} style={{ border: '1px solid #2A2F3A', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input value={g.label} onChange={e => updateGroupLabel(gi, e.target.value)} placeholder="Libellé du groupe (optionnel)" style={{ ...selectStyle, flex: 1 }} />
+                      <button type="button" onClick={() => removeGroup(gi)}
+                        style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, flexShrink: 0 }}
+                        title="Retirer le groupe">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                      {g.options.map((opt, oi) => (
+                        <span key={oi} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 12, fontSize: '0.74rem', color: '#F1F5F9' }}>
+                          {opt}
+                          <button type="button" onClick={() => removeOptionFromGroup(gi, oi)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                      {available.length > 0 && (
+                        <select value="" onChange={e => { if (e.target.value) addOptionToGroup(gi, e.target.value); }} style={{ width: 'auto', padding: '3px 6px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', fontSize: '0.72rem' }}>
+                          <option value="">+ option…</option>
+                          {available.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <button type="button" onClick={addGroup}
+                style={{ alignSelf: 'flex-start', padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.74rem' }}>
+                + Regrouper des options
+              </button>
             </div>
           )}
           {type === 'period_comparison' && (

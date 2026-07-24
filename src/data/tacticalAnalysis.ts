@@ -73,12 +73,20 @@ export function buildValueByEvent(events: TacticalEvent[], categoryId: string, v
   return map;
 }
 
+/** Fusion de plusieurs options d'une même dimension en une seule ligne sommée (ex. "P-SIDE 4" + "P-SIDE 5"). */
+export interface RowGroupDef {
+  label?: string;
+  options: string[];
+}
+
 /**
  * Table Option / Actions / Répartition % / Valeur / Rentabilité pour une dimension d'une
  * catégorie. `expectedOptions` (catalogue configuré, dans l'ordre voulu) fait apparaître une
  * ligne à 0 pour tout ce qui n'a aucune action sur la période — sans catalogue (défaut),
  * seules les valeurs effectivement observées apparaissent, triées par volume (comportement
- * historique inchangé).
+ * historique inchangé). `groups` fusionne certaines options en une seule ligne sommée (actions
+ * et valeur sommées) — la rentabilité de la ligne fusionnée reste un calcul (valeur/actions
+ * ayant une valeur numérique), jamais une somme de rentabilités.
  */
 export function buildDimensionTable(
   events: TacticalEvent[],
@@ -86,6 +94,7 @@ export function buildDimensionTable(
   dimension: TacticalDimension,
   valueByEvent: Map<string, number>,
   expectedOptions: string[] = [],
+  groups: RowGroupDef[] = [],
 ): DimensionTable {
   const counts = new Map<string, number>();
   const sums = new Map<string, number>();
@@ -105,6 +114,25 @@ export function buildDimensionTable(
     }
   }
 
+  const groupedAwayLabels = new Set<string>();
+  for (const group of groups) {
+    if (group.options.length < 2) continue; // un groupe d'une seule option n'a aucun effet
+    let mergedCount = 0, mergedSum = 0, mergedSumCount = 0, anyPresent = false;
+    for (const opt of group.options) {
+      if (counts.has(opt)) anyPresent = true;
+      mergedCount += counts.get(opt) ?? 0;
+      mergedSum += sums.get(opt) ?? 0;
+      mergedSumCount += sumCounts.get(opt) ?? 0;
+      counts.delete(opt); sums.delete(opt); sumCounts.delete(opt);
+      groupedAwayLabels.add(opt);
+    }
+    if (!anyPresent) continue;
+    const mergedLabel = group.label?.trim() || group.options.join(' + ');
+    counts.set(mergedLabel, mergedCount);
+    sums.set(mergedLabel, mergedSum);
+    sumCounts.set(mergedLabel, mergedSumCount);
+  }
+
   const totalActions = [...counts.values()].reduce((a, b) => a + b, 0);
   const makeRow = (label: string): DimensionOptionRow => {
     const actions = counts.get(label) ?? 0;
@@ -118,17 +146,98 @@ export function buildDimensionTable(
     };
   };
 
-  const expectedSet = new Set(expectedOptions);
+  const remainingExpected = expectedOptions.filter(label => !groupedAwayLabels.has(label));
+  const expectedSet = new Set(remainingExpected);
   const extraLabels = [...counts.keys()]
     .filter(label => !expectedSet.has(label))
     .sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0));
-  const rows = [...expectedOptions.map(makeRow), ...extraLabels.map(makeRow)];
+  const rows = [...remainingExpected.map(makeRow), ...extraLabels.map(makeRow)];
 
   const totalSum = [...sums.values()].reduce((a, b) => a + b, 0);
   const totalSumCount = [...sumCounts.values()].reduce((a, b) => a + b, 0);
 
   return {
     dimension,
+    rows,
+    totalActions,
+    totalValeur: totalSumCount > 0 ? totalSum : null,
+    totalRentabilite: totalSumCount > 0 ? totalSum / totalSumCount : null,
+  };
+}
+
+/** Référence à une option précise d'une dimension d'une catégorie — brique d'une ligne de tableau personnalisé. */
+export interface CustomTableOptionRef {
+  categoryId: string;
+  dimensionId: string;
+  option: string;
+}
+
+/** Une ligne d'un tableau personnalisé : une option seule, ou plusieurs options fusionnées (même dimension ou non) en une ligne sommée. */
+export interface CustomTableRowDef {
+  label?: string;
+  refs: CustomTableOptionRef[];
+}
+
+export interface CustomTableResult {
+  rows: DimensionOptionRow[];
+  totalActions: number;
+  totalValeur: number | null;
+  totalRentabilite: number | null;
+}
+
+/**
+ * Construit un tableau dont chaque ligne est composée librement par l'utilisateur : une option
+ * de n'importe quelle dimension/catégorie, ou plusieurs fusionnées en une seule ligne sommée
+ * (actions et valeur sommées sur tous les `refs` de la ligne — la rentabilité reste un calcul,
+ * jamais une somme). `sharePct` est calculé sur le total des lignes définies, pas sur un total
+ * de dimension — chaque ligne est traitée comme "l'option" d'un tableau synthétique.
+ */
+export function buildCustomTableRows(events: TacticalEvent[], dimensions: TacticalDimension[], rowDefs: CustomTableRowDef[]): CustomTableResult {
+  const valueByEventByCategory = new Map<string, Map<string, number>>();
+  function valueByEventFor(categoryId: string): Map<string, number> {
+    let m = valueByEventByCategory.get(categoryId);
+    if (!m) {
+      const categoryDimensions = dimensions.filter(d => d.categoryId === categoryId);
+      const valueDimension = findValueDimension(categoryDimensions, categoryId);
+      m = buildValueByEvent(events, categoryId, valueDimension);
+      valueByEventByCategory.set(categoryId, m);
+    }
+    return m;
+  }
+
+  const raw = rowDefs.map(def => {
+    let actions = 0, sum = 0, sumCount = 0;
+    const labels: string[] = [];
+    for (const ref of def.refs) {
+      const dim = dimensions.find(d => d.id === ref.dimensionId && d.categoryId === ref.categoryId);
+      if (!dim) continue;
+      labels.push(ref.option);
+      const valueByEvent = valueByEventFor(ref.categoryId);
+      for (const event of events) {
+        if (event.categoryId !== ref.categoryId) continue;
+        const value = event.values.find(v => v.dimensionId === dim.id);
+        if (!value || value.label !== ref.option) continue;
+        actions++;
+        const v = valueByEvent.get(event.id);
+        if (v !== undefined) { sum += v; sumCount++; }
+      }
+    }
+    return { label: def.label?.trim() || labels.join(' + ') || '—', actions, sum, sumCount };
+  });
+
+  const totalActions = raw.reduce((a, r) => a + r.actions, 0);
+  const rows: DimensionOptionRow[] = raw.map(r => ({
+    label: r.label,
+    actions: r.actions,
+    sharePct: totalActions > 0 ? r.actions / totalActions : 0,
+    valeur: r.sumCount > 0 ? r.sum : null,
+    rentabilite: r.sumCount > 0 ? r.sum / r.sumCount : null,
+  }));
+
+  const totalSum = raw.reduce((a, r) => a + r.sum, 0);
+  const totalSumCount = raw.reduce((a, r) => a + r.sumCount, 0);
+
+  return {
     rows,
     totalActions,
     totalValeur: totalSumCount > 0 ? totalSum : null,

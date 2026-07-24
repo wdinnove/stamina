@@ -12,7 +12,7 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, TacticalMatchManager, TacticalIndicatorCatalog,
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { FilterField, filterControlStyle } from '../components/FilterField';
@@ -29,7 +29,7 @@ import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 import { fmt1 } from '../utils/format';
 import {
-  playerAttributeIndicators, getSeries, detectRiskAlerts, buildTacticalIndicators,
+  playerAttributeIndicators, getSeries, detectRiskAlerts,
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
 import type { MatchStat, TeamMatchStat, Action, Match } from '../data/types';
@@ -92,7 +92,8 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
-         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations' | 'tactical'
+         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'tactical-brutes' | 'tactical-dashboard'
          | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
 const TAB_SLUGS: Record<string, Tab> = {
@@ -111,7 +112,9 @@ const TAB_SLUGS: Record<string, Tab> = {
   'bien-etre':               'wellness',
   'medical':                 'medical',
   'correlations':            'correlations',
-  'tendances-tactiques':     'tactical',
+  'tendances-tactiques':      'tactical-brutes', // ancien slug — pointait vers l'unique onglet "Tactiques", conservé pour ne pas casser les liens existants
+  'stats-tactiques-brutes':    'tactical-brutes',
+  'stats-tactiques-dashboard': 'tactical-dashboard',
   'objectifs':               'objectives',
   'par-match':               'compare-match',
   'par-saison':              'compare-season',
@@ -137,7 +140,10 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Statistiques matchs', tabs: [
     { key: 'matches-basic',    slug: 'stats-matchs',          label: 'Brutes' },
     { key: 'matches-advanced', slug: 'stats-matchs-avancees', label: 'Avancées' },
-    { key: 'tactical',         slug: 'tendances-tactiques',   label: 'Tactiques' },
+  ] },
+  { label: 'Statistiques tactiques', tabs: [
+    { key: 'tactical-brutes',    slug: 'stats-tactiques-brutes',    label: 'Brutes' },
+    { key: 'tactical-dashboard', slug: 'stats-tactiques-dashboard', label: 'Tableau de bord' },
   ] },
   { label: 'Analyse', tabs: [
     { key: 'objectives',   slug: 'objectifs',          label: 'Objectifs' },
@@ -164,7 +170,7 @@ const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
   impact: 'saison', pca: 'saison', ranking: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
-  tactical: 'saison',
+  'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
 };
 
@@ -175,7 +181,7 @@ export default function PerformanceCollectivePage() {
   const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'overview';
   const setActiveTab = (slug: string) => navigate(`/performance-collective/${slug}`, { replace: true });
 
-  const { data, loading, seasonStart, seasonEnd, reload: reloadPerformanceData } = usePerformanceData();
+  const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
   const dateRange = useDateRange(seasonStart, TAB_DEFAULT_PRESET[activeTab], seasonEnd);
   const { from, to } = dateRange;
   const showSeasonDiff = dateRange.preset !== 'saison';
@@ -197,7 +203,6 @@ export default function PerformanceCollectivePage() {
   const tacticalDimensions = data?.tactical?.dimensions ?? [];
   const tacticalOptions    = data?.tactical?.options ?? [];
   const tacticalEvents     = data?.tactical?.events ?? [];
-  const tacticalIndicators = useMemo(() => buildTacticalIndicators(data?.tactical), [data?.tactical]);
   const [tacticalOpponents, setTacticalOpponents]   = useState<Set<string>>(new Set());
   const [tacticalHomeAway, setTacticalHomeAway]     = useState<TacticalHomeAwayFilter>('all');
   const [tacticalResult, setTacticalResult]         = useState<TacticalResultFilter>('all');
@@ -687,7 +692,7 @@ export default function PerformanceCollectivePage() {
                     <option value="table">Tableau</option>
                   </select>
                 </FilterField>
-              ) : activeTab === 'tactical' ? (
+              ) : (activeTab === 'tactical-brutes' || activeTab === 'tactical-dashboard') ? (
                 <TacticalFilterBar
                   opponents={[...new Set(teamStats.map(t => t.opponent))].sort((a, b) => a.localeCompare(b))}
                   selectedOpponents={tacticalOpponents}
@@ -1352,8 +1357,8 @@ export default function PerformanceCollectivePage() {
         />
       )}
 
-      {/* ══ TENDANCES TACTIQUES ══════════════════════════════════════════════ */}
-      {activeTab === 'tactical' && (
+      {/* ══ STATISTIQUES TACTIQUES (Brutes / Tableau de bord) ══════════════════ */}
+      {(activeTab === 'tactical-brutes' || activeTab === 'tactical-dashboard') && (
         loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
             <div style={{ width: 20, height: 20, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -1393,11 +1398,8 @@ export default function PerformanceCollectivePage() {
             .map(t => ({ id: t.matchId, date: t.date, label: `vs ${t.opponent}` }));
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {matchRefs.length > 0 && (
-                <TacticalMatchManager matches={matchRefs} onDeleted={reloadPerformanceData} />
-              )}
-              <TacticalIndicatorCatalog indicators={tacticalIndicators} />
               <TacticalStatsSection
+                view={activeTab === 'tactical-brutes' ? 'brutes' : 'dashboard'}
                 teamId={selected.team.id}
                 events={eventsInRange}
                 categories={tacticalCategories}

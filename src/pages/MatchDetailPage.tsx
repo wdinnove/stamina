@@ -211,7 +211,7 @@ export default function MatchDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'tactical' || !match || tacticalLoaded || loadingTactical) return;
+    if ((activeTab !== 'tactical_brutes' && activeTab !== 'tactical_dashboard') || !match || tacticalLoaded || loadingTactical) return;
     loadTactical(match.id, match.teamId);
   }, [activeTab, match, tacticalLoaded, loadingTactical, loadTactical]);
 
@@ -517,7 +517,8 @@ export default function MatchDetailPage() {
               { id: 'comp_players',  label: 'Compar. joueurs', short: 'Joueurs'   },
               { id: 'comp_teams',    label: 'Compar. équipes', short: 'Équipes'   },
               { id: 'comp_matches',  label: 'Compar. saison',  short: 'Saison'    },
-              { id: 'tactical',      label: 'Tactique',        short: 'Tactique'  },
+              { id: 'tactical_brutes',    label: 'Statistiques tactiques brutes', short: 'Tactique brutes'   },
+              { id: 'tactical_dashboard', label: 'Tableau de bord tactique',      short: 'Tableau de bord'   },
             ] as const).map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className="px-3 sm:px-[18px] py-2.5 sm:py-3"
@@ -1197,14 +1198,35 @@ export default function MatchDetailPage() {
             );
           })()}
 
-          {/* ── TACTIQUE ── */}
-          {activeTab === 'tactical' && (
+          {/* ── STATISTIQUES TACTIQUES BRUTES ── */}
+          {activeTab === 'tactical_brutes' && (
             loadingTactical ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
                 <div style={{ width: 20, height: 20, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
               </div>
             ) : (
               <TacticalStatsSection
+                view="brutes"
+                teamId={match.teamId}
+                events={tacticalEvents}
+                categories={tacticalCategories}
+                dimensions={tacticalDimensions}
+                options={tacticalOptions}
+                matches={[{ id: match.id, date: match.date, label: `vs ${match.opponent}` }]}
+                emptyMessage="Aucune donnée tactique importée."
+              />
+            )
+          )}
+
+          {/* ── TABLEAU DE BORD TACTIQUE ── */}
+          {activeTab === 'tactical_dashboard' && (
+            loadingTactical ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+                <div style={{ width: 20, height: 20, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              </div>
+            ) : (
+              <TacticalStatsSection
+                view="dashboard"
                 teamId={match.teamId}
                 events={tacticalEvents}
                 categories={tacticalCategories}
