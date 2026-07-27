@@ -1,9 +1,8 @@
-import { useArchetypes } from '../hooks/useArchetypes';
 import { Card, CardTitle } from './Card';
 import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
 import { CATEGORY_LABELS, DIMENSIONS_V1 } from '../data/archetypes';
-import type { ArchetypeCategory, ArchetypeResult, StyleDimensionResult, DimensionDefinition } from '../data/archetypes';
+import type { ArchetypeCategory, ArchetypeResult, StyleDimensionResult, DimensionDefinition, PlayerArchetypeReport } from '../data/archetypes';
 
 const CATEGORY_COLORS: Record<ArchetypeCategory, string> = {
   meneurs: '#3B82F6',
@@ -22,14 +21,17 @@ const DIMENSION_COLOR = '#00E5A0';
 
 interface PlayerArchetypesPanelProps {
   playerId: string;
-  teamId?: string;
-  seasonId?: string;
+  reports: PlayerArchetypeReport[];
+  loading: boolean;
+  error?: unknown;
 }
 
-export function PlayerArchetypesPanel({ playerId, teamId, seasonId }: PlayerArchetypesPanelProps) {
-  const { reports, loading } = useArchetypes(teamId, seasonId);
-
+export function PlayerArchetypesPanel({ playerId, reports, loading, error }: PlayerArchetypesPanelProps) {
   if (loading) return <div style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>;
+
+  if (error) {
+    return <Card><EmptyState message="Impossible de calculer les profils pour le moment — réessaie dans un instant." /></Card>;
+  }
 
   const report = reports.find(r => r.playerId === playerId);
   if (!report) {
@@ -40,6 +42,9 @@ export function PlayerArchetypesPanel({ playerId, teamId, seasonId }: PlayerArch
     .filter(a => a.computable)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   const notComputable = report.archetypes.filter(a => !a.computable);
+  const firstComputable = report.archetypes.find(a => a.computable) ?? report.dimensions.find(d => d.computable);
+  const sample = firstComputable?.sampleSize;
+  const confidence = firstComputable?.confidence;
 
   return (
     <div>
@@ -53,13 +58,15 @@ export function PlayerArchetypesPanel({ playerId, teamId, seasonId }: PlayerArch
           Profils calculés à partir des statistiques de la saison, comparés au reste de l'effectif — pas à une
           référence extérieure. Un badge <Badge color={ESTIMATE_COLOR} label="Estimation" size="sm" style={{ verticalAlign: 'middle' }} /> signale
           un profil approché faute de données de type de jeu (drives, écrans, tirs par zone…).
+          {sample && <> Basé sur <strong style={{ color: '#F1F5F9' }}>{sample.matches} match{sample.matches > 1 ? 's' : ''}</strong> ({Math.round(sample.minutes)} min) cette saison
+          {confidence !== 'high' && <> — échantillon {confidence === 'low' ? 'limité' : 'moyen'}, scores à prendre avec prudence</>}.</>}
         </p>
       </div>
 
       {computable.length === 0 ? (
         <Card><EmptyState message="Historique de matchs encore trop court cette saison pour calculer des profils fiables." /></Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3" style={{ gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 12 }}>
           {computable.map(a => <ArchetypeCard key={a.profileKey} result={a} />)}
         </div>
       )}
@@ -90,7 +97,6 @@ function ArchetypeCard({ result }: { result: ArchetypeResult }) {
   const color = CATEGORY_COLORS[result.category];
   const score = result.score ?? 0;
   const hasDetails = result.topPositive.length > 0 || result.topNegative.length > 0;
-  const sampleTitle = `Basé sur ${result.sampleSize.matches} match${result.sampleSize.matches > 1 ? 's' : ''} (${Math.round(result.sampleSize.minutes)} min)`;
 
   return (
     <Card accentColor={color} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -105,7 +111,7 @@ function ArchetypeCard({ result }: { result: ArchetypeResult }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: result.confidence === 'low' ? 0.72 : 1 }} title={sampleTitle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ flex: 1, height: 8, backgroundColor: '#1E2229', borderRadius: 4, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${score}%`, backgroundColor: color, borderRadius: 4 }} />
         </div>
@@ -113,9 +119,6 @@ function ArchetypeCard({ result }: { result: ArchetypeResult }) {
           {score}%
         </span>
       </div>
-      {result.confidence === 'low' && (
-        <p style={{ margin: '4px 0 0', fontSize: '0.66rem', color: '#64748B' }}>Échantillon limité — score à prendre avec prudence.</p>
-      )}
 
       {hasDetails && (
         <details style={{ marginTop: 10 }}>

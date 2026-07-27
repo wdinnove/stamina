@@ -16,6 +16,9 @@ export interface ExplainedScore {
   topNegative: Contribution[];
 }
 
+/** Nombre de matchs à partir duquel le nombre de matchs cesse de limiter la confiance. */
+const MATCHES_FOR_FULL_CONFIDENCE = 10;
+
 /**
  * Atténue le score brut vers 50 (neutre) proportionnellement aux minutes jouées, trie les
  * contributions par impact absolu décroissant, et applique un garde-fou dur sous
@@ -32,7 +35,13 @@ export function explainScore(
 
   const shrinkFactor = Math.min(1, Math.max(0, sampleSize.minutes / MIN_MINUTES_FULL_CONFIDENCE));
   const score = Math.round(50 + shrinkFactor * (scored.rawScore - 50));
-  const confidence = sampleSize.matches < 5 ? 'low' : sampleSize.matches < 10 ? 'medium' : 'high';
+
+  // La confiance reflète le facteur le plus limitant entre nombre de matchs et minutes jouées —
+  // sinon un joueur avec beaucoup de matchs mais très peu de minutes (garbage time) afficherait
+  // "confiance haute" alors que son score est en réalité fortement atténué vers 50 par le shrinkage.
+  const matchesFactor = Math.min(1, sampleSize.matches / MATCHES_FOR_FULL_CONFIDENCE);
+  const confidenceFactor = Math.min(matchesFactor, shrinkFactor);
+  const confidence = confidenceFactor < 0.34 ? 'low' : confidenceFactor < 0.67 ? 'medium' : 'high';
 
   const sortedByImpact = [...scored.contributions].sort((a, b) => Math.abs(b.points) - Math.abs(a.points));
   const topPositive = sortedByImpact.filter(c => c.points > 0).slice(0, topN);

@@ -44,7 +44,6 @@ function player(playerId: string, over: Partial<RawPlayerStats['advancedAgg']> &
       fte: 0, fpr: Math.round(((fprPer36 ?? 0) * 300) / 36),
       startsCount: 0, plusMinus: 0, plusMinusCount: 0,
     },
-    per36: null,
     advancedAgg: {
       usagePct: null, offRating: null, efgPct: null, ftRate: null, bpPerPoss: null,
       astPct: null, tovPct: null, trebPct: null, drebPct: null, orebPct: null, ptsProd: null,
@@ -117,5 +116,27 @@ describe('computeArchetypesForSquad (intégration)', () => {
     const reports = computeArchetypesForSquad(squad, PROFILES_V1);
     const plannedNotPresent = reports.every(r => r.dimensions.every(d => d.dimensionKey !== 'vitesse_jeu'));
     expect(plannedNotPresent).toBe(true);
+  });
+
+  it('exclut du pool de percentile les joueurs sous le seuil minimum de matchs (pas seulement leur propre score)', () => {
+    const outlierWithFewMatches: RawPlayerStats = {
+      ...player('one-game-wonder', {
+        usagePct: 99, astPct: 99, ptsProd: 99, tovPct: 1,
+        orebPct: 99, drebPct: 99, trebPct: 99, interceptsPer36: 99, fprPer36: 0,
+      }),
+      matches: 2, // sous MIN_MATCHES_HARD_CUTOFF (3)
+    };
+
+    const withoutOutlier = computeArchetypesForSquad(squad, TEST_PROFILES, []);
+    const withOutlier = computeArchetypesForSquad([...squad, outlierWithFewMatches], TEST_PROFILES, []);
+
+    // Le joueur à échantillon insuffisant n'apparaît pas du tout dans le rapport...
+    expect(withOutlier.find(r => r.playerId === 'one-game-wonder')).toBeUndefined();
+
+    // ...et ses valeurs extrêmes ne polluent pas le percentile des autres — le score du hub sur
+    // son propre profil doit être identique, qu'il soit inclus ou non dans l'effectif comparé.
+    const hubScoreWithout = withoutOutlier.find(r => r.playerId === 'hub-player')!.archetypes.find(a => a.profileKey === 'hub')!.score;
+    const hubScoreWith = withOutlier.find(r => r.playerId === 'hub-player')!.archetypes.find(a => a.profileKey === 'hub')!.score;
+    expect(hubScoreWith).toBe(hubScoreWithout);
   });
 });

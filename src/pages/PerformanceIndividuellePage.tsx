@@ -5,6 +5,7 @@ import { statsApi, actionsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { usePlayerAllTimeHistory } from '../hooks/usePlayerAllTimeHistory';
+import { useArchetypes } from '../hooks/useArchetypes';
 import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, MiniStatCard, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
@@ -118,6 +119,9 @@ export default function PerformanceIndividuellePage() {
 
   // ── Données joueur all-time (dynamique / charge physique / bien-être / statistiques) ──
   const { rpe, wellness } = usePlayerAllTimeHistory(id);
+  // Chargé une fois par équipe/saison (pas par joueur) — évite de relancer le calcul de tout
+  // l'effectif à chaque changement de joueur via le sélecteur.
+  const { reports: archetypeReports, loading: archetypesLoading, error: archetypesError } = useArchetypes(selected?.team.id, selected?.season.id);
   const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]>([]);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, TeamMatchStat>>(new Map());
@@ -426,7 +430,7 @@ export default function PerformanceIndividuellePage() {
 
       {/* ══ ARCHÉTYPES (BÊTA) ═══════════════════════════════════════════════ */}
       {activeTab === 'archetypes' && (
-        <PlayerArchetypesPanel playerId={pd.player.id} teamId={selected?.team.id} seasonId={selected?.season.id} />
+        <PlayerArchetypesPanel playerId={pd.player.id} reports={archetypeReports} loading={archetypesLoading} error={archetypesError} />
       )}
 
       {/* ══ MÉDICAL ══════════════════════════════════════════════════════════ */}

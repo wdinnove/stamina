@@ -14,11 +14,6 @@ export interface RawPlayerStats {
     intercepts: number; bp: number; fte: number; fpr: number; startsCount: number;
     plusMinus: number; plusMinusCount: number;
   };
-  /** Moyennes pour 36 minutes jouées (null si minutesTotal = 0). */
-  per36: {
-    pts: number; ro: number; rd: number; pd: number; ct: number;
-    intercepts: number; bp: number; fte: number; fpr: number;
-  } | null;
   advancedAgg: PlayerAdvancedStats;
   /** Phase 2+ : renseigné seulement une fois `tactical_events.player_id` exploitable. */
   tacticalAgg?: Record<string, number> | null;

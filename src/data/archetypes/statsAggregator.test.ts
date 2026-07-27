@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { aggregateRawStats } from './statsAggregator';
-import { makeMatchStat } from './testFixtures';
+import { getFeature } from './featureRegistry';
+import { makeMatchStat, makeTeamMatchStat } from './testFixtures';
 
 describe('aggregateRawStats', () => {
   it('agrège en sommant les composants bruts avant de calculer le ratio (pas une moyenne de ratios par match)', () => {
@@ -23,7 +24,25 @@ describe('aggregateRawStats', () => {
     const m2 = makeMatchStat({ playerId: 'p1', min: 10, ct: 1 });
     const [raw] = aggregateRawStats([m1, m2], new Map(), 'saison-test');
     // (3+1) contres / (30+10) min * 36 = 3.6
-    expect(raw.per36?.ct).toBeCloseTo(3.6, 5);
+    expect(getFeature('ctPer36')!.get(raw)).toBeCloseTo(3.6, 5);
+  });
+
+  it('ne calcule les indicateurs dépendant de l\'équipe (usage%, %PD, %REB...) que sur les matchs ayant des stats collectives correspondantes', () => {
+    const teamStatsByMatchId = new Map();
+    // Un match "normal" avec ses stats collectives : usage% cohérent sur ce seul match.
+    const m1 = makeMatchStat({ playerId: 'p1', matchId: 'm1', min: 20, fg2m: 4, fg2a: 8, fta: 2, bp: 1 });
+    teamStatsByMatchId.set('m1', makeTeamMatchStat({ matchId: 'm1', fg2a: 40, fg3a: 15, fta: 14, bp: 12 }));
+    // Un second match dont les stats individuelles ont été importées SANS les stats collectives
+    // associées (pas de ligne dans teamStatsByMatchId) : gros volume de tirs qui, avant le fix,
+    // gonflait indPoss (numérateur) sans son dénominateur équipe (teamPoss).
+    const m2 = makeMatchStat({ playerId: 'p1', matchId: 'm2', min: 20, fg2m: 10, fg2a: 20, fta: 10, bp: 5 });
+
+    const [withBothMatches] = aggregateRawStats([m1, m2], teamStatsByMatchId, 'saison-test');
+    const [withOnlyMatchedMatch] = aggregateRawStats([m1], teamStatsByMatchId, 'saison-test');
+
+    // usagePct doit être identique qu'on inclue ou non le match sans stats collectives —
+    // puisqu'il ne doit de toute façon pas contribuer au calcul.
+    expect(withBothMatches.advancedAgg.usagePct).toBeCloseTo(withOnlyMatchedMatch.advancedAgg.usagePct!, 5);
   });
 
   it('groupe correctement par joueur au sein d\'un effectif complet', () => {

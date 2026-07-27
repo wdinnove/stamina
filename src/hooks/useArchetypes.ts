@@ -8,14 +8,19 @@ import type { PlayerArchetypeReport } from '../data/archetypes';
 export function useArchetypes(teamId?: string, seasonId?: string) {
   const [reports, setReports] = useState<PlayerArchetypeReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
 
   const reload = useCallback(() => {
-    if (!teamId || !seasonId) { setReports([]); setLoading(false); return; }
+    if (!teamId || !seasonId) { setReports([]); setError(null); setLoading(false); return; }
     setLoading(true);
-    archetypesApi.computeForSeason(teamId, seasonId).then(setReports).finally(() => setLoading(false));
+    setError(null);
+    archetypesApi.computeForSeason(teamId, seasonId)
+      .then(setReports)
+      .catch(err => { setReports([]); setError(err); })
+      .finally(() => setLoading(false));
   }, [teamId, seasonId]);
 
   useEffect(() => { reload(); }, [reload]);
 
-  return { reports, loading, reload };
+  return { reports, loading, error, reload };
 }

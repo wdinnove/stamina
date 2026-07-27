@@ -4,7 +4,7 @@ import type {
 } from './types';
 import { buildFeatureVectors } from './featureBuilder';
 import { scoreIndicators } from './scoringEngine';
-import { explainScore } from './explainer';
+import { explainScore, MIN_MATCHES_HARD_CUTOFF } from './explainer';
 import { PROFILES_V1 } from './profiles/v1';
 import { DIMENSIONS_V1 } from './dimensions/v1';
 
@@ -13,13 +13,19 @@ import { DIMENSIONS_V1 } from './dimensions/v1';
  * score de chaque profil/dimension pour chaque joueur. Ne connaît aucun nom de profil ou de
  * feature en dur — tout vient des registres passés en paramètre (par défaut les catalogues
  * Phase 1). Les entrées `status: 'planned'` sont exclues du calcul.
+ *
+ * Les joueurs sous `MIN_MATCHES_HARD_CUTOFF` matchs sont exclus du pool de comparaison avant
+ * même de calculer les percentiles — pas seulement de l'affichage de leur propre score — pour
+ * qu'un joueur à l'échantillon trop faible (ex. 1 match exceptionnel) ne fausse pas le
+ * classement des autres joueurs de l'effectif.
  */
 export function computeArchetypesForSquad(
   raws: RawPlayerStats[],
   profiles: ProfileDefinition[] = PROFILES_V1,
   dimensions: DimensionDefinition[] = DIMENSIONS_V1,
 ): PlayerArchetypeReport[] {
-  const vectors = buildFeatureVectors(raws);
+  const qualified = raws.filter(r => r.matches >= MIN_MATCHES_HARD_CUTOFF);
+  const vectors = buildFeatureVectors(qualified);
   const activeProfiles = profiles.filter(p => p.status !== 'planned');
   const activeDimensions = dimensions.filter(d => d.status !== 'planned');
 
