@@ -104,3 +104,72 @@ export function parseTacticalCsv(text: string): ParsedCategoryBlock[] {
 
   return blocks;
 }
+
+/** Seules valeurs valides pour la dimension "Valeur" (points marqués sur l'action : 0 à 4). */
+const VALID_VALEUR_VALUES = new Set(['0', '1', '2', '3', '4']);
+
+/** Marqueurs "rien à signaler" habituels des exports du logiciel vidéo, en plus d'une cellule
+ *  réellement vide — normalisés en minuscules, espaces superflus ignorés. */
+const BLANK_TOKENS = new Set(['', '/', '-', '--', '.', 'na', 'n/a']);
+
+/** Points de code des espaces/caractères invisibles Unicode parfois collés en copiant depuis le
+ *  logiciel vidéo (espace insécable, espaces de largeur zéro, marqueur d'ordre d'octets) —
+ *  `String.trim()` ne les reconnaît pas tous. Exprimés en points de code plutôt qu'en littéral
+ *  regex pour rester du texte ASCII lisible, sans caractère invisible réellement présent dans
+ *  ce fichier source. */
+const INVISIBLE_CODE_POINTS = new Set([0x00a0, 0x200b, 0x200c, 0x200d, 0xfeff]);
+
+function stripInvisibleChars(raw: string): string {
+  let out = '';
+  for (const ch of raw) {
+    out += INVISIBLE_CODE_POINTS.has(ch.codePointAt(0) ?? -1) ? ' ' : ch;
+  }
+  return out;
+}
+
+/**
+ * Une cellule "vide" au sens de l'import : réellement vide, espaces seuls (y compris espace
+ * insécable/caractères invisibles), ou un des marqueurs habituels ci-dessus ("/", "-", "n/a"...).
+ * Insensible à la casse.
+ */
+export function isBlankTacticalCell(raw: string | undefined): boolean {
+  const cleaned = stripInvisibleChars(raw ?? '').trim().toLowerCase();
+  return BLANK_TOKENS.has(cleaned);
+}
+
+export interface ExcludedValeurRow {
+  categoryName: string;
+  /** Contenu brut de la cellule ayant causé l'exclusion (ex. "/", vide, texte). */
+  rawValue: string;
+}
+
+/**
+ * Retire les lignes qui ne représentent pas une vraie action :
+ * - si la catégorie a une dimension "Valeur", la ligne doit valoir 0, 1, 2, 3 ou 4 — sinon
+ *   (vide, "/", espace, texte...) elle est écartée ;
+ * - sinon (catégorie sans dimension "Valeur", donc sans score à valider), une ligne où TOUTES
+ *   les cellules sont vides ("/" partout, espaces...) est un espace réservé du logiciel vidéo,
+ *   pas une action, et est écartée elle aussi.
+ * Ces lignes ne doivent jamais devenir des actions en base.
+ */
+export function filterInvalidValeurRows(blocks: ParsedCategoryBlock[]): { blocks: ParsedCategoryBlock[]; excluded: ExcludedValeurRow[] } {
+  const excluded: ExcludedValeurRow[] = [];
+  const filtered = blocks.map(block => {
+    const valeurIndex = block.dimensionNames.findIndex(d => normalizeTacticalName(d) === 'valeur');
+    const rows = block.rows.filter(row => {
+      if (valeurIndex !== -1) {
+        const raw = (row[valeurIndex] ?? '').trim();
+        if (VALID_VALEUR_VALUES.has(raw)) return true;
+        excluded.push({ categoryName: block.categoryName, rawValue: isBlankTacticalCell(raw) ? '(vide)' : raw });
+        return false;
+      }
+      if (row.every(isBlankTacticalCell)) {
+        excluded.push({ categoryName: block.categoryName, rawValue: '(vide)' });
+        return false;
+      }
+      return true;
+    });
+    return rows.length === block.rows.length ? block : { ...block, rows };
+  });
+  return { blocks: filtered, excluded };
+}

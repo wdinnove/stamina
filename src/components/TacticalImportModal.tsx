@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Upload, AlertCircle, CheckCircle2, Download, AlertTriangle } from 'lucide-react';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalImportApi } from '../api/tacticalImport';
-import { parseTacticalCsv, normalizeTacticalName } from '../utils/tacticalCsvParser';
-import type { ParsedCategoryBlock } from '../utils/tacticalCsvParser';
+import { parseTacticalCsv, normalizeTacticalName, filterInvalidValeurRows, isBlankTacticalCell } from '../utils/tacticalCsvParser';
+import type { ParsedCategoryBlock, ExcludedValeurRow } from '../utils/tacticalCsvParser';
 import type { Match, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { Modal } from './Modal';
 import { DropzoneEmptyState } from './DropzoneEmptyState';
@@ -28,7 +28,7 @@ function computeUnexpectedValues(
       if (expected.size === 0) return;
       for (const row of block.rows) {
         const label = row[di];
-        if (!label?.trim() || expected.has(normalizeTacticalName(label))) continue;
+        if (!label || isBlankTacticalCell(label) || expected.has(normalizeTacticalName(label))) continue;
         const key = `${category.id}::${dimension.id}::${normalizeTacticalName(label)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -81,6 +81,7 @@ export function TacticalImportModal({ match, hasExistingData, onClose, onSaved }
   const [options, setOptions] = useState<TacticalDimensionOption[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [blocks, setBlocks] = useState<ParsedCategoryBlock[] | null>(null);
+  const [excludedRows, setExcludedRows] = useState<ExcludedValeurRow[]>([]);
   const [fileError, setFileError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -103,8 +104,10 @@ export function TacticalImportModal({ match, hasExistingData, onClose, onSaved }
           setFileError('Aucune catégorie détectée — vérifiez que le fichier est bien le CSV exporté par le logiciel vidéo.');
           return;
         }
+        const { blocks: validBlocks, excluded } = filterInvalidValeurRows(result);
         setFileError('');
-        setBlocks(result);
+        setBlocks(validBlocks);
+        setExcludedRows(excluded);
       } catch {
         setFileError("Erreur de lecture — vérifiez l'encodage du fichier (UTF-8).");
       }
@@ -135,6 +138,15 @@ export function TacticalImportModal({ match, hasExistingData, onClose, onSaved }
 
   const totalRows = blocks ? blocks.reduce((s, b) => s + b.rows.length, 0) : 0;
   const unexpectedValues = blocks ? computeUnexpectedValues(blocks, categories, dimensions, options) : [];
+
+  const excludedRowGroups = Object.values(
+    excludedRows.reduce<Record<string, { categoryName: string; rawValue: string; count: number }>>((acc, r) => {
+      const key = `${r.categoryName}::${r.rawValue}`;
+      if (!acc[key]) acc[key] = { categoryName: r.categoryName, rawValue: r.rawValue, count: 0 };
+      acc[key].count++;
+      return acc;
+    }, {}),
+  );
 
   return (
     <Modal maxWidth={720} overlayOpacity={0.85} zIndex={200} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
@@ -207,6 +219,21 @@ export function TacticalImportModal({ match, hasExistingData, onClose, onSaved }
                 </div>
               ))}
             </div>
+
+            {excludedRows.length > 0 && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #2A2F3A' }}>
+                <p style={{ color: '#EF4444', fontSize: '0.75rem', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <AlertCircle size={12} /> {excludedRows.length} ligne{excludedRows.length > 1 ? 's' : ''} vide{excludedRows.length > 1 ? 's' : ''} ou sans valeur exploitable (colonne "Valeur" absente du catalogue attendu 0 à 4, ou ligne entièrement vide) — non importée{excludedRows.length > 1 ? 's' : ''} :
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {excludedRowGroups.map((g, i) => (
+                    <span key={i} style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: 3, backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)' }}>
+                      {g.categoryName} · "{g.rawValue}" × {g.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {unexpectedValues.length > 0 && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #2A2F3A' }}>

@@ -1,6 +1,6 @@
 import { supabase } from './client';
 import { tacticalConfigApi } from './tacticalConfig';
-import { normalizeTacticalName } from '../utils/tacticalCsvParser';
+import { normalizeTacticalName, isBlankTacticalCell } from '../utils/tacticalCsvParser';
 import type { ParsedCategoryBlock } from '../utils/tacticalCsvParser';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 
@@ -69,7 +69,7 @@ export const tacticalImportApi = {
         if (!expected) return; // pas de catalogue configuré pour cette dimension : rien à vérifier
         for (const row of block.rows) {
           const label = row[di];
-          if (!label || !label.trim()) continue;
+          if (!label || isBlankTacticalCell(label)) continue;
           if (expected.has(normalizeTacticalName(label))) continue;
           const key = `${block.categoryId}::${dimensionId}::${normalizeTacticalName(label)}`;
           if (seenUnexpected.has(key)) continue;
@@ -98,7 +98,7 @@ export const tacticalImportApi = {
       const valueRows = (insertedEvents ?? []).flatMap((ev: { id: string }, i: number) =>
         block.dimensionIds
           .map((dimensionId, di) => ({ event_id: ev.id, match_id: matchId, dimension_id: dimensionId, label: block.rows[i][di] ?? '' }))
-          .filter(v => v.label.trim() !== '')
+          .filter(v => !isBlankTacticalCell(v.label))
       );
       if (valueRows.length > 0) {
         const { error: valErr } = await supabase.from('tactical_event_values').insert(valueRows);
