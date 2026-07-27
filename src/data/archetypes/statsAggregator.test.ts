@@ -1,0 +1,41 @@
+import { describe, it, expect } from 'vitest';
+import { aggregateRawStats } from './statsAggregator';
+import { makeMatchStat } from './testFixtures';
+
+describe('aggregateRawStats', () => {
+  it('agrège en sommant les composants bruts avant de calculer le ratio (pas une moyenne de ratios par match)', () => {
+    // Match titulaire (35 min) : 10/15 à 2pts (eFG% = 66.7%)
+    const starterMatch = makeMatchStat({ playerId: 'p1', min: 35, fg2m: 10, fg2a: 15 });
+    // Match garbage-time (2 min) : 0/5 à 2pts (eFG% = 0%)
+    const garbageTimeMatch = makeMatchStat({ playerId: 'p1', min: 2, fg2m: 0, fg2a: 5 });
+
+    const [raw] = aggregateRawStats([starterMatch, garbageTimeMatch], new Map(), 'saison-test');
+
+    // Moyenne naïve des deux ratios par match : (66.7 + 0) / 2 = 33.3
+    const naiveAverage = (66.7 + 0) / 2;
+    // Sommation puis ratio unique : (10 + 0) / (15 + 5) * 100 = 50
+    expect(raw.advancedAgg.efgPct).toBeCloseTo(50, 0);
+    expect(raw.advancedAgg.efgPct).not.toBeCloseTo(naiveAverage, 0);
+  });
+
+  it('calcule les volumes per36 à partir des totaux, pas d\'une moyenne des per36 de chaque match', () => {
+    const m1 = makeMatchStat({ playerId: 'p1', min: 30, ct: 3 });
+    const m2 = makeMatchStat({ playerId: 'p1', min: 10, ct: 1 });
+    const [raw] = aggregateRawStats([m1, m2], new Map(), 'saison-test');
+    // (3+1) contres / (30+10) min * 36 = 3.6
+    expect(raw.per36?.ct).toBeCloseTo(3.6, 5);
+  });
+
+  it('groupe correctement par joueur au sein d\'un effectif complet', () => {
+    const p1 = makeMatchStat({ playerId: 'p1', min: 20 });
+    const p2a = makeMatchStat({ playerId: 'p2', min: 15 });
+    const p2b = makeMatchStat({ playerId: 'p2', min: 25 });
+    const raws = aggregateRawStats([p1, p2a, p2b], new Map(), 'saison-test');
+
+    const raw1 = raws.find(r => r.playerId === 'p1')!;
+    const raw2 = raws.find(r => r.playerId === 'p2')!;
+    expect(raw1.matches).toBe(1);
+    expect(raw2.matches).toBe(2);
+    expect(raw2.minutesTotal).toBe(40);
+  });
+});

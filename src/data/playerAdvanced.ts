@@ -1,5 +1,11 @@
 import type { MatchStat, TeamMatchStat } from './types';
 
+/** Champs de MatchStat réellement utilisés par calcPlayerAdvanced — permet de lui passer soit
+ *  un match individuel, soit un agrégat de plusieurs matchs sommés (voir archetypes/statsAggregator.ts). */
+export type PlayerAdvancedInput = Pick<MatchStat, 'fg2m' | 'fg2a' | 'fg3m' | 'fg3a' | 'fta' | 'bp' | 'pts' | 'pd' | 'ro' | 'rd'>;
+/** Idem pour TeamMatchStat. */
+export type TeamAdvancedInput = Pick<TeamMatchStat, 'fg2m' | 'fg2a' | 'fg3m' | 'fg3a' | 'fta' | 'bp' | 'ro' | 'rd' | 'opp_ro' | 'opp_rd'>;
+
 export interface PlayerAdvancedStats {
   usagePct: number | null;    // % Usage
   offRating: number | null;   // Offensive Rating (pts × 100 / indPoss)
@@ -17,7 +23,7 @@ export interface PlayerAdvancedStats {
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function calcPlayerAdvanced(s: MatchStat, team?: TeamMatchStat | null): PlayerAdvancedStats {
+export function calcPlayerAdvanced(s: PlayerAdvancedInput, team?: TeamAdvancedInput | null): PlayerAdvancedStats {
   const fga     = s.fg2a + s.fg3a;
   const fgm     = s.fg2m + s.fg3m;
   const indPoss = fga + 0.44 * s.fta + s.bp;

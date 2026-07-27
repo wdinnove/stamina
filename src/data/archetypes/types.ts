@@ -1,0 +1,120 @@
+import type { PlayerAdvancedStats } from '../playerAdvanced';
+
+/** Stats agrégées d'un joueur sur une période (saison, N derniers matchs...).
+ *  Les ratios de `advancedAgg` sont recalculés à partir des `totals` sommés sur la période
+ *  (pas une moyenne des ratios calculés match par match — voir statsAggregator.ts). */
+export interface RawPlayerStats {
+  playerId: string;
+  periodLabel: string;
+  matches: number;
+  minutesTotal: number;
+  totals: {
+    pts: number; fg2m: number; fg2a: number; fg3m: number; fg3a: number;
+    ftm: number; fta: number; ro: number; rd: number; pd: number; ct: number;
+    intercepts: number; bp: number; fte: number; fpr: number; startsCount: number;
+    plusMinus: number; plusMinusCount: number;
+  };
+  /** Moyennes pour 36 minutes jouées (null si minutesTotal = 0). */
+  per36: {
+    pts: number; ro: number; rd: number; pd: number; ct: number;
+    intercepts: number; bp: number; fte: number; fpr: number;
+  } | null;
+  advancedAgg: PlayerAdvancedStats;
+  /** Phase 2+ : renseigné seulement une fois `tactical_events.player_id` exploitable. */
+  tacticalAgg?: Record<string, number> | null;
+}
+
+export interface FeatureDef {
+  key: string;
+  label: string;
+  source: 'boxscore' | 'advanced' | 'tactical_tagged';
+  /** Retourne null si la feature est indisponible pour ce joueur/période (pas de fallback à 0). */
+  get: (raw: RawPlayerStats) => number | null;
+}
+
+export interface FeatureVector {
+  playerId: string;
+  values: Record<string, { raw: number | null; percentile: number | null }>;
+  sampleSize: { matches: number; minutes: number };
+}
+
+export type ArchetypeCategory =
+  | 'meneurs' | 'shooteurs' | 'createurs' | 'attaque_cercle'
+  | 'interieurs' | 'polyvalents' | 'defense' | 'energie';
+
+export interface ProfileIndicator {
+  featureKey: string;
+  /** Signé : positif = typique du profil si la feature est haute, négatif = doit être basse. */
+  weight: number;
+  /** Si vrai et la feature est indisponible pour le joueur, le profil devient non calculable. */
+  required?: boolean;
+}
+
+export interface ProfileDefinition {
+  key: string;
+  label: string;
+  description: string;
+  category: ArchetypeCategory;
+  indicators: ProfileIndicator[];
+  /** 'available' = box-score suffit ; 'partial_proxy' = approximation faute de données de type
+   *  de jeu ; 'planned' = nécessite la Phase 2 (tagging vidéo par joueur), exclu du calcul. */
+  status: 'available' | 'partial_proxy' | 'planned';
+  caveat?: string;
+}
+
+export interface DimensionIndicator { featureKey: string; weight: number }
+
+export interface DimensionDefinition {
+  key: string;
+  label: string;
+  description: string;
+  indicators: DimensionIndicator[];
+  status: 'available' | 'partial_proxy' | 'planned';
+  caveat?: string;
+}
+
+export interface Contribution {
+  featureKey: string;
+  label: string;
+  rawValue: number | null;
+  percentile: number | null;
+  /** Contribution signée au score, en points (avant clamp final). */
+  points: number;
+}
+
+export interface ArchetypeResult {
+  playerId: string;
+  profileKey: string;
+  label: string;
+  category: ArchetypeCategory;
+  computable: boolean;
+  /** Score final 0-100, après shrinkage petit échantillon. Absent si non calculable. */
+  score: number | null;
+  /** Score avant shrinkage — utile pour debug/tests. */
+  rawScore: number | null;
+  confidence: 'low' | 'medium' | 'high';
+  sampleSize: { matches: number; minutes: number };
+  topPositive: Contribution[];
+  topNegative: Contribution[];
+  caveat?: string;
+}
+
+export interface StyleDimensionResult {
+  playerId: string;
+  dimensionKey: string;
+  label: string;
+  computable: boolean;
+  score: number | null;
+  rawScore: number | null;
+  confidence: 'low' | 'medium' | 'high';
+  sampleSize: { matches: number; minutes: number };
+  topPositive: Contribution[];
+  topNegative: Contribution[];
+  caveat?: string;
+}
+
+export interface PlayerArchetypeReport {
+  playerId: string;
+  archetypes: ArchetypeResult[];
+  dimensions: StyleDimensionResult[];
+}

@@ -11,6 +11,7 @@ export { actionsApi }  from './actions';
 export { objectivesApi } from './objectives';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';
+export { archetypesApi } from './archetypes';
 export { matchesApi }   from './matches';
 export { tacticalConfigApi } from './tacticalConfig';
 export { tacticalEventsApi } from './tacticalEvents';
