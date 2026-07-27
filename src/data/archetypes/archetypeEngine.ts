@@ -2,9 +2,11 @@ import type {
   RawPlayerStats, ProfileDefinition, DimensionDefinition,
   ArchetypeResult, StyleDimensionResult, PlayerArchetypeReport,
 } from './types';
+import type { BasketballPosition } from '../types';
 import { buildFeatureVectors } from './featureBuilder';
 import { scoreIndicators } from './scoringEngine';
 import { explainScore, MIN_MATCHES_HARD_CUTOFF } from './explainer';
+import { POSITION_GROUP, type PositionGroup } from './positionGroups';
 import { PROFILES_V1 } from './profiles/v1';
 import { DIMENSIONS_V1 } from './dimensions/v1';
 
@@ -18,19 +20,40 @@ import { DIMENSIONS_V1 } from './dimensions/v1';
  * même de calculer les percentiles — pas seulement de l'affichage de leur propre score — pour
  * qu'un joueur à l'échantillon trop faible (ex. 1 match exceptionnel) ne fausse pas le
  * classement des autres joueurs de l'effectif.
+ *
+ * Le percentile de chaque joueur se calcule au sein de son groupe de postes (voir
+ * positionGroups.ts), pas contre l'effectif entier : un intérieur n'est comparé qu'à d'autres
+ * intérieurs sur son %PD, sinon son ratio ressort artificiellement excellent face à des
+ * meneurs/arrières qui ont structurellement plus de passes décisives. Un joueur sans poste
+ * connu tombe dans le groupe 'ailier' (le plus transversal), plutôt que d'être exclu du calcul.
+ * Un profil dont `eligiblePositions` ne couvre pas le poste du joueur n'est simplement pas
+ * proposé pour lui (absent du tableau, pas marqué "non calculable").
  */
 export function computeArchetypesForSquad(
   raws: RawPlayerStats[],
+  playerPositions: Map<string, BasketballPosition>,
   profiles: ProfileDefinition[] = PROFILES_V1,
   dimensions: DimensionDefinition[] = DIMENSIONS_V1,
 ): PlayerArchetypeReport[] {
   const qualified = raws.filter(r => r.matches >= MIN_MATCHES_HARD_CUTOFF);
-  const vectors = buildFeatureVectors(qualified);
   const activeProfiles = profiles.filter(p => p.status !== 'planned');
   const activeDimensions = dimensions.filter(d => d.status !== 'planned');
 
+  const byGroup = new Map<PositionGroup, RawPlayerStats[]>();
+  for (const r of qualified) {
+    const position = playerPositions.get(r.playerId);
+    const group = position ? POSITION_GROUP[position] : 'ailier';
+    if (!byGroup.has(group)) byGroup.set(group, []);
+    byGroup.get(group)!.push(r);
+  }
+  const vectors = [...byGroup.values()].flatMap(groupRaws => buildFeatureVectors(groupRaws));
+
   return vectors.map(vector => {
-    const archetypes: ArchetypeResult[] = activeProfiles.map(profile => {
+    const position = playerPositions.get(vector.playerId);
+    const eligibleProfiles = activeProfiles.filter(p =>
+      !p.eligiblePositions || !position || p.eligiblePositions.includes(position));
+
+    const archetypes: ArchetypeResult[] = eligibleProfiles.map(profile => {
       const scored = scoreIndicators(vector, profile.indicators);
       const explained = explainScore(scored, vector.sampleSize);
       return {

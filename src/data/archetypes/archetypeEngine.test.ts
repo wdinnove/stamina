@@ -3,6 +3,9 @@ import { computeArchetypesForSquad } from './archetypeEngine';
 import { PROFILES_V1 } from './profiles/v1';
 import { makeRawPlayerStats } from './testFixtures';
 import type { ProfileDefinition, RawPlayerStats } from './types';
+import type { BasketballPosition } from '../types';
+
+const NO_POSITIONS = new Map<string, BasketballPosition>();
 
 const TEST_PROFILES: ProfileDefinition[] = [
   {
@@ -70,7 +73,7 @@ describe('computeArchetypesForSquad (intégration)', () => {
   }));
 
   it('fait ressortir le profil attendu en tête pour chaque joueur synthétique (sens des poids)', () => {
-    const reports = computeArchetypesForSquad(squad, TEST_PROFILES, []);
+    const reports = computeArchetypesForSquad(squad, NO_POSITIONS, TEST_PROFILES, []);
 
     const scoresOf = (playerId: string) => {
       const report = reports.find(r => r.playerId === playerId)!;
@@ -91,8 +94,8 @@ describe('computeArchetypesForSquad (intégration)', () => {
   });
 
   it('est déterministe : mêmes stats en entrée -> mêmes résultats en sortie', () => {
-    const reportsA = computeArchetypesForSquad(squad, TEST_PROFILES, []);
-    const reportsB = computeArchetypesForSquad(squad, TEST_PROFILES, []);
+    const reportsA = computeArchetypesForSquad(squad, NO_POSITIONS, TEST_PROFILES, []);
+    const reportsB = computeArchetypesForSquad(squad, NO_POSITIONS, TEST_PROFILES, []);
     expect(reportsA).toEqual(reportsB);
   });
 
@@ -104,7 +107,7 @@ describe('computeArchetypesForSquad (intégration)', () => {
       orebPct: 20, drebPct: 20, trebPct: 20,
       interceptsPer36: 2, fprPer36: 2,
     });
-    const reports = computeArchetypesForSquad([soloPlayer], TEST_PROFILES, []);
+    const reports = computeArchetypesForSquad([soloPlayer], NO_POSITIONS, TEST_PROFILES, []);
     expect(reports).toHaveLength(1);
     for (const archetype of reports[0]!.archetypes) {
       expect(archetype.computable).toBe(true);
@@ -113,7 +116,7 @@ describe('computeArchetypesForSquad (intégration)', () => {
   });
 
   it('exclut du calcul les profils/dimensions au statut "planned" (catalogue complet Phase 1)', () => {
-    const reports = computeArchetypesForSquad(squad, PROFILES_V1);
+    const reports = computeArchetypesForSquad(squad, NO_POSITIONS, PROFILES_V1);
     const plannedNotPresent = reports.every(r => r.dimensions.every(d => d.dimensionKey !== 'vitesse_jeu'));
     expect(plannedNotPresent).toBe(true);
   });
@@ -127,8 +130,8 @@ describe('computeArchetypesForSquad (intégration)', () => {
       matches: 2, // sous MIN_MATCHES_HARD_CUTOFF (3)
     };
 
-    const withoutOutlier = computeArchetypesForSquad(squad, TEST_PROFILES, []);
-    const withOutlier = computeArchetypesForSquad([...squad, outlierWithFewMatches], TEST_PROFILES, []);
+    const withoutOutlier = computeArchetypesForSquad(squad, NO_POSITIONS, TEST_PROFILES, []);
+    const withOutlier = computeArchetypesForSquad([...squad, outlierWithFewMatches], NO_POSITIONS, TEST_PROFILES, []);
 
     // Le joueur à échantillon insuffisant n'apparaît pas du tout dans le rapport...
     expect(withOutlier.find(r => r.playerId === 'one-game-wonder')).toBeUndefined();
@@ -138,5 +141,51 @@ describe('computeArchetypesForSquad (intégration)', () => {
     const hubScoreWithout = withoutOutlier.find(r => r.playerId === 'hub-player')!.archetypes.find(a => a.profileKey === 'hub')!.score;
     const hubScoreWith = withOutlier.find(r => r.playerId === 'hub-player')!.archetypes.find(a => a.profileKey === 'hub')!.score;
     expect(hubScoreWith).toBe(hubScoreWithout);
+  });
+
+  it("ne propose un profil qu'aux postes couverts par eligiblePositions", () => {
+    const restrictedProfile: ProfileDefinition = {
+      key: 'restricted', label: 'Profil restreint', description: '', category: 'interieurs', status: 'available',
+      eligiblePositions: ['Pivot'],
+      indicators: [{ featureKey: 'trebPct', weight: 1 }],
+    };
+    const pivotPlayer = player('pivot-player', { trebPct: 20 });
+    const guardPlayer = player('guard-player', { trebPct: 20 });
+    const positions = new Map<string, BasketballPosition>([
+      ['pivot-player', 'Pivot'],
+      ['guard-player', 'Meneur'],
+    ]);
+
+    const reports = computeArchetypesForSquad([pivotPlayer, guardPlayer], positions, [restrictedProfile], []);
+    const pivotReport = reports.find(r => r.playerId === 'pivot-player')!;
+    const guardReport = reports.find(r => r.playerId === 'guard-player')!;
+
+    expect(pivotReport.archetypes.some(a => a.profileKey === 'restricted')).toBe(true);
+    expect(guardReport.archetypes.some(a => a.profileKey === 'restricted')).toBe(false);
+  });
+
+  it("calcule le percentile séparément par groupe de postes (un intérieur n'est comparé qu'aux autres intérieurs)", () => {
+    // %PD très élevé chez les 2 meneurs, plus modeste chez les 2 intérieurs (bigA > bigB).
+    const pgHigh = player('pg-high', { astPct: 40 });
+    const pgLow = player('pg-low', { astPct: 10 });
+    const bigA = player('big-a', { astPct: 15 });
+    const bigB = player('big-b', { astPct: 5 });
+    const positions = new Map<string, BasketballPosition>([
+      ['pg-high', 'Meneur'], ['pg-low', 'Meneur'],
+      ['big-a', 'Ailier Fort'], ['big-b', 'Pivot'],
+    ]);
+    const astProfile: ProfileDefinition[] = [{
+      key: 'ast_test', label: 'Test AST%', description: '', category: 'createurs', status: 'available',
+      indicators: [{ featureKey: 'astPct', weight: 1 }],
+    }];
+
+    const reports = computeArchetypesForSquad([pgHigh, pgLow, bigA, bigB], positions, astProfile, []);
+    const scoreOf = (id: string) => reports.find(r => r.playerId === id)!.archetypes[0]!.score!;
+
+    // bigA (astPct=15) est le MEILLEUR des Intérieurs (Ailier Fort + Pivot regroupés) -> score > 50.
+    // Comparé à tout l'effectif (4 joueurs), 15 serait au contraire dans la moitié basse (< 40 et proche
+    // de 10) -> un score > 50 ici prouve que le pool est bien restreint au groupe de postes.
+    expect(scoreOf('big-a')).toBeGreaterThan(50);
+    expect(scoreOf('big-b')).toBeLessThan(50);
   });
 });

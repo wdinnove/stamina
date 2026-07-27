@@ -1,4 +1,5 @@
 import type { PlayerAdvancedStats } from '../playerAdvanced';
+import type { BasketballPosition } from '../types';
 
 /** Stats agrégées d'un joueur sur une période (saison, N derniers matchs...).
  *  Les ratios de `advancedAgg` sont recalculés à partir des `totals` sommés sur la période
@@ -54,6 +55,10 @@ export interface ProfileDefinition {
   /** 'available' = box-score suffit ; 'partial_proxy' = approximation faute de données de type
    *  de jeu ; 'planned' = nécessite la Phase 2 (tagging vidéo par joueur), exclu du calcul. */
   status: 'available' | 'partial_proxy' | 'planned';
+  /** Postes pour lesquels ce profil a un sens basket (voir positionGroups.ts). Si omis, le
+   *  profil est considéré transversal (proposé à tous les postes) — cas des profils de rôle
+   *  pur (Glue Guy, Energy Player...) qui ne dépendent pas d'une fonction de jeu précise. */
+  eligiblePositions?: BasketballPosition[];
   caveat?: string;
 }
 
