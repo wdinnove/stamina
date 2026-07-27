@@ -127,6 +127,11 @@ export const tacticalConfigApi = {
     if (error) throw error;
   },
 
+  async updateCategoryRentabiliteInversee(id: string, inversee: boolean): Promise<void> {
+    const { error } = await supabase.from('tactical_categories').update({ rentabilite_inversee: inversee }).eq('id', id);
+    if (error) throw error;
+  },
+
   async renameDimension(id: string, name: string): Promise<void> {
     const { error } = await supabase.from('tactical_dimensions').update({ name }).eq('id', id);
     if (error) throw error;
@@ -183,6 +188,7 @@ function toTacticalCategory(row: Record<string, unknown>): TacticalCategory {
     rentabiliteSeuilVert:  Number(row.rentabilite_seuil_vert  ?? 1),
     rentabiliteSeuilBleu:  Number(row.rentabilite_seuil_bleu  ?? 0.6),
     rentabiliteSeuilAmbre: Number(row.rentabilite_seuil_ambre ?? 0.3),
+    rentabiliteInversee:   (row.rentabilite_inversee as boolean | undefined) ?? false,
   };
 }
 

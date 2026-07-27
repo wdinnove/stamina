@@ -2250,6 +2250,11 @@ CREATE POLICY "tactical_dimension_options_write" ON tactical_dimension_options
 -- les blocs catégorie du rapport tactique.
 ALTER TABLE tactical_categories ADD COLUMN color TEXT NOT NULL DEFAULT '#3B82F6';
 
+-- Sens de la rentabilité par catégorie : par défaut plus haut = meilleur (attaque, on veut
+-- marquer). Une catégorie défensive concède des points plutôt que d'en marquer — plus bas y est
+-- meilleur — d'où ce booléen qui inverse la comparaison aux seuils dans rentabiliteColor.
+ALTER TABLE tactical_categories ADD COLUMN rentabilite_inversee BOOLEAN NOT NULL DEFAULT false;
+
 
 -- ================================================================
 -- MIGRATION — Gestion des droits par équipe (superadmin/admin/editor/viewer)

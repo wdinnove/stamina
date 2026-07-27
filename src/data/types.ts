@@ -286,6 +286,10 @@ export interface TacticalCategory {
   rentabiliteSeuilVert: number;
   rentabiliteSeuilBleu: number;
   rentabiliteSeuilAmbre: number;
+  /** true pour une catégorie où une valeur basse est meilleure (ex. défense : peu de points
+   *  concédés) — inverse le sens de comparaison des seuils. false par défaut (attaque : plus haut
+   *  = meilleur). */
+  rentabiliteInversee: boolean;
 }
 
 /** Dimension d'une catégorie (ex. "Valeur", "Temps fort", "Finalité") — auto-créée à l'import. */

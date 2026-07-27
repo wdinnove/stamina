@@ -156,13 +156,15 @@ const thresholdInputStyle: React.CSSProperties = {
   borderRadius: 4, color: '#F1F5F9', fontSize: '0.76rem',
 };
 
-function ThresholdsEditor({ category, onSave }: {
+function ThresholdsEditor({ category, onSave, onInverseeChange }: {
   category: TacticalCategory;
   onSave: (t: { vert: number; bleu: number; ambre: number }) => void;
+  onInverseeChange: (inversee: boolean) => void;
 }) {
   const [vert, setVert] = useState(category.rentabiliteSeuilVert);
   const [bleu, setBleu] = useState(category.rentabiliteSeuilBleu);
   const [ambre, setAmbre] = useState(category.rentabiliteSeuilAmbre);
+  const inversee = category.rentabiliteInversee;
 
   useEffect(() => {
     setVert(category.rentabiliteSeuilVert);
@@ -171,16 +173,22 @@ function ThresholdsEditor({ category, onSave }: {
   }, [category.id, category.rentabiliteSeuilVert, category.rentabiliteSeuilBleu, category.rentabiliteSeuilAmbre]);
 
   const commit = () => onSave({ vert, bleu, ambre });
+  const cmp = inversee ? '≤' : '≥';
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.76rem', color: '#94A3B8', flexWrap: 'wrap' }}>
       <span>Seuils de rentabilité :</span>
-      <span style={{ color: '#00E5A0' }}>Vert ≥</span>
+      <span style={{ color: '#00E5A0' }}>Vert {cmp}</span>
       <input type="number" step="0.1" value={vert} onChange={e => setVert(parseFloat(e.target.value) || 0)} onBlur={commit} style={thresholdInputStyle} />
-      <span style={{ color: '#3B82F6' }}>Bleu ≥</span>
+      <span style={{ color: '#3B82F6' }}>Bleu {cmp}</span>
       <input type="number" step="0.1" value={bleu} onChange={e => setBleu(parseFloat(e.target.value) || 0)} onBlur={commit} style={thresholdInputStyle} />
-      <span style={{ color: '#F59E0B' }}>Ambre ≥</span>
+      <span style={{ color: '#F59E0B' }}>Ambre {cmp}</span>
       <input type="number" step="0.1" value={ambre} onChange={e => setAmbre(parseFloat(e.target.value) || 0)} onBlur={commit} style={thresholdInputStyle} />
+      <label title="Catégorie défensive : une valeur basse (peu de points concédés) est la meilleure — inverse le sens des seuils ci-dessus."
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, cursor: 'pointer', color: inversee ? '#F1F5F9' : '#94A3B8' }}>
+        <input type="checkbox" checked={inversee} onChange={e => onInverseeChange(e.target.checked)} style={{ accentColor: '#00E5A0', cursor: 'pointer' }} />
+        Inversée (défense)
+      </label>
     </div>
   );
 }
@@ -339,12 +347,14 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
           tacticalConfigApi.updateCategoryThresholds(newCat.id, {
             vert: snapshot.category.rentabiliteSeuilVert, bleu: snapshot.category.rentabiliteSeuilBleu, ambre: snapshot.category.rentabiliteSeuilAmbre,
           }),
+          tacticalConfigApi.updateCategoryRentabiliteInversee(newCat.id, snapshot.category.rentabiliteInversee),
         ]);
         setCategories(prev => [...prev, {
           ...newCat, color: snapshot.category.color,
           rentabiliteSeuilVert: snapshot.category.rentabiliteSeuilVert,
           rentabiliteSeuilBleu: snapshot.category.rentabiliteSeuilBleu,
           rentabiliteSeuilAmbre: snapshot.category.rentabiliteSeuilAmbre,
+          rentabiliteInversee: snapshot.category.rentabiliteInversee,
         }]);
         for (const dim of snapshot.dims) {
           const newDim = await tacticalConfigApi.createDimension(teamId, newCat.id, dim.name, dim.sortOrder);
@@ -388,6 +398,11 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
   async function handleThresholds(cat: TacticalCategory, t: { vert: number; bleu: number; ambre: number }) {
     setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, rentabiliteSeuilVert: t.vert, rentabiliteSeuilBleu: t.bleu, rentabiliteSeuilAmbre: t.ambre } : c));
     try { await tacticalConfigApi.updateCategoryThresholds(cat.id, t); } catch (e) { reportError(e); }
+  }
+
+  async function handleInverseeChange(cat: TacticalCategory, inversee: boolean) {
+    setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, rentabiliteInversee: inversee } : c));
+    try { await tacticalConfigApi.updateCategoryRentabiliteInversee(cat.id, inversee); } catch (e) { reportError(e); }
   }
 
   async function handleColorChange(cat: TacticalCategory, color: string) {
@@ -581,7 +596,7 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
             </div>
             {isOpen && !bulkMode && (
               <div style={{ padding: '10px 12px 12px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <ThresholdsEditor category={cat} onSave={t => handleThresholds(cat, t)} />
+                <ThresholdsEditor category={cat} onSave={t => handleThresholds(cat, t)} onInverseeChange={v => handleInverseeChange(cat, v)} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {catDimensions.map((dim, di) => (
                     <div key={dim.id} style={{ borderTop: '1px solid rgba(42,47,58,0.6)', paddingTop: 8 }}>

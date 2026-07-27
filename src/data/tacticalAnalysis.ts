@@ -10,11 +10,20 @@ export interface RentabiliteThresholds {
   vert: number;
   bleu: number;
   ambre: number;
+  /** true pour une catégorie où une valeur basse est meilleure (défense) — inverse le sens de
+   *  comparaison aux seuils. false par défaut (attaque : plus haut = meilleur). */
+  inversee?: boolean;
 }
 const DEFAULT_THRESHOLDS: RentabiliteThresholds = { vert: 1, bleu: 0.6, ambre: 0.3 };
 
 /** Coloration centralisée de la rentabilité — seuils par défaut si aucun n'est fourni (ex. catégorie non chargée). */
 export function rentabiliteColor(v: number, thresholds: RentabiliteThresholds = DEFAULT_THRESHOLDS): string {
+  if (thresholds.inversee) {
+    if (v <= thresholds.vert)  return '#00E5A0';
+    if (v <= thresholds.bleu)  return '#3B82F6';
+    if (v <= thresholds.ambre) return '#F59E0B';
+    return '#EF4444';
+  }
   if (v >= thresholds.vert)  return '#00E5A0';
   if (v >= thresholds.bleu)  return '#3B82F6';
   if (v >= thresholds.ambre) return '#F59E0B';
@@ -22,7 +31,10 @@ export function rentabiliteColor(v: number, thresholds: RentabiliteThresholds = 
 }
 
 export function categoryThresholds(category: TacticalCategory): RentabiliteThresholds {
-  return { vert: category.rentabiliteSeuilVert, bleu: category.rentabiliteSeuilBleu, ambre: category.rentabiliteSeuilAmbre };
+  return {
+    vert: category.rentabiliteSeuilVert, bleu: category.rentabiliteSeuilBleu, ambre: category.rentabiliteSeuilAmbre,
+    inversee: category.rentabiliteInversee,
+  };
 }
 
 export interface DimensionOptionRow {
