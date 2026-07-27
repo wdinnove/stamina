@@ -86,26 +86,26 @@ export function MiniStatCard({ icon, iconBg, title, value, valueColor, subtitle,
   return (
     <div
       onClick={onOpen}
-      className="px-3 py-4 md:px-5 md:py-[22px]"
+      className="px-2.5 py-4 gap-2 md:px-5 md:py-[22px] md:gap-3"
       style={{
         backgroundColor: '#161920', border: `1px solid ${borderColor}35`, borderLeft: `3px solid ${borderColor}`,
         borderRadius: 10,
-        display: 'flex', alignItems: 'center', gap: 12,
+        display: 'flex', alignItems: 'center',
         cursor: onOpen ? 'pointer' : 'default',
       }}
     >
       <div
-        className="w-8 h-8 md:w-12 md:h-12 [&>svg]:!w-4 [&>svg]:!h-4 md:[&>svg]:!w-6 md:[&>svg]:!h-6"
+        className="w-7 h-7 md:w-12 md:h-12 [&>svg]:!w-3.5 [&>svg]:!h-3.5 md:[&>svg]:!w-6 md:[&>svg]:!h-6"
         style={{ borderRadius: '50%', backgroundColor: iconBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
         {icon}
       </div>
       <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-        <p className="text-[0.62rem] md:text-[0.68rem]" style={{ color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, margin: '0 0 2px' }}>
+        <p className="text-[0.58rem] md:text-[0.68rem]" style={{ color: '#475569', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700, margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {title}
         </p>
         <div
-          className={isNumber ? 'text-[1.15rem] md:text-[1.35rem]' : 'text-[1.05rem] md:text-[1.2rem]'}
+          className={isNumber ? 'text-[1.15rem] md:text-[1.35rem]' : 'text-[1.02rem] md:text-[1.2rem]'}
           style={{
             color: valueColor ?? '#475569', fontWeight: 800, lineHeight: 1.15, whiteSpace: 'nowrap',
             overflow: 'hidden', textOverflow: 'ellipsis',
@@ -115,12 +115,12 @@ export function MiniStatCard({ icon, iconBg, title, value, valueColor, subtitle,
           {value}
         </div>
         {subtitle && (
-          <p className="text-[0.68rem] md:text-[0.72rem]" style={{ color: '#475569', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <p className="hidden md:block md:text-[0.72rem]" style={{ color: '#475569', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {subtitle}
           </p>
         )}
       </div>
-      {onOpen && <ArrowRight size={17} color="#475569" style={{ flexShrink: 0 }} />}
+      {onOpen && <ArrowRight size={17} color="#475569" className="hidden md:block" style={{ flexShrink: 0 }} />}
     </div>
   );
 }

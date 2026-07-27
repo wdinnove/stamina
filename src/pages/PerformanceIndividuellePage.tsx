@@ -301,7 +301,7 @@ export default function PerformanceIndividuellePage() {
         <div style={{ marginBottom: 16 }}>
           <PlayerTrendHero pd={pd} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 16 }}>
+        <div className="grid grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 16 }}>
           <MiniStatCard
             icon={<BarChart2 size={18} color="#3B82F6" />} iconBg="#3B82F622"
             title="Statistiques"

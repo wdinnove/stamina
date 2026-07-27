@@ -271,7 +271,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 6 cartes compactes — Matchs / Entraînements / Actions / Infirmerie / Charge physique / Bien-être */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 16 }}>
+      <div className="grid grid-cols-2 lg:grid-cols-3" style={{ gap: 10, marginBottom: 16 }}>
         <MiniStatCard
           icon={<Trophy size={18} color="#F59E0B" />}
           iconBg="#F59E0B22"
