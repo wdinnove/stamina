@@ -22,14 +22,16 @@ export function TacticalCrossMatrix({ matrix, labelX, labelY, thresholds }: {
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={{ ...TH, textAlign: 'left' }}>{labelX} \ {labelY}</th>
+            <th style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2, minWidth: 120 }}>{labelX} \ {labelY}</th>
             {matrix.optionsY.map(y => <th key={y} style={TH}>{y}</th>)}
           </tr>
         </thead>
         <tbody>
-          {matrix.optionsX.map((x, i) => (
-            <tr key={x} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-              <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600 }}>{x}</td>
+          {matrix.optionsX.map((x, i) => {
+            const rowBg = i % 2 === 0 ? '#1A1D24' : '#1E2229';
+            return (
+            <tr key={x} style={{ backgroundColor: rowBg }}>
+              <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, minWidth: 120, backgroundColor: rowBg }}>{x}</td>
               {matrix.optionsY.map(y => {
                 const cell = matrix.cells.get(`${x}::${y}`);
                 return (
@@ -48,7 +50,8 @@ export function TacticalCrossMatrix({ matrix, labelX, labelY, thresholds }: {
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

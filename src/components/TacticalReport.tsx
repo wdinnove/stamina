@@ -50,10 +50,14 @@ function compareRows(a: DimensionOptionRow, b: DimensionOptionRow, key: SortKey,
   return (av - bv) * mul;
 }
 
-function SortableTh({ label, active, dir, onClick, textAlign }: { label: string; active: boolean; dir: SortDir; onClick: () => void; textAlign?: React.CSSProperties['textAlign'] }) {
+function SortableTh({ label, active, dir, onClick, textAlign, sticky, width }: { label: string; active: boolean; dir: SortDir; onClick: () => void; textAlign?: React.CSSProperties['textAlign']; sticky?: boolean; width?: number }) {
   return (
     <th
-      style={{ ...TH, textAlign: textAlign ?? TH.textAlign, cursor: 'pointer', userSelect: 'none' }}
+      style={{
+        ...TH, textAlign: textAlign ?? TH.textAlign, cursor: 'pointer', userSelect: 'none',
+        ...(width !== undefined ? { width } : {}),
+        ...(sticky ? { position: 'sticky', left: 0, zIndex: 2, minWidth: 120 } : {}),
+      }}
       onClick={onClick}
     >
       {label}
@@ -102,41 +106,37 @@ export function DimensionRowsTable({ label, rows, totalActions, totalValeur, tot
         {label}
       </p>
       <div style={{ overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 6 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-          <colgroup>
-            <col />
-            <col style={{ width: COL_WIDTHS.actions }} />
-            <col style={{ width: COL_WIDTHS.repartition }} />
-            <col style={{ width: COL_WIDTHS.valeur }} />
-            <col style={{ width: COL_WIDTHS.rentabilite }} />
-          </colgroup>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <SortableTh label="Option" textAlign="left" active={sortKey === 'label'} dir={sortDir} onClick={() => handleSort('label')} />
-              <SortableTh label="Actions" active={sortKey === 'actions'} dir={sortDir} onClick={() => handleSort('actions')} />
-              <SortableTh label="Répartition" active={sortKey === 'sharePct'} dir={sortDir} onClick={() => handleSort('sharePct')} />
-              <SortableTh label="Valeur" active={sortKey === 'valeur'} dir={sortDir} onClick={() => handleSort('valeur')} />
-              <SortableTh label="Rentabilité" active={sortKey === 'rentabilite'} dir={sortDir} onClick={() => handleSort('rentabilite')} />
+              <SortableTh label="Option" textAlign="left" sticky active={sortKey === 'label'} dir={sortDir} onClick={() => handleSort('label')} />
+              <SortableTh label="Actions" width={COL_WIDTHS.actions} active={sortKey === 'actions'} dir={sortDir} onClick={() => handleSort('actions')} />
+              <SortableTh label="Répartition" width={COL_WIDTHS.repartition} active={sortKey === 'sharePct'} dir={sortDir} onClick={() => handleSort('sharePct')} />
+              <SortableTh label="Valeur" width={COL_WIDTHS.valeur} active={sortKey === 'valeur'} dir={sortDir} onClick={() => handleSort('valeur')} />
+              <SortableTh label="Rentabilité" width={COL_WIDTHS.rentabilite} active={sortKey === 'rentabilite'} dir={sortDir} onClick={() => handleSort('rentabilite')} />
             </tr>
           </thead>
           <tbody>
-            {sortedRows.map((r, i) => (
-              <tr key={r.label} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                <td style={{ ...OPTION_TD, color: '#F1F5F9', fontWeight: 600 }} title={r.label}>{r.label}</td>
-                <td style={{ ...TD, fontWeight: 700 }}>{r.actions}</td>
-                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{Math.round(r.sharePct * 100)}%</td>
-                <td style={{ ...TD, color: '#F1F5F9' }}>{fmtValeur(r.valeur)}</td>
-                <td style={{ ...TD, color: r.rentabilite !== null ? rentabiliteColor(r.rentabilite, thresholds) : '#334155', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                  {fmtRentabilite(r.rentabilite)}
-                </td>
-              </tr>
-            ))}
-            <tr style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-              <td style={{ ...OPTION_TD, color: '#94A3B8', fontWeight: 700 }}>Total</td>
-              <td style={{ ...TD, fontWeight: 700 }}>{totalActions}</td>
-              <td style={TD}>—</td>
-              <td style={{ ...TD, fontWeight: 700 }}>{fmtValeur(totalValeur)}</td>
-              <td style={{ ...TD, color: totalRentabilite !== null ? rentabiliteColor(totalRentabilite, thresholds) : '#334155', fontWeight: 700 }}>
+            {sortedRows.map((r, i) => {
+              const rowBg = i % 2 === 0 ? '#1A1D24' : '#1E2229';
+              return (
+                <tr key={r.label} style={{ backgroundColor: rowBg }}>
+                  <td style={{ ...OPTION_TD, color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, minWidth: 120, backgroundColor: rowBg }} title={r.label}>{r.label}</td>
+                  <td style={{ ...TD, width: COL_WIDTHS.actions, fontWeight: 700 }}>{r.actions}</td>
+                  <td style={{ ...TD, width: COL_WIDTHS.repartition, color: '#475569', fontSize: '0.72rem' }}>{Math.round(r.sharePct * 100)}%</td>
+                  <td style={{ ...TD, width: COL_WIDTHS.valeur, color: '#F1F5F9' }}>{fmtValeur(r.valeur)}</td>
+                  <td style={{ ...TD, width: COL_WIDTHS.rentabilite, color: r.rentabilite !== null ? rentabiliteColor(r.rentabilite, thresholds) : '#334155', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                    {fmtRentabilite(r.rentabilite)}
+                  </td>
+                </tr>
+              );
+            })}
+            <tr style={{ borderTop: '2px solid #2A2F3A', backgroundColor: '#22262E' }}>
+              <td style={{ ...OPTION_TD, color: '#94A3B8', fontWeight: 700, position: 'sticky', left: 0, zIndex: 1, minWidth: 120, backgroundColor: '#22262E' }}>Total</td>
+              <td style={{ ...TD, width: COL_WIDTHS.actions, fontWeight: 700 }}>{totalActions}</td>
+              <td style={{ ...TD, width: COL_WIDTHS.repartition }}>—</td>
+              <td style={{ ...TD, width: COL_WIDTHS.valeur, fontWeight: 700 }}>{fmtValeur(totalValeur)}</td>
+              <td style={{ ...TD, width: COL_WIDTHS.rentabilite, color: totalRentabilite !== null ? rentabiliteColor(totalRentabilite, thresholds) : '#334155', fontWeight: 700 }}>
                 {fmtRentabilite(totalRentabilite)}
               </td>
             </tr>
@@ -189,7 +189,7 @@ export function TacticalReport({ events, categories, dimensions, options = [] }:
       <style>{`
         .tactical-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .tactical-report-grid > div { margin-bottom: 0 !important; }
-        @media (max-width: 640px) { .tactical-report-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 640px) { .tactical-report-grid { grid-template-columns: minmax(0, 1fr); } }
       `}</style>
       {orderedCategories.map(category => {
         const report = buildCategoryReport(events, category, dimensions, options);

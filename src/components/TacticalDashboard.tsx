@@ -88,7 +88,7 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
 
   return (
     <div>
-      <style>{`@media (max-width: 640px) { .tactical-dashboard-grid { grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`@media (max-width: 640px) { .tactical-dashboard-grid { grid-template-columns: minmax(0, 1fr) !important; } }`}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
         <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>Mon tableau de bord</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -273,7 +273,7 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, padding: 20 }}>
         {/* Formulaire */}
-        <div style={{ flex: '1 1 280px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: '1 1 280px', minWidth: 'min(260px, 100%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <label style={labelStyle}>Type de bloc</label>
             <select value={type} onChange={e => {
@@ -453,7 +453,7 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
         </div>
 
         {/* Prévisualisation */}
-        <div style={{ flex: '1 1 340px', minWidth: 300 }}>
+        <div style={{ flex: '1 1 340px', minWidth: 'min(300px, 100%)' }}>
           <label style={labelStyle}>Aperçu</label>
           <div style={{ backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8, padding: 16, minHeight: 160 }}>
             {draftWidget
