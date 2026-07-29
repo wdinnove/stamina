@@ -634,7 +634,17 @@ export default function PerformanceCollectivePage() {
     const evalStats = periodStats.filter(m => m.eval !== null);
     const rawAvgMin = periodStats.length ? Math.round(periodStats.reduce((s, m) => s + (m.min ?? 0), 0) / periodStats.length * 10) / 10 : null;
     const rawEvalAvg = evalStats.length ? Math.round(evalStats.reduce((s, m) => s + Number(m.eval), 0) / evalStats.length * 10) / 10 : null;
-    const rawValue = meanOf(rankDef);
+    // % de tir : somme(réussis)/somme(tentés) sur la période, comme dans l'analyse individuelle —
+    // pas la moyenne des % par match, qui sur-pondère les matchs à faible volume de tirs.
+    const weightedPctOf = (def: IndicatorDef) => {
+      if (!def.weightedPct) return null;
+      const totals = periodStats.reduce((acc, m) => {
+        const { made, att } = def.weightedPct!(m);
+        return { made: acc.made + made, att: acc.att + att };
+      }, { made: 0, att: 0 });
+      return totals.att > 0 ? Math.round(totals.made / totals.att * 10000) / 100 : null;
+    };
+    const rawValue = rankDef.weightedPct ? weightedPctOf(rankDef) : meanOf(rankDef);
     // "25 min" : recalcule comme si chaque joueur jouait 25 min — même convention que le
     // tableau Statistiques joueurs. Ne s'applique qu'aux stats de match qui croissent avec le
     // temps de jeu (pas les %, ni les indicateurs charge/bien-être/présence).

@@ -142,6 +142,13 @@ export interface IndicatorDef {
   valueLabel?: (v: number) => string;
   /** Série individuelle (absent = indisponible en vue joueur) */
   playerSeries?: (d: PlayerCrossData, from: string, to: string) => SeriesPoint[];
+  /**
+   * Pour un indicateur de type pourcentage de tir : compteurs bruts (réussis/tentés) du match.
+   * Permet d'agréger une période en somme/somme (comme dans l'analyse individuelle) plutôt qu'en
+   * moyenne des % par match — la moyenne des % par match sur-pondère les matchs à faible volume
+   * de tirs (biais "moyenne des moyennes").
+   */
+  weightedPct?: (m: MatchStat) => { made: number; att: number };
   /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueurs */
   teamSeries?: (d: TeamCrossData, from: string, to: string) => SeriesPoint[];
 }
@@ -363,9 +370,9 @@ const INDICATORS: IndicatorDef[] = [
   playerMatchStat('plusMinus', '+/-',              '+/-',  '#3B82F6', '',    m => m.plusMinus),
   playerMatchStat('min',       'Minutes',          'Min',  '#94A3B8', 'min', m => m.min),
   playerMatchStat('pts',       'Points marqués',   'Pts',  '#38BDF8', 'pts', m => m.pts),
-  playerMatchStat('fg2Pct',     'Réussite 2 pts (%)',           '2%',  '#00E5A0', '%', m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null),
-  playerMatchStat('fg3Pct',     'Réussite 3 pts (%)',           '3%',  '#2DD4BF', '%', m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null),
-  playerMatchStat('ftPct',      'Réussite lancers francs (%)',  'LF%', '#EAB308', '%', m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null),
+  { ...playerMatchStat('fg2Pct', 'Réussite 2 pts (%)',          '2%',  '#00E5A0', '%', m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null), weightedPct: m => ({ made: m.fg2m, att: m.fg2a }) },
+  { ...playerMatchStat('fg3Pct', 'Réussite 3 pts (%)',          '3%',  '#2DD4BF', '%', m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null), weightedPct: m => ({ made: m.fg3m, att: m.fg3a }) },
+  { ...playerMatchStat('ftPct',  'Réussite lancers francs (%)', 'LF%', '#EAB308', '%', m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null), weightedPct: m => ({ made: m.ftm, att: m.fta }) },
   playerMatchStat('ro',         'Rebonds offensifs',            'RO',  '#F97316', '',  m => m.ro),
   playerMatchStat('rd',         'Rebonds défensifs',            'RD',  '#F59E0B', '',  m => m.rd),
   playerMatchStat('reb',        'Rebonds totaux',               'Reb', '#FB923C', '',  m => m.ro + m.rd),
