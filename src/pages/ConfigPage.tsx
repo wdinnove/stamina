@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell } from 'lucide-react';
+import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell } from 'lucide-react';
 import { TacticalConfigManager } from '../components/TacticalConfigManager';
 import { TeamNotificationsTab } from '../components/TeamNotificationsTab';
-import { ResponsiveTabNav, type TabNavGroup } from '../components/ResponsiveTabNav';
 import { teamsApi, teamRolesApi } from '../api';
 import type { AssignableProfile } from '../api/teamRoles';
 import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
@@ -236,7 +235,8 @@ function CategoryRow({
   );
 }
 
-type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'notifs' | 'categories' | 'tactical' | 'roles';
+export type TeamSection = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'notifs' | 'categories' | 'tactical' | 'roles';
+type Tab = TeamSection;
 
 const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'info',       label: 'Informations', icon: Shield },
@@ -254,6 +254,13 @@ const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
 // seulement admin/superadmin — un editor qui n'a pas accès au reste de la config
 // équipe doit quand même pouvoir atteindre cet onglet.
 const EDITOR_ONLY_TABS: Tab[] = ['tactical'];
+
+/** Sections équipe visibles selon les droits — la navigation vit dans ConfigurationPage. */
+export function teamSections(canConfigureTeam: boolean, canEditTeamData: boolean): { key: TeamSection; label: string }[] {
+  if (canConfigureTeam) return TABS.map(t => ({ key: t.key, label: t.label }));
+  if (canEditTeamData)  return TABS.filter(t => EDITOR_ONLY_TABS.includes(t.key)).map(t => ({ key: t.key, label: t.label }));
+  return [];
+}
 
 const thStyle: React.CSSProperties = {
   padding: '10px 14px', textAlign: 'left', color: '#94A3B8', fontSize: '0.72rem',
@@ -878,10 +885,8 @@ function StaffTab() {
   );
 }
 
-export function TeamConfigTab() {
-  const { selected, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, isSuperadmin, roleLoading, teamRoleLoading, canConfigureTeam, canEditTeamData } = useTeamSeason();
-
-  const [activeTab, setActiveTab] = useState<Tab>('info');
+export function TeamConfigSection({ section }: { section: TeamSection }) {
+  const { selected, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, isSuperadmin, canConfigureTeam } = useTeamSeason();
 
   const [teamForm, setTeamForm] = useState({ name: '', category: '', color: '#3B82F6', description: '' });
   const [teamSaving, setTeamSaving] = useState(false);
@@ -1062,31 +1067,8 @@ export function TeamConfigTab() {
     } finally { setWellnessSaving(false); }
   }
 
-  // roleLoading/teamRoleLoading = rôle en cours de chargement → on bloque aussi (évite le flash de l'UI)
-  if (roleLoading || teamRoleLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-        <div style={{ width: 24, height: 24, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }}>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      </div>
-    );
-  }
-
-  if (!canConfigureTeam && !canEditTeamData) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-        <div style={{ textAlign: 'center', maxWidth: 360 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-            <Settings size={22} style={{ color: '#EF4444' }} />
-          </div>
-          <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Accès restreint</h2>
-          <p style={{ color: '#64748B', fontSize: '0.85rem', margin: 0 }}>La configuration de l'équipe est réservée à l'admin de l'équipe ou au superadmin de l'organisation.</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Chargement des rôles et accès refusé sont gérés en amont par ConfigurationPage,
+  // qui n'affiche la section Équipe que si l'utilisateur y a droit.
   if (!selected) {
     return (
       <div>
@@ -1095,20 +1077,12 @@ export function TeamConfigTab() {
     );
   }
 
-  // Un editor (sans droit de config équipe) n'a accès qu'aux onglets ouverts à editor+
-  // (ex: Tactique) — le reste (seuils, staff, rôles...) reste réservé à admin/superadmin.
-  const visibleTabs = canConfigureTeam ? TABS : TABS.filter(t => EDITOR_ONLY_TABS.includes(t.key));
-  const tabGroups: TabNavGroup[] = [{ tabs: visibleTabs.map(t => ({ key: t.key, slug: t.key, label: t.label })) }];
-  const tab: Tab = visibleTabs.some(t => t.key === activeTab) ? activeTab : (visibleTabs[0]?.key ?? 'tactical');
+  // teamSections() filtre déjà en amont : un editor (sans droit de config équipe) ne
+  // reçoit ici que les sections ouvertes à editor+ (ex: Tactique).
+  const tab: Tab = section;
 
   return (
-    <div className="flex flex-col lg:flex-row" style={{ gap: 20 }}>
-      <div style={{ marginBottom: 4 }}>
-        <ResponsiveTabNav groups={tabGroups} activeKey={tab} onSelect={slug => setActiveTab(slug as Tab)} />
-      </div>
-
-      <div style={{ width: '100%', minWidth: 0, flex: 1 }}>
-
+    <>
       {/* Infos équipe */}
       {tab === 'info' && (
       <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
@@ -1396,9 +1370,7 @@ export function TeamConfigTab() {
       {tab === 'roles' && selected && canConfigureTeam && (
         <TeamRolesTab teamId={selected.team.id} isSuperadmin={isSuperadmin} />
       )}
-
-      </div>{/* fin container centré */}
-    </div>
+    </>
   );
 }
 

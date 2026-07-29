@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Shield, Settings, Pencil, Trash2, Lock, UserCog } from 'lucide-react';
+import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Pencil, Trash2, Lock, UserCog } from 'lucide-react';
 import { teamsApi, playersApi, configApi, teamRolesApi } from '../api';
 import type { AssignableProfile } from '../api/teamRoles';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle, Modal, PlayerEditModal } from '../components';
-import { ResponsiveTabNav, type TabNavGroup } from '../components/ResponsiveTabNav';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Team, Player, Organization, TeamRole, TeamRoleAssignment } from '../data/types';
 
@@ -762,54 +761,25 @@ function OrgConfigTab() {
   );
 }
 
-// ── Page principale ────────────────────────────────────────────────────────────
-const TABS = [
-  { key: 'Informations', icon: Building2 },
-  { key: 'Équipes',      icon: Shield },
-  { key: 'Joueurs',      icon: Users },
-  { key: 'Rôles',        icon: Lock },
+// ── Sections club ──────────────────────────────────────────────────────────────
+// La navigation (et le contrôle d'accès superadmin) vit dans ConfigurationPage :
+// ici on ne fait que rendre la section demandée.
+export const CLUB_SECTIONS = [
+  { key: 'info',    label: 'Informations' },
+  { key: 'teams',   label: 'Équipes' },
+  { key: 'players', label: 'Joueurs' },
+  { key: 'roles',   label: 'Rôles' },
 ] as const;
-type Tab = typeof TABS[number]['key'];
 
-const TAB_GROUPS: TabNavGroup[] = [
-  { tabs: TABS.map(t => ({ key: t.key, slug: t.key, label: t.key })) },
-];
+export type ClubSection = typeof CLUB_SECTIONS[number]['key'];
 
-export function ClubConfigTab() {
-  const { isSuperadmin, roleLoading } = useTeamSeason();
-  const [tab, setTab] = useState<Tab>('Informations');
-
-  // roleLoading = org_role en cours de chargement → on bloque aussi (évite le flash de l'UI admin)
-  if (!isSuperadmin) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-        {roleLoading ? (
-          <Spinner />
-        ) : (
-          <div style={{ textAlign: 'center', maxWidth: 360 }}>
-            <div style={{ width: 52, height: 52, borderRadius: '50%', backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <Settings size={22} style={{ color: '#EF4444' }} />
-            </div>
-            <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Accès restreint</h2>
-            <p style={{ color: '#64748B', fontSize: '0.85rem', margin: 0 }}>La configuration du club est réservée au superadmin de l'organisation.</p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
+export function ClubConfigSection({ section }: { section: ClubSection }) {
   return (
-    <div className="flex flex-col lg:flex-row" style={{ gap: 20 }}>
-      <div style={{ marginBottom: 4 }}>
-        <ResponsiveTabNav groups={TAB_GROUPS} activeKey={tab} onSelect={slug => setTab(slug as Tab)} />
-      </div>
-
-      <div style={{ width: '100%', minWidth: 0, flex: 1 }}>
-        {tab === 'Informations' && <OrgConfigTab />}
-        {tab === 'Équipes'      && <TeamsTab />}
-        {tab === 'Joueurs'      && <PlayersTab />}
-        {tab === 'Rôles'        && <RolesTab />}
-      </div>
-    </div>
+    <>
+      {section === 'info'    && <OrgConfigTab />}
+      {section === 'teams'   && <TeamsTab />}
+      {section === 'players' && <PlayersTab />}
+      {section === 'roles'   && <RolesTab />}
+    </>
   );
 }
