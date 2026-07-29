@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart2 } from 'lucide-react';
 import { Card, CardTitle, EmptyState } from '../components';
 import { evalColor, ortgColor, shotPct } from '../data';
-import { calcPlayerAdvanced } from '../data/playerAdvanced';
+import { calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 
@@ -61,9 +61,11 @@ export function PlayerStatsPanel({
           const rows = effectiveMatchStats;
           // Vue "basic" recalculée comme si chaque match avait été joué en 25 min (percentages
           // inchangés : le facteur d'échelle s'annule au numérateur/dénominateur). La vue "advancée"
-          // garde les stats brutes (ORtg/USG%/eFG%... sont des taux déjà indépendants des minutes,
-          // les recalculer sur des stats mises à l'échelle fausserait les possessions) — seuls Pts et
-          // Pts générés y sont recalculés au rendu, comme côté Performance Collective.
+          // garde les stats brutes (recalculer ORtg/eFG%/etc. sur des stats mises à l'échelle
+          // fausserait les possessions) — seuls Pts et Pts générés y sont recalculés au rendu,
+          // comme côté Performance Collective. Note : USG% n'est PAS un taux indépendant des
+          // minutes à lui seul — calcPlayerAdvancedForMatch le corrige déjà par la part de
+          // minutes jouées quand la donnée équipe le permet (voir playerAdvanced.ts).
           const dispRows = normalize25 ? rows.map(m => {
             const sc = m.min > 0 ? 25 / m.min : 1;
             const nr = (v: number) => Math.round(v * sc * 10) / 10;
@@ -136,7 +138,7 @@ export function PlayerStatsPanel({
               default:       return 0;
             }
           });
-          const advRows = rows.map(m => ({ ...m, adv: calcPlayerAdvanced(m, teamStatsMap.get(m.matchId ?? '')) }));
+          const advRows = rows.map(m => ({ ...m, adv: calcPlayerAdvancedForMatch(m, teamStatsMap.get(m.matchId ?? '')) }));
           const sortedAdv = [...advRows].sort((a, b) => {
             const mult = advSort.dir === 'asc' ? 1 : -1;
             switch (advSort.col) {

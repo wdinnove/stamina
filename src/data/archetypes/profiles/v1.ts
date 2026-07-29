@@ -6,6 +6,11 @@ const NO_PLAY_TYPE_DATA = "Approximation à partir du box-score : aucune donnée
  * Profils calculables dès aujourd'hui avec les seules données existantes (box-score +
  * stats avancées agrégées + minutes/titularisation). Voir profiles/catalog.ts (Phase 3)
  * pour le catalogue complet une fois les données de tagging vidéo par joueur disponibles.
+ *
+ * `startersRate` et `plusMinusAvg` restent dans FEATURE_REGISTRY comme contexte (affichés,
+ * ex. dans l'UI), mais ne sont plus utilisés comme indicateur pondéré ici : être titulaire est
+ * une décision de coach, pas un attribut de style de jeu, et le +/- individuel est trop bruité
+ * sur un petit échantillon pour porter un profil à lui seul (voir audit).
  */
 export const PROFILES_V1: ProfileDefinition[] = [
   {
@@ -22,21 +27,6 @@ export const PROFILES_V1: ProfileDefinition[] = [
     status: 'partial_proxy',
     eligiblePositions: ['Meneur', 'Arrière'],
     caveat: `${NO_PLAY_TYPE_DATA} Un vrai profil de meneur nécessite en plus les données PnR ball-handler.`,
-  },
-  {
-    key: 'meneur_combo_scoreur',
-    label: 'Meneur combo scoreur',
-    description: 'Combine un fort volume de jeu et une production de points élevée tout en gardant un rôle de distribution.',
-    category: 'meneurs',
-    indicators: [
-      { featureKey: 'usagePct', weight: 2 },
-      { featureKey: 'ptsProd', weight: 2 },
-      { featureKey: 'astPct', weight: 1 },
-      { featureKey: 'tovPct', weight: -1 },
-    ],
-    status: 'partial_proxy',
-    eligiblePositions: ['Meneur', 'Arrière'],
-    caveat: NO_PLAY_TYPE_DATA,
   },
   {
     key: 'sniper_exterieur',
@@ -56,12 +46,11 @@ export const PROFILES_V1: ProfileDefinition[] = [
   {
     key: 'tireur_volume',
     label: 'Tireur à volume',
-    description: 'Prend beaucoup de tirs extérieurs et de lancers francs, indépendamment de son pourcentage de réussite.',
+    description: 'Prend beaucoup de tirs, du périmètre en particulier, indépendamment de son pourcentage de réussite.',
     category: 'shooteurs',
     indicators: [
-      { featureKey: 'fg3VolumePer36', weight: 3 },
-      { featureKey: 'ftaPer36', weight: 1 },
-      { featureKey: 'efgPct', weight: 1 },
+      { featureKey: 'fg3VolumePer36', weight: 2 },
+      { featureKey: 'fgaPer36', weight: 2 },
     ],
     status: 'partial_proxy',
     eligiblePositions: ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort'],
@@ -91,16 +80,15 @@ export const PROFILES_V1: ProfileDefinition[] = [
       { featureKey: 'astPct', weight: 2 },
       { featureKey: 'tovPct', weight: -2 },
       { featureKey: 'usagePct', weight: -1 },
-      { featureKey: 'startersRate', weight: 1 },
     ],
     status: 'partial_proxy',
     // Pas d'eligiblePositions : rôle transversal, proposé à tous les postes.
     caveat: NO_PLAY_TYPE_DATA,
   },
   {
-    key: 'finisseur_contact',
-    label: 'Finisseur au contact',
-    description: 'Attaque le cercle et provoque des fautes, avec une bonne efficacité à 2 points.',
+    key: 'scoreur_interieur',
+    label: 'Scoreur intérieur',
+    description: 'Score principalement à 2 points et provoque des fautes, sans dépendre du tir extérieur.',
     category: 'attaque_cercle',
     indicators: [
       { featureKey: 'ftRate', weight: 2 },
@@ -109,7 +97,7 @@ export const PROFILES_V1: ProfileDefinition[] = [
     ],
     status: 'partial_proxy',
     eligiblePositions: ['Meneur', 'Arrière', 'Ailier'],
-    caveat: `${NO_PLAY_TYPE_DATA} Sans donnée de zone de tir (at-rim), le 2PT% et le FT Rate servent de proxy.`,
+    caveat: `${NO_PLAY_TYPE_DATA} Sans donnée de zone de tir, impossible de distinguer une finition au cercle d'un tir à mi-distance — ce profil mesure "scoreur intérieur" au sens large, pas spécifiquement le cercle.`,
   },
   {
     key: 'rebondeur_two_way',
@@ -135,13 +123,27 @@ export const PROFILES_V1: ProfileDefinition[] = [
       { featureKey: 'fprPer36', weight: -1 },
     ],
     status: 'partial_proxy',
-    eligiblePositions: ['Pivot', 'Ailier Fort'],
-    caveat: `${NO_PLAY_TYPE_DATA} Ne distingue pas contres à la trajectoire vs sur joueur posté.`,
+    eligiblePositions: ['Pivot', 'Ailier Fort', 'Ailier'],
+    caveat: `${NO_PLAY_TYPE_DATA} Ne distingue pas contres à la trajectoire vs sur joueur posté, ni rotation d'aide vs protection individuelle.`,
+  },
+  {
+    key: 'interieur_passeur',
+    label: 'Intérieur passeur',
+    description: "Intérieur qui distribue depuis le haut de raquette ou après rebond, au-delà de son rôle de finisseur.",
+    category: 'interieurs',
+    indicators: [
+      { featureKey: 'astPct', weight: 2 },
+      { featureKey: 'tovPct', weight: -1 },
+      { featureKey: 'trebPct', weight: 1 },
+    ],
+    status: 'partial_proxy',
+    eligiblePositions: ['Ailier Fort', 'Pivot'],
+    caveat: `${NO_PLAY_TYPE_DATA} Le %PD est comparé aux autres intérieurs, pas à l'effectif entier — sinon aucun intérieur ne ressortirait jamais devant un meneur.`,
   },
   {
     key: 'couteau_suisse',
     label: 'Couteau suisse',
-    description: "Contribue sur tous les tableaux statistiques sans dépendre d'un registre unique.",
+    description: "Cumule une production statistique large sur plusieurs registres (score, rebonds, passes, défense) — mesure le volume de contribution, pas un équilibre entre les registres.",
     category: 'polyvalents',
     indicators: [
       { featureKey: 'ptsProd', weight: 1 },
@@ -152,7 +154,22 @@ export const PROFILES_V1: ProfileDefinition[] = [
     ],
     status: 'partial_proxy',
     // Pas d'eligiblePositions : rôle transversal, proposé à tous les postes.
-    caveat: 'Mesure une production statistique large, pas un équilibre strict entre les registres.',
+    caveat: "Une somme pondérée récompense un joueur fort sur beaucoup de registres à la fois (proche d'un profil de star à fort volume), pas un profil réellement équilibré/régulier — une vraie mesure de régularité nécessiterait un second mode de scoring (variance entre percentiles), hors scope aujourd'hui.",
+  },
+  {
+    key: 'ailier_3d',
+    label: 'Ailier 3&D',
+    description: "Tireur extérieur fiable à faible usage, complété par une activité défensive périphérique.",
+    category: 'polyvalents',
+    indicators: [
+      { featureKey: 'fg3Pct', weight: 2 },
+      { featureKey: 'fg3VolumePer36', weight: 1 },
+      { featureKey: 'interceptsPer36', weight: 1 },
+      { featureKey: 'usagePct', weight: -1 },
+    ],
+    status: 'partial_proxy',
+    eligiblePositions: ['Ailier', 'Ailier Fort', 'Arrière'],
+    caveat: `${NO_PLAY_TYPE_DATA} Le volet défensif est un proxy faible (interceptions seules) — pas de données de matchup ni de rating défensif individuel.`,
   },
   {
     key: 'intercepteur_perturbateur',
@@ -171,76 +188,19 @@ export const PROFILES_V1: ProfileDefinition[] = [
   {
     key: 'moteur_energie',
     label: "Moteur d'énergie",
-    description: 'Impact par les secondes efforts et les fautes provoquées, souvent depuis le banc.',
+    description: 'Impact par les secondes efforts et les fautes provoquées.',
     category: 'energie',
     indicators: [
       { featureKey: 'orebPct', weight: 2 },
       { featureKey: 'ftePer36', weight: 2 },
-      { featureKey: 'startersRate', weight: -1 },
     ],
     status: 'partial_proxy',
     // Pas d'eligiblePositions : rôle transversal, proposé à tous les postes.
     caveat: "Proxy sans donnée de déviations ni de ballons libres récupérés.",
   },
   {
-    key: 'sixieme_homme_impact',
-    label: "Sixième homme d'impact",
-    description: "Change la physionomie du match dès son entrée en jeu, en sortie de banc.",
-    category: 'energie',
-    indicators: [
-      { featureKey: 'plusMinusAvg', weight: 2 },
-      { featureKey: 'startersRate', weight: -2 },
-    ],
-    status: 'partial_proxy',
-    // Pas d'eligiblePositions : rôle transversal, proposé à tous les postes.
-    caveat: 'Le +/- individuel est saisi manuellement par match et sensible au contexte (adversaire, coéquipiers sur le terrain).',
-  },
-  {
-    key: 'passing_big',
-    label: 'Passing Big',
-    description: "Intérieur qui distribue depuis le haut de raquette ou après rebond, au-delà de son rôle de finisseur.",
-    category: 'interieurs',
-    indicators: [
-      { featureKey: 'astPct', weight: 2 },
-      { featureKey: 'tovPct', weight: -1 },
-      { featureKey: 'trebPct', weight: 1 },
-    ],
-    status: 'partial_proxy',
-    eligiblePositions: ['Ailier Fort', 'Pivot'],
-    caveat: `${NO_PLAY_TYPE_DATA} Le %PD est comparé aux autres intérieurs, pas à l'effectif entier — sinon aucun intérieur ne ressortirait jamais devant un meneur.`,
-  },
-  {
-    key: 'help_defender',
-    label: 'Help Defender',
-    description: "Verrouille la raquette en rotation d'aide plutôt qu'en un-contre-un, avec un fort volume de rebonds défensifs.",
-    category: 'defense',
-    indicators: [
-      { featureKey: 'drebPct', weight: 2 },
-      { featureKey: 'ctPer36', weight: 2 },
-      { featureKey: 'fprPer36', weight: -1 },
-    ],
-    status: 'partial_proxy',
-    eligiblePositions: ['Ailier Fort', 'Pivot', 'Ailier'],
-    caveat: `${NO_PLAY_TYPE_DATA} Proche de "Protecteur de cercle" mais pondéré vers le rebond défensif plutôt que le contre pur — pas de donnée de rotations défensives pour les distinguer plus finement.`,
-  },
-  {
-    key: 'trois_d_wing',
-    label: '3&D Wing',
-    description: "Tireur extérieur fiable à faible usage, complété par une activité défensive périphérique.",
-    category: 'polyvalents',
-    indicators: [
-      { featureKey: 'fg3Pct', weight: 2 },
-      { featureKey: 'fg3VolumePer36', weight: 1 },
-      { featureKey: 'interceptsPer36', weight: 1 },
-      { featureKey: 'usagePct', weight: -1 },
-    ],
-    status: 'partial_proxy',
-    eligiblePositions: ['Ailier', 'Ailier Fort', 'Arrière'],
-    caveat: `${NO_PLAY_TYPE_DATA} Le volet défensif est un proxy faible (interceptions seules) — pas de données de matchup ni de rating défensif individuel.`,
-  },
-  {
-    key: 'scoring_guard',
-    label: 'Scoring Guard',
+    key: 'scoreur_volume',
+    label: 'Scoreur à volume',
     description: 'Scoreur à fort volume et bonne efficacité, sans être le premier passeur de son équipe.',
     category: 'meneurs',
     indicators: [
@@ -253,14 +213,13 @@ export const PROFILES_V1: ProfileDefinition[] = [
     caveat: NO_PLAY_TYPE_DATA,
   },
   {
-    key: 'game_manager',
-    label: 'Game Manager',
+    key: 'meneur_gestionnaire',
+    label: 'Meneur gestionnaire',
     description: "Gère le tempo et protège le ballon avant tout — un profil qui minimise le risque plutôt qu'il ne maximise la création.",
     category: 'meneurs',
     indicators: [
       { featureKey: 'tovPct', weight: -3 },
       { featureKey: 'astPct', weight: 1 },
-      { featureKey: 'startersRate', weight: 1 },
     ],
     status: 'partial_proxy',
     eligiblePositions: ['Meneur', 'Arrière'],

@@ -1,5 +1,5 @@
 import type { MatchStat, TeamMatchStat } from '../types';
-import { calcPlayerAdvanced } from '../playerAdvanced';
+import { calcPlayerAdvanced, isTeamMinutesPlausible } from '../playerAdvanced';
 import type { RawPlayerStats } from './types';
 
 const ZERO_TOTALS = {
@@ -29,6 +29,11 @@ const ZERO_ADV_TOTALS = { fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, pts
  * stats collectives associées gonflerait le numérateur (totals) sans son dénominateur (team),
  * biaisant ces indicateurs. Les indicateurs qui ne dépendent que du joueur (eFG%, FT Rate,
  * TOV%, ORtg) restent calculés sur tous les matchs, sans cette restriction.
+ *
+ * Troisième point : `usagePct` est corrigé par la part de minutes réellement jouées par le
+ * joueur (voir `calcPlayerAdvanced`) quand la somme des minutes de tout l'effectif sur les
+ * matchs couverts est plausible (`isTeamMinutesPlausible`) — sinon repli silencieux sur
+ * l'ancien calcul, jamais pire qu'avant ce fix.
  */
 export function aggregateRawStats(
   matchStats: MatchStat[],
@@ -36,18 +41,28 @@ export function aggregateRawStats(
   periodLabel: string,
 ): RawPlayerStats[] {
   const byPlayer = new Map<string, MatchStat[]>();
+  // Minutes cumulées de TOUT l'effectif par match (5 joueurs sur le terrain en permanence ⇒
+  // Σmin ≈ 5 × durée du match) — sert à corriger usagePct par la part de minutes jouées
+  // (voir calcPlayerAdvanced). Calculé une fois ici car il faut le roster complet du match,
+  // pas seulement les matchs d'un joueur donné.
+  const teamMinutesByMatchId = new Map<string, number>();
+  for (const stat of matchStats) {
+    if (!stat.matchId) continue;
+    teamMinutesByMatchId.set(stat.matchId, (teamMinutesByMatchId.get(stat.matchId) ?? 0) + stat.min);
+  }
   for (const stat of matchStats) {
     if (!byPlayer.has(stat.playerId)) byPlayer.set(stat.playerId, []);
     byPlayer.get(stat.playerId)!.push(stat);
   }
   return [...byPlayer.entries()].map(([playerId, stats]) =>
-    aggregateOnePlayer(playerId, stats, teamStatsByMatchId, periodLabel));
+    aggregateOnePlayer(playerId, stats, teamStatsByMatchId, teamMinutesByMatchId, periodLabel));
 }
 
 function aggregateOnePlayer(
   playerId: string,
   stats: MatchStat[],
   teamStatsByMatchId: Map<string, TeamMatchStat>,
+  teamMinutesByMatchId: Map<string, number>,
   periodLabel: string,
 ): RawPlayerStats {
   const totals = stats.reduce((acc, s) => ({
@@ -90,12 +105,21 @@ function aggregateOnePlayer(
     };
   }, { ...ZERO_TEAM_TOTALS });
 
+  const advMinutesTotal = statsWithTeam.reduce((sum, s) => sum + s.min, 0);
+  const teamMinutesTotal = statsWithTeam.reduce((sum, s) => sum + (teamMinutesByMatchId.get(s.matchId!) ?? 0), 0);
+
   // Indicateurs sans dépendance équipe (efgPct, ftRate, bpPerPoss, offRating, tovPct) : sur
   // tous les matchs, pour garder le maximum d'échantillon.
-  const fullAdvanced = calcPlayerAdvanced(totals, null);
+  const fullAdvanced = calcPlayerAdvanced({ ...totals, min: minutesTotal }, null);
   // Indicateurs avec dépendance équipe (usagePct, astPct, trebPct, drebPct, orebPct, ptsProd) :
   // uniquement sur les matchs où numérateur et dénominateur couvrent le même périmètre.
-  const teamScopedAdvanced = statsWithTeam.length > 0 ? calcPlayerAdvanced(advTotals, teamTotals) : null;
+  const teamScopedAdvanced = statsWithTeam.length > 0
+    ? calcPlayerAdvanced(
+        { ...advTotals, min: advMinutesTotal },
+        teamTotals,
+        isTeamMinutesPlausible(teamMinutesTotal, statsWithTeam.length) ? teamMinutesTotal : undefined,
+      )
+    : null;
 
   const advancedAgg = {
     usagePct: teamScopedAdvanced?.usagePct ?? null,

@@ -19,7 +19,7 @@ import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TacticalHomeAwayFilter, TacticalResultFilter } from '../components/TacticalFilterBar';
 import type { DatePreset } from '../components/DateRangeCard';
 import { evalColor, ortgColor, drtgColor } from '../data';
-import { calcPlayerAdvanced } from '../data/playerAdvanced';
+import { calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
 import { computeMatchPCA, computeWinFactors, computePlayerImpact } from '../data/pca';
 import { rpeColor, rpeLabel, acwrZone, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
 import { wellnessScoreColor } from '../utils/wellness';
@@ -303,7 +303,7 @@ export default function PerformanceCollectivePage() {
     .map(p => {
       const ss  = playerStatsMap.get(p.id)!;
       const n   = ss.length;
-      const adv = ss.map(m => calcPlayerAdvanced(m, teamStatsMap.get(m.matchId ?? '') ?? null));
+      const adv = ss.map(m => calcPlayerAdvancedForMatch(m, teamStatsMap.get(m.matchId ?? '') ?? null));
       const avgA = (key: string) => {
         const vals = adv.map(a => (a as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
         return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;

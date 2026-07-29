@@ -2,10 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { computeArchetypesForSquad } from './archetypeEngine';
 import { PROFILES_V1 } from './profiles/v1';
 import { makeRawPlayerStats } from './testFixtures';
-import type { ProfileDefinition, RawPlayerStats } from './types';
-import type { BasketballPosition } from '../types';
+import type { ProfileDefinition, RawPlayerStats, PlayerPositionInfo } from './types';
 
-const NO_POSITIONS = new Map<string, BasketballPosition>();
+const NO_POSITIONS = new Map<string, PlayerPositionInfo>();
 
 const TEST_PROFILES: ProfileDefinition[] = [
   {
@@ -151,9 +150,9 @@ describe('computeArchetypesForSquad (intégration)', () => {
     };
     const pivotPlayer = player('pivot-player', { trebPct: 20 });
     const guardPlayer = player('guard-player', { trebPct: 20 });
-    const positions = new Map<string, BasketballPosition>([
-      ['pivot-player', 'Pivot'],
-      ['guard-player', 'Meneur'],
+    const positions = new Map<string, PlayerPositionInfo>([
+      ['pivot-player', { position: 'Pivot' }],
+      ['guard-player', { position: 'Meneur' }],
     ]);
 
     const reports = computeArchetypesForSquad([pivotPlayer, guardPlayer], positions, [restrictedProfile], []);
@@ -164,15 +163,32 @@ describe('computeArchetypesForSquad (intégration)', () => {
     expect(guardReport.archetypes.some(a => a.profileKey === 'restricted')).toBe(false);
   });
 
+  it("propose aussi un profil si le POSTE SECONDAIRE (pas seulement le principal) le couvre", () => {
+    const restrictedProfile: ProfileDefinition = {
+      key: 'restricted', label: 'Profil restreint', description: '', category: 'interieurs', status: 'available',
+      eligiblePositions: ['Pivot'],
+      indicators: [{ featureKey: 'trebPct', weight: 1 }],
+    };
+    const hybridPlayer = player('hybrid-player', { trebPct: 20 });
+    const positions = new Map<string, PlayerPositionInfo>([
+      ['hybrid-player', { position: 'Ailier Fort', secondaryPosition: 'Pivot' }],
+    ]);
+
+    const reports = computeArchetypesForSquad([hybridPlayer], positions, [restrictedProfile], []);
+    const report = reports.find(r => r.playerId === 'hybrid-player')!;
+
+    expect(report.archetypes.some(a => a.profileKey === 'restricted')).toBe(true);
+  });
+
   it("calcule le percentile séparément par groupe de postes (un intérieur n'est comparé qu'aux autres intérieurs)", () => {
     // %PD très élevé chez les 2 meneurs, plus modeste chez les 2 intérieurs (bigA > bigB).
     const pgHigh = player('pg-high', { astPct: 40 });
     const pgLow = player('pg-low', { astPct: 10 });
     const bigA = player('big-a', { astPct: 15 });
     const bigB = player('big-b', { astPct: 5 });
-    const positions = new Map<string, BasketballPosition>([
-      ['pg-high', 'Meneur'], ['pg-low', 'Meneur'],
-      ['big-a', 'Ailier Fort'], ['big-b', 'Pivot'],
+    const positions = new Map<string, PlayerPositionInfo>([
+      ['pg-high', { position: 'Meneur' }], ['pg-low', { position: 'Meneur' }],
+      ['big-a', { position: 'Ailier Fort' }], ['big-b', { position: 'Pivot' }],
     ]);
     const astProfile: ProfileDefinition[] = [{
       key: 'ast_test', label: 'Test AST%', description: '', category: 'createurs', status: 'available',
@@ -187,5 +203,14 @@ describe('computeArchetypesForSquad (intégration)', () => {
     // de 10) -> un score > 50 ici prouve que le pool est bien restreint au groupe de postes.
     expect(scoreOf('big-a')).toBeGreaterThan(50);
     expect(scoreOf('big-b')).toBeLessThan(50);
+
+    // Assertion plus stricte pour distinguer explicitement le MÉLANGE (blendWithSquadVectors)
+    // d'un percentile purement groupé ou purement effectif entier — un simple >50/<50 ci-dessus
+    // resterait vrai même si le mélange était cassé ou absent :
+    // - percentile groupe pur (n=2, 25/75) donnerait un score de 75 pour big-a ;
+    // - percentile effectif entier pur (n=4) donnerait un score de ~63 pour big-a ;
+    // - le mélange (groupWeight = 2/6 = 1/3) donne ≈ 67, strictement entre les deux.
+    expect(scoreOf('big-a')).toBeGreaterThan(64);
+    expect(scoreOf('big-a')).toBeLessThan(74);
   });
 });

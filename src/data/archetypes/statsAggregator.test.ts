@@ -45,6 +45,33 @@ describe('aggregateRawStats', () => {
     expect(withBothMatches.advancedAgg.usagePct).toBeCloseTo(withOnlyMatchedMatch.advancedAgg.usagePct!, 5);
   });
 
+  it('applique réellement la correction usage% par les minutes quand Σmin de l\'effectif est plausible (chemin corrigé exercé, pas juste le repli)', () => {
+    const teamStatsByMatchId = new Map();
+    // 2 matchs, chacun avec p1 + 4 coéquipières, Σmin par match dans la fourchette plausible
+    // (~150-300) — contrairement au test de scoping ci-dessus qui reste sous le seuil et
+    // n'exerce donc jamais la formule corrigée elle-même.
+    const teammates = (matchId: string, eachMin: number) =>
+      Array.from({ length: 4 }, (_, i) => makeMatchStat({ playerId: `mate-${matchId}-${i}`, matchId, min: eachMin }));
+
+    const p1m1 = makeMatchStat({ playerId: 'p1', matchId: 'm1', min: 25, fg2m: 4, fg2a: 8, fta: 2, bp: 1 });
+    const p1m2 = makeMatchStat({ playerId: 'p1', matchId: 'm2', min: 22, fg2m: 3, fg2a: 7, fta: 1, bp: 1 });
+    teamStatsByMatchId.set('m1', makeTeamMatchStat({ matchId: 'm1', fg2a: 40, fg3a: 15, fta: 14, bp: 12 }));
+    teamStatsByMatchId.set('m2', makeTeamMatchStat({ matchId: 'm2', fg2a: 38, fg3a: 14, fta: 12, bp: 10 }));
+
+    const allMatchStats = [
+      p1m1, ...teammates('m1', 35), // Σmin m1 = 25 + 4×35 = 165
+      p1m2, ...teammates('m2', 34), // Σmin m2 = 22 + 4×34 = 158
+    ];
+
+    const raw = aggregateRawStats(allMatchStats, teamStatsByMatchId, 'saison-test').find(r => r.playerId === 'p1')!;
+
+    // indPoss = 15 + 0.44×3 + 2 = 18.32 ; teamPoss = 107 + 0.44×26 + 22 = 140.44
+    // Σmin équipe (m1+m2) = 323, minutes p1 = 47 -> corrigé : 18.32×(323/5)/(47×140.44)×100 ≈ 17.9
+    // Non corrigé (sans la part de minutes) : 18.32/140.44×100 ≈ 13.0 — nettement différent.
+    expect(raw.advancedAgg.usagePct).toBeCloseTo(17.9, 1);
+    expect(raw.advancedAgg.usagePct).not.toBeCloseTo(13.0, 1);
+  });
+
   it('groupe correctement par joueur au sein d\'un effectif complet', () => {
     const p1 = makeMatchStat({ playerId: 'p1', min: 20 });
     const p2a = makeMatchStat({ playerId: 'p2', min: 15 });

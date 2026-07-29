@@ -150,8 +150,15 @@ export default function PerformanceIndividuellePage() {
   );
   useEffect(() => {
     if (!matchIdsKey) { setTeamStatsMap(new Map()); return; }
-    statsApi.listTeamStatsByMatchIds(matchIdsKey.split(',')).then(teamStats => {
-      setTeamStatsMap(new Map(teamStats.map(t => [t.matchId!, t])));
+    const matchIds = matchIdsKey.split(',');
+    Promise.all([
+      statsApi.listTeamStatsByMatchIds(matchIds),
+      // Minutes de TOUT l'effectif (pas seulement ce joueur) sur ces matchs — corrige usagePct
+      // par la part de minutes jouées (calcPlayerAdvancedForMatch), sinon ce fetch dédié à
+      // l'historique multi-saisons du joueur reste silencieusement sur l'ancienne formule.
+      statsApi.getTeamMinutesByMatchIds(matchIds),
+    ]).then(([teamStats, teamMinutesByMatchId]) => {
+      setTeamStatsMap(new Map(teamStats.map(t => [t.matchId!, { ...t, teamMinutes: teamMinutesByMatchId.get(t.matchId!) }])));
     });
   }, [matchIdsKey]);
 

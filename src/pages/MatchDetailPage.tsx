@@ -11,7 +11,7 @@ import { tacticalEventsApi } from '../api/tacticalEvents';
 import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
-import { calcPlayerAdvanced } from '../data/playerAdvanced';
+import { calcPlayerAdvanced, calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 
@@ -230,7 +230,9 @@ export default function MatchDetailPage() {
       statsApi.listOpponentStatsByMatchId(matchId),
     ]);
     setIndividualStats(ind);
-    setTeamStats(team);
+    // teamMinutes (Σ minutes de tout l'effectif sur ce match) : corrige usagePct par la part de
+    // minutes jouées — voir calcPlayerAdvancedForMatch (playerAdvanced.ts).
+    setTeamStats(team ? { ...team, teamMinutes: ind.reduce((sum, s) => sum + s.min, 0) } : team);
     setOpponentStats(opp);
   }, []);
 
@@ -352,7 +354,7 @@ export default function MatchDetailPage() {
       case 'eval':       return s.eval ?? -999;
       case 'plusMinus':  return s.plusMinus ?? -999;
       default: {
-        const adv = calcPlayerAdvanced(s, teamStats);
+        const adv = calcPlayerAdvancedForMatch(s, teamStats);
         return (adv[col as keyof typeof adv] as number | null) ?? -1;
       }
     }
@@ -738,7 +740,7 @@ export default function MatchDetailPage() {
                         <tbody>
                           {sortedStats.map((s, i) => {
                             const player = playerById.get(s.playerId);
-                            const adv = calcPlayerAdvanced(s, teamStats);
+                            const adv = calcPlayerAdvancedForMatch(s, teamStats);
                             const fmt = (v: number | null, suffix = '') => v !== null ? `${v}${suffix}` : '—';
                             const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                             return (
@@ -907,8 +909,8 @@ export default function MatchDetailPage() {
             type Metric = { label: string; a: number; b: number; displayA: string; displayB: string; higherBetter: boolean | null };
             type MetricGroup = { title: string; metrics: Metric[] };
             const calcPct = (m: number, a: number) => shotPct(m, a) ?? 0;
-            const advA = sA ? calcPlayerAdvanced(sA, teamStats) : null;
-            const advB = sB ? calcPlayerAdvanced(sB, teamStats) : null;
+            const advA = sA ? calcPlayerAdvancedForMatch(sA, teamStats) : null;
+            const advB = sB ? calcPlayerAdvancedForMatch(sB, teamStats) : null;
             const hasAdv = !!(teamStats && teamStats.possessions > 0 && advA && advB);
             const adv = (label: string, va: number | null, vb: number | null, fmtFn: (v: number) => string, higherBetter: boolean | null): Metric => ({
               label, a: va ?? -999, b: vb ?? -999,

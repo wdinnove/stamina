@@ -1,5 +1,5 @@
-import type { BasketballPosition, TeamMatchStat } from '../data/types';
-import type { PlayerArchetypeReport } from '../data/archetypes';
+import type { TeamMatchStat } from '../data/types';
+import type { PlayerArchetypeReport, PlayerPositionInfo } from '../data/archetypes';
 import { aggregateRawStats, computeArchetypesForSquad } from '../data/archetypes';
 import { statsApi } from './stats';
 import { playersApi } from './players';
@@ -22,7 +22,9 @@ export const archetypesApi = {
     for (const team of teamMatchStats) {
       if (team.matchId) teamStatsByMatchId.set(team.matchId, team);
     }
-    const playerPositions = new Map<string, BasketballPosition>(players.map(p => [p.id, p.position]));
+    const playerPositions = new Map<string, PlayerPositionInfo>(
+      players.map(p => [p.id, { position: p.position, secondaryPosition: p.secondaryPosition }]),
+    );
 
     const raws = aggregateRawStats(matchStats, teamStatsByMatchId, seasonId);
     return computeArchetypesForSquad(raws, playerPositions);

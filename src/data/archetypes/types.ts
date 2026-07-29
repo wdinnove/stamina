@@ -118,3 +118,11 @@ export interface PlayerArchetypeReport {
   archetypes: ArchetypeResult[];
   dimensions: StyleDimensionResult[];
 }
+
+/** Poste(s) d'un joueur pour le moteur d'archétypes — le poste principal sert au regroupement
+ *  du pool de percentile (voir positionGroups.ts), le poste secondaire élargit seulement
+ *  l'éligibilité aux profils (un profil est proposé si l'un des deux postes le couvre). */
+export interface PlayerPositionInfo {
+  position: BasketballPosition;
+  secondaryPosition?: BasketballPosition;
+}

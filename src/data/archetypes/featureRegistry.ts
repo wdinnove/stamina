@@ -37,6 +37,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
 
   // ── Volumes pour 36 minutes ──
   { key: 'fg3VolumePer36', label: 'Volume 3pts/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fg3a) },
+  { key: 'fgaPer36', label: 'Tirs tentés/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fg2a + r.totals.fg3a) },
   { key: 'ftaPer36', label: 'Lancers tentés/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fta) },
   { key: 'ctPer36', label: 'Contres/36', source: 'boxscore', get: r => per36Rate(r, r.totals.ct) },
   { key: 'interceptsPer36', label: 'Interceptions/36', source: 'boxscore', get: r => per36Rate(r, r.totals.intercepts) },

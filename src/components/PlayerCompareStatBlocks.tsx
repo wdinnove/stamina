@@ -1,6 +1,6 @@
 import { Block, MetricRow, MetricBarRow, SubLabel } from './TrendBlocks';
 import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat } from '../data/types';
-import { calcPlayerAdvanced } from '../data/playerAdvanced';
+import { calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
 import type { PlayerAdvancedStats } from '../data/playerAdvanced';
 import { wellnessAvg } from '../utils/wellness';
 import { averageWeeklyLoad } from '../utils/weeklyLoad';
@@ -126,25 +126,11 @@ function ortgSimple(ms: MatchStat[]): number | null {
   return +(ms.reduce((s, m) => s + m.pts, 0) / poss * 100).toFixed(1);
 }
 
-function usgFromTeam(ms: MatchStat[], map?: Map<string, TeamMatchStat>): number | null {
-  if (!ms.length || !map) return null;
-  const vals: number[] = [];
-  for (const m of ms) {
-    const t = map.get(m.matchId ?? '');
-    if (!t) continue;
-    const indPoss  = m.fg2a + m.fg3a + 0.44 * m.fta + m.bp;
-    const teamPoss = t.fg2a + t.fg3a + 0.44 * t.fta + t.bp;
-    if (teamPoss > 0) vals.push(indPoss / teamPoss * 100);
-  }
-  if (!vals.length) return null;
-  return +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
-}
-
 function avgAdv(ms: MatchStat[], map: Map<string, TeamMatchStat> | undefined, key: keyof PlayerAdvancedStats): number | null {
   if (!ms.length) return null;
   const vals: number[] = [];
   for (const m of ms) {
-    const v = calcPlayerAdvanced(m, map?.get(m.matchId ?? ''))[key];
+    const v = calcPlayerAdvancedForMatch(m, map?.get(m.matchId ?? ''))[key];
     if (v !== null && v !== undefined) vals.push(v as number);
   }
   return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : null;
@@ -194,7 +180,7 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
   const pTovR    = avgAdv(matchP, teamStatsMap, 'tovPct');     const sTovR    = avgAdv(matchS, teamStatsMap, 'tovPct');
   const pPtsG    = avgAdv(matchP, teamStatsMap, 'ptsProd');    const sPtsG    = avgAdv(matchS, teamStatsMap, 'ptsProd');
   const pOrtg = ortgSimple(matchP);    const sOrtg = ortgSimple(matchS);
-  const pUsg  = usgFromTeam(matchP, teamStatsMap);     const sUsg  = usgFromTeam(matchS, teamStatsMap);
+  const pUsg  = avgAdv(matchP, teamStatsMap, 'usagePct');     const sUsg  = avgAdv(matchS, teamStatsMap, 'usagePct');
   const pPoss = indPossPerMatch(matchP); const sPoss = indPossPerMatch(matchS);
 
   void pFga; void pFgm; void pTs; void sFga; void sFgm; void sTs; void pFic; void sFic; // gardés pour parité avec PlayerDynStatTab (signaux potentiels futurs), non affichés dans les blocs

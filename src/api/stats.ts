@@ -229,6 +229,25 @@ export const statsApi = {
     return (data ?? []).map(toTeamMatchStat);
   },
 
+  /** Minutes cumulées de TOUT l'effectif par match (pas seulement le joueur consulté) — sert à
+   *  corriger usagePct par la part de minutes jouées (calcPlayerAdvancedForMatch). Requête
+   *  légère (2 colonnes) séparée de listTeamStatsByMatchIds, qui ne couvre que les stats déjà
+   *  scopées à un joueur ou une saison — ici il faut TOUS les joueurs ayant joué ces matchs. */
+  async getTeamMinutesByMatchIds(matchIds: string[]): Promise<Map<string, number>> {
+    if (matchIds.length === 0) return new Map();
+    const { data, error } = await supabase
+      .from('match_stats')
+      .select('match_id, min')
+      .in('match_id', matchIds);
+    if (error) throw error;
+    const result = new Map<string, number>();
+    for (const row of (data ?? []) as { match_id: string | null; min: number }[]) {
+      if (!row.match_id) continue;
+      result.set(row.match_id, (result.get(row.match_id) ?? 0) + row.min);
+    }
+    return result;
+  },
+
   async getTeamStatsByMatchId(matchId: string): Promise<TeamMatchStat | null> {
     const { data, error } = await supabase
       .from('team_match_stats_full')

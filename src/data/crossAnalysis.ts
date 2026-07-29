@@ -24,7 +24,7 @@ import type {
   TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption,
 } from './types';
 import { VARIABLES } from './pca';
-import { calcPlayerAdvanced, type PlayerAdvancedStats } from './playerAdvanced';
+import { calcPlayerAdvancedForMatch, type PlayerAdvancedStats } from './playerAdvanced';
 import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEntry } from '../utils/rpe';
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, aggregateTeamWellnessDaily } from '../utils/wellness';
@@ -233,7 +233,7 @@ const presenceColor = (v: number) => v >= 85 ? '#00E5A0' : v >= 70 ? '#F59E0B' :
 /** Série de stats avancées individuelles — nécessite la stat collective du même match pour usage%/%PD/%REB/ptsProd */
 function advSeries(d: PlayerCrossData, from: string, to: string, pick: (a: PlayerAdvancedStats) => number | null): SeriesPoint[] {
   return matchSeries(d.matchStats, from, to, m =>
-    pick(calcPlayerAdvanced(m, d.teamStatsByMatchId?.get(m.matchId ?? '') ?? null)));
+    pick(calcPlayerAdvancedForMatch(m, d.teamStatsByMatchId?.get(m.matchId ?? '') ?? null)));
 }
 
 /** Indicateur de match individuel (valeur ponctuelle aux dates de match) */

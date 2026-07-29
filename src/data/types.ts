@@ -250,6 +250,11 @@ export interface TeamMatchStat {
   opp_efgPct: number;
   opp_toPct: number;
   opp_orebPct: number;
+  /** Champ client-only (jamais lu depuis la DB) : Σ des minutes de TOUT l'effectif sur ce
+   *  match — calculé quand les MatchStat du roster complet sont disponibles (voir
+   *  usePerformanceData.ts), utilisé pour corriger usagePct par la part de minutes jouées
+   *  (calcPlayerAdvanced). Absent si non calculé pour ce contexte. */
+  teamMinutes?: number;
 }
 
 export interface OpponentMatchStat {

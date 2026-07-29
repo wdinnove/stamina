@@ -1,9 +1,8 @@
 import type {
-  RawPlayerStats, ProfileDefinition, DimensionDefinition,
+  RawPlayerStats, ProfileDefinition, DimensionDefinition, PlayerPositionInfo,
   ArchetypeResult, StyleDimensionResult, PlayerArchetypeReport,
 } from './types';
-import type { BasketballPosition } from '../types';
-import { buildFeatureVectors } from './featureBuilder';
+import { buildFeatureVectors, blendWithSquadVectors } from './featureBuilder';
 import { scoreIndicators } from './scoringEngine';
 import { explainScore, MIN_MATCHES_HARD_CUTOFF } from './explainer';
 import { POSITION_GROUP, type PositionGroup } from './positionGroups';
@@ -22,16 +21,19 @@ import { DIMENSIONS_V1 } from './dimensions/v1';
  * classement des autres joueurs de l'effectif.
  *
  * Le percentile de chaque joueur se calcule au sein de son groupe de postes (voir
- * positionGroups.ts), pas contre l'effectif entier : un intérieur n'est comparé qu'à d'autres
- * intérieurs sur son %PD, sinon son ratio ressort artificiellement excellent face à des
- * meneurs/arrières qui ont structurellement plus de passes décisives. Un joueur sans poste
- * connu tombe dans le groupe 'ailier' (le plus transversal), plutôt que d'être exclu du calcul.
- * Un profil dont `eligiblePositions` ne couvre pas le poste du joueur n'est simplement pas
- * proposé pour lui (absent du tableau, pas marqué "non calculable").
+ * positionGroups.ts, basé sur le poste PRINCIPAL uniquement — pas d'ambiguïté sur le pool de
+ * référence), puis mélangé avec le percentile de l'effectif entier pondéré par la taille du
+ * groupe (`blendWithSquadVectors`) : sur un petit groupe, le percentile interne est presque
+ * binaire (n=2 ⇒ seulement 25/75 possibles) et n'importe quel écart, même bruité, ressortirait
+ * comme un score extrême sans cette atténuation. Un joueur sans poste connu tombe dans le
+ * groupe 'ailier' (le plus transversal), plutôt que d'être exclu du calcul.
+ *
+ * Un profil dont `eligiblePositions` ne couvre ni le poste principal ni le poste secondaire du
+ * joueur n'est simplement pas proposé pour lui (absent du tableau, pas marqué "non calculable").
  */
 export function computeArchetypesForSquad(
   raws: RawPlayerStats[],
-  playerPositions: Map<string, BasketballPosition>,
+  playerPositions: Map<string, PlayerPositionInfo>,
   profiles: ProfileDefinition[] = PROFILES_V1,
   dimensions: DimensionDefinition[] = DIMENSIONS_V1,
 ): PlayerArchetypeReport[] {
@@ -39,19 +41,27 @@ export function computeArchetypesForSquad(
   const activeProfiles = profiles.filter(p => p.status !== 'planned');
   const activeDimensions = dimensions.filter(d => d.status !== 'planned');
 
+  const squadVectorsById = new Map(buildFeatureVectors(qualified).map(v => [v.playerId, v]));
+
   const byGroup = new Map<PositionGroup, RawPlayerStats[]>();
   for (const r of qualified) {
-    const position = playerPositions.get(r.playerId);
-    const group = position ? POSITION_GROUP[position] : 'ailier';
+    const info = playerPositions.get(r.playerId);
+    const group = info ? POSITION_GROUP[info.position] : 'ailier';
     if (!byGroup.has(group)) byGroup.set(group, []);
     byGroup.get(group)!.push(r);
   }
-  const vectors = [...byGroup.values()].flatMap(groupRaws => buildFeatureVectors(groupRaws));
+  const vectors = [...byGroup.values()].flatMap(groupRaws => {
+    const groupVectors = buildFeatureVectors(groupRaws);
+    return blendWithSquadVectors(groupVectors, squadVectorsById, groupRaws.length);
+  });
 
   return vectors.map(vector => {
-    const position = playerPositions.get(vector.playerId);
-    const eligibleProfiles = activeProfiles.filter(p =>
-      !p.eligiblePositions || !position || p.eligiblePositions.includes(position));
+    const info = playerPositions.get(vector.playerId);
+    const eligibleProfiles = activeProfiles.filter(p => {
+      if (!p.eligiblePositions || !info) return true;
+      return p.eligiblePositions.includes(info.position)
+        || (!!info.secondaryPosition && p.eligiblePositions.includes(info.secondaryPosition));
+    });
 
     const archetypes: ArchetypeResult[] = eligibleProfiles.map(profile => {
       const scored = scoreIndicators(vector, profile.indicators);

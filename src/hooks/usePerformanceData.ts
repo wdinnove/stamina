@@ -56,12 +56,24 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
       ]);
       if (cancelled) return;
       const sessionDate = new Map(sessions.map(s => [s.id, s.date]));
+      // Minutes cumulées de tout l'effectif par match (5 joueuses sur le terrain en permanence
+      // ⇒ Σmin ≈ 5 × durée du match) — attaché à TeamMatchStat pour corriger usagePct par la
+      // part de minutes jouées (calcPlayerAdvanced). Champ client-only, jamais lu depuis la DB.
+      const teamMinutesByMatchId = new Map<string, number>();
+      for (const m of matchStats) {
+        if (!m.matchId) continue;
+        teamMinutesByMatchId.set(m.matchId, (teamMinutesByMatchId.get(m.matchId) ?? 0) + m.min);
+      }
+      const enrichedTeamMatchStats = teamMatchStats.map(t => ({
+        ...t,
+        teamMinutes: t.matchId ? teamMinutesByMatchId.get(t.matchId) : undefined,
+      }));
       const teamStatsByMatchId = new Map(
-        teamMatchStats.filter(t => t.matchId).map(t => [t.matchId as string, t]),
+        enrichedTeamMatchStats.filter(t => t.matchId).map(t => [t.matchId as string, t]),
       );
       const sorted = [...players].sort((a, b) => a.lastName.localeCompare(b.lastName));
       setData({
-        teamMatchStats,
+        teamMatchStats: enrichedTeamMatchStats,
         players: sorted.map(pl => ({
           player: pl,
           teamStatsByMatchId,
