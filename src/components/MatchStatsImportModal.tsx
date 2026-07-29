@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Upload, AlertCircle, ChevronDown, Download } from 'lucide-react';
 import { statsApi } from '../api/stats';
+import { notify } from '../api/notifications';
 import { matchesApi } from '../api/matches';
 import type { Match, Player, TeamMatchStat } from '../data/types';
 import { evalColor } from '../data';
@@ -633,6 +634,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
         await matchesApi.update(match.id, { scoreUs: updScoreUs, scoreThem: updScoreThem, result: updResult });
       }
 
+      notify(match.teamId, 'match_stats_added', `Statistiques ajoutées — vs ${match.opponent}`, { body: match.date, entityType: 'match', entityId: match.id });
       onSaved();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement.');

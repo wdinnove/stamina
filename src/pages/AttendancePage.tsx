@@ -6,6 +6,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Player, TrainingSession, TrainingAttendance } from '../data/types';
+import { notify } from '../api/notifications';
 
 type AttendanceStatus = TrainingAttendance['status'];
 
@@ -181,8 +182,11 @@ export default function AttendancePage() {
       Object.keys(n).forEach(k => { if (k.startsWith(id + ':')) delete n[k]; });
       return n;
     });
-    try { await attendanceApi.deleteSession(id); }
-    catch { setSessions(snapshot); }
+    const removed = snapshot.find(s => s.id === id);
+    try {
+      await attendanceApi.deleteSession(id);
+      notify(selected?.team.id, 'session_updated', `Séance annulée${removed ? ` — ${removed.date}` : ''}`, { entityType: 'session' });
+    } catch { setSessions(snapshot); }
   }
 
   function handlePartnerCellClick(e: React.MouseEvent, sessionId: string) {

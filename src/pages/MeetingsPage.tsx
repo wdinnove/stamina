@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Plus, X, AlertCircle, Clock, ChevronRight } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { Modal, DropzoneEmptyState, EmptyState } from '../components';
 import { MONTHS_ABBR3, DAYS_ABBR3 } from '../utils/dateFormat';
@@ -64,7 +64,7 @@ export default function MeetingsPage() {
       setMeetings(prev => [created, ...prev].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
       setShowMeetForm(false);
       setMeetForm(emptyMeeting);
-      notifyOrg('meeting_added', meetForm.title, `${meetForm.date} à ${meetForm.time}`, 'meeting', created.id);
+      notify(selected?.team.id, 'meeting_added', meetForm.title, { body: `${meetForm.date} à ${meetForm.time}`, entityType: 'meeting', entityId: created.id });
     } catch (err: unknown) {
       setMeetFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {

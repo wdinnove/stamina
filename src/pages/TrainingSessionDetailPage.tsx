@@ -23,6 +23,7 @@ import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage, WellnessEntry } from '../data/types';
+import { notify } from '../api/notifications';
 
 // Noir, blanc, rouge, bleu, vert, jaune
 const TEAM_COLORS = ['#0D0F14', '#F1F5F9', '#EF4444', '#3B82F6', '#00E5A0', '#EAB308'];
@@ -1106,6 +1107,7 @@ export default function TrainingSessionDetailPage() {
         notes:           editForm.notes || null,
       });
       setSession(updated);
+      notify(selected?.team.id, 'session_updated', `Séance modifiée — ${updated.date}`, { body: `${updated.plannedDuration}min`, entityType: 'session', entityId: updated.id });
       setShowEdit(false);
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : 'Erreur lors de la modification.');

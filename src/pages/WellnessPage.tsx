@@ -4,7 +4,8 @@ import { Save, Check, Mail, X, Users, Smile, Meh, Frown } from 'lucide-react';
 import { sendEmail } from '../api/email';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
+import { isWellnessAlerting } from '../../shared/notifications.js';
 import RichTextEditor from '../components/RichTextEditor';
 import { DateRangeCard, useDateRange, PlayerSelect, Modal } from '../components';
 import { WellnessPomsPanel } from '../components/WellnessPomsPanel';
@@ -220,7 +221,7 @@ export default function WellnessPage() {
     setSaving(true);
     setSaveError('');
     try {
-      await wellnessApi.create({
+      const entry = await wellnessApi.create({
         playerId: selectedPlayerId, date: entryDate,
         fatigue: values.fatigue, mood: values.mood, stress: values.stress,
         motivation: values.motivation, sleep: values.sleep, soreness: values.soreness,
@@ -231,7 +232,10 @@ export default function WellnessPage() {
       setTimeout(() => setSaved(false), 2500);
       const player = roster.find(p => p.id === selectedPlayerId);
       const playerName = player ? playerNameFull(player) : undefined;
-      notifyOrg('wellness_added', `Bien-être saisi${playerName ? ` — ${playerName}` : ''}`, entryDate, 'player', selectedPlayerId ?? undefined);
+      notify(selected?.team.id, 'wellness_added', `Bien-être saisi${playerName ? ` — ${playerName}` : ''}`, { body: entryDate, entityType: 'player', entityId: selectedPlayerId ?? undefined });
+      if (isWellnessAlerting(entry)) {
+        notify(selected?.team.id, 'wellness_alert', `Bien-être préoccupant${playerName ? ` — ${playerName}` : ''}`, { body: `Score ${entry.score}/10 le ${entryDate}`, entityType: 'wellness_entry', entityId: entry.id });
+      }
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {

@@ -1,4 +1,7 @@
 import { supabase } from './client';
+import { notify } from './notifications';
+import { statusConfig } from '../data/config';
+import { playerNameFull } from '../utils/playerName';
 import type { Player, PlayerStatus } from '../data/types';
 
 export interface ListPlayersFilters {
@@ -49,6 +52,27 @@ export const playersApi = {
   async update(id: string, input: Partial<Omit<Player, 'id'>>): Promise<void> {
     const { error } = await supabase.from('players').update(toRow(input)).eq('id', id);
     if (error) throw error;
+  },
+
+  /** Écrit le nouveau statut puis notifie l'équipe, pour les écrans qui ne changent que ça. */
+  async setStatus(player: Player, status: PlayerStatus, teamId?: string): Promise<void> {
+    if (player.status === status) return;
+    const { error } = await supabase.from('players').update({ status }).eq('id', player.id);
+    if (error) throw error;
+    playersApi.notifyStatusChange(player, status, teamId);
+  },
+
+  /**
+   * Notifie un changement de statut sans écrire — pour les formulaires qui enregistrent
+   * déjà le statut avec les autres champs. Ne fait rien si le statut n'a pas changé.
+   * Centralisé ici car le statut est modifiable depuis plusieurs écrans.
+   */
+  notifyStatusChange(player: Player, status: PlayerStatus, teamId?: string): void {
+    if (player.status === status) return;
+    notify(teamId, 'player_status_changed', `${playerNameFull(player)} — ${statusConfig[status]?.label ?? status}`, {
+      entityType: 'player',
+      entityId: player.id,
+    });
   },
 
   async uploadPhoto(playerId: string, file: File): Promise<string> {

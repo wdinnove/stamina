@@ -3,7 +3,7 @@ import { Plus, X, Search } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import RichTextEditor from './RichTextEditor';
 import { Card } from './Card';
 import { Modal } from './Modal';
@@ -17,6 +17,7 @@ import { playerStatusColor, playerStatusLabel } from './PlayerHero';
 import { rtpDaysLeft, severityConfig, typeLabels } from './MedicalCard';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
 
 const typeColors: Record<string, string> = {
@@ -47,6 +48,8 @@ function daysBetween(from: string, to: string): number {
  * page Médicale et l'onglet Médical de Performance collective, pour garantir un rendu identique.
  */
 export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }: TeamMedicalOverviewProps) {
+  const { selected } = useTeamSeason();
+  const teamId = selected?.team.id;
   const navigate = useNavigate();
   const [activeInjuries, setActiveInjuries]     = useState<MedicalRecord[]>([]);
   const [seasonInjuries, setSeasonInjuries]     = useState<MedicalRecord[]>([]);
@@ -161,7 +164,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
         const typeLabel = typeLabels[formType] ?? formType;
         const updPlayer = players.find(p => p.id === fPlayerId);
         const updName = updPlayer ? playerNameShort(updPlayer) : undefined;
-        notifyOrg('medical_updated', `${typeLabel} modifié${updName ? ` — ${updName}` : ''}`, undefined, 'player', fPlayerId);
+        notify(teamId, 'medical_updated', `${typeLabel} modifié${updName ? ` — ${updName}` : ''}`, { entityType: 'player', entityId: fPlayerId });
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
         const typeLabel = typeLabels[formType] ?? formType;
@@ -176,10 +179,11 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
         } else {
           notifBody = fDesc || undefined;
         }
-        notifyOrg('medical_added', `${typeLabel}${playerName ? ` — ${playerName}` : ''}`, notifBody, 'player', fPlayerId);
+        notify(teamId, 'medical_added', `${typeLabel}${playerName ? ` — ${playerName}` : ''}`, { body: notifBody, entityType: 'player', entityId: fPlayerId });
       }
-      if (formType === 'injury' || formType === 'treatment') {
-        await playersApi.update(fPlayerId, { status: fPlayerStatus });
+      const statusPlayer = players.find(p => p.id === fPlayerId);
+      if ((formType === 'injury' || formType === 'treatment') && statusPlayer) {
+        await playersApi.setStatus(statusPlayer, fPlayerStatus, teamId);
       }
       setShowForm(false);
       refresh();
@@ -196,10 +200,10 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
     try {
       const { recordId, playerId } = closeModal;
       await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
-      await playersApi.update(playerId, { status: closeModal.playerStatus });
       const player = players.find(p => p.id === playerId);
+      if (player) await playersApi.setStatus(player, closeModal.playerStatus, teamId);
       const playerName = player ? playerNameShort(player) : undefined;
-      notifyOrg('medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, undefined, 'player', playerId);
+      notify(teamId, 'medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, { entityType: 'player', entityId: playerId });
       setCloseModal(null);
       refresh();
     } catch (err) {

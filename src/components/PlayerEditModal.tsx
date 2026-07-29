@@ -22,12 +22,14 @@ const inputStyle: React.CSSProperties = {
 };
 
 interface PlayerEditModalProps {
+  /** Équipe à notifier en cas de changement de statut ; omis depuis le scope club. */
+  teamId?: string;
   player: Player;
   onClose: () => void;
   onSaved: (player: Player) => void;
 }
 
-export function PlayerEditModal({ player, onClose, onSaved }: PlayerEditModalProps) {
+export function PlayerEditModal({ player, teamId, onClose, onSaved }: PlayerEditModalProps) {
   const [form, setForm] = useState({
     firstName:   player.firstName,
     lastName:    player.lastName,
@@ -81,6 +83,7 @@ export function PlayerEditModal({ player, onClose, onSaved }: PlayerEditModalPro
         contractEnd: form.contractEnd || undefined,
         email:       form.email       || undefined,
       });
+      playersApi.notifyStatusChange(player, form.status, teamId);
       onSaved({
         ...player,
         ...form,

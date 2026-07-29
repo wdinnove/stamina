@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock } from 'lucide-react';
+import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, Settings, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell } from 'lucide-react';
 import { TacticalConfigManager } from '../components/TacticalConfigManager';
+import { TeamNotificationsTab } from '../components/TeamNotificationsTab';
 import { ResponsiveTabNav, type TabNavGroup } from '../components/ResponsiveTabNav';
 import { teamsApi, teamRolesApi } from '../api';
 import type { AssignableProfile } from '../api/teamRoles';
 import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
 import { playersApi } from '../api/players';
 import { staffApi } from '../api/staff';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
@@ -235,7 +236,7 @@ function CategoryRow({
   );
 }
 
-type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'categories' | 'tactical' | 'roles';
+type Tab = 'info' | 'roster' | 'staff' | 'thresholds' | 'wellness' | 'notifs' | 'categories' | 'tactical' | 'roles';
 
 const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'info',       label: 'Informations', icon: Shield },
@@ -243,6 +244,7 @@ const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
   { key: 'staff',      label: 'Staff',        icon: UserCheck },
   { key: 'thresholds', label: 'Seuils',       icon: Sliders },
   { key: 'wellness',   label: 'Bien-être',    icon: Heart },
+  { key: 'notifs',     label: 'Notifications', icon: Bell },
   { key: 'categories', label: 'Catégories',   icon: Tag },
   { key: 'tactical',   label: 'Tactique',     icon: Video },
   { key: 'roles',      label: 'Rôles',        icon: Lock },
@@ -265,6 +267,7 @@ const ROSTER_COL_WIDTHS = { player: '34%', position: '20%', number: '10%', statu
 
 // ── Modale d'ajout de joueur à l'effectif ───────────────────────────────────
 interface RosterAddModalProps {
+  teamId: string;
   seasonId: string;
   teamName: string;
   seasonLabel: string;
@@ -273,7 +276,7 @@ interface RosterAddModalProps {
   onSaved: () => void;
 }
 
-function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, onSaved }: RosterAddModalProps) {
+function RosterAddModal({ teamId, seasonId, teamName, seasonLabel, rosterIds, onClose, onSaved }: RosterAddModalProps) {
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
@@ -314,7 +317,7 @@ function RosterAddModal({ seasonId, teamName, seasonLabel, rosterIds, onClose, o
       await playersApi.linkToSeason(Array.from(selected), seasonId);
       onSaved();
       const names = allPlayers.filter(p => selected.has(p.id)).map(p => playerNameFull(p)).join(', ');
-      notifyOrg('player_added', `${selected.size} joueur${selected.size > 1 ? 's' : ''} ajouté${selected.size > 1 ? 's' : ''} à l'effectif`, names || undefined, 'player');
+      notify(teamId, 'player_added', `${selected.size} joueur${selected.size > 1 ? 's' : ''} ajouté${selected.size > 1 ? 's' : ''} à l'effectif`, { body: names || undefined, entityType: 'player' });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
       setSaving(false);
@@ -430,6 +433,7 @@ function RosterTab() {
     setRemoving(true); setRemoveError('');
     try {
       await playersApi.unlinkFromSeason(unlinkTarget.id, selected.season.id);
+      notify(selected.team.id, 'player_removed', `${playerNameFull(unlinkTarget)} retiré de l'effectif`, { entityType: 'player', entityId: unlinkTarget.id });
       setPlayers(prev => prev.filter(p => p.id !== unlinkTarget.id));
       setUnlinkTarget(null);
     } catch (e) {
@@ -519,6 +523,7 @@ function RosterTab() {
 
       {showAddModal && (
         <RosterAddModal
+          teamId={selected.team.id}
           seasonId={selected.season.id}
           teamName={selected.team.name}
           seasonLabel={selected.season.label}
@@ -531,6 +536,7 @@ function RosterTab() {
       {editingPlayer && (
         <PlayerEditModal
           player={editingPlayer}
+          teamId={selected.team.id}
           onClose={() => setEditingPlayer(null)}
           onSaved={updated => {
             setPlayers(prev => prev.map(p => p.id === updated.id ? updated : p));
@@ -1335,6 +1341,9 @@ export function TeamConfigTab() {
         </div>
       </Card>
       )}
+
+      {/* Notifications */}
+      {tab === 'notifs' && <TeamNotificationsTab />}
 
       {/* Catégories d'exercices */}
       {tab === 'categories' && (

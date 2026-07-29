@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
 import { Send, CheckCircle, AlertCircle, Clock, Smile, Meh, Frown } from 'lucide-react';
 import { wellnessApi } from '../api/wellness';
+import { notifyPublicWellness } from '../api/notifications';
 import { StaminaLogo } from '../components/StaminaLogo';
 import {
   WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor,
@@ -82,6 +83,8 @@ export default function PlayerWellnessPublicPage() {
     });
 
     if (!error) {
+      // Formulaire anonyme : c'est le serveur qui relit l'entrée et décide d'alerter.
+      notifyPublicWellness(playerId, date);
       setStatus('success');
     } else if (error.message.includes('Limite hebdomadaire')) {
       setStatus('rate_limited');

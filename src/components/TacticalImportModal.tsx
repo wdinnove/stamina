@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Upload, AlertCircle, CheckCircle2, Download, AlertTriangle } from 'lucide-react';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalImportApi } from '../api/tacticalImport';
+import { notify } from '../api/notifications';
 import { parseTacticalCsv, normalizeTacticalName, filterInvalidValeurRows, isBlankTacticalCell } from '../utils/tacticalCsvParser';
 import type { ParsedCategoryBlock, ExcludedValeurRow } from '../utils/tacticalCsvParser';
 import type { Match, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
@@ -120,7 +121,12 @@ export function TacticalImportModal({ match, hasExistingData, onClose, onSaved }
     setSaving(true);
     setSaveError('');
     try {
-      await tacticalImportApi.importForMatch(match.id, match.teamId, blocks);
+      const result = await tacticalImportApi.importForMatch(match.id, match.teamId, blocks);
+      notify(match.teamId, 'tactical_import_done', `Import tactique terminé — vs ${match.opponent}`, {
+        body: `${result.totalEvents} séquence${result.totalEvents > 1 ? 's' : ''} importée${result.totalEvents > 1 ? 's' : ''}`,
+        entityType: 'match',
+        entityId: match.id,
+      });
       onSaved();
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");

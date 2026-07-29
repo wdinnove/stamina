@@ -13,7 +13,7 @@ import {
 import { Save, Check, Zap, Activity, Users, Calendar, AlertTriangle, ListChecks } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
 import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, RPEPlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle, Modal, Badge, PlayerLoadPanel } from '../components';
@@ -287,7 +287,7 @@ export default function RPEPage() {
       setSaved(true);
       setHistoryVersion(v => v + 1);
       setTimeout(() => setSaved(false), 2500);
-      notifyOrg('rpe_added', `RPE saisi — ${activeEntries.length} joueur${activeEntries.length > 1 ? 's' : ''}`, sessionDate, 'session', savedSessionId);
+      notify(selected?.team.id, 'rpe_added', `RPE saisi — ${activeEntries.length} joueur${activeEntries.length > 1 ? 's' : ''}`, { body: sessionDate, entityType: 'session', entityId: savedSessionId });
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {

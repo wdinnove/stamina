@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { X, Ambulance, Pill, Stethoscope } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import RichTextEditor from './RichTextEditor';
 import { Modal } from './Modal';
 import { Card } from './Card';
@@ -11,6 +11,7 @@ import { InjuryRecordCard } from './InjuryRecordCard';
 import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { typeLabels, severityConfig } from './MedicalCard';
 import { playerNameFull } from '../utils/playerName';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
 
 const TODAY = new Date().toISOString().split('T')[0];
@@ -24,6 +25,8 @@ export interface PlayerMedicalViewHandle {
 
 export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId: string; onUpdated?: () => void }>(({ playerId, onUpdated }, ref) => {
   const navigate = useNavigate();
+  const { selected } = useTeamSeason();
+  const teamId = selected?.team.id;
   const [records, setRecords]   = useState<MedicalRecord[]>([]);
   const [player, setPlayer]     = useState<Player | null>(null);
   const [version, setVersion]   = useState(0);
@@ -102,7 +105,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
       };
       if (editingRecord) {
         await medicalApi.update(editingRecord.id, payload);
-        notifyOrg('medical_updated', `${typeLabels[formType] ?? formType} modifié${player ? ` — ${playerNameFull(player)}` : ''}`, undefined, 'player', playerId);
+        notify(teamId, 'medical_updated', `${typeLabels[formType] ?? formType} modifié${player ? ` — ${playerNameFull(player)}` : ''}`, { entityType: 'player', entityId: playerId });
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
         let notifBody: string | undefined;
@@ -114,10 +117,10 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
         } else {
           notifBody = fDesc || undefined;
         }
-        notifyOrg('medical_added', `${typeLabels[formType] ?? formType}${player ? ` — ${playerNameFull(player)}` : ''}`, notifBody, 'player', playerId);
+        notify(teamId, 'medical_added', `${typeLabels[formType] ?? formType}${player ? ` — ${playerNameFull(player)}` : ''}`, { body: notifBody, entityType: 'player', entityId: playerId });
       }
-      if (formType === 'injury' || formType === 'treatment') {
-        await playersApi.update(playerId, { status: fPlayerStatus });
+      if ((formType === 'injury' || formType === 'treatment') && player) {
+        await playersApi.setStatus(player, fPlayerStatus, teamId);
       }
       setShowForm(false);
       setVersion(v => v + 1);
@@ -134,8 +137,8 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
     setCloseSaving(true);
     try {
       await medicalApi.update(closeModal.recordId, { status: 'resolved', resolvedDate: closeModal.date });
-      await playersApi.update(playerId, { status: closeModal.playerStatus });
-      notifyOrg('medical_resolved', `Blessure clôturée${player ? ` — ${playerNameFull(player)}` : ''}`, undefined, 'player', playerId);
+      if (player) await playersApi.setStatus(player, closeModal.playerStatus, teamId);
+      notify(teamId, 'medical_resolved', `Blessure clôturée${player ? ` — ${playerNameFull(player)}` : ''}`, { entityType: 'player', entityId: playerId });
       setCloseModal(null);
       setVersion(v => v + 1);
       onUpdated?.();

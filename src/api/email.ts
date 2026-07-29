@@ -1,3 +1,5 @@
+import { authHeaders } from './client'
+
 interface SendEmailOptions {
   to: { email: string; name?: string }[]
   subject?: string
@@ -10,7 +12,7 @@ interface SendEmailOptions {
 export async function sendEmail(options: SendEmailOptions): Promise<void> {
   const res = await fetch('/api/send-email', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(options),
   })
   if (!res.ok) throw new Error(`Email send failed: ${await res.text()}`)

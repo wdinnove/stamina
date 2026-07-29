@@ -6,6 +6,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Modal, DropzoneEmptyState, MatchFormModal, EmptyState } from '../components';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { Match } from '../data/types';
+import { notify } from '../api/notifications';
 
 function fmtDate(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
@@ -69,11 +70,15 @@ export default function MatchesPage() {
   }
 
   function handleSaved(saved: Match) {
+    const isNew = !matches.some(m => m.id === saved.id);
     setMatches(prev => {
       const exists = prev.some(m => m.id === saved.id);
       const next = exists ? prev.map(m => m.id === saved.id ? saved : m) : [saved, ...prev];
       return next.sort((a, b) => b.date.localeCompare(a.date));
     });
+    if (isNew) {
+      notify(selected?.team.id, 'match_added', `Match planifié — vs ${saved.opponent}`, { body: saved.date, entityType: 'match', entityId: saved.id });
+    }
     setShowModal(false);
   }
 

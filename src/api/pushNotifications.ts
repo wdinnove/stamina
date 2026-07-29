@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { supabase, authHeaders } from './client';
 
 /** Détecte si les notifications push sont supportées par ce navigateur. */
 export function isPushSupported(): boolean {
@@ -28,15 +28,6 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const output = new Uint8Array(rawData.length);
   for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i);
   return output;
-}
-
-async function authHeaders(): Promise<HeadersInit> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 }
 
 /**

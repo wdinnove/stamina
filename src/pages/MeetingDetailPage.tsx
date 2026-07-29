@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Edit, Trash2, Save, X, Check, AlertCircle, Calendar, Clock } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { fmtDateFull } from '../utils/dateFormat';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -114,7 +114,7 @@ export default function MeetingDetailPage() {
       const title = meeting!.title;
       const id    = meeting!.id;
       await meetingsApi.delete(id);
-      notifyOrg('meeting_deleted', `Réunion supprimée : ${title}`, undefined, 'meeting', id);
+      notify(selected?.team.id, 'meeting_deleted', `Réunion supprimée : ${title}`, { entityType: 'meeting', entityId: id });
       navigate('/meetings');
     } catch {
       setDeleting(false);

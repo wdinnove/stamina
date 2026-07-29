@@ -70,3 +70,4 @@ export { SocialVideoEmbed } from './SocialVideoEmbed';
 export { SlideCarousel, CarouselDots, useSwipeCarousel } from './SlideCarousel';
 export { ObjectivesPanel } from './ObjectivesPanel';
 export { PlayerArchetypesPanel } from './PlayerArchetypesPanel';
+export { ChannelToggle } from './ChannelToggle';

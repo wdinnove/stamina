@@ -6,7 +6,6 @@ import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
 import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
-import { notifyOrg } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge, DropzoneEmptyState, EmptyState } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
@@ -416,7 +415,6 @@ export default function ExercisesPage() {
       (isNew ? [...prev, ex] : prev.map(e => e.id === ex.id ? ex : e))
         .sort((a, b) => a.name.localeCompare(b.name))
     );
-    notifyOrg(isNew ? 'exercise_added' : 'exercise_updated', ex.name, ex.categoryName ?? undefined, 'exercise', ex.id);
   }
 
   const filtered = exercises.filter(ex =>

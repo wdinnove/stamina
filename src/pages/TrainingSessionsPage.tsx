@@ -7,7 +7,6 @@ import { rpeApi } from '../api/rpe';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { playersApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { notifyOrg } from '../api/notifications';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { avgRpe } from '../utils/rpe';
 import type { TrainingSession, Player } from '../data/types';
@@ -178,7 +177,6 @@ export default function TrainingSessionsPage() {
         [final.id]: { present: players.length, absent: 0, late: 0 },
       }));
       setShowAdd(false);
-      notifyOrg('session_added', `Séance du ${addForm.date}`, `${addForm.duration}min`, 'session', final.id);
       setAddForm({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
       navigate(`/sessions/${final.id}`);
     } catch (err: unknown) {
@@ -211,7 +209,6 @@ export default function TrainingSessionsPage() {
         return next;
       });
       setShowAdd(false);
-      notifyOrg('session_added', `${created.length} séance${created.length > 1 ? 's' : ''} créée${created.length > 1 ? 's' : ''}`, `${recForm.duration}min`, 'session');
       setRecForm({ days: [], startDate: new Date().toLocaleDateString('sv'), endDate: '', duration: '90', notes: '' });
     } catch (err: unknown) {
       setRecError(err instanceof Error ? err.message : 'Erreur lors de la création.');

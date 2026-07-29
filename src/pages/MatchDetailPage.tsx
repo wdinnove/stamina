@@ -4,7 +4,6 @@ import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, Chevr
 import { matchesApi } from '../api/matches';
 import { statsApi } from '../api/stats';
 import { playersApi } from '../api/players';
-import { notifyOrg } from '../api/notifications';
 import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
 import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
@@ -267,7 +266,6 @@ export default function MatchDetailPage() {
     setDeleting(true);
     try {
       await matchesApi.delete(match.id);
-      notifyOrg('match_deleted', `vs ${match.opponent}`, match.date, 'match', match.id);
       navigate('/matches', { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la suppression.');

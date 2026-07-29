@@ -1,8 +1,9 @@
-import { Bell, X, User, Trophy, Heart, CheckSquare, Calendar, Dumbbell, Users, FileText, Activity, Smile, ChevronRight } from 'lucide-react';
+import { Bell, X, User, Trophy, Heart, CheckSquare, Calendar, Users, Video, Activity, Smile, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Modal } from './Modal';
 import type { AppNotification } from '../api/notifications';
+import { getNotificationCategory, getNotificationType, urlFor } from '../../shared/notifications.js';
 
 /* ── Helpers ── */
 
@@ -18,68 +19,37 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
-function notifColor(type: string): string {
-  if (type.startsWith('player'))   return '#3B82F6';
-  if (type.startsWith('match'))    return '#F59E0B';
-  if (type.startsWith('medical'))  return '#EF4444';
-  if (type.startsWith('action'))   return '#8B5CF6';
-  if (type.startsWith('rpe'))      return '#06B6D4';
-  if (type.startsWith('wellness')) return '#EC4899';
-  if (type.startsWith('session'))  return '#06B6D4';
-  if (type.startsWith('exercise')) return '#10B981';
-  if (type.startsWith('staff') || type.startsWith('meeting')) return '#F97316';
-  if (type.startsWith('document')) return '#94A3B8';
-  return '#00E5A0';
+const CATEGORY_ICONS: Record<string, typeof User> = {
+  roster:   User,
+  medical:  Heart,
+  wellness: Smile,
+  training: Activity,
+  meetings: Users,
+  tasks:    CheckSquare,
+  matches:  Trophy,
+  tactical: Video,
+  season:   Calendar,
+};
+
+/** Les notifications antérieures au registre n'ont pas de `category` : on la retrouve par le type. */
+function categoryOf(n: AppNotification): string | null {
+  return n.category ?? getNotificationType(n.type)?.category ?? null;
 }
 
-function NotifIcon({ type }: { type: string }) {
-  const size = 16;
-  if (type.startsWith('player'))   return <User size={size} />;
-  if (type.startsWith('match'))    return <Trophy size={size} />;
-  if (type.startsWith('medical'))  return <Heart size={size} />;
-  if (type.startsWith('action'))   return <CheckSquare size={size} />;
-  if (type.startsWith('rpe'))      return <Activity size={size} />;
-  if (type.startsWith('wellness')) return <Smile size={size} />;
-  if (type.startsWith('session'))  return <Calendar size={size} />;
-  if (type.startsWith('exercise')) return <Dumbbell size={size} />;
-  if (type.startsWith('staff') || type.startsWith('meeting')) return <Users size={size} />;
-  if (type.startsWith('document')) return <FileText size={size} />;
-  return <Bell size={size} />;
+function notifColor(n: AppNotification): string {
+  const key = categoryOf(n);
+  return (key && getNotificationCategory(key)?.color) || '#00E5A0';
 }
 
-function typeLabel(type: string): string {
-  if (type.startsWith('player'))   return 'Joueur';
-  if (type.startsWith('match'))    return 'Match';
-  if (type.startsWith('medical'))  return 'Médical';
-  if (type.startsWith('action'))   return 'Tâche';
-  if (type.startsWith('rpe'))      return 'RPE';
-  if (type.startsWith('wellness')) return 'Bien-être';
-  if (type.startsWith('session'))  return 'Séance';
-  if (type.startsWith('exercise')) return 'Exercice';
-  if (type.startsWith('meeting'))  return 'Réunion';
-  if (type.startsWith('staff'))    return 'Staff';
-  return 'Notification';
+function NotifIcon({ n }: { n: AppNotification }) {
+  const key = categoryOf(n);
+  const Icon = (key && CATEGORY_ICONS[key]) || Bell;
+  return <Icon size={16} />;
 }
 
-/* ── Route par type de notification ── */
-
-function getNotifUrl(n: AppNotification): string | null {
-  const { type, entity_id } = n;
-  if (type === 'player_added')     return '/roster';
-  if (type === 'medical_added')    return entity_id ? `/medical/record/${entity_id}` : '/medical';
-  if (type === 'medical_resolved') return entity_id ? `/medical/record/${entity_id}` : '/medical';
-  if (type === 'medical_updated')  return entity_id ? `/medical/record/${entity_id}` : '/medical';
-  if (type === 'action_added')     return '/actions';
-  if (type === 'action_deleted')   return '/actions';
-  if (type === 'exercise_added')   return entity_id ? `/exercises/${entity_id}` : '/exercises';
-  if (type === 'exercise_updated') return entity_id ? `/exercises/${entity_id}` : '/exercises';
-  if (type === 'rpe_added')        return entity_id ? `/sessions/${entity_id}` : '/rpe';
-  if (type === 'wellness_added')   return entity_id ? `/wellness/new/${entity_id}` : '/wellness';
-  if (type === 'session_added')    return entity_id ? `/sessions/${entity_id}` : '/sessions';
-  if (type === 'meeting_added')    return entity_id ? `/meetings/${entity_id}` : '/meetings';
-  if (type === 'meeting_deleted')  return '/meetings';
-  if (type === 'match_deleted')    return '/matches';
-  return null;
+function typeLabel(n: AppNotification): string {
+  const key = categoryOf(n);
+  return (key && getNotificationCategory(key)?.label) || 'Notification';
 }
 
 /* ── Badge ── */
@@ -136,9 +106,10 @@ export function NotificationBell() {
 /* ── Notification item ── */
 
 function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: string) => void }) {
-  const color    = notifColor(n.type);
-  const label    = typeLabel(n.type);
-  const url      = getNotifUrl(n);
+  const color = notifColor(n);
+  const label = typeLabel(n);
+  // Les types inconnus (historique) n'ont pas de destination : la ligne reste non cliquable.
+  const url = getNotificationType(n.type) ? urlFor(n.type, n.entity_id ?? undefined) : null;
   const clickable = url !== null;
 
   return (
@@ -163,7 +134,7 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, color,
         }}>
-          <NotifIcon type={n.type} />
+          <NotifIcon n={n} />
         </div>
 
         {/* Contenu */}

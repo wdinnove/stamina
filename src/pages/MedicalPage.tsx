@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Search, Pill, Ambulance, Users } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
@@ -233,7 +233,7 @@ export default function MedicalPage() {
         const typeLabel = typeLabels[formType] ?? formType;
         const updPlayer = teamPlayers.find(p => p.id === fPlayerId);
         const updName = updPlayer ? playerNameFull(updPlayer) : undefined;
-        notifyOrg('medical_updated', `${typeLabel} modifié${updName ? ` — ${updName}` : ''}`, undefined, 'player', fPlayerId);
+        notify(selected?.team.id, 'medical_updated', `${typeLabel} modifié${updName ? ` — ${updName}` : ''}`, { entityType: 'player', entityId: fPlayerId });
       } else {
         await medicalApi.create({ ...payload, status: 'active' });
         const typeLabel = typeLabels[formType] ?? formType;
@@ -248,10 +248,11 @@ export default function MedicalPage() {
         } else {
           notifBody = fDesc || undefined;
         }
-        notifyOrg('medical_added', `${typeLabel}${playerName ? ` — ${playerName}` : ''}`, notifBody, 'player', fPlayerId);
+        notify(selected?.team.id, 'medical_added', `${typeLabel}${playerName ? ` — ${playerName}` : ''}`, { body: notifBody, entityType: 'player', entityId: fPlayerId });
       }
-      if (formType === 'injury' || formType === 'treatment') {
-        await playersApi.update(fPlayerId, { status: fPlayerStatus });
+      const statusPlayer = teamPlayers.find(p => p.id === fPlayerId);
+      if ((formType === 'injury' || formType === 'treatment') && statusPlayer) {
+        await playersApi.setStatus(statusPlayer, fPlayerStatus, selected?.team.id);
       }
       setShowForm(false);
       setVersion(v => v + 1);
@@ -268,10 +269,10 @@ export default function MedicalPage() {
     try {
       const { recordId, playerId } = closeModal;
       await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
-      await playersApi.update(playerId, { status: closeModal.playerStatus });
       const player = teamPlayers.find(p => p.id === playerId);
+      if (player) await playersApi.setStatus(player, closeModal.playerStatus, selected?.team.id);
       const playerName = player ? playerNameFull(player) : undefined;
-      notifyOrg('medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, undefined, 'player', playerId);
+      notify(selected?.team.id, 'medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, { entityType: 'player', entityId: playerId });
       setCloseModal(null);
       setVersion(v => v + 1);
     } catch (err) {

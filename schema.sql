@@ -2889,3 +2889,116 @@ ALTER TABLE tactical_dashboard_widgets ALTER COLUMN category_id DROP NOT NULL;
 ALTER TABLE tactical_dashboard_widgets DROP CONSTRAINT tactical_dashboard_widgets_type_check;
 ALTER TABLE tactical_dashboard_widgets ADD CONSTRAINT tactical_dashboard_widgets_type_check
   CHECK (type IN ('dimension_table', 'evolution_chart', 'cross_matrix', 'pie_chart', 'period_comparison', 'custom_table'));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 19. Notifications configurables (in-app / push / email)
+--     Deux niveaux de réglage : l'équipe autorise une catégorie et ses canaux,
+--     l'utilisateur choisit ensuite ce qu'il reçoit en push/email.
+--     Convention : LIGNE ABSENTE = ACTIVÉ (défauts portés par shared/notifications.js),
+--     donc aucun seeding n'est nécessaire pour les équipes/utilisateurs existants.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Contexte d'équipe + catégorie sur les notifications existantes (nullable : historique conservé).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS team_id  UUID REFERENCES teams(id) ON DELETE CASCADE;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS category TEXT;
+
+CREATE TABLE IF NOT EXISTS team_notification_settings (
+  team_id        UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  category       TEXT NOT NULL,
+  in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  push_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+  email_enabled  BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (team_id, category)
+);
+
+DROP TRIGGER IF EXISTS trg_team_notification_settings_updated_at ON team_notification_settings;
+CREATE TRIGGER trg_team_notification_settings_updated_at
+  BEFORE UPDATE ON team_notification_settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+ALTER TABLE team_notification_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "team_notification_settings_select" ON team_notification_settings;
+CREATE POLICY "team_notification_settings_select" ON team_notification_settings
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+DROP POLICY IF EXISTS "team_notification_settings_write" ON team_notification_settings;
+CREATE POLICY "team_notification_settings_write" ON team_notification_settings
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM admin_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+
+-- L'in-app n'est pas désactivable côté utilisateur : c'est le centre de notifications.
+CREATE TABLE IF NOT EXISTS user_notification_preferences (
+  user_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  category      TEXT NOT NULL,
+  push_enabled  BOOLEAN NOT NULL DEFAULT TRUE,
+  email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (user_id, category)
+);
+
+DROP TRIGGER IF EXISTS trg_user_notification_preferences_updated_at ON user_notification_preferences;
+CREATE TRIGGER trg_user_notification_preferences_updated_at
+  BEFORE UPDATE ON user_notification_preferences
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+ALTER TABLE user_notification_preferences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "user_notification_preferences_own" ON user_notification_preferences;
+CREATE POLICY "user_notification_preferences_own" ON user_notification_preferences
+  FOR ALL TO authenticated
+  USING      (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- Destinataires d'une notification d'équipe, avec les canaux effectifs après
+-- croisement des réglages équipe et des préférences utilisateur.
+-- Mêmes règles d'accès que accessible_team_ids(), appliquées dans l'autre sens :
+-- superadmin de l'org, OU ligne team_roles sur cette équipe.
+CREATE OR REPLACE FUNCTION notification_recipients(
+  p_team_id  UUID,
+  p_category TEXT,
+  p_exclude  UUID DEFAULT NULL
+)
+RETURNS TABLE (user_id UUID, in_app BOOLEAN, push BOOLEAN, email BOOLEAN)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT p.id,
+         COALESCE(ts.in_app_enabled, TRUE),
+         COALESCE(ts.push_enabled,  TRUE) AND COALESCE(up.push_enabled,  TRUE),
+         COALESCE(ts.email_enabled, TRUE) AND COALESCE(up.email_enabled, TRUE)
+  FROM      teams    t
+  JOIN      profiles p  ON p.organization_id = t.organization_id
+  LEFT JOIN team_notification_settings    ts ON ts.team_id = t.id  AND ts.category = p_category
+  LEFT JOIN user_notification_preferences up ON up.user_id = p.id  AND up.category = p_category
+  WHERE t.id = p_team_id
+    AND (p_exclude IS NULL OR p.id <> p_exclude)
+    AND (
+      p.org_role = 'superadmin'
+      OR EXISTS (SELECT 1 FROM team_roles tr WHERE tr.team_id = t.id AND tr.profile_id = p.id)
+    )
+$$;
+
+-- Équipe d'un joueur via la saison courante — utilisée par le dispatch serveur
+-- pour les entrées bien-être publiques (formulaire anonyme, sans utilisateur connecté).
+CREATE OR REPLACE FUNCTION player_current_team(p_player_id UUID)
+RETURNS UUID
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT s.team_id
+  FROM   player_season ps
+  JOIN   seasons       s ON s.id = ps.season_id
+  WHERE  ps.player_id = p_player_id
+    AND  s.is_current = TRUE
+  LIMIT  1
+$$;
+
+-- Ces deux fonctions ne sont appelées que par les fonctions serverless (service role).
+-- Sans ces révocations, tout utilisateur connecté pourrait énumérer les préférences
+-- de notification de ses coéquipiers via l'API REST de Supabase.
+REVOKE ALL ON FUNCTION notification_recipients(UUID, TEXT, UUID) FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION notification_recipients(UUID, TEXT, UUID) TO service_role;
+REVOKE ALL ON FUNCTION player_current_team(UUID) FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION player_current_team(UUID) TO service_role;

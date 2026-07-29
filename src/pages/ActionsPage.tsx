@@ -4,7 +4,7 @@ import RichTextEditor from '../components/RichTextEditor';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
 import { staffApi }   from '../api/staff';
-import { notifyOrg } from '../api/notifications';
+import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useLocation, useNavigate } from 'react-router';
 import { categoryConfig, priorityConfig } from '../data/config';
@@ -139,7 +139,12 @@ export default function ActionsPage() {
       setForm(emptyForm);
       const player = form.playerId ? players.find(p => p.id === form.playerId) : undefined;
       const playerName = player ? playerNameFull(player) : undefined;
-      notifyOrg('action_added', form.title, playerName, 'action', created.id);
+      notify(selected?.team.id, 'action_added', form.title, {
+        body: playerName,
+        entityType: 'action',
+        entityId: created.id,
+        assigneeStaffId: form.assignedTo || undefined,
+      });
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -152,9 +157,6 @@ export default function ActionsPage() {
     setDeleting(true);
     try {
       await actionsApi.delete(confirmDelete.id);
-      const p = players.find(pl => pl.id === confirmDelete.playerId);
-      const playerName = p ? playerNameFull(p) : undefined;
-      notifyOrg('action_deleted', confirmDelete.title, playerName, 'action', confirmDelete.id);
       setActs(prev => prev.filter(a => a.id !== confirmDelete.id));
       setConfirmDelete(null);
     } catch (err: unknown) {

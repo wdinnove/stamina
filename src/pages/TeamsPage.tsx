@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Plus, Search, Users, Edit, X, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
 import { teamsApi, seasonsApi } from '../api';
+import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Breadcrumb, EmptyState, Modal, AccessRestricted } from '../components';
 import type { Team, Season } from '../data/types';
@@ -67,6 +68,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
         isCurrent:  seasons.length === 0,
       });
       setSeasons(prev => [created, ...prev]);
+      notify(team.id, 'season_changed', `Nouvelle saison — ${created.label}`, { entityType: 'season', entityId: created.id });
       reloadContext();
       setShowSeasonForm(false);
       setSeasonForm({ label: '', startDate: '', endDate: '', totalGames: '' });
@@ -97,6 +99,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
     if (!team || season.isCurrent) return;
     try {
       await seasonsApi.setCurrent(season.id, team.id);
+      notify(team.id, 'season_changed', `Saison courante — ${season.label}`, { entityType: 'season', entityId: season.id });
       setSeasons(prev => prev.map(s => ({ ...s, isCurrent: s.id === season.id })));
       setTeam(t => t ? { ...t, currentSeason: season.label } : t);
     } catch (err: unknown) {
