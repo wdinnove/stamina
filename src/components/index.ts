@@ -1,4 +1,5 @@
 export { Card, CardTitle } from './Card';
+export { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage } from './ConfigCard';
 export { Modal }        from './Modal';
 export { Badge }        from './Badge';
 export { DropzoneEmptyState } from './DropzoneEmptyState';
@@ -25,6 +26,7 @@ export type { TeamDisplayMode } from './TeamDisplayToggle';
 export { TeamSessionHistoryTable } from './TeamSessionHistoryTable';
 export { RPEPlayerRankingTable } from './RPEPlayerRankingTable';
 export { WellnessPlayerRankingTable } from './WellnessPlayerRankingTable';
+export { WellnessMethodPreview } from './WellnessMethodPreview';
 export { PlayerMedicalView }   from './PlayerMedicalView';
 export type { PlayerMedicalViewHandle } from './PlayerMedicalView';
 export { PlayerMedicalOverview } from './PlayerMedicalOverview';

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Bell } from 'lucide-react';
-import { Card, CardTitle } from './Card';
+import { ConfigCard } from './ConfigCard';
 import { ChannelToggle } from './ChannelToggle';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import {
@@ -59,16 +59,10 @@ export function TeamNotificationsTab() {
   }
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<Bell size={14} color="#00E5A0" />}>Notifications de l'équipe</CardTitle>
-      </div>
-      <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
-        Ce que l'équipe autorise à envoyer. Chaque membre peut ensuite affiner ce qu'il reçoit
-        depuis sa page « Mes notifications », mais il ne pourra pas réactiver un canal coupé ici.
-        L'email n'est proposé que sur les catégories qui en envoient.
-      </p>
-
+    <ConfigCard
+      icon={<Bell size={14} color="#00E5A0" />}
+      title="Notifications de l'équipe"
+      description="Ce que l'équipe autorise à envoyer. Chaque membre peut ensuite affiner ce qu'il reçoit depuis sa page « Mes notifications », mais il ne pourra pas réactiver un canal coupé ici. L'email n'est proposé que sur les catégories qui en envoient.">
       {error && <p style={{ color: '#EF4444', fontSize: '0.8rem', marginTop: 0 }}>{error}</p>}
       {!settings ? (
         <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>
@@ -117,6 +111,6 @@ export function TeamNotificationsTab() {
           </table>
         </div>
       )}
-    </Card>
+    </ConfigCard>
   );
 }

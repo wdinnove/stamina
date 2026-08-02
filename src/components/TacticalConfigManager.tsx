@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronRight, ChevronUp, Pencil, Check, X, AlertCircle, Plus, Trash2, Search, ListChecks } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Pencil, Check, X, AlertCircle, Plus, Trash2, Search, ListChecks, Video } from 'lucide-react';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { normalizeTacticalName } from '../utils/tacticalCsvParser';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
-import { Card, CardTitle } from './Card';
+import { ConfigCard } from './ConfigCard';
 
 function friendlyDeleteError(e: unknown, itemLabel: string): string {
   const message = e instanceof Error ? e.message : String(e);
@@ -505,16 +505,10 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
     : sortedCategories;
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle>Statistiques tactiques</CardTitle>
-      </div>
-      <p style={{ color: '#64748B', fontSize: '0.8rem', marginTop: 0, marginBottom: 16 }}>
-        Catégories et dimensions sont créées automatiquement lors de l'import d'un CSV de match, mais peuvent aussi
-        être ajoutées ici à la main — cet écran permet de créer/renommer/réordonner/supprimer, de régler les seuils
-        de couleur de la rentabilité par catégorie, et de définir par dimension les options attendues (facultatif :
-        sans catalogue, toute valeur du CSV est acceptée telle quelle).
-      </p>
+    <ConfigCard
+      icon={<Video size={14} color="#00E5A0" />}
+      title="Statistiques tactiques"
+      description={"Catégories et dimensions sont créées automatiquement lors de l'import d'un CSV de match, mais peuvent aussi être ajoutées ici à la main — cet écran permet de créer/renommer/réordonner/supprimer, de régler les seuils de couleur de la rentabilité par catégorie, et de définir par dimension les options attendues (facultatif : sans catalogue, toute valeur du CSV est acceptée telle quelle)."}>
 
       {loading && <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>}
       {error && (
@@ -636,6 +630,6 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
           <AddItemRow placeholder="Nouvelle catégorie…" onAdd={handleAddCategory} />
         </div>
       )}
-    </Card>
+    </ConfigCard>
   );
 }

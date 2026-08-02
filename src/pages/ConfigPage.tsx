@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell } from 'lucide-react';
+import { Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell } from 'lucide-react';
 import { TacticalConfigManager } from '../components/TacticalConfigManager';
 import { TeamNotificationsTab } from '../components/TeamNotificationsTab';
 import { teamsApi, teamRolesApi } from '../api';
@@ -11,7 +11,7 @@ import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
-import { Card, CardTitle, StatusBadge, EmptyState, Modal, PlayerEditModal, PlayerAvatar } from '../components';
+import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { ExerciseCategory, Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod } from '../data/types';
 
@@ -32,16 +32,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label style={labelStyle}>{label}</label>
       {children}
     </div>
-  );
-}
-
-function SaveBtn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} disabled={loading}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', color: '#0A0C10', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
-      <Save size={14} />
-      {loading ? 'Enregistrement…' : 'Enregistrer'}
-    </button>
   );
 }
 
@@ -455,21 +445,18 @@ function RosterTab() {
   }
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<ClipboardList size={14} color="#00E5A0" />}>Effectif</CardTitle>
-      </div>
-
-      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 14 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-          <input placeholder="Rechercher un joueur…" value={search} onChange={e => setSearch(e.target.value)}
-            style={{ ...inputStyle, paddingLeft: 32 }} />
-        </div>
-        <button onClick={() => setShowAddModal(true)}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0A0C10', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', flexShrink: 0 }}>
-          <Plus size={14} /><span className="hidden sm:inline">Ajouter</span>
-        </button>
+    <ConfigCard
+      icon={<ClipboardList size={14} color="#00E5A0" />}
+      title="Effectif"
+      action={
+        <ConfigAction icon={<Plus size={14} />} onClick={() => setShowAddModal(true)} hideLabelOnMobile>
+          Ajouter
+        </ConfigAction>
+      }>
+      <div style={{ position: 'relative', marginBottom: 14 }}>
+        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+        <input placeholder="Rechercher un joueur…" value={search} onChange={e => setSearch(e.target.value)}
+          style={{ ...inputStyle, paddingLeft: 32 }} />
       </div>
 
       {error && <p style={{ color: '#EF4444', fontSize: '0.82rem', marginBottom: 10 }}>{error}</p>}
@@ -574,7 +561,7 @@ function RosterTab() {
             </div>
         </Modal>
       )}
-    </Card>
+    </ConfigCard>
   );
 }
 
@@ -688,19 +675,14 @@ function StaffTab() {
   }
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<UserCheck size={14} color="#00E5A0" />} mb={0}
-          right={
-            <button onClick={() => setShowForm(true)}
-              style={{ padding: '7px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={14} /><span className="hidden sm:inline">Ajouter un membre</span>
-            </button>
-          }>
-          Staff
-        </CardTitle>
-      </div>
-
+    <ConfigCard
+      icon={<UserCheck size={14} color="#00E5A0" />}
+      title="Staff"
+      action={
+        <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
+          Ajouter un membre
+        </ConfigAction>
+      }>
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16 }}>
           <AlertCircle size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
@@ -881,7 +863,7 @@ function StaffTab() {
             </form>
         </Modal>
       )}
-    </Card>
+    </ConfigCard>
   );
 }
 
@@ -1085,10 +1067,10 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
     <>
       {/* Infos équipe */}
       {tab === 'info' && (
-      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-          <CardTitle icon={<Shield size={14} color="#00E5A0" />}>Informations de l'équipe</CardTitle>
-        </div>
+      <ConfigCard
+        icon={<Shield size={14} color="#00E5A0" />}
+        title="Informations de l'équipe"
+        action={<ConfigSaveAction loading={teamSaving} onClick={saveTeam} />}>
         <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
           <Field label="Nom de l'équipe">
             <input style={inputStyle} value={teamForm.name}
@@ -1116,13 +1098,8 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
               placeholder="Description optionnelle" />
           </Field>
         </div>
-        {teamMsg && (
-          <p style={{ color: teamMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{teamMsg.text}</p>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <SaveBtn loading={teamSaving} onClick={saveTeam} />
-        </div>
-      </Card>
+        <ConfigMessage msg={teamMsg} />
+      </ConfigCard>
       )}
 
       {/* Effectif */}
@@ -1133,14 +1110,12 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
 
       {/* Seuils */}
       {tab === 'thresholds' && (
-      <>
-      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-          <CardTitle icon={<Sliders size={14} color="#F59E0B" />}>Seuils de charge physique</CardTitle>
-        </div>
-        <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
-          Les seuils définissent les zones de charge hebdomadaire (RPE × minutes). Ils s'appliquent à toutes les vues de charge de cette équipe.
-        </p>
+      <ConfigStack>
+      <ConfigCard
+        icon={<Sliders size={14} color="#F59E0B" />}
+        title="Seuils de charge physique"
+        description="Les seuils définissent les zones de charge hebdomadaire (RPE × minutes). Ils s'appliquent à toutes les vues de charge de cette équipe."
+        action={<ConfigSaveAction loading={thrSaving} onClick={saveThresholds} />}>
         <ThresholdPreview lightMax={lightMax} normalMax={normalMax} />
 
         <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16, marginTop: 20 }}>
@@ -1181,21 +1156,14 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
           </div>
         </div>
 
-        {thrMsg && (
-          <p style={{ color: thrMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{thrMsg.text}</p>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <SaveBtn loading={thrSaving} onClick={saveThresholds} />
-        </div>
-      </Card>
+        <ConfigMessage msg={thrMsg} />
+      </ConfigCard>
 
-      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-          <CardTitle icon={<TrendingUp size={14} color="#3B82F6" />}>Seuils statistiques</CardTitle>
-        </div>
-        <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
-          Ces seuils définissent les couleurs des colonnes Éval, ORtg et DRtg dans l'analyse collective.
-        </p>
+      <ConfigCard
+        icon={<TrendingUp size={14} color="#3B82F6" />}
+        title="Seuils statistiques"
+        description="Ces seuils définissent les couleurs des colonnes Éval, ORtg et DRtg dans l'analyse collective."
+        action={<ConfigSaveAction loading={statSaving} onClick={saveStatThresholds} />}>
         <StatColorPreview t={stat} />
 
         {/* Éval */}
@@ -1268,26 +1236,18 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
           </div>
         </div>
 
-        {statMsg && (
-          <p style={{ color: statMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{statMsg.text}</p>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <SaveBtn loading={statSaving} onClick={saveStatThresholds} />
-        </div>
-      </Card>
-      </>
+        <ConfigMessage msg={statMsg} />
+      </ConfigCard>
+      </ConfigStack>
       )}
 
       {/* Bien-être */}
       {tab === 'wellness' && (
-      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-          <CardTitle icon={<Heart size={14} color="#F472B6" />}>Bien-être — méthode de saisie</CardTitle>
-        </div>
-        <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
-          Méthode utilisée à l'ouverture du formulaire — Détaillé (6 axes précis), Rapide (6 axes via icône/couleur)
-          ou Note unique (1 seule valeur globale). Ce choix n'est modifiable qu'ici, pas depuis le formulaire lui-même.
-        </p>
+      <ConfigCard
+        icon={<Heart size={14} color="#F472B6" />}
+        title="Bien-être — méthode de saisie"
+        description="Méthode utilisée à l'ouverture du formulaire — Détaillé (6 axes précis), Rapide (6 axes via icône/couleur) ou Note unique (1 seule valeur globale). Ce choix n'est modifiable qu'ici, pas depuis le formulaire lui-même."
+        action={<ConfigSaveAction loading={wellnessSaving} onClick={saveWellnessMethods} />}>
         <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
           <div>
             <label style={labelStyle}>Saisie interne (staff)</label>
@@ -1296,6 +1256,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
               <option value="emoji">Rapide (icône/couleur)</option>
               <option value="single">Note unique</option>
             </select>
+            <WellnessMethodPreview method={wellnessDefaultMethod} />
           </div>
           <div>
             <label style={labelStyle}>Lien public joueur</label>
@@ -1304,16 +1265,12 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
               <option value="emoji">Rapide (icône/couleur)</option>
               <option value="single">Note unique</option>
             </select>
+            <WellnessMethodPreview method={wellnessPublicMethod} />
           </div>
         </div>
 
-        {wellnessMsg && (
-          <p style={{ color: wellnessMsg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{wellnessMsg.text}</p>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <SaveBtn loading={wellnessSaving} onClick={saveWellnessMethods} />
-        </div>
-      </Card>
+        <ConfigMessage msg={wellnessMsg} />
+      </ConfigCard>
       )}
 
       {/* Notifications */}
@@ -1321,14 +1278,10 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
 
       {/* Catégories d'exercices */}
       {tab === 'categories' && (
-      <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-          <CardTitle icon={<Tag size={14} color="#00E5A0" />}>Catégories d'exercices</CardTitle>
-        </div>
-        <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
-          Ces catégories servent à classer les exercices de la bibliothèque de cette équipe. Supprimer une catégorie ne supprime pas les exercices qui l'utilisent : ils deviennent simplement "sans catégorie".
-        </p>
-
+      <ConfigCard
+        icon={<Tag size={14} color="#00E5A0" />}
+        title="Catégories d'exercices"
+        description={'Ces catégories servent à classer les exercices de la bibliothèque de cette équipe. Supprimer une catégorie ne supprime pas les exercices qui l\'utilisent : ils deviennent simplement "sans catégorie".'}>
         {catLoading && <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>}
         {catError && <p style={{ color: '#EF4444', fontSize: '0.82rem' }}>{catError}</p>}
 
@@ -1358,7 +1311,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
           </button>
         </form>
         {addCatError && <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{addCatError}</p>}
-      </Card>
+      </ConfigCard>
       )}
 
       {/* Données tactiques */}
@@ -1439,15 +1392,10 @@ function TeamRolesTab({ teamId, isSuperadmin }: { teamId: string; isSuperadmin: 
   );
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 14, paddingBottom: 14 }}>
-        <CardTitle icon={<Lock size={14} color="#00E5A0" />}>Rôles de l'équipe</CardTitle>
-      </div>
-      {!isSuperadmin && (
-        <p style={{ color: '#64748B', fontSize: '0.8rem', margin: '0 0 14px' }}>
-          Lecture seule — seul le superadmin de l'organisation peut modifier les rôles d'une équipe.
-        </p>
-      )}
+    <ConfigCard
+      icon={<Lock size={14} color="#00E5A0" />}
+      title="Rôles de l'équipe"
+      description={isSuperadmin ? undefined : 'Lecture seule — seul le superadmin de l\'organisation peut modifier les rôles d\'une équipe.'}>
       {error && <p style={{ color: '#EF4444', fontSize: '0.8rem', margin: '0 0 14px' }}>{error}</p>}
 
       {isSuperadmin && (
@@ -1511,6 +1459,6 @@ function TeamRolesTab({ teamId, isSuperadmin }: { teamId: string; isSuperadmin: 
           </table>
         </div>
       )}
-    </Card>
+    </ConfigCard>
   );
 }

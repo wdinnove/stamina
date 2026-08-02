@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Search, Users, X, AlertCircle, CheckCircle, Save, Building2, Pencil, Trash2, Lock, UserCog } from 'lucide-react';
+import { Plus, Search, Users, X, AlertCircle, CheckCircle, Building2, Pencil, Trash2, Lock, UserCog } from 'lucide-react';
 import { teamsApi, playersApi, configApi, teamRolesApi } from '../api';
 import type { AssignableProfile } from '../api/teamRoles';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { PlayerAvatar, StatusBadge, EmptyState, Card, CardTitle, Modal, PlayerEditModal } from '../components';
+import { PlayerAvatar, StatusBadge, EmptyState, ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, Modal, PlayerEditModal } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Team, Player, Organization, TeamRole, TeamRoleAssignment } from '../data/types';
 
@@ -87,17 +87,18 @@ function TeamsTab() {
   }
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-          <input placeholder="Rechercher une équipe…" value={search} onChange={e => setSearch(e.target.value)}
-            style={{ ...inputStyle, paddingLeft: 32 }} />
-        </div>
-        <button onClick={() => setShowForm(true)}
-          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
-          <Plus size={14} /><span className="hidden sm:inline">Nouvelle équipe</span>
-        </button>
+    <ConfigCard
+      icon={<Users size={14} color="#00E5A0" />}
+      title="Équipes"
+      action={
+        <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
+          Nouvelle équipe
+        </ConfigAction>
+      }>
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+        <input placeholder="Rechercher une équipe…" value={search} onChange={e => setSearch(e.target.value)}
+          style={{ ...inputStyle, paddingLeft: 32 }} />
       </div>
 
       {fetchErr && (
@@ -183,7 +184,7 @@ function TeamsTab() {
           </form>
         </Modal>
       )}
-    </>
+    </ConfigCard>
   );
 }
 
@@ -282,11 +283,14 @@ function PlayersTab() {
   }
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<Users size={14} color="#00E5A0" />}>Joueurs</CardTitle>
-      </div>
-
+    <ConfigCard
+      icon={<Users size={14} color="#00E5A0" />}
+      title="Joueurs"
+      action={
+        <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
+          Nouveau joueur
+        </ConfigAction>
+      }>
       <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16 }}>
         <div style={{ position: 'relative', flex: 1 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
@@ -302,10 +306,6 @@ function PlayersTab() {
           <option value="suspended">Suspendu</option>
           <option value="unavailable">Indisponible</option>
         </select>
-        <button onClick={() => setShowForm(true)}
-          style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
-          <Plus size={14} /><span className="hidden sm:inline">Nouveau joueur</span>
-        </button>
       </div>
 
       {fetchErr && (
@@ -496,7 +496,7 @@ function PlayersTab() {
           </div>
         </Modal>
       )}
-    </Card>
+    </ConfigCard>
   );
 }
 
@@ -577,7 +577,7 @@ function RolesTab() {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}><Spinner /></div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <ConfigStack>
       {fetchErr && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px' }}>
           <AlertCircle size={13} style={{ color: '#EF4444' }} />
@@ -585,13 +585,10 @@ function RolesTab() {
         </div>
       )}
 
-      <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 14, paddingBottom: 14 }}>
-          <CardTitle icon={<UserCog size={14} color="#00E5A0" />}>Superadmins</CardTitle>
-        </div>
-        <p style={{ color: '#64748B', fontSize: '0.8rem', margin: '0 0 14px' }}>
-          Accès total à l'organisation : configuration club, toutes les équipes, assignation des rôles.
-        </p>
+      <ConfigCard
+        icon={<UserCog size={14} color="#00E5A0" />}
+        title="Superadmins"
+        description="Accès total à l'organisation : configuration club, toutes les équipes, assignation des rôles.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {profiles.map(p => (
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6 }}>
@@ -603,16 +600,12 @@ function RolesTab() {
             </div>
           ))}
         </div>
-      </Card>
+      </ConfigCard>
 
-      <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-        <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 14, paddingBottom: 14 }}>
-          <CardTitle icon={<Lock size={14} color="#00E5A0" />}>Rôles par équipe</CardTitle>
-        </div>
-        <p style={{ color: '#64748B', fontSize: '0.8rem', margin: '0 0 14px' }}>
-          Tous les utilisateurs de l'organisation peuvent être assignés à n'importe quelle équipe.
-        </p>
-
+      <ConfigCard
+        icon={<Lock size={14} color="#00E5A0" />}
+        title="Rôles par équipe"
+        description="Tous les utilisateurs de l'organisation peuvent être assignés à n'importe quelle équipe.">
         <form onSubmit={handleAssign} className="flex flex-col sm:flex-row" style={{ gap: 8, marginBottom: 16 }}>
           <select required value={form.teamId} onChange={e => setForm(f => ({ ...f, teamId: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
             <option value="">Équipe…</option>
@@ -666,8 +659,8 @@ function RolesTab() {
             </table>
           </div>
         )}
-      </Card>
-    </div>
+      </ConfigCard>
+    </ConfigStack>
   );
 }
 
@@ -720,10 +713,10 @@ function OrgConfigTab() {
   );
 
   return (
-    <Card style={{ padding: '20px 24px', borderRadius: 10 }}>
-      <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
-        <CardTitle icon={<Building2 size={14} color="#00E5A0" />}>Informations du club</CardTitle>
-      </div>
+    <ConfigCard
+      icon={<Building2 size={14} color="#00E5A0" />}
+      title="Informations du club"
+      action={<ConfigSaveAction loading={saving} onClick={save} />}>
         <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
           <div style={{ marginBottom: 14, gridColumn: '1 / -1' }}>
             <label style={labelStyle}>Nom du club</label>
@@ -750,14 +743,8 @@ function OrgConfigTab() {
             <input style={inputStyle} value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://monclub.fr" />
           </div>
         </div>
-        {msg && <p style={{ color: msg.ok ? '#00E5A0' : '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{msg.text}</p>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <button onClick={save} disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', color: '#0A0C10', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
-            <Save size={14} />{saving ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
-        </div>
-    </Card>
+        <ConfigMessage msg={msg} />
+    </ConfigCard>
   );
 }
 
