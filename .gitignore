@@ -1,7 +1,8 @@
 node_modules
-.env
-.env.local
 dist
 .vercel
-.env*
 *.tsbuildinfo
+
+.env*
+# Modèle sans valeurs — doit rester versionné (cf. docs/SETUP.md).
+!.env.example
