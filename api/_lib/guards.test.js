@@ -90,3 +90,37 @@ describe('aucun envoi d\'email générique', () => {
 // Le comportement de /api/notify est couvert par api/notify.test.js, qui appelle
 // réellement le handler : un test de source passerait encore si l'appel de garde
 // était mis en commentaire.
+
+describe('normalisation de l\'origine publique', () => {
+  it('accepte le domaine avec ou sans slash final, résultat identique', async () => {
+    const { appOrigin } = await import('../send-wellness-links.js')
+    const attendu = 'https://stamina-one.vercel.app'
+    expect(appOrigin({ APP_ORIGIN: 'https://stamina-one.vercel.app' })).toBe(attendu)
+    expect(appOrigin({ APP_ORIGIN: 'https://stamina-one.vercel.app/' })).toBe(attendu)
+    expect(appOrigin({ APP_ORIGIN: 'https://stamina-one.vercel.app///' })).toBe(attendu)
+    expect(appOrigin({ APP_ORIGIN: '  https://stamina-one.vercel.app/  ' })).toBe(attendu)
+  })
+
+  it('ajoute le schéma au domaine nu fourni par Vercel', async () => {
+    const { appOrigin } = await import('../send-wellness-links.js')
+    expect(appOrigin({ VERCEL_PROJECT_PRODUCTION_URL: 'stamina-one.vercel.app' }))
+      .toBe('https://stamina-one.vercel.app')
+  })
+
+  it('préserve http pour un usage local', async () => {
+    const { appOrigin } = await import('../send-wellness-links.js')
+    expect(appOrigin({ APP_ORIGIN: 'http://localhost:3000/' })).toBe('http://localhost:3000')
+  })
+
+  it('donne la priorité à APP_ORIGIN sur le domaine Vercel', async () => {
+    const { appOrigin } = await import('../send-wellness-links.js')
+    expect(appOrigin({ APP_ORIGIN: 'https://vrai.fr', VERCEL_PROJECT_PRODUCTION_URL: 'x.vercel.app' }))
+      .toBe('https://vrai.fr')
+  })
+
+  it('renvoie une origine vide si rien n\'est configuré, pour déclencher le refus', async () => {
+    const { appOrigin } = await import('../send-wellness-links.js')
+    expect(appOrigin({})).toBe('')
+    expect(appOrigin({ APP_ORIGIN: '   ' })).toBe('')
+  })
+})

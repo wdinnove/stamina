@@ -108,8 +108,15 @@ export default async function handler(req, res) {
   }
 }
 
-function appOrigin() {
-  const url = process.env.APP_ORIGIN || process.env.VERCEL_PROJECT_PRODUCTION_URL
+/**
+ * Origine publique normalisée : le schéma est ajouté si absent (Vercel fournit un
+ * domaine nu) et un éventuel slash final est retiré, sinon les liens envoyés aux
+ * joueuses contiendraient un double slash.
+ */
+export function appOrigin(env = process.env) {
+  const url = env.APP_ORIGIN || env.VERCEL_PROJECT_PRODUCTION_URL
   if (!url) return ''
-  return url.startsWith('http') ? url : `https://${url}`
+  const trimmed = url.trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+  return /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
 }
