@@ -2,13 +2,17 @@ import { getAuthedUser, getSupabaseAdmin } from './_lib/supabaseAdmin.js'
 import { getOrganizationId } from './_lib/org.js'
 import { dispatch, teamRecipients } from './_lib/notify.js'
 import { getNotificationType } from '../shared/notifications.js'
+import { hasTeamWriteAccess, withinRateLimit, sanitizeTitle, sanitizeBody } from './_lib/guards.js'
 
 /**
  * POST /api/notify
  * Crée une notification métier (in-app + push selon les réglages équipe/utilisateur).
  * Body : { teamId, type, title, body?, entityType?, entityId?, assigneeStaffId? }
  *
- * Sécurité : l'appelant doit être authentifié et avoir accès à l'équipe visée.
+ * Sécurité : l'appelant doit être authentifié et avoir le droit d'ÉCRITURE sur
+ * l'équipe visée — émettre un message à tout le staff n'est pas une lecture, un rôle
+ * 'viewer' ne doit pas pouvoir le faire. Le texte fourni par le client est assaini
+ * et plafonné, et le débit par utilisateur est limité.
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -25,14 +29,22 @@ export default async function handler(req, res) {
   const def = getNotificationType(type)
   if (!def) return res.status(400).json({ error: `Type de notification inconnu : ${type}` })
 
+  const cleanTitle = sanitizeTitle(title)
+  if (!cleanTitle) return res.status(400).json({ error: 'Titre vide après nettoyage' })
+  const cleanBody = sanitizeBody(body)
+
   const admin = getSupabaseAdmin()
 
   try {
-    // L'appelant doit lui-même faire partie du public de cette équipe (superadmin ou team_roles).
-    const recipients = await teamRecipients(admin, teamId, def.category)
-    if (!recipients.some(r => r.user_id === caller.id)) {
+    if (!await hasTeamWriteAccess(admin, caller.id, teamId)) {
       return res.status(403).json({ error: 'Non autorisé à notifier cette équipe' })
     }
+
+    if (!await withinRateLimit(admin, caller.id)) {
+      return res.status(429).json({ error: 'Trop de notifications émises, réessayez dans une minute' })
+    }
+
+    const recipients = await teamRecipients(admin, teamId, def.category)
 
     let assigneeUserIds = null
     if (def.audience === 'assignee') {
@@ -55,8 +67,8 @@ export default async function handler(req, res) {
       teamId,
       orgId,
       type,
-      title,
-      body: body ?? null,
+      title: cleanTitle,
+      body: cleanBody,
       entityType: entityType ?? null,
       entityId: entityId ?? null,
       actorId: caller.id,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Save, Check, Mail, X, Users, Smile, Meh, Frown } from 'lucide-react';
-import { sendEmail } from '../api/email';
+import { sendWellnessLinks } from '../api/email';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
 import { notify } from '../api/notifications';
@@ -32,9 +32,9 @@ function fmtDate(iso: string): string {
 type Tab = 'entry' | 'history' | 'team';
 
 const TAB_SLUGS: Record<string, Tab> = {
-  new:        'entry',
-  individual: 'history',
-  team:       'team',
+  saisie: 'entry',
+  joueur: 'history',
+  equipe: 'team',
 };
 
 export default function WellnessPage() {
@@ -47,17 +47,17 @@ export default function WellnessPage() {
 
   const setActiveTab = (t: Tab) => {
     if (t === 'team') {
-      navigate(selected ? `/wellness/team/${selected.team.id}` : '/wellness/team', { replace: true });
+      navigate(selected ? `/bien-etre/equipe/${selected.team.id}` : '/bien-etre/equipe', { replace: true });
       return;
     }
-    const slug = t === 'entry' ? 'new' : 'individual';
+    const slug = t === 'entry' ? 'saisie' : 'joueur';
     const pid  = selectedPlayerId ?? roster[0]?.id;
-    navigate(pid ? `/wellness/${slug}/${pid}` : `/wellness/${slug}`, { replace: true });
+    navigate(pid ? `/bien-etre/${slug}/${pid}` : `/bien-etre/${slug}`, { replace: true });
   };
 
   const setSelectedPlayerId = (id: string) => {
-    const slug = activeTab === 'entry' ? 'new' : 'individual';
-    navigate(`/wellness/${slug}/${id}`, { replace: true });
+    const slug = activeTab === 'entry' ? 'saisie' : 'joueur';
+    navigate(`/bien-etre/${slug}/${id}`, { replace: true });
   };
 
   const [roster, setRoster]               = useState<Player[]>([]);
@@ -88,6 +88,7 @@ export default function WellnessPage() {
   const [linkSelected,     setLinkSelected]     = useState<Set<string>>(new Set());
   const [linkSending,      setLinkSending]      = useState(false);
   const [linkSendResult,   setLinkSendResult]   = useState<{ sent: number; skipped: string[]; failed: string[] } | null>(null);
+  const [linkSendError,    setLinkSendError]    = useState('');
 
   // Repart de la méthode par défaut de l'équipe à chaque changement d'équipe
   useEffect(() => {
@@ -102,15 +103,15 @@ export default function WellnessPage() {
         setRoster(players);
         if (activeTab === 'team') {
           if (!urlId) {
-            navigate(`/wellness/team/${selected.team.id}`, { replace: true });
+            navigate(`/bien-etre/equipe/${selected.team.id}`, { replace: true });
           } else if (urlId !== selected.team.id) {
             // L'équipe dans l'URL ne correspond plus à l'équipe sélectionnée (ex. bascule dans la TopBar).
             navigate('/', { replace: true });
           }
         } else if (players.length > 0) {
           if (!urlId) {
-            const slug = activeTab === 'entry' ? 'new' : 'individual';
-            navigate(`/wellness/${slug}/${players[0].id}`, { replace: true });
+            const slug = activeTab === 'entry' ? 'saisie' : 'joueur';
+            navigate(`/bien-etre/${slug}/${players[0].id}`, { replace: true });
           } else if (!players.some(p => p.id === urlId)) {
             // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
             navigate('/', { replace: true });
@@ -186,34 +187,27 @@ export default function WellnessPage() {
   function openLinkModal() {
     setLinkSelected(new Set(roster.filter(p => p.email).map(p => p.id)));
     setLinkSendResult(null);
+    setLinkSendError('');
     setShowLinkModal(true);
   }
 
   async function handleSendLinks() {
+    const teamId = selected?.team.id;
+    if (!teamId) return;
     setLinkSending(true);
     setLinkSendResult(null);
-    const skipped: string[] = [];
-    const failed: string[] = [];
-    let sent = 0;
-    const toSend = roster.filter(p => linkSelected.has(p.id));
-    for (const player of toSend) {
-      const name = playerNameFull(player);
-      if (!player.email) { skipped.push(name); continue; }
-      try {
-        const url = `${window.location.origin}/player/${player.id}/wellness`;
-        await sendEmail({
-          to: [{ email: player.email, name }],
-          subject: 'Formulaire bien-être',
-          template_id: 'jpzkmgq5vqng059v',
-          personalization: [{ email: player.email, data: { name: player.firstName, url } }],
-        });
-        sent++;
-      } catch {
-        failed.push(name);
-      }
+    setLinkSendError('');
+    try {
+      // Le serveur relit l'effectif et compose le message : on ne transmet que la sélection.
+      const result = await sendWellnessLinks(teamId, [...linkSelected]);
+      setLinkSendResult({ sent: result.sent.length, skipped: result.skipped, failed: result.failed });
+    } catch (err) {
+      const names = roster.filter(p => linkSelected.has(p.id)).map(playerNameFull);
+      setLinkSendResult({ sent: 0, skipped: [], failed: names });
+      setLinkSendError(err instanceof Error ? err.message : "Échec de l'envoi");
+    } finally {
+      setLinkSending(false);
     }
-    setLinkSendResult({ sent, skipped, failed });
-    setLinkSending(false);
   }
 
   async function handleSave() {
@@ -470,7 +464,9 @@ export default function WellnessPage() {
               </p>
               {linkSendResult.failed.length > 0 && (
                 <div style={{ marginTop: 12, padding: '10px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, textAlign: 'left' }}>
-                  <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 4px', fontWeight: 600 }}>Échec d'envoi</p>
+                  <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 4px', fontWeight: 600 }}>
+                    {linkSendError || "Échec d'envoi"}
+                  </p>
                   {linkSendResult.failed.map(n => (
                     <p key={n} style={{ color: '#EF4444', fontSize: '0.75rem', margin: '2px 0' }}>· {n}</p>
                   ))}

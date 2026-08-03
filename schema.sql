@@ -3033,3 +3033,73 @@ CREATE INDEX IF NOT EXISTS idx_notification_dispatch_log_created
 -- Aucune policy : seules les fonctions serverless (service role, qui contourne RLS)
 -- écrivent ici. Un client authentifié ne doit ni lire ni écrire ce journal.
 ALTER TABLE notification_dispatch_log ENABLE ROW LEVEL SECURITY;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 19c. Garde-fous de diffusion : droit d'écriture et limitation de débit
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Émettre une notification est une écriture : un rôle 'viewer' ne doit pas pouvoir
+-- pousser un message à toute l'équipe. Même logique que writable_team_ids(), mais
+-- paramétrée par utilisateur (les fonctions serverless n'ont pas d'auth.uid()).
+CREATE OR REPLACE FUNCTION team_write_access(p_user_id UUID, p_team_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM   teams    t
+    JOIN   profiles p ON p.organization_id = t.organization_id
+    WHERE  t.id = p_team_id
+      AND  p.id = p_user_id
+      AND (
+        p.org_role = 'superadmin'
+        OR EXISTS (
+          SELECT 1 FROM team_roles tr
+          WHERE tr.team_id = t.id AND tr.profile_id = p.id AND tr.role IN ('admin', 'editor')
+        )
+      )
+  )
+$$;
+
+CREATE TABLE IF NOT EXISTS notification_rate_limit (
+  user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  window_start TIMESTAMPTZ NOT NULL,
+  count        INTEGER     NOT NULL DEFAULT 0,
+
+  PRIMARY KEY (user_id, window_start)
+);
+
+ALTER TABLE notification_rate_limit ENABLE ROW LEVEL SECURITY;
+
+-- Incrémente le compteur de la fenêtre courante et dit si l'appel reste sous la
+-- limite. L'upsert rend l'opération atomique : deux requêtes simultanées ne peuvent
+-- pas contourner le plafond en lisant la même valeur.
+CREATE OR REPLACE FUNCTION notification_rate_bump(
+  p_user_id        UUID,
+  p_limit          INTEGER,
+  p_window_seconds INTEGER
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_window TIMESTAMPTZ := to_timestamp(
+    floor(extract(epoch FROM NOW()) / p_window_seconds) * p_window_seconds
+  );
+  v_count INTEGER;
+BEGIN
+  INSERT INTO notification_rate_limit (user_id, window_start, count)
+  VALUES (p_user_id, v_window, 1)
+  ON CONFLICT (user_id, window_start)
+  DO UPDATE SET count = notification_rate_limit.count + 1
+  RETURNING count INTO v_count;
+
+  DELETE FROM notification_rate_limit WHERE window_start < v_window - INTERVAL '1 hour';
+
+  RETURN v_count <= p_limit;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION team_write_access(UUID, UUID) FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION team_write_access(UUID, UUID) TO service_role;
+REVOKE ALL ON FUNCTION notification_rate_bump(UUID, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION notification_rate_bump(UUID, INTEGER, INTEGER) TO service_role;
