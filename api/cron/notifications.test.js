@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { NOTIFICATION_TYPES } from '../../shared/notifications.js'
+import { taskReminderReason } from './notifications.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -86,5 +87,44 @@ describe('protection de l\'endpoint cron', () => {
     await handler({ method: 'GET', headers: { authorization: 'Bearer faux' } }, res)
     expect(res.statusCode).toBe(401)
     delete process.env.CRON_SECRET
+  })
+})
+
+describe('cadence de relance des tâches', () => {
+  // Le 4 août 2026 est un mardi ; le 3 août un lundi.
+  const mardi = new Date('2026-08-04T18:00:00Z')
+  const lundi = new Date('2026-08-03T18:00:00Z')
+
+  it('prévient la veille de l\'échéance', () => {
+    expect(taskReminderReason('2026-08-05', mardi)).toBe('veille')
+  })
+
+  it('prévient le jour de l\'échéance', () => {
+    expect(taskReminderReason('2026-08-04', mardi)).toBe('jour J')
+  })
+
+  it('ne relance PAS une tâche en retard un jour ordinaire', () => {
+    // C'était le bug : sans cette règle, chaque jour renvoyait une notification.
+    expect(taskReminderReason('2026-07-16', mardi)).toBeNull()
+    expect(taskReminderReason('2026-08-03', mardi)).toBeNull()
+  })
+
+  it('relance une tâche en retard le lundi', () => {
+    expect(taskReminderReason('2026-07-16', lundi)).toBe('relance hebdomadaire')
+  })
+
+  it('ignore une échéance encore lointaine', () => {
+    expect(taskReminderReason('2026-09-01', mardi)).toBeNull()
+  })
+
+  it('une tâche 19 jours en retard ne génère qu\'un rappel par semaine', () => {
+    // Vérification directe du volume : 21 jours de cron consécutifs.
+    let rappels = 0
+    for (let i = 0; i < 21; i++) {
+      const jour = new Date('2026-08-04T18:00:00Z')
+      jour.setUTCDate(jour.getUTCDate() + i)
+      if (taskReminderReason('2026-07-16', jour)) rappels += 1
+    }
+    expect(rappels).toBe(3) // 3 lundis en 21 jours, au lieu de 21 notifications
   })
 })

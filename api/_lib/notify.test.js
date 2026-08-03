@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { dispatch } from './notify.js'
+import { dispatch, claimDispatch } from './notify.js'
 
 /** Faux client Supabase : capture les insertions au lieu d'écrire en base. */
 function fakeAdmin(recipients, { subs = [] } = {}) {
@@ -103,5 +103,48 @@ describe('dispatch — robustesse', () => {
     await dispatch(admin, { ...base, type: 'medical_added', recipients: [recipient('u9', true, false)] })
     expect(admin.rpcCalls).toBe(0)
     expect(inAppUsers(admin)).toEqual(['u9'])
+  })
+})
+
+describe('claimDispatch — idempotence des rappels calculés', () => {
+  /** Faux journal : rejette une seconde insertion de la même clé, comme la clé primaire. */
+  function fakeLog() {
+    const seen = new Set()
+    return {
+      seen,
+      from() {
+        return {
+          insert: async row => {
+            const k = `${row.dedup_key}|${row.dedup_day}`
+            if (seen.has(k)) return { error: { code: '23505', message: 'duplicate key' } }
+            seen.add(k)
+            return { error: null }
+          },
+        }
+      },
+    }
+  }
+
+  it('autorise la première diffusion et refuse la seconde', async () => {
+    const admin = fakeLog()
+    expect(await claimDispatch(admin, 'rtp_upcoming:abc', '2026-08-04')).toBe(true)
+    expect(await claimDispatch(admin, 'rtp_upcoming:abc', '2026-08-04')).toBe(false)
+  })
+
+  it('autorise à nouveau le lendemain', async () => {
+    const admin = fakeLog()
+    await claimDispatch(admin, 'rpe_missing:s1', '2026-08-04')
+    expect(await claimDispatch(admin, 'rpe_missing:s1', '2026-08-05')).toBe(true)
+  })
+
+  it('isole les entités entre elles', async () => {
+    const admin = fakeLog()
+    await claimDispatch(admin, 'task_due_soon:t1', '2026-08-04')
+    expect(await claimDispatch(admin, 'task_due_soon:t2', '2026-08-04')).toBe(true)
+  })
+
+  it('propage une vraie erreur de base au lieu de la masquer', async () => {
+    const admin = { from: () => ({ insert: async () => ({ error: { code: '42P01', message: 'relation absente' } }) }) }
+    await expect(claimDispatch(admin, 'x', '2026-08-04')).rejects.toMatchObject({ code: '42P01' })
   })
 })

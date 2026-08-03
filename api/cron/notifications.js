@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
-import { dispatch, teamRecipients } from '../_lib/notify.js'
+import { dispatch, teamRecipients, claimDispatch, pruneDispatchLog } from '../_lib/notify.js'
 import { sendMail } from '../_lib/mailer.js'
 
 /**
@@ -33,6 +33,22 @@ function fullName(p) {
   return `${p.first_name} ${p.last_name}`.trim()
 }
 
+/** Ancienneté au-delà de laquelle une trace de diffusion ne sert plus à rien. */
+const LOG_RETENTION_DAYS = 90
+
+/**
+ * Cadence de relance d'une tâche : la veille, le jour même, puis une fois par
+ * semaine tant qu'elle reste ouverte. Sans cette règle, une tâche en retard
+ * renotifierait son assigné chaque jour indéfiniment.
+ */
+export function taskReminderReason(dueDate, today) {
+  const t = isoDate(today)
+  if (dueDate === isoDate(shiftDays(today, 1))) return 'veille'
+  if (dueDate === t) return 'jour J'
+  if (dueDate < t && today.getUTCDay() === 1) return 'relance hebdomadaire'
+  return null
+}
+
 /**
  * GET /api/cron/notifications — déclenché quotidiennement par Vercel Cron.
  * Traite les rappels calculés (qui dépendent d'une date, pas d'une action utilisateur),
@@ -53,6 +69,8 @@ export default async function handler(req, res) {
   const admin = getSupabaseAdmin()
   const today = new Date()
   const isFriday = today.getUTCDay() === 5
+
+  await pruneDispatchLog(admin, isoDate(shiftDays(today, -LOG_RETENTION_DAYS)))
 
   const { data: teams, error } = await admin.from('teams').select('id, organization_id, name')
   if (error) {
@@ -111,8 +129,11 @@ async function notifyRtpUpcoming(admin, team, rosterIds, roster, today) {
     .gte('rtp_date', isoDate(today))
     .lte('rtp_date', isoDate(shiftDays(today, RTP_HORIZON_DAYS)))
 
+  let sent = 0
   for (const record of records ?? []) {
+    if (!await claimDispatch(admin, `rtp_upcoming:${record.id}`, isoDate(today))) continue
     const player = roster.find(p => p.id === record.player_id)
+    sent += 1
     await dispatch(admin, {
       teamId: team.id,
       orgId: team.organization_id,
@@ -123,7 +144,7 @@ async function notifyRtpUpcoming(admin, team, rosterIds, roster, today) {
       entityId: record.id,
     })
   }
-  return records?.length ?? 0
+  return sent
 }
 
 /** RPE non rempli et présence non renseignée sur les séances de la veille. */
@@ -145,7 +166,7 @@ async function notifySessionGaps(admin, team, seasonId, rosterIds, roster, today
 
     const withRpe = new Set((rpe ?? []).map(r => r.player_id))
     const missing = roster.filter(p => !withRpe.has(p.id))
-    if (missing.length) {
+    if (missing.length && await claimDispatch(admin, `rpe_missing:${session.id}`, isoDate(today))) {
       await dispatch(admin, {
         teamId: team.id,
         orgId: team.organization_id,
@@ -157,7 +178,8 @@ async function notifySessionGaps(admin, team, seasonId, rosterIds, roster, today
       })
     }
 
-    if ((attendance?.length ?? 0) < rosterIds.length) {
+    if ((attendance?.length ?? 0) < rosterIds.length
+        && await claimDispatch(admin, `attendance_missing:${session.id}`, isoDate(today))) {
       await dispatch(admin, {
         teamId: team.id,
         orgId: team.organization_id,
@@ -181,6 +203,7 @@ async function notifyWellnessDigest(admin, team, rosterIds, today) {
     .eq('date', isoDate(today))
   const count = entries?.length ?? 0
   if (!count) return 0
+  if (!await claimDispatch(admin, `wellness_digest:${team.id}`, isoDate(today))) return 0
 
   await dispatch(admin, {
     teamId: team.id,
@@ -205,6 +228,9 @@ async function notifyTasksDue(admin, team, today) {
   for (const action of actions ?? []) {
     const profileId = action.staff?.profile_id
     if (!profileId) continue
+    const reason = taskReminderReason(action.due_date, today)
+    if (!reason) continue
+    if (!await claimDispatch(admin, `task_due_soon:${action.id}`, isoDate(today))) continue
     const overdue = action.due_date < isoDate(today)
     await dispatch(admin, {
       teamId: team.id,
@@ -238,6 +264,10 @@ async function notifyWeeklyWellness(admin, team, roster, rosterIds, today) {
   const filled = new Set((entries ?? []).map(e => e.player_id))
   const missing = roster.filter(p => !filled.has(p.id))
   if (!missing.length) return { missing: 0 }
+
+  if (!await claimDispatch(admin, `wellness_weekly_reminder:${team.id}`, isoDate(today))) {
+    return { missing: missing.length, skipped: 'déjà diffusé' }
+  }
 
   const names = missing.map(fullName).join(', ')
   const recipients = await teamRecipients(admin, team.id, 'wellness')

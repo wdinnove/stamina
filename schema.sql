@@ -3002,3 +3002,34 @@ REVOKE ALL ON FUNCTION notification_recipients(UUID, TEXT, UUID) FROM PUBLIC, an
 GRANT  EXECUTE ON FUNCTION notification_recipients(UUID, TEXT, UUID) TO service_role;
 REVOKE ALL ON FUNCTION player_current_team(UUID) FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION player_current_team(UUID) TO service_role;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 19b. Journal de diffusion — idempotence des notifications calculées
+--      Les rappels du cron (et l'alerte bien-être publique) peuvent être rejoués :
+--      réessai Vercel, déclenchement manuel, ou simple exécution quotidienne sur
+--      une fenêtre de plusieurs jours. Sans trace, chaque rejeu renotifie.
+--
+--      Cette trace est volontairement SÉPARÉE de `notifications` : si une équipe
+--      coupe le canal in-app, aucune ligne n'y est écrite et un contrôle basé sur
+--      elle laisserait repartir le push indéfiniment.
+--
+--      La clé primaire fait l'idempotence : on insère d'abord, et une violation
+--      d'unicité signifie « déjà diffusé » — atomique, donc sans course entre
+--      deux exécutions concurrentes.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS notification_dispatch_log (
+  dedup_key  TEXT NOT NULL,  -- ex. 'task_due_soon:<uuid>'
+  dedup_day  DATE NOT NULL,  -- jour de diffusion, ou date de l'entité pour une idempotence définitive
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (dedup_key, dedup_day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_dispatch_log_created
+  ON notification_dispatch_log (created_at);
+
+-- Aucune policy : seules les fonctions serverless (service role, qui contourne RLS)
+-- écrivent ici. Un client authentifié ne doit ni lire ni écrire ce journal.
+ALTER TABLE notification_dispatch_log ENABLE ROW LEVEL SECURITY;

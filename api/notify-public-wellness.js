@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from './_lib/supabaseAdmin.js'
-import { dispatch } from './_lib/notify.js'
+import { dispatch, claimDispatch } from './_lib/notify.js'
 import { isWellnessAlerting } from '../shared/notifications.js'
 
 /**
@@ -10,7 +10,7 @@ import { isWellnessAlerting } from '../shared/notifications.js'
  * donc aucune notification ne peut partir du client. Cet endpoint est volontairement
  * non authentifié, mais ne fait confiance à rien de ce que le client envoie : il relit
  * l'entrée côté serveur et recalcule lui-même le franchissement de seuil. Il est de plus
- * idempotent, donc le rejouer ne crée pas de doublon.
+ * idempotent via le journal de diffusion, donc le rejouer ne crée pas de doublon.
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -33,14 +33,14 @@ export default async function handler(req, res) {
 
     if (!entry || !isWellnessAlerting(entry)) return res.status(200).json({ ok: true, skipped: true })
 
-    // Idempotence : ne rien renvoyer si l'alerte de cette entrée a déjà été diffusée.
-    const { data: existing } = await admin
-      .from('notifications')
-      .select('id')
-      .eq('type', 'wellness_alert')
-      .eq('entity_id', entry.id)
-      .limit(1)
-    if (existing?.length) return res.status(200).json({ ok: true, duplicate: true })
+    // Idempotence définitive pour cette entrée : la clé est datée du jour de l'entrée,
+    // pas du jour courant, donc un rejeu même tardif ne renotifie jamais.
+    // Volontairement basée sur le journal de diffusion et non sur `notifications` :
+    // si l'équipe a coupé l'in-app sur la catégorie, aucune ligne n'y serait écrite
+    // et cet endpoint non authentifié redeviendrait un vecteur de spam push.
+    if (!await claimDispatch(admin, `wellness_alert:${entry.id}`, date)) {
+      return res.status(200).json({ ok: true, duplicate: true })
+    }
 
     const { data: player } = await admin
       .from('players')

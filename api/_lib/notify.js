@@ -89,3 +89,29 @@ export async function dispatch(admin, {
 
   return { inApp: inAppUsers.length, push: pushResult.sent }
 }
+
+/**
+ * Réserve une diffusion : renvoie true si c'est la première fois, false si déjà
+ * diffusée. L'insertion fait office de verrou (violation de clé primaire = doublon),
+ * donc deux exécutions simultanées ne peuvent pas notifier deux fois.
+ *
+ * Indépendant des canaux : contrairement à un contrôle sur `notifications`, cela
+ * reste fiable même si l'équipe a désactivé l'in-app sur la catégorie.
+ */
+export async function claimDispatch(admin, dedupKey, dedupDay) {
+  const { error } = await admin
+    .from('notification_dispatch_log')
+    .insert({ dedup_key: dedupKey, dedup_day: dedupDay })
+  if (!error) return true
+  if (error.code === '23505') return false // déjà diffusé
+  throw error
+}
+
+/** Purge du journal : au-delà de cette ancienneté, un rejeu n'a plus de sens. */
+export async function pruneDispatchLog(admin, beforeDate) {
+  const { error } = await admin
+    .from('notification_dispatch_log')
+    .delete()
+    .lt('created_at', beforeDate)
+  if (error) console.error('[notify] purge du journal', error)
+}
