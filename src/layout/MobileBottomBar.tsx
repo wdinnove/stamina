@@ -1,22 +1,33 @@
-import { Menu, Bell, Search } from 'lucide-react';
-import { useNotifications } from '../contexts/NotificationContext';
+import { Link, useLocation } from 'react-router';
+import { Menu, Dumbbell, Trophy, BarChart2, UserSearch } from 'lucide-react';
+import { isNavActive } from './Sidebar';
 
 interface MobileBottomBarProps {
   onMenuOpen: () => void;
-  onOpenSearch: () => void;
 }
 
-const barButtonStyle: React.CSSProperties = {
-  flex: 1, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer',
+const LEFT_ITEMS = [
+  { path: '/sessions',                             icon: Dumbbell,  label: 'Séances'     },
+  { path: '/matches',                              icon: Trophy,    label: 'Matchs'      },
+] as const;
+
+const RIGHT_ITEMS = [
+  { path: '/performance-collective/vue-ensemble',  icon: BarChart2,  label: 'Collective'  },
+  { path: '/performance-individuelle',             icon: UserSearch, label: 'Individuelle' },
+] as const;
+
+const navButtonStyle = (active: boolean): React.CSSProperties => ({
+  flex: 1, background: 'none', border: 'none', cursor: 'pointer',
+  color: active ? '#00E5A0' : '#94A3B8',
   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-  padding: '6px 0',
-};
+  padding: '6px 0', textDecoration: 'none',
+});
 
 const labelStyle: React.CSSProperties = { fontSize: '0.62rem', fontWeight: 500 };
 
-/** Barre de navigation mobile fixe en bas d'écran : recherche, menu, notifications. */
-export function MobileBottomBar({ onMenuOpen, onOpenSearch }: MobileBottomBarProps) {
-  const { unreadCount, openCenter } = useNotifications();
+/** Barre de navigation mobile fixe en bas d'écran : Séances, Matchs, Menu (central), Analyse collective, Analyse individuelle. */
+export function MobileBottomBar({ onMenuOpen }: MobileBottomBarProps) {
+  const location = useLocation();
 
   return (
     <nav
@@ -24,34 +35,45 @@ export function MobileBottomBar({ onMenuOpen, onOpenSearch }: MobileBottomBarPro
       style={{
         height: 56, backgroundColor: '#161920', borderTop: '1px solid #2A2F3A',
         alignItems: 'stretch', justifyContent: 'space-around', flexShrink: 0, zIndex: 200,
+        position: 'relative',
       }}
     >
-      <button onClick={onOpenSearch} style={barButtonStyle}>
-        <Search size={20} />
-        <span style={labelStyle}>Rechercher</span>
-      </button>
+      {LEFT_ITEMS.map(item => {
+        const active = isNavActive(item.path, location.pathname);
+        return (
+          <Link key={item.path} to={item.path} style={navButtonStyle(active)}>
+            <item.icon size={20} />
+            <span style={labelStyle}>{item.label}</span>
+          </Link>
+        );
+      })}
 
-      <button onClick={onMenuOpen} style={barButtonStyle}>
-        <Menu size={20} />
-        <span style={labelStyle}>Menu</span>
-      </button>
+      {/* Menu : bouton central surélevé, distinct des liens de destination */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', position: 'relative' }}>
+        <button
+          onClick={onMenuOpen}
+          title="Menu"
+          style={{
+            position: 'absolute', top: -18,
+            width: 52, height: 52, borderRadius: '50%',
+            backgroundColor: '#00E5A0', border: '3px solid #161920',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(0,229,160,0.35)', cursor: 'pointer',
+          }}
+        >
+          <Menu size={22} color="#0D0F14" />
+        </button>
+      </div>
 
-      <button onClick={openCenter} style={barButtonStyle}>
-        <div style={{ position: 'relative' }}>
-          <Bell size={20} />
-          {unreadCount > 0 && (
-            <span style={{
-              position: 'absolute', top: -4, right: -8, minWidth: 15, height: 15, borderRadius: 8,
-              backgroundColor: '#EF4444', color: '#fff', fontSize: '0.58rem', fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-              border: '2px solid #161920', lineHeight: 1,
-            }}>
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </div>
-        <span style={labelStyle}>Notifications</span>
-      </button>
+      {RIGHT_ITEMS.map(item => {
+        const active = isNavActive(item.path, location.pathname);
+        return (
+          <Link key={item.path} to={item.path} style={navButtonStyle(active)}>
+            <item.icon size={20} />
+            <span style={labelStyle}>{item.label}</span>
+          </Link>
+        );
+      })}
     </nav>
   );
 }

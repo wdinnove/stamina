@@ -161,7 +161,9 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
             <div style={{ color: '#00E5A080', fontSize: '0.52rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Management App</div>
           </div>
         </div>
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <NotificationBell />
+        </div>
       </div>
 
       {/* Desktop right: notifications + configuration + avatar */}

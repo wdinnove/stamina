@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { TopBar, MobileSidebar } from './TopBar';
 import { MobileBottomBar } from './MobileBottomBar';
@@ -47,8 +47,27 @@ export function Layout() {
         <main style={{ flex: 1, overflowY: 'auto' }}>
           <Outlet />
         </main>
-        <MobileBottomBar onMenuOpen={() => setMobileOpen(v => !v)} onOpenSearch={() => setSearchOpen(true)} />
+        <MobileBottomBar onMenuOpen={() => setMobileOpen(v => !v)} />
       </div>
+
+      {/* Recherche : bouton flottant mobile (masqué quand le tiroir menu est ouvert, qui passe au-dessus) */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="flex md:hidden"
+        aria-label="Recherche"
+        title="Recherche"
+        style={{
+          position: 'fixed', right: 16, bottom: 72,
+          width: 52, height: 52, borderRadius: '50%',
+          backgroundColor: '#00E5A0', border: 'none',
+          alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 14px rgba(0,229,160,0.35)', cursor: 'pointer',
+          zIndex: 45,
+        }}
+      >
+        <Search size={22} color="#0D0F14" />
+      </button>
+
       <NotificationCenter />
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
