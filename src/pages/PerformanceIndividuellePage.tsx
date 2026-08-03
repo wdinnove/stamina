@@ -333,7 +333,7 @@ export default function PerformanceIndividuellePage() {
             valueColor={openActions === 0 ? '#00E5A0' : '#F59E0B'}
             subtitle={`${doneActions} faite${doneActions > 1 ? 's' : ''}`}
             borderColor={openActions === 0 ? '#00E5A0' : '#F59E0B'}
-            onOpen={() => navigate('/actions', { state: { playerId: id, playerName: playerNameFull(pd.player), from: `/performance-individuelle/${id}/vue-ensemble` } })}
+            onOpen={() => navigate('/taches', { state: { playerId: id, playerName: playerNameFull(pd.player), from: `/performance-individuelle/${id}/vue-ensemble` } })}
           />
           <MiniStatCard
             icon={<ShieldAlert size={18} color={atRiskNow ? '#EF4444' : '#00E5A0'} />} iconBg={atRiskNow ? '#EF444422' : '#00E5A022'}

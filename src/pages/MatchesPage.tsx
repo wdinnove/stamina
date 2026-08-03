@@ -159,7 +159,7 @@ export default function MatchesPage() {
                     return (
                       <tr
                         key={match.id}
-                        onClick={() => navigate(`/matches/${match.id}`)}
+                        onClick={() => navigate(`/matchs/${match.id}`)}
                         style={{ borderBottom: isLast ? 'none' : '1px solid #1E2229', cursor: 'pointer' }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}

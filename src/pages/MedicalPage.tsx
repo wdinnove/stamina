@@ -30,9 +30,9 @@ const typeColors: Record<string, string> = {
 type Tab = 'infirmary' | 'record' | 'team';
 
 const TAB_SLUGS: Record<string, Tab> = {
-  infirmary: 'infirmary',
-  record:    'record',
-  team:      'team',
+  infirmerie: 'infirmary',
+  joueur:     'record',
+  equipe:     'team',
 };
 
 const TODAY = new Date().toISOString().split('T')[0];
@@ -46,15 +46,15 @@ export default function MedicalPage() {
   const selectedPlayerId: string = activeTab === 'record' ? (urlId ?? '') : '';
 
   const setActiveTab = (t: Tab) => {
-    if (t === 'infirmary' && selected) navigate(`/medical/infirmary/${selected.team.id}`, { replace: true });
-    else if (t === 'team'      && selected) navigate(`/medical/team/${selected.team.id}`,      { replace: true });
+    if (t === 'infirmary' && selected) navigate(`/medical/infirmerie/${selected.team.id}`, { replace: true });
+    else if (t === 'team'      && selected) navigate(`/medical/equipe/${selected.team.id}`,      { replace: true });
     else if (t === 'record') {
       const pid = teamPlayers[0]?.id ?? '';
-      navigate(pid ? `/medical/record/${pid}` : '/medical/record', { replace: true });
+      navigate(pid ? `/medical/joueur/${pid}` : '/medical/joueur', { replace: true });
     }
   };
 
-  const setSelectedPlayerId = (id: string) => navigate(`/medical/record/${id}`, { replace: true });
+  const setSelectedPlayerId = (id: string) => navigate(`/medical/joueur/${id}`, { replace: true });
 
   const [teamPlayers, setTeamPlayers]         = useState<Player[]>([]);
   const [activeInjuries, setActiveInjuries]   = useState<MedicalRecord[]>([]);
@@ -102,7 +102,7 @@ export default function MedicalPage() {
       setTeamPlayers(list);
       if (activeTab === 'record') {
         if (!urlId && list[0]?.id) {
-          navigate(`/medical/record/${list[0].id}`, { replace: true });
+          navigate(`/medical/joueur/${list[0].id}`, { replace: true });
         } else if (urlId && list.length > 0 && !list.some(p => p.id === urlId)) {
           // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
           navigate('/', { replace: true });

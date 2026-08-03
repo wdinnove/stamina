@@ -64,7 +64,7 @@ function substringFilter(value: string, search: string, keywords?: string[]): nu
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const { selected, isSuperadmin, canConfigureTeam, options, setSelected } = useTeamSeason();
+  const { selected, isSuperadmin, canConfigureTeam, options, selectAndGo } = useTeamSeason();
   const [query, setQuery] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   const [otherSeasonPlayers, setOtherSeasonPlayers] = useState<PlayerHit[]>([]);
@@ -101,15 +101,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // sélecteur de la topbar, nécessaire pour rester synchronisé avec le localStorage.
   const selectTeamSeason = (opt: TeamSeasonOption) => {
     onOpenChange(false);
-    setSelected(opt);
-    window.location.reload();
+    selectAndGo(opt);
   };
 
   // Joueur d'une autre équipe : bascule d'équipe/saison puis atterrit directement sur sa fiche.
   const openCrossTeamPlayer = (hit: PlayerHit) => {
     onOpenChange(false);
-    setSelected({ team: hit.team, season: hit.season });
-    window.location.href = `/performance-individuelle/${hit.player.id}/vue-ensemble`;
+    selectAndGo({ team: hit.team, season: hit.season }, `/performance-individuelle/${hit.player.id}/vue-ensemble`);
   };
 
   // Séances et matchs ne s'affichent qu'une fois une recherche tapée (sinon ils noient
@@ -209,7 +207,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 key={m.id}
                 value={`vs ${m.opponent} — ${fmtDateFull(m.date)}`}
                 keywords={[m.opponent, ...dateKeywords(m.date)]}
-                onSelect={() => go(`/matches/${m.id}`)}
+                onSelect={() => go(`/matchs/${m.id}`)}
                 style={itemStyle}
               >
                 <Trophy size={16} style={{ color: m.result === 'win' ? '#00E5A0' : '#EF4444', flexShrink: 0 }} />
@@ -226,7 +224,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 key={s.id}
                 value={`Séance ${SESSION_TYPE_LABELS[s.sessionType] ?? s.sessionType} — ${fmtDateFull(s.date)}`}
                 keywords={dateKeywords(s.date)}
-                onSelect={() => go(`/sessions/${s.id}`)}
+                onSelect={() => go(`/seances/${s.id}`)}
                 style={itemStyle}
               >
                 <Dumbbell size={16} style={{ color: '#00E5A0', flexShrink: 0 }} />

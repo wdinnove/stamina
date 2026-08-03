@@ -63,9 +63,9 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 type Tab = 'collective' | 'individual' | 'team_history';
 
 const TAB_SLUGS: Record<string, Tab> = {
-  new:          'collective',
-  individual:   'individual',
-  team:         'team_history',
+  saisie:       'collective',
+  joueur:       'individual',
+  equipe:       'team_history',
 };
 
 export default function RPEPage() {
@@ -78,11 +78,11 @@ export default function RPEPage() {
   const setActiveTab = (t: Tab) => {
     if (t === 'individual') {
       const first = roster[0]?.id;
-      navigate(first ? `/rpe/individual/${first}` : '/rpe/individual', { replace: true });
+      navigate(first ? `/rpe/joueur/${first}` : '/rpe/joueur', { replace: true });
     } else if (t === 'team_history' && selected) {
-      navigate(`/rpe/team/${selected.team.id}`, { replace: true });
+      navigate(`/rpe/equipe/${selected.team.id}`, { replace: true });
     } else {
-      navigate('/rpe/new', { replace: true });
+      navigate('/rpe/saisie', { replace: true });
     }
   };
 
@@ -111,7 +111,7 @@ export default function RPEPage() {
 
   // ── Individual tab state
   const selectedPlayerId = activeTab === 'individual' ? (urlId ?? null) : null;
-  const setSelectedPlayerId = (id: string) => navigate(`/rpe/individual/${id}`, { replace: true });
+  const setSelectedPlayerId = (id: string) => navigate(`/rpe/joueur/${id}`, { replace: true });
   const [history, setHistory]                   = useState<RPEEntry[]>([]);
   const [loadingHistory, setLoadingHistory]     = useState(false);
   const [historyVersion, setHistoryVersion]     = useState(0);
@@ -133,7 +133,7 @@ export default function RPEPage() {
         setRpeValues(Object.fromEntries(players.map(p => [p.id, null])));
         if (players.length > 0 && activeTab === 'individual') {
           if (!urlId) {
-            navigate(`/rpe/individual/${players[0].id}`, { replace: true });
+            navigate(`/rpe/joueur/${players[0].id}`, { replace: true });
           } else if (!players.some(p => p.id === urlId)) {
             // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
             navigate('/', { replace: true });

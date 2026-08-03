@@ -10,7 +10,7 @@ import { NotificationBell } from '../components/NotificationCenter';
 interface TopBarProps { onOpenSearch: () => void; }
 
 export function TopBar({ onOpenSearch }: TopBarProps) {
-  const { options, selected, setSelected, loading, isSuperadmin, canConfigureTeam } = useTeamSeason();
+  const { options, selected, selectAndGo, loading, isSuperadmin, canConfigureTeam } = useTeamSeason();
   const [dropOpen, setDropOpen]   = useState(false);
   const [initials, setInitials]   = useState('');
   const dropRef  = useRef<HTMLDivElement>(null);
@@ -94,9 +94,8 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
                   return (
                     <button key={opt.season.id}
                       onClick={() => {
-                        setSelected(opt);
                         setDropOpen(false);
-                        window.location.reload();
+                        selectAndGo(opt);
                       }}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -147,7 +146,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
       {/* Mobile: back | logo | avatar */}
       <div className="flex md:hidden" style={{ flex: 1, alignItems: 'center' }}>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
-          {location.pathname !== '/dashboard' && (
+          {location.pathname !== '/tableau-de-bord' && (
             <button onClick={() => navigate(-1)} title="Retour"
               style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}>
               <ArrowLeft size={20} />
@@ -181,11 +180,11 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
             <Settings size={16} />
           </button>
         )}
-        <button onClick={() => navigate('/profile')} title="Mon profil"
+        <button onClick={() => navigate('/profil')} title="Mon profil"
           style={{
             width: 34, height: 34, borderRadius: '50%',
-            backgroundColor: location.pathname.startsWith('/profile') ? 'rgba(0,229,160,0.08)' : '#1E2229',
-            border: `1px solid ${location.pathname.startsWith('/profile') ? '#00E5A0' : '#2A2F3A'}`,
+            backgroundColor: location.pathname.startsWith('/profil') ? 'rgba(0,229,160,0.08)' : '#1E2229',
+            border: `1px solid ${location.pathname.startsWith('/profil') ? '#00E5A0' : '#2A2F3A'}`,
             color: '#00E5A0', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
@@ -200,7 +199,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
 export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { options, selected, setSelected, loading, isSuperadmin, canConfigureTeam } = useTeamSeason();
+  const { options, selected, selectAndGo, loading, isSuperadmin, canConfigureTeam } = useTeamSeason();
   const [initials, setInitials] = useState('');
   const [fullName, setFullName] = useState('');
 
@@ -273,10 +272,7 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
             onChange={e => {
               const [teamId, seasonId] = e.target.value.split('__');
               const opt = options.find(o => o.team.id === teamId && o.season.id === seasonId);
-              if (opt) {
-                setSelected(opt);
-                window.location.reload();
-              }
+              if (opt) selectAndGo(opt);
             }}
             style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0F1117', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}
           >
@@ -314,7 +310,7 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
             </div>
           ))}
           <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
-          <Link to="/profile" onClick={onClose} style={navLinkStyle(location.pathname.startsWith('/profile'))}>
+          <Link to="/profil" onClick={onClose} style={navLinkStyle(location.pathname.startsWith('/profil'))}>
             <User size={18} style={{ flexShrink: 0 }} />
             Mon profil
           </Link>
@@ -330,7 +326,7 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
 
         {/* Profile section */}
         <div style={{ borderTop: '1px solid #2A2F3A', padding: '12px 16px', flexShrink: 0 }}>
-          <Link to="/profile" onClick={onClose}
+          <Link to="/profil" onClick={onClose}
             style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', color: '#00E5A0', fontWeight: 700, fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {initials || '?'}

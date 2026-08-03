@@ -4,13 +4,14 @@ import { BarChart2, ChevronDown, ChevronUp, ChevronRight, Activity, Heart, UserC
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
+import { useArchetypes } from '../hooks/useArchetypes';
 import { aggregateTeamWellnessDaily, wellnessAvg, wellnessTier } from '../utils/wellness';
 import { actionsApi, statsApi, matchesApi } from '../api';
 import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, MiniStatCard,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
-  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel,
+  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
   TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
 } from '../components';
@@ -92,7 +93,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
-         | 'impact' | 'pca' | 'ranking' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'tactical-brutes' | 'tactical-dashboard'
          | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
@@ -107,6 +108,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'impact':                  'impact',
   'acp':                     'pca',
   'classement-joueurs':      'ranking',
+  'archetypes':              'archetypes',
   'charge-physique':         'load',
   'rpe':                     'rpe',
   'bien-etre':               'wellness',
@@ -148,6 +150,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Analyse', tabs: [
     { key: 'objectives',   slug: 'objectifs',          label: 'Objectifs' },
     { key: 'ranking',      slug: 'classement-joueurs', label: 'Classement joueurs' },
+    { key: 'archetypes',   slug: 'archetypes',   label: 'Archétypes (bêta)' },
     { key: 'impact',       slug: 'impact',       label: 'Impact joueurs' },
     { key: 'pca',          slug: 'acp',          label: 'Facteurs de victoire' },
     { key: 'matches-quarters', slug: 'qt-par-qt', label: 'QT par QT' },
@@ -168,7 +171,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
 const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
-  impact: 'saison', pca: 'saison', ranking: 'saison', dynamic: 'saison',
+  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
@@ -182,6 +185,9 @@ export default function PerformanceCollectivePage() {
   const setActiveTab = (slug: string) => navigate(`/performance-collective/${slug}`, { replace: true });
 
   const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
+  // Chargé une fois par équipe/saison, indépendamment de l'onglet actif (même pattern que
+  // PerformanceIndividuellePage) — le calcul couvre tout l'effectif d'un coup.
+  const { reports: archetypeReports } = useArchetypes(selected?.team.id, selected?.season.id);
   const dateRange = useDateRange(seasonStart, TAB_DEFAULT_PRESET[activeTab], seasonEnd);
   const { from, to } = dateRange;
   const showSeasonDiff = dateRange.preset !== 'saison';
@@ -689,7 +695,7 @@ export default function PerformanceCollectivePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && (
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
@@ -745,7 +751,7 @@ export default function PerformanceCollectivePage() {
             valueColor={openActions === 0 ? '#00E5A0' : '#F59E0B'}
             subtitle={`${doneActions} faite${doneActions > 1 ? 's' : ''}`}
             borderColor={openActions === 0 ? '#00E5A0' : '#F59E0B'}
-            onOpen={() => navigate('/actions')}
+            onOpen={() => navigate('/taches')}
           />
           <MiniStatCard
             icon={<ShieldAlert size={18} color={atRiskPlayerCount > 0 ? '#EF4444' : '#00E5A0'} />} iconBg={atRiskPlayerCount > 0 ? '#EF444422' : '#00E5A022'}
@@ -993,7 +999,7 @@ export default function PerformanceCollectivePage() {
                     {sortedPM.map((m, i) => {
                       const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                       return (
-                        <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
+                        <tr key={m.id} onClick={() => m.matchId && navigate(`/matchs/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                           <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
@@ -1071,7 +1077,7 @@ export default function PerformanceCollectivePage() {
                     {sortedPMAdv.map((m, i) => {
                       const resCol = m.result === 'win' ? '#00E5A0' : '#EF4444';
                       return (
-                        <tr key={m.id} onClick={() => m.matchId && navigate(`/matches/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
+                        <tr key={m.id} onClick={() => m.matchId && navigate(`/matchs/${m.matchId}`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: m.matchId ? 'pointer' : 'default' }} className={m.matchId ? 'hover:!bg-white/5' : ''}>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 600, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{m.opponent}</td>
                           <td style={{ ...TD, textAlign: 'left', width: 60, minWidth: 60 }}>{fmtD(m.date)}</td>
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
@@ -1180,6 +1186,14 @@ export default function PerformanceCollectivePage() {
             }
           >Classement joueurs</CardTitle>
           <PlayerRankingTable rows={rankingRows} def={rankDef} teamAvg={rankTeamAvg} normalized25={normalize25} onOpenPlayer={openPlayer} />
+        </Card>
+      )}
+
+      {/* ══ ARCHÉTYPES (classement de l'effectif par profil/dimension) ═══════ */}
+      {activeTab === 'archetypes' && (
+        <Card>
+          <CardTitle icon={<BarChart2 size={12} style={{ color: '#00E5A0' }} />} mb={10}>Archétypes — classement de l'effectif</CardTitle>
+          <TeamArchetypesPanel reports={archetypeReports} roster={players} onOpenPlayer={openPlayer} />
         </Card>
       )}
 

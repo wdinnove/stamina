@@ -27,6 +27,19 @@ export const playersApi = {
     return data ? toPlayer(data) : null;
   },
 
+  /** Indépendant de la saison — utile pour retrouver le poste d'un joueur qui n'appartient
+   *  plus à l'effectif courant (ex. parti la saison suivante) mais dont l'historique de stats
+   *  sert encore de référence (voir archetypesApi.computeForSeason). */
+  async getByIds(ids: string[]): Promise<Player[]> {
+    if (ids.length === 0) return [];
+    const { data, error } = await supabase
+      .from('players')
+      .select('*')
+      .in('id', ids);
+    if (error) throw error;
+    return (data ?? []).map(toPlayer);
+  },
+
   async create(input: Omit<Player, 'id'>): Promise<Player> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non authentifié');

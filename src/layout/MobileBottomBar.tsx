@@ -7,8 +7,8 @@ interface MobileBottomBarProps {
 }
 
 const LEFT_ITEMS = [
-  { path: '/sessions',                             icon: Dumbbell,  label: 'Séances'     },
-  { path: '/matches',                              icon: Trophy,    label: 'Matchs'      },
+  { path: '/seances',                              icon: Dumbbell,  label: 'Séances'     },
+  { path: '/matchs',                               icon: Trophy,    label: 'Matchs'      },
 ] as const;
 
 const RIGHT_ITEMS = [

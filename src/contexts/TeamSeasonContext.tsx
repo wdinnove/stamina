@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useSearchParams } from 'react-router';
 import { teamsApi, seasonsApi } from '../api';
 import { supabase } from '../api/client';
 import type { Team, Season, OrgRole, TeamRole, WellnessEntryMethod } from '../data/types';
@@ -27,7 +28,9 @@ export interface StatThresholds {
 interface Ctx {
   options:        TeamSeasonOption[];
   selected:       TeamSeasonOption | null;
-  setSelected:    (opt: TeamSeasonOption) => void;
+  /** Bascule d'équipe/saison : sauvegarde le choix, pose équipe/saison dans l'URL, recharge —
+   *  vers `pathname` si fourni, sinon sur la page courante. */
+  selectAndGo:    (opt: TeamSeasonOption, pathname?: string) => void;
   loading:        boolean;
   reload:         () => void;
   thresholds:            LoadThresholds;
@@ -58,7 +61,7 @@ const DEFAULT_STAT_THRESHOLDS: StatThresholds = {
 };
 
 const TeamSeasonContext = createContext<Ctx>({
-  options: [], selected: null, setSelected: () => {}, loading: true, reload: () => {},
+  options: [], selected: null, selectAndGo: () => {}, loading: true, reload: () => {},
   thresholds: DEFAULT_THRESHOLDS, statThresholds: DEFAULT_STAT_THRESHOLDS,
   defaultWellnessMethod: 'detailed', publicWellnessMethod: 'detailed',
   orgId: null, isSuperadmin: false, roleLoading: true, teamRole: null, teamRoleLoading: true,
@@ -83,6 +86,7 @@ function loadSavedIds(userId: string): { teamId: string; seasonId: string } | nu
 }
 
 export function TeamSeasonProvider({ children }: { children: ReactNode }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [options,  setOptions]  = useState<TeamSeasonOption[]>([]);
   const [selected, setSelected] = useState<TeamSeasonOption | null>(null);
   const [loading,  setLoading]  = useState(true);
@@ -149,9 +153,15 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [userId, selected, isSuperadmin]);
 
-  function handleSetSelected(opt: TeamSeasonOption) {
-    setSelected(opt);
+  /** Bascule d'équipe/saison depuis un sélecteur (topbar, palette de recherche, tiroir mobile) :
+   *  mémorise le choix, pose équipe/saison dans l'URL et recharge — vers `pathname` si fourni
+   *  (ex. bascule + ouverture directe d'une fiche joueur d'une autre équipe), sinon sur place. */
+  function selectAndGo(opt: TeamSeasonOption, pathname?: string) {
     if (userId) saveSelection(userId, opt);
+    const params = new URLSearchParams(pathname ? undefined : window.location.search);
+    params.set('equipe', opt.team.id);
+    params.set('saison', opt.season.id);
+    window.location.href = `${pathname ?? window.location.pathname}?${params.toString()}`;
   }
 
   useEffect(() => {
@@ -167,10 +177,14 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
         }
         setOptions(opts);
         setSelected(prev => {
+          // Priorité : URL (lien partagé) > sélection déjà en mémoire (ex. reload() sur changement
+          // d'auth) > dernier choix mémorisé localement > saison en cours > première option.
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlTeamId   = urlParams.get('equipe');
+          const urlSeasonId = urlParams.get('saison');
+          const fromUrl = urlTeamId && urlSeasonId ? { teamId: urlTeamId, seasonId: urlSeasonId } : null;
           const saved = loadSavedIds(userId);
-          const targetId = prev
-            ? { teamId: prev.team.id, seasonId: prev.season.id }
-            : saved;
+          const targetId = fromUrl ?? (prev ? { teamId: prev.team.id, seasonId: prev.season.id } : saved);
           if (targetId) {
             const match = opts.find(o => o.team.id === targetId.teamId && o.season.id === targetId.seasonId);
             if (match) return match;
@@ -180,6 +194,19 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => setLoading(false));
   }, [userId, tick]);
+
+  // Garde l'URL synchronisée avec l'équipe/saison affichée : toute navigation interne qui ne
+  // reporterait pas ces paramètres (lien, redirection, retour arrière…) se les voit réattribués
+  // sans nouvelle entrée d'historique — un lien copié depuis la barre d'adresse pointe donc
+  // toujours vers la bonne équipe/saison, quelle que soit la page.
+  useEffect(() => {
+    if (!selected) return;
+    if (searchParams.get('equipe') === selected.team.id && searchParams.get('saison') === selected.season.id) return;
+    const params = new URLSearchParams(searchParams);
+    params.set('equipe', selected.team.id);
+    params.set('saison', selected.season.id);
+    setSearchParams(params, { replace: true });
+  }, [selected, searchParams, setSearchParams]);
 
   const thresholds: LoadThresholds = {
     lightMax:        selected?.team.loadLightMax    ?? DEFAULT_THRESHOLDS.lightMax,
@@ -207,7 +234,7 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
 
   return (
     <TeamSeasonContext.Provider value={{
-      options, selected, setSelected: handleSetSelected, loading, reload,
+      options, selected, selectAndGo, loading, reload,
       thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod,
       orgId, isSuperadmin, roleLoading, teamRole, teamRoleLoading, canEditTeamData, canConfigureTeam,
     }}>

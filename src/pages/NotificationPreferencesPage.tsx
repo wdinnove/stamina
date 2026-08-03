@@ -95,7 +95,7 @@ export default function NotificationPreferencesPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <Breadcrumb items={[{ label: 'Mon profil', path: '/profile' }]} />
+      <Breadcrumb items={[{ label: 'Mon profil', path: '/profil' }]} />
       <h1 style={{ color: '#F1F5F9', margin: '8px 0 20px' }}>Mes notifications</h1>
 
       <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>

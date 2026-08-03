@@ -268,7 +268,7 @@ export default function MatchDetailPage() {
     setDeleting(true);
     try {
       await matchesApi.delete(match.id);
-      navigate('/matches', { replace: true });
+      navigate('/matchs', { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la suppression.');
       setConfirmDelete(false); setDeleting(false);
@@ -314,8 +314,8 @@ export default function MatchDetailPage() {
 
   if (error || !match) return (
     <div className="p-4 md:p-6">
-      <button onClick={() => navigate('/matches')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', marginBottom: 16, fontSize: '0.85rem' }}>
-        <ArrowLeft size={16} /> Retour
+      <button onClick={() => navigate('/matchs')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', marginBottom: 16, fontSize: '0.85rem' }}>
+        <ArrowLeft size={16} /> Matchs
       </button>
       {error ? (
         <p style={{ color: '#EF4444' }}>{error}</p>
@@ -442,11 +442,9 @@ export default function MatchDetailPage() {
       `}</style>
       {/* Back + Modifier */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/matches')}
+        <button onClick={() => navigate('/matchs')}
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>
-          <ArrowLeft size={15} />
-          <span className="sm:hidden">Retour</span>
-          <span className="hidden sm:inline">Tous les matchs</span>
+          <ArrowLeft size={15} /> Matchs
         </button>
         {canEditTeamData && (
           <MatchActionsMenu

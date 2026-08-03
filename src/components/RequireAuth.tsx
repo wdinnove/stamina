@@ -31,7 +31,7 @@ export function RequireAuth() {
     </div>
   );
 
-  if (status === 'unauth') return <Navigate to="/login" replace />;
+  if (status === 'unauth') return <Navigate to="/connexion" replace />;
 
   return <Outlet />;
 }

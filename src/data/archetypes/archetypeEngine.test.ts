@@ -196,21 +196,58 @@ describe('computeArchetypesForSquad (intégration)', () => {
     }];
 
     const reports = computeArchetypesForSquad([pgHigh, pgLow, bigA, bigB], positions, astProfile, []);
-    const scoreOf = (id: string) => reports.find(r => r.playerId === id)!.archetypes[0]!.score!;
+    const archetypeOf = (id: string) => reports.find(r => r.playerId === id)!.archetypes[0]!;
 
     // bigA (astPct=15) est le MEILLEUR des Intérieurs (Ailier Fort + Pivot regroupés) -> score > 50.
     // Comparé à tout l'effectif (4 joueurs), 15 serait au contraire dans la moitié basse (< 40 et proche
     // de 10) -> un score > 50 ici prouve que le pool est bien restreint au groupe de postes.
-    expect(scoreOf('big-a')).toBeGreaterThan(50);
-    expect(scoreOf('big-b')).toBeLessThan(50);
+    expect(archetypeOf('big-a').score).toBeGreaterThan(50);
+    expect(archetypeOf('big-b').score).toBeLessThan(50);
 
-    // Assertion plus stricte pour distinguer explicitement le MÉLANGE (blendWithSquadVectors)
-    // d'un percentile purement groupé ou purement effectif entier — un simple >50/<50 ci-dessus
-    // resterait vrai même si le mélange était cassé ou absent :
-    // - percentile groupe pur (n=2, 25/75) donnerait un score de 75 pour big-a ;
-    // - percentile effectif entier pur (n=4) donnerait un score de ~63 pour big-a ;
-    // - le mélange (groupWeight = 2/6 = 1/3) donne ≈ 67, strictement entre les deux.
-    expect(scoreOf('big-a')).toBeGreaterThan(64);
-    expect(scoreOf('big-a')).toBeLessThan(74);
+    // Le percentile n'est plus mélangé avec l'effectif entier (voir audit : le mélange pouvait
+    // inverser le sens du score) — bigA doit obtenir EXACTEMENT le percentile pur de son groupe
+    // de 2 (rang 2/2 -> 75), pas une valeur atténuée vers l'effectif entier (~63).
+    expect(archetypeOf('big-a').score).toBe(75);
+    expect(archetypeOf('big-b').score).toBe(25);
+  });
+
+  it('dégrade la confiance et ajoute un caveat quand le groupe de comparaison est petit (< 6), sans altérer le score', () => {
+    const bigA = player('big-a', { astPct: 15 });
+    const bigB = player('big-b', { astPct: 5 });
+    const positions = new Map<string, PlayerPositionInfo>([
+      ['big-a', { position: 'Ailier Fort' }], ['big-b', { position: 'Pivot' }],
+    ]);
+    const astProfile: ProfileDefinition[] = [{
+      key: 'ast_test', label: 'Test AST%', description: '', category: 'createurs', status: 'available',
+      indicators: [{ featureKey: 'astPct', weight: 1 }],
+    }];
+
+    const reports = computeArchetypesForSquad([bigA, bigB], positions, astProfile, []);
+    const archetypeOf = (id: string) => reports.find(r => r.playerId === id)!.archetypes[0]!;
+
+    // Groupe de 2 (< MIN_GROUP_SIZE_FOR_FULL_CONFIDENCE) : confiance dégradée d'un cran (high -> medium),
+    // caveat explicite ajouté, mais le score reste le vrai percentile de groupe (75), pas dilué.
+    expect(archetypeOf('big-a').score).toBe(75);
+    expect(archetypeOf('big-a').confidence).not.toBe('high');
+    expect(archetypeOf('big-a').caveat).toMatch(/petit groupe|moins de/i);
+  });
+
+  it("un joueur sans poste connu ne voit que les profils transversaux, pas ceux réservés à un poste", () => {
+    const restrictedProfile: ProfileDefinition = {
+      key: 'restricted', label: 'Profil restreint', description: '', category: 'interieurs', status: 'available',
+      eligiblePositions: ['Pivot'],
+      indicators: [{ featureKey: 'trebPct', weight: 1 }],
+    };
+    const transversalProfile: ProfileDefinition = {
+      key: 'transversal', label: 'Profil transversal', description: '', category: 'polyvalents', status: 'available',
+      indicators: [{ featureKey: 'trebPct', weight: 1 }],
+    };
+    const unknownPositionPlayer = player('unknown-pos', { trebPct: 20 });
+
+    const reports = computeArchetypesForSquad([unknownPositionPlayer], NO_POSITIONS, [restrictedProfile, transversalProfile], []);
+    const report = reports.find(r => r.playerId === 'unknown-pos')!;
+
+    expect(report.archetypes.some(a => a.profileKey === 'restricted')).toBe(false);
+    expect(report.archetypes.some(a => a.profileKey === 'transversal')).toBe(true);
   });
 });

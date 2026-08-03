@@ -9,37 +9,37 @@ export const navGroups = [
   {
     title: undefined,
     items: [
-      { path: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard'    },
+      { path: '/tableau-de-bord',   icon: LayoutDashboard, label: 'Dashboard'    },
     ],
   },
   {
     title: 'Staff',
     items: [
-      { path: '/roster',            icon: ClipboardList,   label: 'Effectif'     },
-      { path: '/meetings',          icon: Calendar,        label: 'Réunions'     },
-      { path: '/actions',           icon: CheckSquare,     label: 'Tâches'       },
+      { path: '/effectif',          icon: ClipboardList,   label: 'Effectif'     },
+      { path: '/reunions',          icon: Calendar,        label: 'Réunions'     },
+      { path: '/taches',            icon: CheckSquare,     label: 'Tâches'       },
     ],
   },
   {
     title: 'Entraînement',
     items: [
-      { path: '/sessions',          icon: Dumbbell,        label: 'Séances'      },
-      { path: '/attendance',        icon: CalendarCheck,   label: 'Présences'    },
-      { path: '/exercises',         icon: BookOpen,        label: 'Exercices'    },
+      { path: '/seances',           icon: Dumbbell,        label: 'Séances'      },
+      { path: '/presences',         icon: CalendarCheck,   label: 'Présences'    },
+      { path: '/exercices',         icon: BookOpen,        label: 'Exercices'    },
     ],
   },
   {
     title: 'Compétition',
     items: [
-      { path: '/matches',             icon: Trophy,     label: 'Matchs'             },
+      { path: '/matchs',              icon: Trophy,     label: 'Matchs'             },
     ],
   },
   {
     title: 'Charge physique',
     items: [
-      { path: '/rpe/new',           icon: Activity,        label: 'RPE'                 },
-      { path: '/wellness/new',      icon: Heart,           label: 'Bien-être'           },
-      { path: '/medical/infirmary', icon: Stethoscope,     label: 'Médical'             },
+      { path: '/rpe/saisie',            icon: Activity,        label: 'RPE'                 },
+      { path: '/bien-etre/saisie',       icon: Heart,           label: 'Bien-être'           },
+      { path: '/medical/infirmerie',     icon: Stethoscope,     label: 'Médical'             },
     ],
   },
   {

@@ -41,6 +41,18 @@ describe('scoreIndicators', () => {
     expect(result?.rawScore).toBe(50);
   });
 
+  it('un indicateur optionnel manquant ne doit PAS diluer le score à un percentile extrême (weightSum ne doit compter que les indicateurs disponibles)', () => {
+    // Piège : au percentile 50 (centered=0), un weightSum gonflé par un poids manquant est
+    // invisible (0 × n'importe quoi = 0) — ce test utilise un percentile extrême pour le révéler.
+    const vector = vectorWithPercentiles({ a: 100 });
+    const result = scoreIndicators(vector, [
+      { featureKey: 'a', weight: 1 },
+      { featureKey: 'missing', weight: 5 }, // gros poids, mais indisponible et optionnel
+    ]);
+    // Sans le poids manquant (1 seul indicateur, poids 1, percentile 100) -> rawScore = 100.
+    expect(result?.rawScore).toBe(100);
+  });
+
   it('un poids négatif à percentile 100 tire le score sous 50', () => {
     const vector = vectorWithPercentiles({ a: 100 });
     const result = scoreIndicators(vector, [{ featureKey: 'a', weight: -1 }]);

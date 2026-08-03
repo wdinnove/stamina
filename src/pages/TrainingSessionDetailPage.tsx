@@ -1077,8 +1077,8 @@ export default function TrainingSessionDetailPage() {
 
   if (error || !session) return (
     <div className="p-4 md:p-6">
-      <button onClick={() => navigate('/sessions')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
-        <ArrowLeft size={14} /> Toutes les séances
+      <button onClick={() => navigate('/seances')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
+        <ArrowLeft size={14} /> Séances
       </button>
       {error ? (
         <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{error}</div>
@@ -1291,13 +1291,13 @@ export default function TrainingSessionDetailPage() {
   return (
     <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 20 }}>
-        <button onClick={() => navigate('/sessions')}
+        <button onClick={() => navigate('/seances')}
           style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
-          <ArrowLeft size={14} /> Toutes les séances
+          <ArrowLeft size={14} /> Séances
         </button>
         {canEditTeamData && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+          <button onClick={() => navigate('/rpe/saisie', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
             style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
             Saisir le RPE
           </button>
@@ -1434,7 +1434,7 @@ export default function TrainingSessionDetailPage() {
                     {estimatedRpe !== null && avgRpe < estimatedRpe && <ArrowDown size={16} style={{ color: '#00E5A0' }} />}
                   </span>
                 ) : canEditTeamData ? (
-                  <button onClick={() => navigate('/rpe/new', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+                  <button onClick={() => navigate('/rpe/saisie', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 400, fontFamily: 'Inter, sans-serif', padding: 0 }}
                     onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
                     onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
@@ -1509,7 +1509,7 @@ export default function TrainingSessionDetailPage() {
                           const highRisk = acwrTier?.label === 'Risque élevé';
                           const rowBg    = highRisk ? 'rgba(239,68,68,0.05)' : 'transparent';
                           return (
-                            <tr key={p.id} onClick={() => navigate(`/rpe/individual/${p.id}`, { state: { from: `/sessions/${session.id}`, playerName: playerNameFull(p) } })}
+                            <tr key={p.id} onClick={() => navigate(`/rpe/joueur/${p.id}`, { state: { from: `/seances/${session.id}`, playerName: playerNameFull(p) } })}
                               style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>

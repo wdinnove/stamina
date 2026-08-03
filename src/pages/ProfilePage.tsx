@@ -90,7 +90,7 @@ export default function ProfilePage() {
 
   async function handleSignOut() {
     await authApi.signOut();
-    navigate('/login', { replace: true });
+    navigate('/connexion', { replace: true });
   }
 
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
@@ -250,7 +250,7 @@ export default function ProfilePage() {
             Choisissez ce que vous recevez par push et par email, catégorie par catégorie.
           </p>
           <Link
-            to="/profile/notifications"
+            to="/profil/notifications"
             style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', borderRadius: 6,
               border: '1px solid #2A2F3A', color: '#F1F5F9', textDecoration: 'none',

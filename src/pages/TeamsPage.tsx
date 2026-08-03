@@ -121,7 +121,11 @@ function TeamDetail({ teamId }: { teamId: string }) {
     <div className="p-4 md:p-6">
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <Breadcrumb items={[{ label: 'Équipes', path: '/teams' }]} />
+        <Breadcrumb items={[
+          { label: 'Configuration', path: '/configuration' },
+          { label: 'Club',          path: '/configuration/club/equipes' },
+          { label: 'Équipes',       path: '/equipes' },
+        ]} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
           <h2 style={{ color: '#F1F5F9', margin: 0 }}>{team.name}</h2>
           {team.currentSeason && (
@@ -389,7 +393,7 @@ function TeamsList() {
                   {team.currentSeason}
                 </span>
               )}
-              <button onClick={() => navigate(`/teams/${team.id}`)}
+              <button onClick={() => navigate(`/equipes/${team.id}`)}
                 style={{ padding: '5px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0 }}>
                 Voir
               </button>

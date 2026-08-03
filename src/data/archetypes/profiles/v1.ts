@@ -207,6 +207,7 @@ export const PROFILES_V1: ProfileDefinition[] = [
       { featureKey: 'usagePct', weight: 2 },
       { featureKey: 'ptsProd', weight: 2 },
       { featureKey: 'efgPct', weight: 1 },
+      { featureKey: 'astPct', weight: -1 },
     ],
     status: 'partial_proxy',
     eligiblePositions: ['Arrière', 'Meneur'],

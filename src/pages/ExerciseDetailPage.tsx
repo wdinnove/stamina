@@ -244,7 +244,7 @@ export default function ExerciseDetailPage() {
     setDelError('');
     try {
       await exercisesApi.remove(exercise.id);
-      navigate('/exercises');
+      navigate('/exercices');
     } catch (err: unknown) {
       setDelError(err instanceof Error ? err.message : 'Erreur');
       setDeleting(false);
@@ -272,9 +272,9 @@ export default function ExerciseDetailPage() {
     <div className="p-4 md:p-6">
       {/* Header — pleine largeur */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <button onClick={() => navigate('/exercises')}
+        <button onClick={() => navigate('/exercices')}
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>
-          <ArrowLeft size={15} /> Tous les exercices
+          <ArrowLeft size={15} /> Exercices
         </button>
         {canEditTeamData && (
         <div style={{ display: 'flex', gap: 8 }}>

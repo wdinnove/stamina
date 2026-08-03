@@ -64,8 +64,8 @@ export default function MeetingDetailPage() {
 
   if (fetchErr || !meeting) return (
     <div className="p-4 md:p-6">
-      <button onClick={() => navigate('/meetings')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
-        <ArrowLeft size={14} /> Retour aux réunions
+      <button onClick={() => navigate('/reunions')} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: 0 }}>
+        <ArrowLeft size={14} /> Réunions
       </button>
       {fetchErr ? (
         <div style={{ color: '#EF4444', fontSize: '0.85rem' }}>{fetchErr}</div>
@@ -115,7 +115,7 @@ export default function MeetingDetailPage() {
       const id    = meeting!.id;
       await meetingsApi.delete(id);
       notify(selected?.team.id, 'meeting_deleted', `Réunion supprimée : ${title}`, { entityType: 'meeting', entityId: id });
-      navigate('/meetings');
+      navigate('/reunions');
     } catch {
       setDeleting(false);
       setConfirmDel(false);
@@ -124,7 +124,7 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="p-4 md:p-6">
-      <button onClick={() => navigate('/meetings')}
+      <button onClick={() => navigate('/reunions')}
         style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 24, padding: 0 }}
         onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
         onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>

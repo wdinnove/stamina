@@ -25,7 +25,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.signIn(email, password);
-      navigate('/dashboard');
+      navigate('/tableau-de-bord');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur de connexion.';
       setError(msg === 'Invalid login credentials' ? 'Email ou mot de passe incorrect.' : msg);

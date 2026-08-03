@@ -130,7 +130,7 @@ function TeamsTab() {
                   <CheckCircle size={10} /> {team.currentSeason}
                 </span>
               )}
-              <button onClick={() => navigate(`/teams/${team.id}`)}
+              <button onClick={() => navigate(`/equipes/${team.id}`)}
                 style={{ padding: '5px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.78rem', flexShrink: 0 }}>
                 Gérer
               </button>

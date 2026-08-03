@@ -116,7 +116,7 @@ export default function MeetingsPage() {
               const accent = isToday ? '#F59E0B' : isUpcoming ? '#00E5A0' : '#475569';
               return (
                 <div key={m.id}
-                  onClick={() => navigate(`/meetings/${m.id}`)}
+                  onClick={() => navigate(`/reunions/${m.id}`)}
                   style={{
                     backgroundColor: '#161920',
                     border: `1px solid ${isToday ? 'rgba(245,158,11,0.25)' : isUpcoming ? '#252B36' : '#1A1F28'}`,

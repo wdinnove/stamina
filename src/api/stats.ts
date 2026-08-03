@@ -402,6 +402,44 @@ export const statsApi = {
     return (data ?? []).map(toTeamMatchStat);
   },
 
+  /** Comme `listAllStatsBySeason`, mais sur TOUTES les saisons de l'équipe — sert à élargir le
+   *  pool de comparaison du moteur d'archétypes (archetypesApi.computeForSeason) au-delà de la
+   *  seule saison courante, sans inclure les autres équipes du club. */
+  async listAllStatsByTeam(teamId: string): Promise<MatchStat[]> {
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id')
+      .eq('team_id', teamId);
+    if (matchErr) throw matchErr;
+    const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
+    if (matchIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('match_stats')
+      .select('*')
+      .in('match_id', matchIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(toMatchStat);
+  },
+
+  /** Idem `listTeamStatsBySeason`, toutes saisons de l'équipe. */
+  async listTeamStatsByTeam(teamId: string): Promise<TeamMatchStat[]> {
+    const { data: matchRows, error: matchErr } = await supabase
+      .from('matches')
+      .select('id')
+      .eq('team_id', teamId);
+    if (matchErr) throw matchErr;
+    const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
+    if (matchIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('team_match_stats_full')
+      .select('*')
+      .in('match_id', matchIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(toTeamMatchStat);
+  },
+
   async upsertTeamStats(matchId: string, own?: CollectiveStatInput, opp?: CollectiveStatInput): Promise<void> {
     const { data: existing } = await supabase
       .from('team_match_stats')

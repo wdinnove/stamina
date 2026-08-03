@@ -495,7 +495,7 @@ export default function ExercisesPage() {
                 const desc = ex.description ? ex.description.replace(/<[^>]+>/g, '').trim() : '';
                 return (
                   <tr key={ex.id}
-                    onClick={() => navigate(`/exercises/${ex.id}`)}
+                    onClick={() => navigate(`/exercices/${ex.id}`)}
                     style={{ borderBottom: i < filtered.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
@@ -540,7 +540,7 @@ export default function ExercisesPage() {
         <ExerciseModal
           editing={null}
           onClose={() => setShowModal(false)}
-          onSaved={(ex, isNew) => { handleSaved(ex, isNew); if (isNew) navigate(`/exercises/${ex.id}`); }}
+          onSaved={(ex, isNew) => { handleSaved(ex, isNew); if (isNew) navigate(`/exercices/${ex.id}`); }}
           teamId={selected?.team.id}
           categories={categories}
         />

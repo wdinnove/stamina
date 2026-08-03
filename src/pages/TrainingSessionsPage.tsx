@@ -178,7 +178,7 @@ export default function TrainingSessionsPage() {
       }));
       setShowAdd(false);
       setAddForm({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
-      navigate(`/sessions/${final.id}`);
+      navigate(`/seances/${final.id}`);
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -293,7 +293,7 @@ export default function TrainingSessionsPage() {
                     return (
                       <tr
                         key={session.id}
-                        onClick={() => navigate(`/sessions/${session.id}`)}
+                        onClick={() => navigate(`/seances/${session.id}`)}
                         style={{ borderBottom: isLast ? 'none' : '1px solid #1E2229', cursor: 'pointer' }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}

@@ -13,9 +13,7 @@ export const DIMENSIONS_V1: DimensionDefinition[] = [
     label: 'Volume de tir',
     description: 'Quantité de tirs pris, tous types confondus, ramenée à 36 minutes.',
     indicators: [
-      { featureKey: 'fg3VolumePer36', weight: 2 },
-      { featureKey: 'ftaPer36', weight: 1 },
-      { featureKey: 'usagePct', weight: 1 },
+      { featureKey: 'fgaPer36', weight: 1 },
     ],
     status: 'available',
   },

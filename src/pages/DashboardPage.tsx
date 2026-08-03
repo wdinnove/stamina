@@ -280,7 +280,7 @@ export default function DashboardPage() {
           valueColor={lastMatchColor}
           subtitle={lastMatchSubtitle}
           borderColor={lastMatchColor}
-          onOpen={() => navigate(lastMatch ? `/matches/${lastMatch.id}` : '/matches')}
+          onOpen={() => navigate(lastMatch ? `/matchs/${lastMatch.id}` : '/matchs')}
         />
         <MiniStatCard
           icon={<Dumbbell size={18} color="#00E5A0" />}
@@ -290,7 +290,7 @@ export default function DashboardPage() {
           valueColor={lastSessionColor}
           subtitle={lastSessionSubtitle}
           borderColor={lastSessionColor}
-          onOpen={() => navigate('/sessions')}
+          onOpen={() => navigate('/seances')}
         />
         <MiniStatCard
           icon={<CheckSquare size={18} color="#3B82F6" />}
@@ -300,7 +300,7 @@ export default function DashboardPage() {
           valueColor={myActionsColor}
           subtitle={myActionsSubtitle}
           borderColor={myActionsColor}
-          onOpen={() => navigate('/actions')}
+          onOpen={() => navigate('/taches')}
         />
         <MiniStatCard
           icon={<Stethoscope size={18} color="#EF4444" />}
