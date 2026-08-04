@@ -29,7 +29,9 @@ interface Ctx {
   options:        TeamSeasonOption[];
   selected:       TeamSeasonOption | null;
   /** Bascule d'équipe/saison : sauvegarde le choix, pose équipe/saison dans l'URL, recharge —
-   *  vers `pathname` si fourni, sinon sur la page courante. */
+   *  vers `pathname` si fourni ; sinon sur la page courante si seule la saison change, ou vers
+   *  le tableau de bord si l'équipe change (la page courante peut référencer une ressource qui
+   *  n'existe pas pour la nouvelle équipe). */
   selectAndGo:    (opt: TeamSeasonOption, pathname?: string) => void;
   loading:        boolean;
   reload:         () => void;
@@ -155,13 +157,19 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
 
   /** Bascule d'équipe/saison depuis un sélecteur (topbar, palette de recherche, tiroir mobile) :
    *  mémorise le choix, pose équipe/saison dans l'URL et recharge — vers `pathname` si fourni
-   *  (ex. bascule + ouverture directe d'une fiche joueur d'une autre équipe), sinon sur place. */
+   *  (ex. bascule + ouverture directe d'une fiche joueur d'une autre équipe). Sans `pathname` :
+   *  reste sur place si seule la saison change ; revient au tableau de bord si l'équipe change,
+   *  car la page courante peut référencer une ressource (joueur, séance, match…) propre à
+   *  l'ancienne équipe et absente de la nouvelle. */
   function selectAndGo(opt: TeamSeasonOption, pathname?: string) {
     if (userId) saveSelection(userId, opt);
-    const params = new URLSearchParams(pathname ? undefined : window.location.search);
+    const teamChanged = selected != null && selected.team.id !== opt.team.id;
+    const target = pathname ?? (teamChanged ? '/tableau-de-bord' : window.location.pathname);
+    const keepCurrentParams = !pathname && !teamChanged;
+    const params = new URLSearchParams(keepCurrentParams ? window.location.search : undefined);
     params.set('equipe', opt.team.id);
     params.set('saison', opt.season.id);
-    window.location.href = `${pathname ?? window.location.pathname}?${params.toString()}`;
+    window.location.href = `${target}?${params.toString()}`;
   }
 
   useEffect(() => {
