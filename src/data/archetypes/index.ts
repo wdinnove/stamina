@@ -15,3 +15,4 @@ export { POSITION_GROUP, POSITION_GROUP_LABELS, MIN_GROUP_SIZE_FOR_FULL_CONFIDEN
 export { CATEGORY_LABELS } from './profiles/categories';
 export { PROFILES_V1 } from './profiles/v1';
 export { DIMENSIONS_V1 } from './dimensions/v1';
+export { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from './selectionList';

@@ -11,11 +11,12 @@ import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, MiniStatCard,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
-  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel,
+  TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
   TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
+import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
 import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TacticalHomeAwayFilter, TacticalResultFilter } from '../components/TacticalFilterBar';
 import type { DatePreset } from '../components/DateRangeCard';
@@ -627,6 +628,7 @@ export default function PerformanceCollectivePage() {
     [],
   );
   const [rankKey, setRankKey] = useState('eval');
+  const [archSelection, setArchSelection] = useState<ArchetypeSelection>(ARCHETYPE_SELECTIONS[0]!);
   const rankDef = rankIndicators.find(i => i.key === rankKey) ?? rankIndicators[0];
   const rankingRows: RankingRow[] = useMemo(() => (data?.players ?? []).map(p => {
     const pScope: CrossScope = { player: p };
@@ -1192,8 +1194,23 @@ export default function PerformanceCollectivePage() {
       {/* ══ ARCHÉTYPES (classement de l'effectif par profil/dimension) ═══════ */}
       {activeTab === 'archetypes' && (
         <Card>
-          <CardTitle icon={<BarChart2 size={12} style={{ color: '#00E5A0' }} />} mb={10}>Archétypes — classement de l'effectif</CardTitle>
-          <TeamArchetypesPanel reports={archetypeReports} roster={players} onOpenPlayer={openPlayer} />
+          <CardTitle icon={<BarChart2 size={12} style={{ color: '#00E5A0' }} />} mb={10}
+            info={`${players.length} joueur${players.length > 1 ? 's' : ''} · moyennes sur la période`}
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setNormalize25(v => !v)}
+                  title="Recalculer toutes les statistiques comme si chaque joueur jouait 25 min"
+                  style={{ padding: '3px 8px', borderRadius: 4, border: `1px solid ${normalize25 ? '#F59E0B' : '#2A2F3A'}`, cursor: 'pointer', fontSize: '0.68rem', fontWeight: normalize25 ? 700 : 400, backgroundColor: normalize25 ? 'rgba(245,158,11,0.12)' : 'transparent', color: normalize25 ? '#F59E0B' : '#475569', transition: 'all 0.15s' }}>
+                  25 min
+                </button>
+                <ArchetypeSelect value={archSelection} onChange={setArchSelection} />
+              </div>
+            }
+          >Archétypes — classement de l'effectif</CardTitle>
+          <TeamArchetypesPanel
+            reports={archetypeReports} roster={players} selection={archSelection}
+            rankingRows={rankingRows} normalized25={normalize25} onOpenPlayer={openPlayer}
+          />
         </Card>
       )}
 
