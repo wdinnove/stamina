@@ -3103,3 +3103,219 @@ REVOKE ALL ON FUNCTION team_write_access(UUID, UUID) FROM PUBLIC, anon, authenti
 GRANT  EXECUTE ON FUNCTION team_write_access(UUID, UUID) TO service_role;
 REVOKE ALL ON FUNCTION notification_rate_bump(UUID, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION notification_rate_bump(UUID, INTEGER, INTEGER) TO service_role;
+
+
+-- ================================================================
+-- OPS — Déplacer une équipe vers une autre organisation
+--
+-- Seules 4 tables portent organization_id : teams, players, profiles et
+-- notifications. Tout le reste est rattaché par team_id / season_id /
+-- player_id et suit donc l'équipe automatiquement. Déplacer une équipe se
+-- réduit à traiter ces 4 tables — et surtout players, dont le lien à
+-- l'équipe est indirect (player_season → seasons → teams) et que la policy
+-- player_access cloisonne par organisation : sans cette étape, l'effectif
+-- reste visible dans l'ancienne organisation et les noms disparaissent des
+-- séances/RPE de la nouvelle.
+--
+-- Fonction d'exploitation, PAS destinée au client : elle traverse le
+-- cloisonnement par organisation. D'où le REVOKE en fin de section — seul
+-- le propriétaire (postgres, via le SQL Editor) peut l'exécuter.
+--
+-- Idempotente : l'effectif à déplacer est déduit des données de l'équipe,
+-- jamais de l'ancienne organisation. La fonction marche donc aussi bien
+-- avant qu'après un UPDATE manuel de teams.organization_id, et un second
+-- appel ne fait plus rien.
+--
+--   -- 1. plan sans écriture
+--   SELECT * FROM move_team_to_organization('<team>', '<org>');
+--   -- 2. exécution
+--   SELECT * FROM move_team_to_organization('<team>', '<org>', p_dry_run => FALSE);
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION move_team_to_organization(
+  p_team_id             UUID,
+  p_org_id              UUID,
+  p_dry_run             BOOLEAN DEFAULT TRUE,
+  p_allow_shared        BOOLEAN DEFAULT FALSE,
+  p_purge_foreign_roles BOOLEAN DEFAULT FALSE
+)
+RETURNS TABLE (etape TEXT, lignes BIGINT, action TEXT)
+LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE
+  v_team_org UUID;
+  v_players  UUID[];
+  v_shared   TEXT;
+  v_n        BIGINT;
+BEGIN
+  SELECT t.organization_id INTO v_team_org FROM teams t WHERE t.id = p_team_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Équipe introuvable : %', p_team_id;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id = p_org_id) THEN
+    RAISE EXCEPTION 'Organisation introuvable : %', p_org_id;
+  END IF;
+
+  -- Effectif rattaché à l'équipe par N'IMPORTE QUEL chemin de données, et pas
+  -- seulement par player_season : une joueuse peut porter un RPE ou une feuille
+  -- de match sur l'équipe sans inscription en saison (import, désinscription en
+  -- cours de saison). S'appuyer sur player_season seul laisserait ces joueuses
+  -- derrière, avec des stats d'équipe amputées et sans nom.
+  SELECT array_agg(DISTINCT u.pid) INTO v_players FROM (
+    SELECT ps.player_id AS pid
+      FROM player_season ps JOIN seasons s ON s.id = ps.season_id
+     WHERE s.team_id = p_team_id
+    UNION
+    SELECT r.player_id
+      FROM rpe_entries r JOIN training_sessions ts ON ts.id = r.session_id
+     WHERE ts.team_id = p_team_id
+    UNION
+    SELECT ta.player_id
+      FROM training_attendance ta JOIN training_sessions ts ON ts.id = ta.session_id
+     WHERE ts.team_id = p_team_id
+    UNION
+    SELECT stp.player_id
+      FROM session_team_players stp JOIN training_sessions ts ON ts.id = stp.session_id
+     WHERE ts.team_id = p_team_id
+    UNION
+    SELECT ms.player_id
+      FROM match_stats ms JOIN matches m ON m.id = ms.match_id
+     WHERE m.team_id = p_team_id
+    UNION
+    SELECT pa.player_id FROM player_actions pa
+     WHERE pa.team_id = p_team_id AND pa.player_id IS NOT NULL
+    UNION
+    SELECT o.player_id FROM objectives o
+     WHERE o.team_id = p_team_id AND o.player_id IS NOT NULL
+  ) u;
+
+  v_players := COALESCE(v_players, ARRAY[]::UUID[]);
+
+  -- Garde-fou : une joueuse inscrite à la saison d'une AUTRE équipe est partagée.
+  -- La déplacer la ferait sortir de l'organisation de cette autre équipe, dont
+  -- elle disparaîtrait (player_access). Ces cas demandent une duplication de la
+  -- fiche joueuse, pas un déplacement — d'où l'arrêt plutôt qu'un choix implicite.
+  SELECT string_agg(pl.last_name || ' ' || pl.first_name, ', ' ORDER BY pl.last_name)
+    INTO v_shared
+    FROM players pl
+   WHERE pl.id = ANY(v_players)
+     AND EXISTS (
+       SELECT 1 FROM player_season ps JOIN seasons s ON s.id = ps.season_id
+        WHERE ps.player_id = pl.id AND s.team_id <> p_team_id
+     );
+
+  IF v_shared IS NOT NULL AND NOT p_allow_shared THEN
+    RAISE EXCEPTION 'Joueuses partagées avec une autre équipe : %. '
+                    'Dupliquez-les puis relancez, ou forcez avec p_allow_shared => TRUE.', v_shared;
+  END IF;
+
+  -- ── 1. L'équipe ────────────────────────────────────────────────
+  v_n := CASE WHEN v_team_org IS DISTINCT FROM p_org_id THEN 1 ELSE 0 END;
+  IF v_n > 0 AND NOT p_dry_run THEN
+    UPDATE teams SET organization_id = p_org_id WHERE id = p_team_id;
+  END IF;
+  etape  := 'teams.organization_id';
+  lignes := v_n;
+  action := CASE WHEN v_n = 0 THEN 'déjà dans l''organisation cible' ELSE 'déplacée' END;
+  RETURN NEXT;
+
+  -- ── 2. L'effectif ──────────────────────────────────────────────
+  SELECT count(*) INTO v_n FROM players pl
+   WHERE pl.id = ANY(v_players) AND pl.organization_id IS DISTINCT FROM p_org_id;
+  IF v_n > 0 AND NOT p_dry_run THEN
+    UPDATE players SET organization_id = p_org_id
+     WHERE id = ANY(v_players) AND organization_id IS DISTINCT FROM p_org_id;
+  END IF;
+  etape  := 'players.organization_id';
+  lignes := v_n;
+  action := format('%s joueuse(s) rattachée(s) à l''équipe, dont %s à déplacer',
+                   cardinality(v_players), v_n);
+  RETURN NEXT;
+
+  -- ── 3. Notifications obsolètes ─────────────────────────────────
+  -- notifications_user_own filtre sur user_id, pas sur l'organisation : sans
+  -- purge, les anciens membres gardent des notifications pointant vers des
+  -- entités que la RLS leur masque désormais. Le filtre sur organization_id
+  -- (figée à la création) épargne les notifications émises depuis le
+  -- déplacement, côté nouvelle organisation.
+  SELECT count(*) INTO v_n FROM notifications n
+   WHERE n.organization_id IS DISTINCT FROM p_org_id
+     AND (   n.entity_id = ANY(v_players)
+          OR n.entity_id IN (SELECT id FROM training_sessions WHERE team_id = p_team_id)
+          OR n.entity_id IN (SELECT id FROM matches           WHERE team_id = p_team_id)
+          OR n.entity_id IN (SELECT id FROM seasons           WHERE team_id = p_team_id));
+  IF v_n > 0 AND NOT p_dry_run THEN
+    DELETE FROM notifications n
+     WHERE n.organization_id IS DISTINCT FROM p_org_id
+       AND (   n.entity_id = ANY(v_players)
+            OR n.entity_id IN (SELECT id FROM training_sessions WHERE team_id = p_team_id)
+            OR n.entity_id IN (SELECT id FROM matches           WHERE team_id = p_team_id)
+            OR n.entity_id IN (SELECT id FROM seasons           WHERE team_id = p_team_id));
+  END IF;
+  etape  := 'notifications obsolètes';
+  lignes := v_n;
+  action := CASE WHEN p_dry_run THEN 'à supprimer' ELSE 'supprimées' END;
+  RETURN NEXT;
+
+  -- ── 4. Rôles d'équipe hérités ──────────────────────────────────
+  -- accessible_team_ids() joint profiles.organization_id = teams.organization_id :
+  -- ces lignes n'ouvrent plus aucun droit, mais restent affichées sans nom dans
+  -- la config des rôles (profiles_org_visible masque leur profil).
+  SELECT count(*) INTO v_n
+    FROM team_roles tr JOIN profiles pr ON pr.id = tr.profile_id
+   WHERE tr.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id;
+  IF v_n > 0 AND p_purge_foreign_roles AND NOT p_dry_run THEN
+    DELETE FROM team_roles tr USING profiles pr
+     WHERE pr.id = tr.profile_id
+       AND tr.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id;
+  END IF;
+  etape  := 'team_roles hors organisation';
+  lignes := v_n;
+  action := CASE WHEN v_n = 0 THEN 'aucun'
+                 WHEN p_purge_foreign_roles THEN 'purgés'
+                 ELSE 'conservés — p_purge_foreign_roles => TRUE pour purger' END;
+  RETURN NEXT;
+
+  -- ── 5. Intervenants liés à un compte de l'ancienne organisation ─
+  -- On délie le compte sans supprimer l'intervenant : la fiche staff porte
+  -- l'historique (player_actions.assigned_to, staff_meetings).
+  SELECT count(*) INTO v_n
+    FROM staff st JOIN profiles pr ON pr.id = st.profile_id
+   WHERE st.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id;
+  IF v_n > 0 AND p_purge_foreign_roles AND NOT p_dry_run THEN
+    UPDATE staff st SET profile_id = NULL
+      FROM profiles pr
+     WHERE pr.id = st.profile_id
+       AND st.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id;
+  END IF;
+  etape  := 'staff.profile_id hors organisation';
+  lignes := v_n;
+  action := CASE WHEN v_n = 0 THEN 'aucun'
+                 WHEN p_purge_foreign_roles THEN 'comptes déliés (fiches conservées)'
+                 ELSE 'conservés — p_purge_foreign_roles => TRUE pour délier' END;
+  RETURN NEXT;
+
+  -- ── 6. Auteurs hors organisation (informatif) ──────────────────
+  SELECT (SELECT count(*) FROM training_sessions ts JOIN profiles pr ON pr.id = ts.created_by
+           WHERE ts.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id)
+       + (SELECT count(*) FROM objectives o JOIN profiles pr ON pr.id = o.created_by
+           WHERE o.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id)
+       + (SELECT count(*) FROM player_actions pa JOIN profiles pr ON pr.id = pa.created_by
+           WHERE pa.team_id = p_team_id AND pr.organization_id IS DISTINCT FROM p_org_id)
+    INTO v_n;
+  etape  := 'created_by hors organisation';
+  lignes := v_n;
+  action := 'informatif — auteur affiché vide, aucune donnée cassée';
+  RETURN NEXT;
+
+  IF p_dry_run THEN
+    etape  := '⚠ SIMULATION';
+    lignes := 0;
+    action := 'aucune écriture — relancez avec p_dry_run => FALSE';
+    RETURN NEXT;
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION move_team_to_organization(UUID, UUID, BOOLEAN, BOOLEAN, BOOLEAN)
+  FROM PUBLIC, anon, authenticated;
