@@ -1,4 +1,5 @@
 import type { WellnessEntry } from '../data/types';
+import { teamAverageOfField, type TeamAverage } from './teamAverage';
 
 export interface WellnessDimension {
   key: 'fatigue' | 'mood' | 'stress' | 'motivation' | 'sleep' | 'soreness';
@@ -44,8 +45,20 @@ export function wellnessTier(v: number, inverted = false): WellnessTier {
   return { status, color: wellnessDimColor(v, inverted), label: WELLNESS_TIER_LABELS[status] };
 }
 
-export function wellnessAvg(values: number[]): number | null {
-  return values.length > 0 ? Math.round(values.reduce((s, v) => s + v, 0) / values.length * 10) / 10 : null;
+/** Champs numériques d'une entrée bien-être agrégeables : le score global ou l'une des 6 dimensions. */
+export type WellnessMetric = 'score' | WellnessDimension['key'];
+
+/**
+ * Moyenne bien-être d'ÉQUIPE — règle de l'app (cf. `teamAverage`) : moyenne des saisies de chaque
+ * joueuse, puis moyenne non pondérée des joueuses.
+ *
+ * Remplace l'ancienne convention « agrégat quotidien puis moyenne des jours » sur les périmètres
+ * couvrant plusieurs jours : celle-ci donnait une voix par JOUR, si bien qu'une joueuse saisissant
+ * tous les jours pesait plus lourd qu'une saisissant deux fois par semaine — et qu'un groupe qui
+ * saisit moins quand il va mal voyait son score d'équipe remonter mécaniquement.
+ */
+export function teamWellnessAvg(entries: WellnessEntry[], metric: WellnessMetric = 'score'): TeamAverage {
+  return teamAverageOfField(entries, e => e.playerId, e => Number(e[metric]));
 }
 
 export interface WellnessAxisAlert { label: string; felt: number; color: string }
@@ -67,22 +80,31 @@ export function worstWellnessAxis(entries: WellnessEntry[], threshold = 5): Well
   return worst;
 }
 
-// Agrégat quotidien de l'équipe : moyenne de chaque dimension entre tous les joueurs ayant saisi ce jour-là.
+/**
+ * Agrégat quotidien de l'équipe : une entrée synthétique par jour, chaque dimension étant la
+ * moyonne d'équipe des joueuses ayant saisi ce jour-là.
+ *
+ * Passe par `teamWellnessAvg` plutôt que par une moyenne à plat des saisies du jour : une joueuse
+ * qui saisit deux fois le même jour ne doit pas compter double face à celles qui saisissent une
+ * fois. Sert aux séries quotidiennes (graphiques, corrélations) — pour un chiffre agrégé sur
+ * plusieurs jours, appeler directement `teamWellnessAvg` sur les saisies brutes.
+ */
 export function aggregateTeamWellnessDaily(teamHistory: WellnessEntry[]): WellnessEntry[] {
   const byDate = new Map<string, WellnessEntry[]>();
   teamHistory.forEach(e => {
     const arr = byDate.get(e.date);
     if (arr) arr.push(e); else byDate.set(e.date, [e]);
   });
+  const dayAvg = (entries: WellnessEntry[], metric: WellnessMetric) => teamWellnessAvg(entries, metric).value ?? 0;
   return [...byDate.entries()].map(([date, entries]) => ({
     id: date, playerId: 'team', date,
-    fatigue:    wellnessAvg(entries.map(e => e.fatigue))    ?? 0,
-    mood:       wellnessAvg(entries.map(e => e.mood))       ?? 0,
-    stress:     wellnessAvg(entries.map(e => e.stress))     ?? 0,
-    motivation: wellnessAvg(entries.map(e => e.motivation)) ?? 0,
-    sleep:      wellnessAvg(entries.map(e => e.sleep))      ?? 0,
-    soreness:   wellnessAvg(entries.map(e => e.soreness))   ?? 0,
-    score:      wellnessAvg(entries.map(e => e.score))      ?? 0,
+    fatigue:    dayAvg(entries, 'fatigue'),
+    mood:       dayAvg(entries, 'mood'),
+    stress:     dayAvg(entries, 'stress'),
+    motivation: dayAvg(entries, 'motivation'),
+    sleep:      dayAvg(entries, 'sleep'),
+    soreness:   dayAvg(entries, 'soreness'),
+    score:      dayAvg(entries, 'score'),
   }));
 }
 

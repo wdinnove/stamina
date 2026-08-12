@@ -18,7 +18,7 @@ export { HeroCard, HeroCardShell, MiniStatCard } from './HeroCard';
 export { PlayerSelect }  from './PlayerSelect';
 export { StaminaLogo }   from './StaminaLogo';
 export { Breadcrumb }    from './Breadcrumb';
-export { RpeKpiCard }           from './RpeKpiCard';
+export { RpeKpiCard, TeamRpeSub } from './RpeKpiCard';
 export { PlayerLoadPanel }      from './PlayerLoadPanel';
 export { ChargeRpeComboChart }  from './ChargeRpeComboChart';
 export { TeamDisplayToggle }    from './TeamDisplayToggle';

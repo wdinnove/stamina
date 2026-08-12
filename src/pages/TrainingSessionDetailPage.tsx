@@ -14,11 +14,12 @@ import { Modal, PlayerAvatar, RpeKpiCard, Badge, DropzoneEmptyState, AccessRestr
 import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform } from '../utils/socialVideo';
-import { computeAcwr, acwrZone, rpeColor, avgRpe as computeAvgRpe } from '../utils/rpe';
+import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
-import { wellnessAvg, wellnessTier as sharedWellnessTier } from '../utils/wellness';
+import { wellnessTier as sharedWellnessTier } from '../utils/wellness';
 import { getWeekTier } from '../utils/weeklyLoad';
 import { fmt1 } from '../utils/format';
+import { roundedAvg } from '../utils/avg';
 import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -106,7 +107,7 @@ function acuteLoadBefore(history: LoadEntry[], sessionDate: string): number {
 function wellnessAvgBefore(entries: WellnessEntry[], sessionDate: string): number | null {
   const { startStr, endStr } = windowBefore(sessionDate);
   const inWindow = entries.filter(e => e.date >= startStr && e.date <= endStr);
-  return wellnessAvg(inWindow.map(e => e.score));
+  return roundedAvg(inWindow.map(e => e.score));
 }
 
 function wellnessTierBadge(v: number | null): { label: string; color: string } | null {
@@ -1273,7 +1274,8 @@ export default function TrainingSessionDetailPage() {
   const absentCount     = attendance.filter(a => a.status === 'absent').length;
   const lateCount       = attendance.filter(a => a.status === 'late').length;
   const rpeValues       = rpeEntries.map(e => e.rpe);
-  const avgRpe          = computeAvgRpe(rpeValues);
+  // Moyenne d'UNE séance : une seule entrée par joueuse, donc moyenne simple.
+  const avgRpe          = roundedAvg(rpeValues);
   const totalLoad       = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
   const blockDuration   = blocks.reduce((s, b) => s + b.duration, 0);
   const blockLoadUa     = blocks.reduce((s, b) => s + b.loadUa, 0);

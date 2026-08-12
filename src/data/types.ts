@@ -443,15 +443,23 @@ export interface TrainingAttendance {
   createdAt: string;
 }
 
+/** Une saisie RPE d'une joueuse sur une séance — le grain minimal qui permet d'appliquer la règle
+ *  de moyenne d'équipe (moyenne par joueuse puis moyenne des joueuses) sur plusieurs séances. */
+export interface SessionRpeEntry {
+  playerId: string;
+  rpe: number;
+}
+
 export interface TeamSessionRow {
   id: string;
   date: string;
   type: SessionType;
   duration: number;
   nbPlayers: number;
-  /** Identifiants des joueurs ayant loggué un RPE pour cette séance — sert à calculer
-   *  l'effectif distinct réellement actif sur une semaine (pas une moyenne par séance). */
-  playerIds: string[];
+  /** Saisies RPE de la séance, par joueuse. Porte le `playerId` (effectif distinct réellement
+   *  actif sur une semaine, pas une moyenne par séance) ET la valeur, indispensable pour agréger
+   *  plusieurs séances sans pondérer par l'assiduité. */
+  entries: SessionRpeEntry[];
   avg: number;
   max: number;
   min: number;

@@ -111,3 +111,129 @@ export function calcPlayerAdvanced(s: PlayerAdvancedInput, team?: TeamAdvancedIn
 
   return { usagePctRaw, usagePct, offRating, efgPct, ftRate, bpPerPoss, astPct, tovPct, trebPct, drebPct, orebPct, ptsProd };
 }
+
+// ── Agrégation sur une PÉRIODE ────────────────────────────────────────────────
+
+/** Ligne de match acceptée par `calcPlayerAdvancedForPeriod` : les champs du calcul + le matchId,
+ *  nécessaire pour retrouver la stat collective correspondante. */
+export type PlayerAdvancedPeriodInput = PlayerAdvancedInput & { matchId?: string | null };
+
+export interface PlayerAdvancedPeriod {
+  /**
+   * Ratios de la période, tous recalculés en sommant numérateur ET dénominateur avant de diviser.
+   *
+   * ⚠️ `ptsProd` n'est pas un ratio mais un volume (des points) : la valeur portée ici est le
+   * TOTAL de la période. Utiliser `perMatchPtsProd` pour l'afficher dans un tableau de moyennes
+   * par match.
+   */
+  stats: PlayerAdvancedStats;
+  /** Matchs retenus pour les indicateurs ne dépendant que du joueur. */
+  matches: number;
+  /** Matchs retenus pour les indicateurs dépendant d'un dénominateur d'équipe. */
+  matchesWithTeam: number;
+}
+
+const ZERO_PLAYER_SUMS: PlayerAdvancedInput = {
+  fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, pts: 0, pd: 0, ro: 0, rd: 0, min: 0,
+};
+const ZERO_TEAM_SUMS: TeamAdvancedInput = {
+  fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, ro: 0, rd: 0, opp_ro: 0, opp_rd: 0,
+};
+
+function sumPlayerInputs(rows: readonly PlayerAdvancedPeriodInput[]): PlayerAdvancedInput {
+  return rows.reduce<PlayerAdvancedInput>((a, s) => ({
+    fg2m: a.fg2m + s.fg2m, fg2a: a.fg2a + s.fg2a,
+    fg3m: a.fg3m + s.fg3m, fg3a: a.fg3a + s.fg3a,
+    fta:  a.fta  + s.fta,  bp:   a.bp   + s.bp,
+    pts:  a.pts  + s.pts,  pd:   a.pd   + s.pd,
+    ro:   a.ro   + s.ro,   rd:   a.rd   + s.rd,
+    min:  a.min  + s.min,
+  }), { ...ZERO_PLAYER_SUMS });
+}
+
+/**
+ * Stats avancées d'un joueur sur PLUSIEURS matchs — **le seul point d'entrée correct** pour
+ * agréger une période.
+ *
+ * Somme d'abord tous les composants bruts (numérateur ET dénominateur, côté joueur comme côté
+ * équipe), puis applique `calcPlayerAdvanced` une seule fois sur ces sommes. Jamais une moyenne
+ * des ratios déjà calculés match par match : ce « biais moyenne des moyennes » fait peser un
+ * match de 2 minutes en garbage time autant qu'un match de 35 minutes comme titulaire — un seul
+ * 3 points réussi sur un unique tir suffit à déplacer un eFG% de saison de plus de 20 points.
+ *
+ * Deux périmètres de matchs distincts, et c'est volontaire :
+ *  • indicateurs dépendant d'un dénominateur d'équipe (usage%, %PD, %REB, points générés) →
+ *    uniquement les matchs ayant une ligne `team_match_stats`, sinon le numérateur grossirait
+ *    sans son dénominateur ;
+ *  • indicateurs ne dépendant que du joueur (eFG%, FT Rate, BP/poss, ORtg, %BP) → tous les
+ *    matchs, pour garder le maximum d'échantillon.
+ *
+ * @param teamMinutesOf Résolveur optionnel des Σ minutes de l'effectif pour un match. Par défaut,
+ *   lit `teamMinutes` sur la ligne collective (enrichie par `usePerformanceData` /
+ *   `PerformanceIndividuellePage`). `statsAggregator` fournit le sien, calculé depuis le roster
+ *   complet — il n'a pas de lignes enrichies sous la main.
+ */
+export function calcPlayerAdvancedForPeriod(
+  stats: readonly PlayerAdvancedPeriodInput[],
+  teamStatsByMatchId?: Map<string, TeamAdvancedInput & { teamMinutes?: number }> | null,
+  teamMinutesOf?: (matchId: string) => number | undefined,
+): PlayerAdvancedPeriod {
+  const withTeam = teamStatsByMatchId
+    ? stats.filter(s => s.matchId && teamStatsByMatchId.has(s.matchId))
+    : [];
+
+  const playerOnly = calcPlayerAdvanced(sumPlayerInputs(stats), null);
+
+  let teamScoped: PlayerAdvancedStats | null = null;
+  if (withTeam.length > 0) {
+    const teamTotals = withTeam.reduce<TeamAdvancedInput>((a, s) => {
+      const t = teamStatsByMatchId!.get(s.matchId!)!;
+      return {
+        fg2m: a.fg2m + t.fg2m, fg2a: a.fg2a + t.fg2a,
+        fg3m: a.fg3m + t.fg3m, fg3a: a.fg3a + t.fg3a,
+        fta:  a.fta  + t.fta,  bp:   a.bp   + t.bp,
+        ro:   a.ro   + t.ro,   rd:   a.rd   + t.rd,
+        opp_ro: a.opp_ro + t.opp_ro, opp_rd: a.opp_rd + t.opp_rd,
+      };
+    }, { ...ZERO_TEAM_SUMS });
+
+    const teamMinutesTotal = withTeam.reduce((sum, s) => {
+      const resolved = teamMinutesOf
+        ? teamMinutesOf(s.matchId!)
+        : teamStatsByMatchId!.get(s.matchId!)!.teamMinutes;
+      return sum + (resolved ?? 0);
+    }, 0);
+
+    teamScoped = calcPlayerAdvanced(
+      sumPlayerInputs(withTeam),
+      teamTotals,
+      isTeamMinutesPlausible(teamMinutesTotal, withTeam.length) ? teamMinutesTotal : undefined,
+    );
+  }
+
+  return {
+    stats: {
+      usagePctRaw: teamScoped?.usagePctRaw ?? null,
+      usagePct:    teamScoped?.usagePct    ?? null,
+      astPct:      teamScoped?.astPct      ?? null,
+      trebPct:     teamScoped?.trebPct     ?? null,
+      drebPct:     teamScoped?.drebPct     ?? null,
+      orebPct:     teamScoped?.orebPct     ?? null,
+      ptsProd:     teamScoped?.ptsProd     ?? null,
+      offRating:   playerOnly.offRating,
+      efgPct:      playerOnly.efgPct,
+      ftRate:      playerOnly.ftRate,
+      bpPerPoss:   playerOnly.bpPerPoss,
+      tovPct:      playerOnly.tovPct,
+    },
+    matches: stats.length,
+    matchesWithTeam: withTeam.length,
+  };
+}
+
+/** Points générés ramenés à une moyenne PAR MATCH — homogène avec les colonnes de volume
+ *  voisines (points, rebonds, passes), qui sont toutes des moyennes par match. */
+export function perMatchPtsProd(period: PlayerAdvancedPeriod): number | null {
+  if (period.stats.ptsProd === null || period.matchesWithTeam === 0) return null;
+  return r1(period.stats.ptsProd / period.matchesWithTeam);
+}

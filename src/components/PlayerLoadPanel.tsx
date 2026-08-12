@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getWeekTier, weeklyLoadBuckets } from '../utils/weeklyLoad';
+import { getWeekTier, weeklyLoadBuckets, averageWeeklyLoad } from '../utils/weeklyLoad';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
 import { rpeColor, rpeLabel, SESSION_TYPES } from '../utils/rpe';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
@@ -44,12 +44,9 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
     <>
       {/* KPIs joueur */}
       {(() => {
-        // Moyenne des charges hebdomadaires réellement enregistrées (semaines sans séance
-        // exclues), et non charge totale / nb de semaines calendaires de la période — sinon
-        // les semaines sans entraînement (trêve, blessure) faisaient chuter la moyenne affichée.
-        const avgWeeklyLoad = weeklyChartData.length
-          ? Math.round(weeklyChartData.reduce((s, w) => s + w.load, 0) / weeklyChartData.length)
-          : 0;
+        // Périmètre mono-joueuse : moyenne sur SES semaines actives (les semaines sans séance
+        // sont exclues du dénominateur, sinon trêve et blessure font chuter la moyenne).
+        const avgWeeklyLoad = averageWeeklyLoad(filtered.map(toWeeklyRow)) ?? 0;
         const tier          = avgWeeklyLoad > 0 ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
 
         const surchargeWeeks = weeklyChartData.filter(w => w.load >= thresholds.normalMax).length;

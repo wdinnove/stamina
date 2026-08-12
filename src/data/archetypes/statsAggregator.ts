@@ -1,5 +1,5 @@
 import type { MatchStat, TeamMatchStat } from '../types';
-import { calcPlayerAdvanced, isTeamMinutesPlausible } from '../playerAdvanced';
+import { calcPlayerAdvancedForPeriod } from '../playerAdvanced';
 import type { RawPlayerStats } from './types';
 
 const ZERO_TOTALS = {
@@ -7,12 +7,6 @@ const ZERO_TOTALS = {
   ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,
   startsCount: 0, plusMinus: 0, plusMinusCount: 0,
 };
-
-const ZERO_TEAM_TOTALS = {
-  fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, ro: 0, rd: 0, opp_ro: 0, opp_rd: 0,
-};
-
-const ZERO_ADV_TOTALS = { fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, pts: 0, pd: 0, ro: 0, rd: 0 };
 
 /**
  * Agrège les MatchStat d'un effectif complet, groupés par joueur, sur une période donnée.
@@ -81,59 +75,16 @@ function aggregateOnePlayer(
 
   const minutesTotal = stats.reduce((sum, s) => sum + s.min, 0);
 
-  // Sous-ensemble de matchs ayant une ligne team_match_stats correspondante — seul un match
-  // dans ce sous-ensemble peut contribuer à la fois au numérateur (advTotals) et au
-  // dénominateur (teamTotals) d'un même ratio équipe.
-  const statsWithTeam = stats.filter(s => s.matchId && teamStatsByMatchId.has(s.matchId));
-
-  const advTotals = statsWithTeam.reduce((acc, s) => ({
-    fg2m: acc.fg2m + s.fg2m, fg2a: acc.fg2a + s.fg2a,
-    fg3m: acc.fg3m + s.fg3m, fg3a: acc.fg3a + s.fg3a,
-    fta: acc.fta + s.fta, bp: acc.bp + s.bp,
-    pts: acc.pts + s.pts, pd: acc.pd + s.pd,
-    ro: acc.ro + s.ro, rd: acc.rd + s.rd,
-  }), { ...ZERO_ADV_TOTALS });
-
-  const teamTotals = statsWithTeam.reduce((acc, s) => {
-    const team = teamStatsByMatchId.get(s.matchId!)!;
-    return {
-      fg2m: acc.fg2m + team.fg2m, fg2a: acc.fg2a + team.fg2a,
-      fg3m: acc.fg3m + team.fg3m, fg3a: acc.fg3a + team.fg3a,
-      fta: acc.fta + team.fta, bp: acc.bp + team.bp,
-      ro: acc.ro + team.ro, rd: acc.rd + team.rd,
-      opp_ro: acc.opp_ro + team.opp_ro, opp_rd: acc.opp_rd + team.opp_rd,
-    };
-  }, { ...ZERO_TEAM_TOTALS });
-
-  const advMinutesTotal = statsWithTeam.reduce((sum, s) => sum + s.min, 0);
-  const teamMinutesTotal = statsWithTeam.reduce((sum, s) => sum + (teamMinutesByMatchId.get(s.matchId!) ?? 0), 0);
-
-  // Indicateurs sans dépendance équipe (efgPct, ftRate, bpPerPoss, offRating, tovPct) : sur
-  // tous les matchs, pour garder le maximum d'échantillon.
-  const fullAdvanced = calcPlayerAdvanced({ ...totals, min: minutesTotal }, null);
-  // Indicateurs avec dépendance équipe (usagePct, astPct, trebPct, drebPct, orebPct, ptsProd) :
-  // uniquement sur les matchs où numérateur et dénominateur couvrent le même périmètre.
-  const teamScopedAdvanced = statsWithTeam.length > 0
-    ? calcPlayerAdvanced(
-        { ...advTotals, min: advMinutesTotal },
-        teamTotals,
-        isTeamMinutesPlausible(teamMinutesTotal, statsWithTeam.length) ? teamMinutesTotal : undefined,
-      )
-    : null;
-
-  const advancedAgg = {
-    usagePct: teamScopedAdvanced?.usagePct ?? null,
-    astPct: teamScopedAdvanced?.astPct ?? null,
-    trebPct: teamScopedAdvanced?.trebPct ?? null,
-    drebPct: teamScopedAdvanced?.drebPct ?? null,
-    orebPct: teamScopedAdvanced?.orebPct ?? null,
-    ptsProd: teamScopedAdvanced?.ptsProd ?? null,
-    offRating: fullAdvanced.offRating,
-    efgPct: fullAdvanced.efgPct,
-    ftRate: fullAdvanced.ftRate,
-    bpPerPoss: fullAdvanced.bpPerPoss,
-    tovPct: fullAdvanced.tovPct,
-  };
+  // Agrégation des ratios déléguée à `calcPlayerAdvancedForPeriod` (src/data/playerAdvanced.ts),
+  // qui porte désormais cette logique pour toute l'app — y compris les tableaux de l'interface,
+  // qui moyennaient jusqu'ici les ratios match par match. Elle applique les deux périmètres
+  // décrits ci-dessus. Le résolveur de minutes est fourni ici : ce module reconstruit les Σ
+  // minutes depuis le roster complet, il n'a pas de lignes collectives enrichies sous la main.
+  const { stats: advancedAgg } = calcPlayerAdvancedForPeriod(
+    stats,
+    teamStatsByMatchId,
+    matchId => teamMinutesByMatchId.get(matchId),
+  );
 
   return { playerId, periodLabel, matches: stats.length, minutesTotal, totals, advancedAgg };
 }

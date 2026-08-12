@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible,
   MIN_PLAYER_MINUTES_FOR_USAGE_CORRECTION,
-  type PlayerAdvancedInput, type TeamAdvancedInput,
+  calcPlayerAdvancedForPeriod, perMatchPtsProd,
+  type PlayerAdvancedInput, type TeamAdvancedInput, type PlayerAdvancedPeriodInput,
 } from './playerAdvanced';
 
 const player = (overrides: Partial<PlayerAdvancedInput> = {}): PlayerAdvancedInput => ({
@@ -141,5 +142,86 @@ describe('calcPlayerAdvancedForMatch', () => {
     const s = player({ min: 20 });
     const t = team();
     expect(calcPlayerAdvancedForMatch(s, t).usagePct).toBe(calcPlayerAdvanced(s, t).usagePct);
+  });
+});
+
+describe('calcPlayerAdvancedForPeriod', () => {
+  /** 3 matchs normaux + une entrée de 2 min où la joueuse rentre son unique tir, un 3 points. */
+  const m = (matchId: string, o: Partial<PlayerAdvancedInput>): PlayerAdvancedPeriodInput => ({
+    fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, pts: 0, pd: 0, ro: 0, rd: 0, min: 30,
+    matchId, ...o,
+  });
+  const SEASON = [
+    m('m1', { fg2m: 5, fg2a: 12, fg3m: 2, fg3a: 6 }),   // eFG 44,4 %
+    m('m2', { fg2m: 4, fg2a: 10, fg3m: 1, fg3a: 4 }),   // eFG 39,3 %
+    m('m3', { fg2m: 6, fg2a: 11, fg3m: 3, fg3a: 7 }),   // eFG 58,3 %
+    m('m4', { fg2m: 0, fg2a: 0, fg3m: 1, fg3a: 1, min: 2 }), // eFG 150 % sur un seul tir
+  ];
+
+  it('somme les tirs avant de diviser, au lieu de moyenner les eFG% par match', () => {
+    // Moyenne des ratios par match : (44,4 + 39,3 + 58,3 + 150) / 4 = 73,0 % — faux.
+    const perMatchMean = SEASON
+      .map(s => calcPlayerAdvanced(s, null).efgPct!)
+      .reduce((a, b) => a + b, 0) / SEASON.length;
+    expect(Math.round(perMatchMean * 10) / 10).toBe(73);
+
+    // Ratio des sommes : (22 + 0,5 × 7) / 51 = 50,0 %
+    expect(calcPlayerAdvancedForPeriod(SEASON).stats.efgPct).toBe(50);
+  });
+
+  it('n\'agrège les indicateurs dépendant de l\'équipe que sur les matchs ayant une ligne collective', () => {
+    const teamMap = new Map([['m1', team()], ['m2', team()]]);
+    const res = calcPlayerAdvancedForPeriod(SEASON, teamMap);
+    // 4 matchs pour les indicateurs joueur seuls, 2 seulement pour ceux qui ont besoin de l'équipe
+    expect(res.matches).toBe(4);
+    expect(res.matchesWithTeam).toBe(2);
+    expect(res.stats.efgPct).toBe(50);        // calculé sur les 4 matchs
+    expect(res.stats.usagePctRaw).not.toBeNull(); // calculé sur les 2 matchs couverts
+  });
+
+  it('laisse à null les indicateurs d\'équipe quand aucun match n\'a de ligne collective', () => {
+    const res = calcPlayerAdvancedForPeriod(SEASON, new Map());
+    expect(res.matchesWithTeam).toBe(0);
+    expect(res.stats.usagePctRaw).toBeNull();
+    expect(res.stats.astPct).toBeNull();
+    expect(res.stats.ptsProd).toBeNull();
+    expect(res.stats.efgPct).toBe(50);  // celui-ci ne dépend pas de l'équipe
+  });
+
+  it('ramène les points générés à une moyenne par match', () => {
+    const teamMap = new Map([['m1', team()], ['m2', team()]]);
+    const res = calcPlayerAdvancedForPeriod(SEASON, teamMap);
+    expect(perMatchPtsProd(res)).toBeCloseTo(res.stats.ptsProd! / 2, 1);
+  });
+});
+
+describe('cohérence entre la valeur par match et la valeur de période', () => {
+  const one = (o: Partial<PlayerAdvancedInput> = {}): PlayerAdvancedPeriodInput => ({
+    fg2m: 5, fg2a: 12, fg3m: 2, fg3a: 6, fta: 4, bp: 3, pts: 20, pd: 5, ro: 2, rd: 4, min: 28,
+    matchId: 'm1', ...o,
+  });
+
+  it('sur UN seul match, la période donne exactement la valeur du match', () => {
+    const teamRow = { ...team(), teamMinutes: 200 };
+    const perMatch = calcPlayerAdvancedForMatch(one(), teamRow);
+    const period   = calcPlayerAdvancedForPeriod([one()], new Map([['m1', teamRow]]));
+
+    // Tous les ratios doivent coïncider — sinon la ligne "Dernier match" d'un objectif
+    // contredirait la ligne du match affichée juste au-dessus.
+    for (const key of Object.keys(perMatch) as (keyof typeof perMatch)[]) {
+      if (key === 'ptsProd') continue; // volume : comparé séparément ci-dessous
+      expect(period.stats[key], key).toBe(perMatch[key]);
+    }
+    expect(perMatchPtsProd(period)).toBe(perMatch.ptsProd);
+  });
+
+  it('applique la correction minutes au même seuil que le calcul par match', () => {
+    const shortStint = one({ min: 3 });  // sous MIN_PLAYER_MINUTES_FOR_USAGE_CORRECTION
+    const teamRow = { ...team(), teamMinutes: 200 };
+    const perMatch = calcPlayerAdvancedForMatch(shortStint, teamRow);
+    const period   = calcPlayerAdvancedForPeriod([shortStint], new Map([['m1', teamRow]]));
+    // Les deux doivent retomber sur %USG brut, pas l'un sans l'autre
+    expect(period.stats.usagePct).toBe(perMatch.usagePct);
+    expect(period.stats.usagePct).toBe(period.stats.usagePctRaw);
   });
 });

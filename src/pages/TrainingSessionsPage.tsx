@@ -8,7 +8,7 @@ import { sessionBlocksApi } from '../api/sessionBlocks';
 import { playersApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
-import { avgRpe } from '../utils/rpe';
+import { roundedAvg } from '../utils/avg';
 import type { TrainingSession, Player } from '../data/types';
 
 const SESSION_TYPE_OPTIONS = [
@@ -102,7 +102,7 @@ export default function TrainingSessionsPage() {
         }
         const avgs: Record<string, number> = {};
         for (const [sid, vals] of Object.entries(bySession)) {
-          avgs[sid] = avgRpe(vals) ?? 0;
+          avgs[sid] = roundedAvg(vals) ?? 0;
         }
         setRpeAvg(avgs);
 

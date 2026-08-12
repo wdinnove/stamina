@@ -9,12 +9,14 @@ import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { detectRiskAlerts, type PlayerCrossData } from '../data/crossAnalysis';
+import { roundedAvg } from '../utils/avg';
 import type { LoadThresholds } from '../contexts/TeamSeasonContext';
-import { wellnessAvg, aggregateTeamWellnessDaily, wellnessTier, worstWellnessAxis, type WellnessAxisAlert } from '../utils/wellness';
+import { wellnessTier, worstWellnessAxis, teamWellnessAvg, type WellnessAxisAlert } from '../utils/wellness';
 import { playerNameShort, playerNameFull } from '../utils/playerName';
 import type { Player, Action, Match } from '../data/types';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, avgRpe } from '../utils/rpe';
-import { averageWeeklyLoad } from '../utils/weeklyLoad';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, teamAvgRpe } from '../utils/rpe';
+import { EMPTY_TEAM_AVERAGE, type TeamAverage } from '../utils/teamAverage';
+import { teamAvgWeeklyLoad, getWeekTier } from '../utils/weeklyLoad';
 import { fmtDate } from '../utils/dateFormat';
 import { evalColor } from '../data';
 
@@ -64,21 +66,19 @@ export default function DashboardPage() {
     if (!perfData) return map;
     for (const pd of perfData.players) {
       map.set(pd.player.id, {
-        avgScore: wellnessAvg(pd.wellness.map(w => w.score)),
+        avgScore: roundedAvg(pd.wellness.map(w => w.score)),
         worstDim: worstWellnessAxis(pd.wellness),
       });
     }
     return map;
   }, [perfData]);
 
-  // Bien-être équipe — mêmes fonctions que la page Bien-être / Historique équipe
-  // (agrégat quotidien puis moyenne des jours) pour rester cohérent avec cette page.
-  const teamWellnessNow = useMemo(() => {
-    if (!perfData) return null;
-    const allEntries = perfData.players.flatMap(pd => pd.wellness);
-    const daily = aggregateTeamWellnessDaily(allEntries);
-    return wellnessAvg(daily.map(e => e.score));
-  }, [perfData]);
+  // Bien-être équipe — règle de l'app : moyenne par joueuse puis moyenne des joueuses.
+  const teamWellness = useMemo(
+    () => perfData ? teamWellnessAvg(perfData.players.flatMap(pd => pd.wellness)) : EMPTY_TEAM_AVERAGE,
+    [perfData],
+  );
+  const teamWellnessNow = teamWellness.value;
 
   const [userName,        setUserName]        = useState('');
   const [players,         setPlayers]         = useState<Player[]>([]);
@@ -87,7 +87,7 @@ export default function DashboardPage() {
   const [last3Matches,    setLast3Matches]    = useState<Match[]>([]);
   const [last3Sessions,   setLast3Sessions]   = useState<SessionSummary[]>([]);
   const [kpiStats,          setKpiStats]          = useState<{
-    avgLoadSeason: number | null; avgRpeSeason: number | null;
+    avgLoadSeason: TeamAverage; avgRpeSeason: TeamAverage;
   } | null>(null);
   const [loading,         setLoading]         = useState(false);
 
@@ -173,17 +173,18 @@ export default function DashboardPage() {
           rpe: r.rpe, actual_duration: r.actualDuration ?? null, player_id: r.playerId, session_id: r.sessionId,
         }));
 
-        // Charge/RPE équipe — moyenne sur toute la saison. Même fonction averageWeeklyLoad
-        // (bucket semaine réel, ÷ joueurs distincts, moyenne sur les semaines actives) que
-        // RPEPage/useTeamRpeHistory/PlayerLoadPanel, pour rester cohérent partout dans l'app.
-        const avgLoadSeason = averageWeeklyLoad(seasonRpeRows.map(r => ({
+        // Charge/RPE équipe — moyenne sur toute la saison, règle de l'app : charge hebdo moyenne
+        // par joueuse puis moyenne des joueuses (même fonction que RPEPage/Performance collective).
+        const avgLoadSeason = teamAvgWeeklyLoad(seasonRpeRows.map(r => ({
           date: dateMap2.get(r.session_id) ?? '',
           playerId: r.player_id,
           rpe: r.rpe,
           actualDuration: r.actual_duration ?? undefined,
           plannedDuration: durMap2.get(r.session_id) ?? 0,
         })).filter(r => r.date));
-        const avgRpeSeason = avgRpe(seasonRpeRows.map(r => r.rpe));
+        // RPE moyen d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses,
+        // sinon les joueuses les plus assidues pondèrent le chiffre de la saison.
+        const avgRpeSeason = teamAvgRpe(seasonRpeRows.map(r => ({ playerId: r.player_id, rpe: r.rpe })));
 
         setKpiStats({ avgLoadSeason, avgRpeSeason });
 
@@ -229,18 +230,17 @@ export default function DashboardPage() {
     : 'Aucune donnée sur la période';
 
   // Charge physique équipe — carte "hero" : moyenne sur la saison entière
-  const teamLoadNow = kpiStats?.avgLoadSeason ?? null;
-  const teamRpeNow  = kpiStats?.avgRpeSeason ?? null;
-  const teamLoadColor = teamLoadNow === null ? '#475569'
-    : teamLoadNow > thresholds.normalMax ? '#EF4444'
-    : teamLoadNow > thresholds.normalMax * 2 / 3 ? '#F97316'
-    : teamLoadNow > thresholds.normalMax / 3 ? '#EAB308' : '#00E5A0';
-  const teamLoadLabel = teamLoadNow === null ? '—'
-    : teamLoadNow > thresholds.normalMax ? 'Surcharge'
-    : teamLoadNow > thresholds.normalMax * 2 / 3 ? 'Élevée'
-    : teamLoadNow > thresholds.normalMax / 3 ? 'Soutenue' : 'Normale';
+  const teamLoadNow = kpiStats?.avgLoadSeason.value ?? null;
+  const teamRpeNow  = kpiStats?.avgRpeSeason ?? EMPTY_TEAM_AVERAGE;
+  // Zones de charge : `getWeekTier`, comme partout ailleurs dans l'app. Cette carte avait sa propre
+  // échelle (normalMax/3 et 2×normalMax/3, sans utiliser `lightMax`), ce qui faisait afficher deux
+  // zones différentes pour une même charge selon l'écran — 2000 UA était « Normale » sur la page
+  // RPE et « Soutenue » ici.
+  const teamLoadTier = teamLoadNow !== null ? getWeekTier(teamLoadNow, thresholds.lightMax, thresholds.normalMax) : null;
+  const teamLoadColor = teamLoadTier?.color ?? '#475569';
+  const teamLoadLabel = teamLoadTier?.label ?? '—';
   const teamLoadSubtitle = teamLoadNow !== null
-    ? `${Math.round(teamLoadNow)} UA/semaine${teamRpeNow !== null ? ` · RPE ${teamRpeNow.toFixed(1)}/10` : ''}`
+    ? `${Math.round(teamLoadNow)} UA/semaine${teamRpeNow.value !== null ? ` · RPE ${teamRpeNow.value.toFixed(1)}/10 · ${teamRpeNow.players} joueur${teamRpeNow.players > 1 ? 's' : ''}` : ''}`
     : 'Aucune donnée sur la période';
 
   if (teamLoading) return <div style={{ padding: 24, color: '#94A3B8', fontSize: '0.85rem' }}>Chargement…</div>;

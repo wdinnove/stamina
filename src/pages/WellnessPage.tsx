@@ -166,13 +166,17 @@ export default function WellnessPage() {
 
   const isTeamView = activeTab === 'team';
 
-  const teamDailySeries: WellnessEntry[] = aggregateTeamWellnessDaily(teamHistory);
+  // Saisies BRUTES du périmètre : base des moyennes. En vue équipe, la règle de l'app veut une
+  // voix par joueuse — il faut donc les saisies individuelles, pas l'agrégat quotidien (qui
+  // donnerait une voix par jour et sur-pondérerait les joueuses saisissant le plus souvent).
+  const rawHistory = isTeamView ? teamHistory : history;
 
-  const sourceHistory = isTeamView ? teamDailySeries : history;
-
-  const historyInRange = sourceHistory.filter(e =>
+  const historyInRange = rawHistory.filter(e =>
     (!dateRange.from || e.date >= dateRange.from) && (!dateRange.to || e.date <= dateRange.to)
   );
+  // Points du graphique d'évolution : un par jour en vue équipe (moyenne d'équipe de ce jour-là),
+  // les saisies elles-mêmes en vue joueur.
+  const seriesInRange = isTeamView ? aggregateTeamWellnessDaily(historyInRange) : historyInRange;
   // Entrées brutes par joueur (non agrégées par date) sur la période, pour le classement joueurs
   const teamHistoryInRange = teamHistory.filter(e =>
     (!dateRange.from || e.date >= dateRange.from) && (!dateRange.to || e.date <= dateRange.to)
@@ -180,8 +184,8 @@ export default function WellnessPage() {
   // ── Comparaison vs moyenne saison, réutilisée par le radar POMS et les KPI de période (WellnessPomsPanel) ──
   // Pas de comparaison quand le preset sélectionné est déjà "Saison" (l'écart serait toujours ~0).
   const seasonEntries = selected?.season.startDate
-    ? sourceHistory.filter(e => e.date >= selected.season.startDate && (!selected.season.endDate || e.date <= selected.season.endDate))
-    : sourceHistory;
+    ? rawHistory.filter(e => e.date >= selected.season.startDate && (!selected.season.endDate || e.date <= selected.season.endDate))
+    : rawHistory;
   const showSeasonDiff = dateRange.preset !== 'saison';
 
   function openLinkModal() {
@@ -432,6 +436,7 @@ export default function WellnessPage() {
           ) : (
             <WellnessPomsPanel
               entries={historyInRange}
+              series={seriesInRange}
               seasonEntries={seasonEntries}
               showSeasonDiff={showSeasonDiff}
               subjectLabel={isTeamView ? "L'équipe" : (selectedPlayer?.firstName ?? '')}

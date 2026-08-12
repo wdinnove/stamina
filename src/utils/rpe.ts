@@ -1,3 +1,5 @@
+import { teamAverageOfField, type TeamAverage } from './teamAverage';
+
 /** Config visuelle (libellé, couleurs) par type de séance — partagée entre les pages/composants RPE */
 export const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
@@ -14,10 +16,17 @@ export interface LoadEntry {
   plannedDuration: number;
 }
 
-/** Moyenne RPE arrondie à 1 décimale — mutualise le calcul répété partout (moyenne de séance,
- * de joueur, d'équipe…) dans l'app. */
-export function avgRpe(values: number[]): number | null {
-  return values.length > 0 ? Math.round(values.reduce((s, v) => s + v, 0) / values.length * 10) / 10 : null;
+/**
+ * RPE moyen d'ÉQUIPE — applique la règle unique de l'app : moyenne par joueuse, puis moyenne
+ * non pondérée des joueuses (cf. `teamAverage`). À utiliser dès que le périmètre couvre
+ * PLUSIEURS séances, car les joueuses n'en font pas le même nombre : une moyenne à plat des
+ * entrées pondérerait alors le RPE par l'assiduité.
+ *
+ * Sur une seule séance (ou un seul jour), chaque joueuse n'a qu'une entrée : la moyenne à plat
+ * est déjà une voix par joueuse, et `roundedAvg` suffit.
+ */
+export function teamAvgRpe(entries: Array<{ playerId: string; rpe: number }>): TeamAverage {
+  return teamAverageOfField(entries, e => e.playerId, e => e.rpe);
 }
 
 /** Couleur associée à une valeur RPE (0–10) — 4 zones : vert / jaune / orange / rouge */

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from 'recharts';
 import { Heart, TrendingUp, Smile, Meh, Frown } from 'lucide-react';
 import { Card, CardTitle } from '../components';
-import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessAvg, wellnessStatus, wellnessRawValue, type WellnessDimension } from '../utils/wellness';
+import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessStatus, wellnessRawValue, teamWellnessAvg, type WellnessDimension, type WellnessMetric } from '../utils/wellness';
 import { fmt1 } from '../utils/format';
 import type { WellnessEntry } from '../data/types';
 
@@ -34,9 +34,18 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 };
 
 interface WellnessPomsPanelProps {
-  /** Saisies (joueur ou agrégat équipe) déjà filtrées sur la période sélectionnée. */
+  /**
+   * Saisies BRUTES du périmètre (une ligne par joueuse et par saisie), déjà filtrées sur la
+   * période — base de toutes les MOYENNES affichées. En vue équipe, ne jamais passer l'agrégat
+   * quotidien : la règle de l'app veut une voix par joueuse, pas une voix par jour.
+   */
   entries: WellnessEntry[];
-  /** Saisies filtrées sur la saison, utilisées pour les écarts "vs saison". */
+  /**
+   * Points du graphique d'évolution. En vue équipe, l'agrégat quotidien (un point = la moyenne
+   * d'équipe de ce jour) ; en vue joueur, ses saisies. Défaut : `entries`.
+   */
+  series?: WellnessEntry[];
+  /** Saisies brutes de la saison, utilisées pour les écarts "vs saison". */
   seasonEntries: WellnessEntry[];
   /** false quand le preset de période est déjà "Saison" (l'écart serait toujours ~0). */
   showSeasonDiff: boolean;
@@ -46,19 +55,24 @@ interface WellnessPomsPanelProps {
 
 type EvoSortKey = 'date' | 'score' | WellnessDimension['key'];
 
-export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subjectLabel }: WellnessPomsPanelProps) {
+export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDiff, subjectLabel }: WellnessPomsPanelProps) {
   // Courbes par dimension du graphique "Évolution › Global" : masquées par défaut, affichées au clic sur la légende
   const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
   const [hiddenDimCurves, setHiddenDimCurves] = useState<Set<string>>(() => new Set(dimensions.map(d => d.key)));
   const [evoSortKey, setEvoSortKey] = useState<EvoSortKey>('date');
   const [evoSortDir, setEvoSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const historyAsc = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  const historyAsc = [...(series ?? entries)].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Moyennes : toujours sur les saisies brutes, via la règle d'équipe. `teamWellnessAvg` groupe par
+  // joueuse — en vue joueur il n'y a qu'un groupe, donc c'est exactement sa moyenne personnelle.
+  const avgOf = (metric: WellnessMetric) => teamWellnessAvg(entries, metric).value;
+  const nPlayers = teamWellnessAvg(entries).players;
 
   // Une mini-série par dimension : valeurs brutes sur la courbe, axe inversé pour les dimensions
   // "inversées" (fatigue/stress/douleurs) pour que le haut du graphique reste toujours "mieux".
   const dimensionSeries = dimensions.map(dim => {
-    const avg = wellnessAvg(historyAsc.map(e => e[dim.key as keyof WellnessEntry] as number));
+    const avg = avgOf(dim.key);
     return {
       ...dim,
       avg,
@@ -67,13 +81,13 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
   });
 
   // Score global de la période : une seule moyenne, réutilisée pour le radar POMS et le KPI "Score global"
-  const scoreAvg    = wellnessAvg(entries.map(e => e.score));
+  const scoreAvg    = avgOf('score');
   const radarColor  = scoreColor(scoreAvg ?? 5);
 
   // ── Comparaison vs moyenne saison, réutilisée par le radar POMS et les KPI de période ──
-  const seasonScoreAvg = wellnessAvg(seasonEntries.map(e => e.score));
-  const dimSeasonAvg = (key: string) =>
-    showSeasonDiff ? wellnessAvg(seasonEntries.map(e => e[key as keyof WellnessEntry] as number)) : null;
+  const seasonScoreAvg = teamWellnessAvg(seasonEntries, 'score').value;
+  const dimSeasonAvg = (key: WellnessMetric) =>
+    showSeasonDiff ? teamWellnessAvg(seasonEntries, key).value : null;
 
   const radarData = dimensionSeries.map(dim => {
     const prev = dimSeasonAvg(dim.key);
@@ -219,6 +233,10 @@ export function WellnessPomsPanel({ entries, seasonEntries, showSeasonDiff, subj
               </ResponsiveContainer>
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
                 <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{fmt1(scoreAvg)}</div>
+                {/* Le n de la moyenne non pondérée — masqué en vue joueur, où il vaut toujours 1. */}
+                {nPlayers > 1 && (
+                  <div style={{ color: '#475569', fontSize: '0.6rem', marginTop: 3 }}>{nPlayers} joueurs</div>
+                )}
               </div>
             </div>
           </Card>

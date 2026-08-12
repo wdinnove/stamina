@@ -965,7 +965,8 @@ export default function MatchDetailPage() {
               ]},
               ...(hasAdv ? [
                 { title: 'Efficacité', metrics: [
-                  adv('USG%', advA!.usagePct, advB!.usagePct, v => `${v}%`, true),
+                  adv('%USG', advA!.usagePctRaw, advB!.usagePctRaw, v => `${v}%`, true),
+                  adv('%USG/min', advA!.usagePct, advB!.usagePct, v => `${v}%`, true),
                   adv('ORtg', advA!.offRating, advB!.offRating, v => String(v), true),
                   adv('Pts créés', advA!.ptsProd, advB!.ptsProd, v => String(v), true),
                   adv('FT Rate', advA!.ftRate, advB!.ftRate, v => v.toFixed(2), true),

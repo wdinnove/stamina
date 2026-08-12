@@ -12,7 +12,10 @@ const ratio = (num: number, den: number): number | null => (den > 0 ? num / den 
  */
 export const FEATURE_REGISTRY: FeatureDef[] = [
   // ── Stats avancées existantes (src/data/playerAdvanced.ts), agrégées sur la période ──
-  { key: 'usagePct', label: 'Usage %', source: 'advanced', get: r => r.advancedAgg.usagePct },
+  // Volontairement la version corrigée par les minutes : un profil doit décrire un comportement de
+  // jeu, pas un volume de temps de jeu. Le libellé le dit, car il s'affiche au staff dans les
+  // badges « ↑ / ↓ » de PlayerArchetypesPanel.
+  { key: 'usagePct', label: '%USG/min', source: 'advanced', get: r => r.advancedAgg.usagePct },
   { key: 'astPct', label: '% Passes décisives', source: 'advanced', get: r => r.advancedAgg.astPct },
   { key: 'tovPct', label: '% Ballons perdus', source: 'advanced', get: r => r.advancedAgg.tovPct },
   { key: 'efgPct', label: 'eFG%', source: 'advanced', get: r => r.advancedAgg.efgPct },

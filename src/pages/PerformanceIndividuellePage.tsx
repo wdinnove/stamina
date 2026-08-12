@@ -14,10 +14,12 @@ import {
 } from '../components';
 import { daysBetween } from '../components/MedicalCard';
 import { FilterField, filterControlStyle } from '../components/FilterField';
+import { roundedAvg } from '../utils/avg';
 import type { DatePreset } from '../components/DateRangeCard';
 import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
-import { wellnessScoreColor, wellnessAvg, wellnessTier } from '../utils/wellness';
-import { mondayIso, getWeekTier, weeklyLoadBuckets } from '../utils/weeklyLoad';
+import { wellnessScoreColor, wellnessTier } from '../utils/wellness';
+import { presenceRate, presenceColor } from '../utils/attendance';
+import { mondayIso, getWeekTier, weeklyLoadBuckets, averageWeeklyLoad } from '../utils/weeklyLoad';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { evalColor } from '../data';
 import { playerNameFull } from '../utils/playerName';
@@ -193,14 +195,14 @@ export default function PerformanceIndividuellePage() {
   const inRange = (d: string) => d >= from && d <= to;
   const rpeAvgP   = pd ? avg(pd.rpe.filter(e => inRange(e.date)).map(e => e.rpe)) : null;
   const rpeAvgAll = pd ? avg(pd.rpe.map(e => e.rpe)) : null;
-  const wellAvgP   = pd ? wellnessAvg(pd.wellness.filter(w => inRange(w.date)).map(w => Number(w.score))) : null;
-  const wellAvgAll = pd ? wellnessAvg(pd.wellness.map(w => Number(w.score))) : null;
+  const wellAvgP   = pd ? roundedAvg(pd.wellness.filter(w => inRange(w.date)).map(w => Number(w.score))) : null;
+  const wellAvgAll = pd ? roundedAvg(pd.wellness.map(w => Number(w.score))) : null;
   const matchesInRange = pd ? pd.matchStats.filter(m => inRange(m.date)) : [];
   const avgMinP  = avg(matchesInRange.map(m => m.min ?? 0));
   const evalAvgP = avg(matchesInRange.filter(m => m.eval !== null).map(m => Number(m.eval)));
-  const attP = pd ? pd.attendance.filter(a => inRange(a.date)) : [];
-  const presentP = attP.filter(a => a.status === 'present' || a.status === 'late').length;
-  const presencePct = attP.length ? Math.round(presentP / attP.length * 100) : null;
+  // Périmètre mono-joueuse : son propre taux de présence.
+  const attendanceInRange = pd ? pd.attendance.filter(a => inRange(a.date)) : [];
+  const presencePct = presenceRate(attendanceInRange);
 
   const allInjuries = pd ? [...pd.medical].filter(m => m.type === 'injury').sort((a, b) => b.date.localeCompare(a.date)) : [];
   const currentInjury = allInjuries.find(m => m.status === 'active') ?? null;
@@ -237,8 +239,8 @@ export default function PerformanceIndividuellePage() {
     .map(inj => fmtDate(mondayIso(inj.date)));
 
   // Charge moyenne/semaine + RPE moyen sur la période filtrée (même donnée que le graphe).
-  const avgWeeklyLoad = loadWeekBuckets.length
-    ? Math.round(loadWeekBuckets.reduce((s, b) => s + b.load, 0) / loadWeekBuckets.length) : null;
+  // Périmètre mono-joueuse : moyenne sur SES semaines actives (cf. averageWeeklyLoad).
+  const avgWeeklyLoad = averageWeeklyLoad(rpeFiltered);
   const weekTier = avgWeeklyLoad !== null && avgWeeklyLoad > 0
     ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
   const rpeAvgRecent = rpeFiltered.length
@@ -322,9 +324,9 @@ export default function PerformanceIndividuellePage() {
             icon={<UserCheck size={18} color="#06B6D4" />} iconBg="#06B6D622"
             title="Présences"
             value={presencePct !== null ? `${presencePct}%` : '—'}
-            valueColor={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569'}
-            subtitle={`${attP.length} séance${attP.length > 1 ? 's' : ''}`}
-            borderColor={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569'}
+            valueColor={presenceColor(presencePct)}
+            subtitle={`${attendanceInRange.length} séance${attendanceInRange.length > 1 ? 's' : ''}`}
+            borderColor={presenceColor(presencePct)}
           />
           <MiniStatCard
             icon={<CheckSquare size={18} color="#F59E0B" />} iconBg="#F59E0B22"

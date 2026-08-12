@@ -1,8 +1,8 @@
 import { Block, MetricRow, MetricBarRow, SubLabel } from './TrendBlocks';
 import type { RPEEntry, WellnessEntry, MatchStat, TeamMatchStat } from '../data/types';
-import { calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
+import { calcPlayerAdvancedForPeriod, perMatchPtsProd } from '../data/playerAdvanced';
 import type { PlayerAdvancedStats } from '../data/playerAdvanced';
-import { wellnessAvg } from '../utils/wellness';
+
 import { averageWeeklyLoad } from '../utils/weeklyLoad';
 import { roundedAvg } from '../utils/avg';
 
@@ -126,14 +126,15 @@ function ortgSimple(ms: MatchStat[]): number | null {
   return +(ms.reduce((s, m) => s + m.pts, 0) / poss * 100).toFixed(1);
 }
 
-function avgAdv(ms: MatchStat[], map: Map<string, TeamMatchStat> | undefined, key: keyof PlayerAdvancedStats): number | null {
-  if (!ms.length) return null;
-  const vals: number[] = [];
-  for (const m of ms) {
-    const v = calcPlayerAdvancedForMatch(m, map?.get(m.matchId ?? ''))[key];
-    if (v !== null && v !== undefined) vals.push(v as number);
-  }
-  return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : null;
+/** Ratios avancés d'un groupe de matchs — sommes puis division (cf. calcPlayerAdvancedForPeriod),
+ *  jamais la moyenne des ratios match par match. */
+function advOf(ms: MatchStat[], map: Map<string, TeamMatchStat> | undefined) {
+  const period = calcPlayerAdvancedForPeriod(ms, map);
+  return {
+    get: (key: keyof PlayerAdvancedStats) => period.stats[key],
+    // Volume : moyenne par match, comme les lignes Points / Passes décisives voisines.
+    ptsProdPerMatch: perMatchPtsProd(period),
+  };
 }
 
 // Hauteurs fixes du contenu de chaque bloc (px) en mode détaillé — non appliquées en mode
@@ -173,14 +174,16 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
   const pFic  = ficPerMatch(matchP);   const sFic  = ficPerMatch(matchS);
   const pPtMn = ptsPerMin(matchP);     const sPtMn = ptsPerMin(matchS);
   const pAsto = astToRatio(matchP);    const sAsto = astToRatio(matchS);
-  const pRoSh    = avgAdv(matchP, teamStatsMap, 'orebPct');    const sRoSh    = avgAdv(matchS, teamStatsMap, 'orebPct');
-  const pRdSh    = avgAdv(matchP, teamStatsMap, 'drebPct');    const sRdSh    = avgAdv(matchS, teamStatsMap, 'drebPct');
-  const pTrebPct = avgAdv(matchP, teamStatsMap, 'trebPct');    const sTrebPct = avgAdv(matchS, teamStatsMap, 'trebPct');
-  const pAstR    = avgAdv(matchP, teamStatsMap, 'astPct');     const sAstR    = avgAdv(matchS, teamStatsMap, 'astPct');
-  const pTovR    = avgAdv(matchP, teamStatsMap, 'tovPct');     const sTovR    = avgAdv(matchS, teamStatsMap, 'tovPct');
-  const pPtsG    = avgAdv(matchP, teamStatsMap, 'ptsProd');    const sPtsG    = avgAdv(matchS, teamStatsMap, 'ptsProd');
+  const advP = advOf(matchP, teamStatsMap); const advS = advOf(matchS, teamStatsMap);
+  const pRoSh    = advP.get('orebPct');    const sRoSh    = advS.get('orebPct');
+  const pRdSh    = advP.get('drebPct');    const sRdSh    = advS.get('drebPct');
+  const pTrebPct = advP.get('trebPct');    const sTrebPct = advS.get('trebPct');
+  const pAstR    = advP.get('astPct');     const sAstR    = advS.get('astPct');
+  const pTovR    = advP.get('tovPct');     const sTovR    = advS.get('tovPct');
+  const pPtsG    = advP.ptsProdPerMatch;   const sPtsG    = advS.ptsProdPerMatch;
   const pOrtg = ortgSimple(matchP);    const sOrtg = ortgSimple(matchS);
-  const pUsg  = avgAdv(matchP, teamStatsMap, 'usagePct');     const sUsg  = avgAdv(matchS, teamStatsMap, 'usagePct');
+  const pUsgRaw = advP.get('usagePctRaw'); const sUsgRaw = advS.get('usagePctRaw');
+  const pUsg    = advP.get('usagePct');    const sUsg    = advS.get('usagePct');
   const pPoss = indPossPerMatch(matchP); const sPoss = indPossPerMatch(matchS);
 
   void pFga; void pFgm; void pTs; void sFga; void sFgm; void sTs; void pFic; void sFic; // gardés pour parité avec PlayerDynStatTab (signaux potentiels futurs), non affichés dans les blocs
@@ -195,7 +198,7 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
   // ── Bien-être ─────────────────────────────────────────────────────────────
 
   const wA = (arr: WellnessEntry[], key: 'score' | 'sleep' | 'fatigue' | 'mood' | 'motivation' | 'stress' | 'soreness') =>
-    wellnessAvg(arr.map(w => n(w[key])));
+    roundedAvg(arr.map(w => n(w[key])));
 
   const pSco = wA(a.wellness, 'score');       const sSco = wA(b.wellness, 'score');
   const pSlp = wA(a.wellness, 'sleep');       const sSlp = wA(b.wellness, 'sleep');
@@ -285,7 +288,8 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
           <Block title="Playmaking" badge={{ period: pPtsG, season: sPtsG }} contentHeight={height(BH.play)}>
             <>
               <Row label="Possessions"       period={pPoss}    season={sPoss}    dec={1} />
-              <Row label="% Usage"           period={pUsg}     season={sUsg}     unit="%" />
+              <Row label="%USG"              period={pUsgRaw}  season={sUsgRaw}  unit="%" />
+              <Row label="%USG/min"          period={pUsg}     season={sUsg}     unit="%" />
               <Row label="Points générés"    period={pPtsG}    season={sPtsG}    dec={1} />
               <Row label="Points"            period={p('pts')} season={s('pts')} dec={1} />
               <Row label="Passes décisives"  period={p('pd')}  season={s('pd')}  dec={1} />

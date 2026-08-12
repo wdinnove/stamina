@@ -1,4 +1,27 @@
 import type { ReactNode } from 'react';
+import { rpeColor, rpeLabel } from '../utils/rpe';
+import type { TeamAverage } from '../utils/teamAverage';
+import { Badge } from './Badge';
+
+/**
+ * Sous-titre d'un RPE moyen d'ÉQUIPE : zone de charge + nombre de joueuses.
+ *
+ * Le `n` n'est pas décoratif. La moyenne d'équipe est non pondérée (une voix par joueuse), donc
+ * une seule saisie isolée pèse autant que dix — le seul moyen honnête de rendre le chiffre
+ * interprétable est d'afficher sur combien de joueuses il repose. Mutualisé pour que les deux
+ * pages qui affichent ce KPI (RPE, Performance collective) ne divergent pas.
+ */
+export function TeamRpeSub({ avg }: { avg: TeamAverage }) {
+  if (avg.value === null) return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <Badge color={rpeColor(avg.value)} size="sm" label={rpeLabel(Math.round(avg.value))} style={{ fontSize: '0.62rem' }} />
+      <span style={{ color: '#475569', fontSize: '0.68rem' }}>
+        {avg.players} joueur{avg.players > 1 ? 's' : ''}
+      </span>
+    </span>
+  );
+}
 
 interface RpeKpiCardProps {
   accent: string;

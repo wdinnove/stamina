@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
+import { roundedAvg } from '../utils/avg';
 import type { Player, WellnessEntry } from '../data/types';
-import { WELLNESS_DIMENSIONS, wellnessAvg, wellnessDimColor, wellnessScoreColor, type WellnessDimension } from '../utils/wellness';
+import { WELLNESS_DIMENSIONS, wellnessDimColor, wellnessScoreColor, type WellnessDimension } from '../utils/wellness';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
 
@@ -21,13 +22,13 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
       const playerEntries = entries.filter(e => e.playerId === player.id);
       if (playerEntries.length === 0) return null;
       const avg = {
-        fatigue:    wellnessAvg(playerEntries.map(e => e.fatigue))    ?? 0,
-        mood:       wellnessAvg(playerEntries.map(e => e.mood))       ?? 0,
-        stress:     wellnessAvg(playerEntries.map(e => e.stress))     ?? 0,
-        motivation: wellnessAvg(playerEntries.map(e => e.motivation)) ?? 0,
-        sleep:      wellnessAvg(playerEntries.map(e => e.sleep))      ?? 0,
-        soreness:   wellnessAvg(playerEntries.map(e => e.soreness))   ?? 0,
-        score:      wellnessAvg(playerEntries.map(e => e.score))      ?? 0,
+        fatigue:    roundedAvg(playerEntries.map(e => e.fatigue))    ?? 0,
+        mood:       roundedAvg(playerEntries.map(e => e.mood))       ?? 0,
+        stress:     roundedAvg(playerEntries.map(e => e.stress))     ?? 0,
+        motivation: roundedAvg(playerEntries.map(e => e.motivation)) ?? 0,
+        sleep:      roundedAvg(playerEntries.map(e => e.sleep))      ?? 0,
+        soreness:   roundedAvg(playerEntries.map(e => e.soreness))   ?? 0,
+        score:      roundedAvg(playerEntries.map(e => e.score))      ?? 0,
       };
       return { player, avg };
     })

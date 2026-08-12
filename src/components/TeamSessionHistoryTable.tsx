@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ListChecks } from 'lucide-react';
-import type { TeamSessionRow, SessionType } from '../data/types';
-import { rpeColor } from '../utils/rpe';
+import type { TeamSessionRow, SessionRpeEntry, SessionType } from '../data/types';
+import { rpeColor, teamAvgRpe } from '../utils/rpe';
 import { mondayIso as getWeekMonday, getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
@@ -34,29 +34,31 @@ export function TeamSessionHistoryTable({
   const weekCfg = (ua: number) => getWeekTier(ua, lightMax, normalMax);
 
   const weekMap = new Map<string, {
-    rpes: number[]; totalLoad: number; totalDur: number;
+    entries: SessionRpeEntry[]; totalLoad: number; totalDur: number;
     players: Set<string>; totalPlayers: number; dates: string[]; count: number;
   }>();
   rows.forEach(s => {
     const k = getWeekMonday(s.date);
-    if (!weekMap.has(k)) weekMap.set(k, { rpes: [], totalLoad: 0, totalDur: 0, players: new Set(), totalPlayers: 0, dates: [], count: 0 });
+    if (!weekMap.has(k)) weekMap.set(k, { entries: [], totalLoad: 0, totalDur: 0, players: new Set(), totalPlayers: 0, dates: [], count: 0 });
     const w = weekMap.get(k)!;
-    if (s.avg > 0) w.rpes.push(s.avg);
     w.totalLoad    += s.totalLoad;
     w.totalDur     += s.duration;
     w.totalPlayers += s.nbPlayers;
-    s.playerIds.forEach(id => w.players.add(id));
+    s.entries.forEach(en => { w.players.add(en.playerId); w.entries.push(en); });
     w.count++;
     w.dates.push(s.date);
   });
   const weekRows = [...weekMap.entries()]
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([, { rpes, totalLoad, totalDur, players, totalPlayers, dates, count }]) => {
+    .map(([, { entries, totalLoad, totalDur, players, totalPlayers, dates, count }]) => {
       const sorted     = [...dates].sort();
       const avgPlayers = Math.round(totalPlayers / count);
       return {
         dateFrom: sorted[0], dateTo: sorted[sorted.length - 1],
-        avgRpe:   rpes.length ? Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 : 0,
+        // Une semaine couvre plusieurs séances auxquelles les joueuses n'ont pas toutes participé :
+        // règle d'équipe (moyenne par joueuse puis moyenne des joueuses), et non la moyenne des
+        // moyennes de séance, qui pondérait chaque séance par son effectif présent.
+        rpe:      teamAvgRpe(entries),
         // Charge/joueur ramenée à l'effectif DISTINCT de la semaine (pas la moyenne d'effectif par séance)
         avgUa:    players.size > 0 ? Math.round(totalLoad / players.size) : 0,
         totalDur, avgPlayers,
@@ -130,7 +132,7 @@ export function TeamSessionHistoryTable({
             <thead>{thRow}</thead>
             <tbody>
               {weekRows.map(w => {
-                const rpeC  = rpeColor(w.avgRpe);
+                const rpeC  = w.rpe.value !== null ? rpeColor(w.rpe.value) : '#475569';
                 const cfg   = weekCfg(w.avgUa);
                 const dateLabel = w.dateFrom === w.dateTo
                   ? fmtDateWithDay(w.dateFrom)
@@ -143,7 +145,11 @@ export function TeamSessionHistoryTable({
                     <td style={{ padding: '8px 14px' }}><Badge color="#3B82F6" label="Semaine" size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgPlayers}</td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.totalDur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{fmt1(w.avgRpe)}</span></td>
+                    <td style={{ padding: '8px 14px' }}>
+                      <span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{fmt1(w.rpe.value)}</span>
+                      {/* Le n rend la moyenne non pondérée lisible : sur peu de joueuses, une saisie isolée pèse lourd. */}
+                      <span style={{ color: '#475569', fontSize: '0.68rem', marginLeft: 5 }}>· {w.rpe.players}</span>
+                    </td>
                     <td style={{ padding: '8px 14px', color: cfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgUa.toLocaleString('fr')}</td>
                     <td style={{ padding: '8px 14px' }}><Badge color={cfg.color} bg={cfg.color + '20'} label={cfg.label} size="sm" style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px' }} /></td>
                   </tr>

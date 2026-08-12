@@ -76,7 +76,7 @@ export function makeRawPlayerStats(overrides: Partial<RawPlayerStats> & { player
       startsCount: 0, plusMinus: 0, plusMinusCount: 0,
     },
     advancedAgg: {
-      usagePct: null, offRating: null, efgPct: null, ftRate: null, bpPerPoss: null,
+      usagePctRaw: null, usagePct: null, offRating: null, efgPct: null, ftRate: null, bpPerPoss: null,
       astPct: null, tovPct: null, trebPct: null, drebPct: null, orebPct: null, ptsProd: null,
     },
   };

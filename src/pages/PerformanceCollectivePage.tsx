@@ -5,14 +5,15 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
 import { useArchetypes } from '../hooks/useArchetypes';
-import { aggregateTeamWellnessDaily, wellnessAvg, wellnessTier } from '../utils/wellness';
+import { aggregateTeamWellnessDaily, wellnessTier, teamWellnessAvg } from '../utils/wellness';
+import { teamPresenceRate, presenceColor } from '../utils/attendance';
 import { actionsApi, statsApi, matchesApi } from '../api';
 import {
   Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, MiniStatCard,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
-  RpeKpiCard, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
+  RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
   TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
@@ -21,17 +22,17 @@ import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TacticalHomeAwayFilter, TacticalResultFilter } from '../components/TacticalFilterBar';
 import type { DatePreset } from '../components/DateRangeCard';
 import { evalColor, ortgColor, drtgColor } from '../data';
-import { calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
+import { calcPlayerAdvancedForPeriod, perMatchPtsProd } from '../data/playerAdvanced';
 import { computeMatchPCA, computeWinFactors, computePlayerImpact } from '../data/pca';
-import { rpeColor, rpeLabel, acwrZone, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
+import { rpeColor, rpeLabel, acwrZone, tsbZone, teamAvgRpe, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
 import { wellnessScoreColor } from '../utils/wellness';
-import { mondayIso, getWeekTier } from '../utils/weeklyLoad';
+import { getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 import { fmt1 } from '../utils/format';
 import {
-  playerAttributeIndicators, getSeries, detectRiskAlerts,
+  playerAttributeIndicators, getSeries, periodValueOf, detectRiskAlerts,
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
 import type { MatchStat, TeamMatchStat, Action, Match } from '../data/types';
@@ -241,14 +242,17 @@ export default function PerformanceCollectivePage() {
   const allWellness = allPd.flatMap(p => p.wellness);
   const allMatchStats = allPd.flatMap(p => p.matchStats);
   const allAttendance = allPd.flatMap(p => p.attendance);
-  const rpeAvgP   = roundedAvg(allRpe.filter(e => inRangeTeam(e.date)).map(e => e.rpe));
-  // Agrégat quotidien équipe (moyenne des joueuses ayant loggué ce jour-là) avant de moyenner
-  // sur la période — sinon une joueuse qui logge plus souvent pèse plus lourd dans la moyenne.
-  const wellAvgP   = wellnessAvg(aggregateTeamWellnessDaily(allWellness.filter(w => inRangeTeam(w.date))).map(e => e.score));
+  // RPE moyen d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses.
+  const rpeAvgP   = teamAvgRpe(allRpe.filter(e => inRangeTeam(e.date)));
+  // Règle d'équipe : moyenne par joueuse puis moyenne des joueuses — directement sur les saisies
+  // brutes, et non via l'agrégat quotidien (qui donnait une voix par jour).
+  const wellAvgP   = teamWellnessAvg(allWellness.filter(w => inRangeTeam(w.date)));
   const evalAvgP   = roundedAvg(allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)).map(m => Number(m.eval)));
-  const attP = allAttendance.filter(a => inRangeTeam(a.date));
-  const presentP = attP.filter(a => a.status === 'present' || a.status === 'late').length;
-  const presencePct = attP.length ? Math.round(presentP / attP.length * 100) : null;
+  // Règle d'équipe : moyenne non pondérée des taux individuels (et non Σprésences / Σattendus).
+  const presence = teamPresenceRate(allPd.map(pd => ({
+    playerId: pd.player.id,
+    attendance: pd.attendance.filter(a => inRangeTeam(a.date)),
+  })));
   const ptsAvgP = roundedAvg(filteredTeamStats.map(t => t.scoreUs));
 
   // ── Actions d'équipe (Vue d'ensemble) ─────────────────────────────────────
@@ -310,19 +314,21 @@ export default function PerformanceCollectivePage() {
     .map(p => {
       const ss  = playerStatsMap.get(p.id)!;
       const n   = ss.length;
-      const adv = ss.map(m => calcPlayerAdvancedForMatch(m, teamStatsMap.get(m.matchId ?? '') ?? null));
-      const avgA = (key: string) => {
-        const vals = adv.map(a => (a as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
-        return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
-      };
+      // Ratios agrégés en sommant numérateur et dénominateur sur la période — jamais en moyennant
+      // les ratios de chaque match, qui donnerait le même poids à un match de 2 minutes qu'à un
+      // match de 35 minutes (cf. calcPlayerAdvancedForPeriod).
+      const period = calcPlayerAdvancedForPeriod(ss, teamStatsMap);
+      const a = period.stats;
       return {
         p, n,
         avgMin: avgStats(ss, 'min'),
-        avgPts: n > 0 ? Math.round(ss.reduce((a, s) => a + s.pts, 0) / n * 10) / 10 : 0,
-        usagePctRaw: avgA('usagePctRaw'), usagePct: avgA('usagePct'), offRating: avgA('offRating'),
-        efgPct: avgA('efgPct'), ftRate: avgA('ftRate'), ptsProd: avgA('ptsProd'),
-        astPct: avgA('astPct'), tovPct: avgA('tovPct'), bpPerPoss: avgA('bpPerPoss'),
-        trebPct: avgA('trebPct'), drebPct: avgA('drebPct'), orebPct: avgA('orebPct'),
+        avgPts: n > 0 ? Math.round(ss.reduce((acc, s) => acc + s.pts, 0) / n * 10) / 10 : 0,
+        usagePctRaw: a.usagePctRaw, usagePct: a.usagePct, offRating: a.offRating,
+        efgPct: a.efgPct, ftRate: a.ftRate,
+        // Volume, pas un ratio : moyenne par match, homogène avec les autres colonnes du tableau.
+        ptsProd: perMatchPtsProd(period),
+        astPct: a.astPct, tovPct: a.tovPct, bpPerPoss: a.bpPerPoss,
+        trebPct: a.trebPct, drebPct: a.drebPct, orebPct: a.orebPct,
       };
     }), [players, playerStatsMap, teamStatsMap]);
 
@@ -520,7 +526,8 @@ export default function PerformanceCollectivePage() {
 
   // ── Charge physique (ex-RPEPage team_history + verdict/graphe alignés sur PerformanceIndividuellePage) ──
   const {
-    playerRanking, teamKpis: rpeTeamKpis, teamSessionRows, teamAcwrAvg, teamFreshAvg,
+    playerRanking, teamKpis: rpeTeamKpis, teamSessionRows, teamWeekRows, teamPeriodAvgWeeklyLoad,
+    teamAcwrAvg, teamFreshAvg,
   } = useTeamRpeHistory(selected?.team.id, selected?.season.id, from, to, players);
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
@@ -564,27 +571,15 @@ export default function PerformanceCollectivePage() {
     load: Math.round(s.totalLoad / Math.max(s.nbPlayers, 1)),
     rpe:  s.avg,
   })), [teamSessionRows]);
-  const weekCombo = useMemo(() => {
-    const byWeek = new Map<string, { load: number; players: Set<string>; rpes: number[] }>();
-    teamSessionRows.forEach(s => {
-      const wk = mondayIso(s.date);
-      if (!byWeek.has(wk)) byWeek.set(wk, { load: 0, players: new Set(), rpes: [] });
-      const w = byWeek.get(wk)!;
-      w.load += s.totalLoad;
-      s.playerIds.forEach(id => w.players.add(id));
-      if (s.avg > 0) w.rpes.push(s.avg);
-    });
-    return [...byWeek.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([wk, w]) => ({
-        date: fmtDateWithDay(wk),
-        load: Math.round(w.load / Math.max(w.players.size, 1)),
-        rpe:  w.rpes.length ? Math.round(w.rpes.reduce((s, v) => s + v, 0) / w.rpes.length * 10) / 10 : 0,
-      }))
-      .filter(d => d.rpe > 0);
-  }, [teamSessionRows]);
-  const avgWeeklyLoad = weekCombo.length
-    ? Math.round(weekCombo.reduce((s, d) => s + d.load, 0) / weekCombo.length) : null;
+  // Agrégation hebdo fournie par useTeamRpeHistory — source unique partagée avec RPEPage, qui en
+  // avait une copie à l'identique (le RPE y suit la règle d'équipe, cf. utils/teamAverage.ts).
+  const weekCombo = useMemo(() => teamWeekRows
+    .filter(w => w.rpe.value !== null)
+    .map(w => ({ date: fmtDateWithDay(w.week), load: w.load, rpe: w.rpe.value! })),
+  [teamWeekRows]);
+  // Règle d'équipe : une voix par joueuse — fourni par le hook, calculé sur les lignes brutes.
+  // Moyenner les valeurs de `weekCombo` donnerait une voix par SEMAINE.
+  const avgWeeklyLoad = teamPeriodAvgWeeklyLoad.value;
   const weekTier = avgWeeklyLoad !== null && avgWeeklyLoad > 0
     ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;
   const surchargeWeeksTeam = weekCombo.filter(d => d.load >= thresholds.normalMax).length;
@@ -613,13 +608,21 @@ export default function PerformanceCollectivePage() {
     () => data ? aggregateTeamWellnessDaily(data.players.flatMap(p => p.wellness)) : [],
     [data],
   );
+  // Saisies BRUTES pour les moyennes du panneau POMS (règle d'équipe : une voix par joueuse) —
+  // la série quotidienne `teamWellnessDaily` ne sert qu'aux courbes d'évolution, sinon les
+  // moyennes affichées seraient « une voix par jour ».
+  const wellnessRaw = useMemo(() => data ? data.players.flatMap(p => p.wellness) : [], [data]);
   const wellnessInRange = useMemo(
+    () => from ? wellnessRaw.filter(e => e.date >= from && e.date <= to) : wellnessRaw,
+    [wellnessRaw, from, to],
+  );
+  const wellnessSeriesInRange = useMemo(
     () => from ? teamWellnessDaily.filter(e => e.date >= from && e.date <= to) : teamWellnessDaily,
     [teamWellnessDaily, from, to],
   );
   const wellnessSeasonEntries = useMemo(
-    () => seasonStart ? teamWellnessDaily.filter(e => e.date >= seasonStart && (!seasonEnd || e.date <= seasonEnd)) : teamWellnessDaily,
-    [teamWellnessDaily, seasonStart, seasonEnd],
+    () => seasonStart ? wellnessRaw.filter(e => e.date >= seasonStart && (!seasonEnd || e.date <= seasonEnd)) : wellnessRaw,
+    [wellnessRaw, seasonStart, seasonEnd],
   );
 
   // ── Classement joueurs (1 facteur → classement + valeurs) ─────────────────
@@ -633,28 +636,15 @@ export default function PerformanceCollectivePage() {
   const [archSelection, setArchSelection] = useState<ArchetypeSelection>(ARCHETYPE_SELECTIONS[0]!);
   const rankDef = rankIndicators.find(i => i.key === rankKey) ?? rankIndicators[0];
   const rankingRows: RankingRow[] = useMemo(() => (data?.players ?? []).map(p => {
-    const pScope: CrossScope = { player: p };
-    const meanOf = (def: IndicatorDef) => {
-      if (!def.playerSeries) return null;
-      const pts = getSeries(def, pScope, from, to);
-      return pts.length ? Math.round(pts.reduce((s, x) => s + x.value, 0) / pts.length * 100) / 100 : null;
-    };
+
     // Min/Éval : toujours affichés en repère, quel que soit le facteur choisi pour le classement.
     const periodStats = p.matchStats.filter(m => m.date >= from && m.date <= to);
     const evalStats = periodStats.filter(m => m.eval !== null);
     const rawAvgMin = periodStats.length ? Math.round(periodStats.reduce((s, m) => s + (m.min ?? 0), 0) / periodStats.length * 10) / 10 : null;
     const rawEvalAvg = evalStats.length ? Math.round(evalStats.reduce((s, m) => s + Number(m.eval), 0) / evalStats.length * 10) / 10 : null;
-    // % de tir : somme(réussis)/somme(tentés) sur la période, comme dans l'analyse individuelle —
-    // pas la moyenne des % par match, qui sur-pondère les matchs à faible volume de tirs.
-    const weightedPctOf = (def: IndicatorDef) => {
-      if (!def.weightedPct) return null;
-      const totals = periodStats.reduce((acc, m) => {
-        const { made, att } = def.weightedPct!(m);
-        return { made: acc.made + made, att: acc.att + att };
-      }, { made: 0, att: 0 });
-      return totals.att > 0 ? Math.round(totals.made / totals.att * 10000) / 100 : null;
-    };
-    const rawValue = rankDef.weightedPct ? weightedPctOf(rankDef) : meanOf(rankDef);
+    // Une seule fonction pour tous les indicateurs : sommes/division pour les ratios (% de tir et
+    // stats avancées), moyenne de la série pour les volumes et les domaines quotidiens.
+    const rawValue = periodValueOf(rankDef, p, from, to);
     // "25 min" : recalcule comme si chaque joueur jouait 25 min — même convention que le
     // tableau Statistiques joueurs. Ne s'applique qu'aux stats de match qui croissent avec le
     // temps de jeu (pas les %, ni les indicateurs charge/bien-être/présence).
@@ -743,10 +733,10 @@ export default function PerformanceCollectivePage() {
           <MiniStatCard
             icon={<UserCheck size={18} color="#06B6D4" />} iconBg="#06B6D622"
             title="Présences"
-            value={presencePct !== null ? `${presencePct}%` : '—'}
-            valueColor={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569'}
-            subtitle={`${attP.length} séance${attP.length > 1 ? 's' : ''}`}
-            borderColor={presencePct !== null ? (presencePct >= 85 ? '#00E5A0' : presencePct >= 70 ? '#F59E0B' : '#EF4444') : '#475569'}
+            value={presence.value !== null ? `${presence.value}%` : '—'}
+            valueColor={presenceColor(presence.value)}
+            subtitle={presence.players > 0 ? `${presence.players} joueur${presence.players > 1 ? 's' : ''}` : undefined}
+            borderColor={presenceColor(presence.value)}
           />
           <MiniStatCard
             icon={<CheckSquare size={18} color="#F59E0B" />} iconBg="#F59E0B22"
@@ -769,19 +759,19 @@ export default function PerformanceCollectivePage() {
           <MiniStatCard
             icon={<Activity size={18} color="#8B5CF6" />} iconBg="#8B5CF622"
             title="RPE moyen"
-            value={rpeAvgP !== null ? `${fmt1(rpeAvgP)}/10` : '—'}
-            valueColor={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569'}
-            subtitle={rpeAvgP !== null ? rpeLabel(Math.round(rpeAvgP)) : undefined}
-            borderColor={rpeAvgP !== null ? rpeColor(rpeAvgP) : '#475569'}
+            value={rpeAvgP.value !== null ? `${fmt1(rpeAvgP.value)}/10` : '—'}
+            valueColor={rpeAvgP.value !== null ? rpeColor(rpeAvgP.value) : '#475569'}
+            subtitle={rpeAvgP.value !== null ? `${rpeLabel(Math.round(rpeAvgP.value))} · ${rpeAvgP.players} joueur${rpeAvgP.players > 1 ? 's' : ''}` : undefined}
+            borderColor={rpeAvgP.value !== null ? rpeColor(rpeAvgP.value) : '#475569'}
             onOpen={() => setActiveTab('rpe')}
           />
           <MiniStatCard
             icon={<Heart size={18} color="#EC4899" />} iconBg="#EC489922"
             title="Bien-être"
-            value={wellAvgP !== null ? `${fmt1(wellAvgP)}/10` : '—'}
-            valueColor={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569'}
-            subtitle={wellAvgP !== null ? wellnessTier(wellAvgP).label : undefined}
-            borderColor={wellAvgP !== null ? wellnessScoreColor(wellAvgP) : '#475569'}
+            value={wellAvgP.value !== null ? `${fmt1(wellAvgP.value)}/10` : '—'}
+            valueColor={wellAvgP.value !== null ? wellnessScoreColor(wellAvgP.value) : '#475569'}
+            subtitle={wellAvgP.value !== null ? `${wellnessTier(wellAvgP.value).label} · ${wellAvgP.players} joueur${wellAvgP.players > 1 ? 's' : ''}` : undefined}
+            borderColor={wellAvgP.value !== null ? wellnessScoreColor(wellAvgP.value) : '#475569'}
             onOpen={() => setActiveTab('bien-etre')}
           />
         </div>
@@ -1260,14 +1250,14 @@ export default function PerformanceCollectivePage() {
                 value: avgWeeklyLoad !== null && avgWeeklyLoad > 0
                   ? <>{avgWeeklyLoad.toLocaleString('fr')} <span title="Unité Arbitraire = RPE × durée de la séance (minutes)">UA</span></>
                   : '—',
-                sub: weekTier ? <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} /> : undefined,
+                sub: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{weekTier && <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} />}{teamPeriodAvgWeeklyLoad.players > 0 ? <span style={{ color: '#475569', fontSize: '0.68rem' }}>{teamPeriodAvgWeeklyLoad.players} joueur{teamPeriodAvgWeeklyLoad.players > 1 ? 's' : ''}</span> : null}</span>,
                 color: weekTier ? weekTier.color : undefined,
               },
               {
                 label: 'RPE moyen',
-                value: rpeTeamKpis ? fmt1(rpeTeamKpis.avg) : '—',
-                sub: rpeTeamKpis ? <Badge color={rpeColor(rpeTeamKpis.avg)} size="sm" label={rpeLabel(Math.round(rpeTeamKpis.avg))} style={{ fontSize: '0.62rem' }} /> : undefined,
-                color: rpeTeamKpis ? rpeColor(rpeTeamKpis.avg) : undefined,
+                value: rpeTeamKpis ? fmt1(rpeTeamKpis.avg.value) : '—',
+                sub: rpeTeamKpis ? <TeamRpeSub avg={rpeTeamKpis.avg} /> : undefined,
+                color: rpeTeamKpis?.avg.value != null ? rpeColor(rpeTeamKpis.avg.value) : undefined,
               },
               {
                 label: 'Charge récente vs habituelle (à ce jour)',
@@ -1319,13 +1309,13 @@ export default function PerformanceCollectivePage() {
                 accent={weekTier ? weekTier.color : '#334155'}
                 label="Charge moyenne par semaine"
                 value={avgWeeklyLoad !== null && avgWeeklyLoad > 0 ? <>{avgWeeklyLoad.toLocaleString('fr')}<span title="Unité Arbitraire = RPE × durée de la séance (minutes)" style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></> : '—'}
-                sub={weekTier ? <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} /> : undefined}
+                sub={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{weekTier && <Badge color={weekTier.color} size="sm" label={weekTier.label} style={{ fontSize: '0.62rem' }} />}{teamPeriodAvgWeeklyLoad.players > 0 ? <span style={{ color: '#475569', fontSize: '0.68rem' }}>{teamPeriodAvgWeeklyLoad.players} joueur{teamPeriodAvgWeeklyLoad.players > 1 ? 's' : ''}</span> : null}</span>}
               />
               <RpeKpiCard
-                accent={rpeColor(rpeTeamKpis.avg)}
+                accent={rpeTeamKpis.avg.value !== null ? rpeColor(rpeTeamKpis.avg.value) : '#334155'}
                 label="RPE moyen"
-                value={fmt1(rpeTeamKpis.avg)}
-                sub={<Badge color={rpeColor(rpeTeamKpis.avg)} size="sm" label={rpeLabel(Math.round(rpeTeamKpis.avg))} style={{ fontSize: '0.62rem' }} />}
+                value={fmt1(rpeTeamKpis.avg.value)}
+                sub={<TeamRpeSub avg={rpeTeamKpis.avg} />}
               />
               <RpeKpiCard
                 accent="#3B82F6"
@@ -1366,6 +1356,7 @@ export default function PerformanceCollectivePage() {
         ) : (
           <WellnessPomsPanel
             entries={wellnessInRange}
+            series={wellnessSeriesInRange}
             seasonEntries={wellnessSeasonEntries}
             showSeasonDiff={showSeasonDiff}
             subjectLabel="L'équipe"

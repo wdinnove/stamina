@@ -47,7 +47,10 @@ const thC = (col: SortKey, key: SortKey) => key === col ? '#CBD5E1' : '#475569';
 const RANK_WIDTH = 36;
 
 function fmtValue(def: IndicatorDef, v: number): string {
-  const num = def.key === 'acwr' ? v.toFixed(2)
+  // `def.decimals` quand l'indicateur impose sa précision (les % de tir s'affichent en entier,
+  // comme dans les tableaux de statistiques) — sinon 1 décimale, sauf cas historiques ci-dessous.
+  const num = def.decimals !== undefined ? v.toFixed(def.decimals)
+    : def.key === 'acwr' ? v.toFixed(2)
     : (def.domain === 'wellness' || def.key === 'rpe' || def.key === 'tsb') ? v.toFixed(1)
     : String(Math.round(v * 10) / 10);
   const signed = def.key === 'tsb' && v > 0 ? `+${num}` : num;

@@ -43,7 +43,7 @@ const emptyForm: FormState = { indicatorKey: '', importance: 'normal', comparato
 // aux corrélations), donc on le fixe explicitement ici plutôt que de trier le registre partagé.
 const PLAYER_MATCH_ORDER = [
   'min', 'pts', 'fg2Pct', 'fg3Pct', 'ftPct', 'ro', 'rd', 'reb', 'pd', 'ct', 'intercepts', 'bp', 'fte', 'fpr', 'eval', 'plusMinus',
-  'adv_usagePct', 'adv_offRating', 'adv_efgPct', 'adv_ftRate', 'adv_ptsProd', 'adv_astPct', 'adv_tovPct', 'adv_trebPct', 'adv_drebPct', 'adv_orebPct',
+  'adv_usagePctRaw', 'adv_usagePct', 'adv_offRating', 'adv_efgPct', 'adv_ftRate', 'adv_ptsProd', 'adv_astPct', 'adv_tovPct', 'adv_trebPct', 'adv_drebPct', 'adv_orebPct',
 ];
 const TEAM_MATCH_ORDER = [
   'team_ptsFor', 'team_fg2Pct', 'team_fg3Pct', 'team_ftPct', 'team_ro', 'team_rd', 'team_pd', 'team_ct', 'team_intercepts', 'team_bp',

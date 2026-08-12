@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart2 } from 'lucide-react';
 import { Card, CardTitle, EmptyState } from '../components';
 import { evalColor, ortgColor, shotPct } from '../data';
-import { calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
+import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 
@@ -161,15 +161,19 @@ export function PlayerStatsPanel({
               default:      return 0;
             }
           });
-          const avgAdvField = (key: string) => {
-            const vals = advRows.map(m => (m.adv as unknown as Record<string, number | null>)[key]).filter((v): v is number => v !== null);
-            return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
-          };
+          // Ligne "Totaux" : les ratios avancés sont agrégés en sommant numérateur et dénominateur
+          // sur la période (calcPlayerAdvancedForPeriod), jamais en moyennant les ratios de chaque
+          // match — un match de 2 minutes pèserait autant qu'un match de 35 minutes.
+          const advPeriod = calcPlayerAdvancedForPeriod(rows, teamStatsMap);
+          const advField = (key: keyof PlayerAdvancedStats) => advPeriod.stats[key];
+          // Points générés : un volume, donc une moyenne par match — et la seule colonne avancée
+          // que "25 min" met à l'échelle, les ratios en étant par nature indépendants.
           const avgAdvPtsProd = (() => {
-            const vals = advRows
-              .map(m => m.adv.ptsProd !== null ? m.adv.ptsProd * (normalize25 && m.min > 0 ? 25 / m.min : 1) : null)
-              .filter((v): v is number => v !== null);
-            return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
+            const perMatch = perMatchPtsProd(advPeriod);
+            if (perMatch === null) return null;
+            const avgMin = n > 0 ? sum('min') / n : 0;
+            const sc = normalize25 && avgMin > 0 ? 25 / avgMin : 1;
+            return Math.round(perMatch * sc * 10) / 10;
           })();
           const avgAdvPts = avgD('pts');
           const totalFg2m = sum('fg2m'), totalFg2a = sum('fg2a');
@@ -345,18 +349,18 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 700 }}>{avgAdvPts}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('usagePctRaw'), '%')}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('usagePct'), '%')}</td>
-                    {(() => { const v = avgAdvField('offRating'); return <td style={{ ...TD, color: ortgCol(v) }}>{fmt(v)}</td>; })()}
-                    <td style={{ ...TD }}>{fmt(avgAdvField('efgPct'), '%')}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('ftRate'))}</td>
+                    <td style={{ ...TD }}>{fmt(advField('usagePctRaw'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(advField('usagePct'), '%')}</td>
+                    {(() => { const v = advField('offRating'); return <td style={{ ...TD, color: ortgCol(v) }}>{fmt(v)}</td>; })()}
+                    <td style={{ ...TD }}>{fmt(advField('efgPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(advField('ftRate'))}</td>
                     <td style={{ ...TD, ...SEP, color: '#00E5A0', fontWeight: 700 }}>{fmt(avgAdvPtsProd)}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('astPct'), '%')}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('tovPct'), '%')}</td>
-                    <td style={TD}>{fmt(avgAdvField('bpPerPoss'))}</td>
-                    <td style={{ ...TD, ...SEP }}>{fmt(avgAdvField('trebPct'), '%')}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('drebPct'), '%')}</td>
-                    <td style={{ ...TD }}>{fmt(avgAdvField('orebPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(advField('astPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(advField('tovPct'), '%')}</td>
+                    <td style={TD}>{fmt(advField('bpPerPoss'))}</td>
+                    <td style={{ ...TD, ...SEP }}>{fmt(advField('trebPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(advField('drebPct'), '%')}</td>
+                    <td style={{ ...TD }}>{fmt(advField('orebPct'), '%')}</td>
                   </tr>
                 </tbody>
               </table>

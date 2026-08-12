@@ -1,6 +1,7 @@
 import { Block, MetricRow, MetricBarRow, SubLabel } from './TrendBlocks';
-import { aggregateTeamWellnessDaily, wellnessAvg } from '../utils/wellness';
-import { averageWeeklyLoad } from '../utils/weeklyLoad';
+import { teamWellnessAvg, type WellnessMetric } from '../utils/wellness';
+import { teamAvgWeeklyLoad } from '../utils/weeklyLoad';
+import { teamAvgRpe } from '../utils/rpe';
 import type { RPEEntry, WellnessEntry, TeamMatchStat } from '../data/types';
 
 /**
@@ -45,8 +46,9 @@ function ratio(num: number | null, den: number | null): number | null {
   if (num === null || den === null || den === 0) return null;
   return Math.round(num / den * 100) / 100;
 }
-const wA = (entries: WellnessEntry[], key: 'score' | 'sleep' | 'fatigue' | 'mood' | 'motivation' | 'stress' | 'soreness') =>
-  wellnessAvg(aggregateTeamWellnessDaily(entries).map(e => Number(e[key])));
+// Règle d'équipe : moyenne par joueuse puis moyenne des joueuses (et non l'agrégat quotidien,
+// qui donnait une voix par jour et sur-pondérait les joueuses saisissant le plus souvent).
+const wA = (entries: WellnessEntry[], key: WellnessMetric) => teamWellnessAvg(entries, key).value;
 
 const BH = { perf: 204, scoring: 415, play: 315, def: 174, reb: 233, rpe: 115, well: 263 } as const;
 
@@ -79,8 +81,11 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
   const trebPctP = pctFromSums(matchP, t => t.rt, t => t.rt + t.opp_rt);
   const trebPctS = pctFromSums(matchS, t => t.rt, t => t.rt + t.opp_rt);
 
-  const rpeAvgP = wellnessAvg(a.rpe.map(r => r.rpe)), rpeAvgS = wellnessAvg(b.rpe.map(r => r.rpe));
-  const loadWkP = averageWeeklyLoad(a.rpe), loadWkS = averageWeeklyLoad(b.rpe);
+  // RPE d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses (les groupes
+  // comparés couvrent plusieurs séances, donc une moyenne à plat pondérerait par l'assiduité).
+  const rpeAvgP = teamAvgRpe(a.rpe).value, rpeAvgS = teamAvgRpe(b.rpe).value;
+  // Charge d'équipe : une voix par joueuse (cf. teamAvgWeeklyLoad), pas une voix par semaine.
+  const loadWkP = teamAvgWeeklyLoad(a.rpe).value, loadWkS = teamAvgWeeklyLoad(b.rpe).value;
 
   const scoP = wA(a.wellness, 'score'),      scoS = wA(b.wellness, 'score');
   const slpP = wA(a.wellness, 'sleep'),      slpS = wA(b.wellness, 'sleep');

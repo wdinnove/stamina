@@ -24,9 +24,10 @@ import type {
   TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption,
 } from './types';
 import { VARIABLES } from './pca';
-import { calcPlayerAdvancedForMatch, type PlayerAdvancedStats } from './playerAdvanced';
+import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from './playerAdvanced';
 import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEntry } from '../utils/rpe';
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
+import { presenceRate } from '../utils/attendance';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, aggregateTeamWellnessDaily } from '../utils/wellness';
 import { correlatePairs, MIN_CORRELATION_PAIRS, type CorrelationPair, type CorrelationResult } from '../utils/correlation';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
@@ -143,12 +144,18 @@ export interface IndicatorDef {
   /** Série individuelle (absent = indisponible en vue joueur) */
   playerSeries?: (d: PlayerCrossData, from: string, to: string) => SeriesPoint[];
   /**
-   * Pour un indicateur de type pourcentage de tir : compteurs bruts (réussis/tentés) du match.
-   * Permet d'agréger une période en somme/somme (comme dans l'analyse individuelle) plutôt qu'en
-   * moyenne des % par match — la moyenne des % par match sur-pondère les matchs à faible volume
-   * de tirs (biais "moyenne des moyennes").
+   * Valeur de l'indicateur sur une PÉRIODE ENTIÈRE — hook unique de toute agrégation de période
+   * (classement joueurs, objectifs).
+   *
+   * À ne PAS confondre avec `playerSeries` : la série par match est juste et reste utilisée telle
+   * quelle par les graphiques et les corrélations. Seule son agrégation posait problème, à deux
+   * titres — les ratios doivent sommer numérateur et dénominateur avant de diviser, et les
+   * volumes doivent se moyenner sur les MATCHS alors que la série est indexée par DATE (deux
+   * matchs le même jour n'y forment qu'un point).
    */
-  weightedPct?: (m: MatchStat) => { made: number; att: number };
+  periodValue?: (d: PlayerCrossData, from: string, to: string) => number | null;
+  /** Décimales à l'affichage. Défaut 1. Les % de tir sont affichés en entier, comme dans les tableaux. */
+  decimals?: number;
   /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueurs */
   teamSeries?: (d: TeamCrossData, from: string, to: string) => SeriesPoint[];
 }
@@ -221,9 +228,9 @@ function presenceSeries(d: PlayerCrossData, from: string, to: string): SeriesPoi
   for (const date of eachDay(from, to)) {
     const winStart = shiftDate(date, -27);
     const win = sorted.filter(a => a.date >= winStart && a.date <= date);
-    if (!win.length) continue;
-    const present = win.filter(a => a.status === 'present' || a.status === 'late').length;
-    points.push({ date, value: Math.round((present / win.length) * 100) });
+    const rate = presenceRate(win);
+    if (rate === null) continue;
+    points.push({ date, value: rate });
   }
   return points;
 }
@@ -246,18 +253,54 @@ function playerMatchStat(
     key, label, shortLabel, domain: 'match', group, unit, color,
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     playerSeries: (d, f, t) => matchSeries(d.matchStats, f, t, get),
+    // Moyenne sur les MATCHS, pas sur les dates : `matchSeries` fusionne deux matchs joués le
+    // même jour en un seul point, ce qui ferait diverger le classement des tableaux (somme/nb de
+    // matchs) dès qu'il y a un plateau ou un tournoi. Les % de tir surchargent ce défaut.
+    periodValue: (d, f, t) => {
+      const vals = d.matchStats
+        .filter(m => m.date >= f && m.date <= t)
+        .map(get)
+        .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
+      return vals.length ? round2(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    },
   };
 }
 
-/** Indicateur de match avancé individuel (calcPlayerAdvanced) */
+/** Ratio de sommes sur la période — pour les % de tir : Σréussis / Σtentés, jamais la moyenne des
+ *  % par match, qui sur-pondère les matchs à faible volume de tirs. */
+function shootingPctPeriod(counts: (m: MatchStat) => { made: number; att: number }) {
+  return (d: PlayerCrossData, from: string, to: string): number | null => {
+    const totals = d.matchStats
+      .filter(m => m.date >= from && m.date <= to)
+      .reduce((acc, m) => {
+        const { made, att } = counts(m);
+        return { made: acc.made + made, att: acc.att + att };
+      }, { made: 0, att: 0 });
+    return totals.att > 0 ? round2(totals.made / totals.att * 100) : null;
+  };
+}
+
+/**
+ * Indicateur de match avancé individuel. La série reste par match (`advSeries`) ; la valeur de
+ * période passe par `calcPlayerAdvancedForPeriod`, qui somme numérateur et dénominateur.
+ * `isVolume` : pour « Points générés », seul champ avancé qui n'est pas un ratio — sa valeur de
+ * période est une moyenne par match, homogène avec les autres colonnes de volume.
+ */
 function playerAdvStat(
   key: string, label: string, shortLabel: string, color: string,
-  pick: (a: PlayerAdvancedStats) => number | null, unit = '%',
+  pick: (a: PlayerAdvancedStats) => number | null, unit = '%', isVolume = false,
 ): IndicatorDef {
   return {
     key, label, shortLabel, domain: 'match', group: 'Match — Statistiques avancées', unit, color,
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     playerSeries: (d, f, t) => advSeries(d, f, t, pick),
+    periodValue: (d, f, t) => {
+      const period = calcPlayerAdvancedForPeriod(
+        d.matchStats.filter(m => m.date >= f && m.date <= t),
+        d.teamStatsByMatchId,
+      );
+      return isVolume ? perMatchPtsProd(period) : pick(period.stats);
+    },
   };
 }
 
@@ -370,9 +413,9 @@ const INDICATORS: IndicatorDef[] = [
   playerMatchStat('plusMinus', '+/-',              '+/-',  '#3B82F6', '',    m => m.plusMinus),
   playerMatchStat('min',       'Minutes',          'Min',  '#94A3B8', 'min', m => m.min),
   playerMatchStat('pts',       'Points marqués',   'Pts',  '#38BDF8', 'pts', m => m.pts),
-  { ...playerMatchStat('fg2Pct', 'Réussite 2 pts (%)',          '2%',  '#00E5A0', '%', m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null), weightedPct: m => ({ made: m.fg2m, att: m.fg2a }) },
-  { ...playerMatchStat('fg3Pct', 'Réussite 3 pts (%)',          '3%',  '#2DD4BF', '%', m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null), weightedPct: m => ({ made: m.fg3m, att: m.fg3a }) },
-  { ...playerMatchStat('ftPct',  'Réussite lancers francs (%)', 'LF%', '#EAB308', '%', m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null), weightedPct: m => ({ made: m.ftm, att: m.fta }) },
+  { ...playerMatchStat('fg2Pct', 'Réussite 2 pts (%)',          '2%',  '#00E5A0', '%', m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null), periodValue: shootingPctPeriod(m => ({ made: m.fg2m, att: m.fg2a })), decimals: 0 },
+  { ...playerMatchStat('fg3Pct', 'Réussite 3 pts (%)',          '3%',  '#2DD4BF', '%', m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null), periodValue: shootingPctPeriod(m => ({ made: m.fg3m, att: m.fg3a })), decimals: 0 },
+  { ...playerMatchStat('ftPct',  'Réussite lancers francs (%)', 'LF%', '#EAB308', '%', m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null), periodValue: shootingPctPeriod(m => ({ made: m.ftm, att: m.fta })), decimals: 0 },
   playerMatchStat('ro',         'Rebonds offensifs',            'RO',  '#F97316', '',  m => m.ro),
   playerMatchStat('rd',         'Rebonds défensifs',            'RD',  '#F59E0B', '',  m => m.rd),
   playerMatchStat('reb',        'Rebonds totaux',               'Reb', '#FB923C', '',  m => m.ro + m.rd),
@@ -386,13 +429,19 @@ const INDICATORS: IndicatorDef[] = [
   playerAdvStat('adv_offRating', 'ORtg individuel (pts × 100 / possessions utilisées)', 'ORtg', '#00E5A0', a => a.offRating, ''),
   playerAdvStat('adv_efgPct',   'eFG% individuel',                  'eFG%',   '#EAB308', a => a.efgPct),
   playerAdvStat('adv_ftRate',   'FT Rate individuel (LF tentés / tirs)', 'FTr', '#2DD4BF', a => a.ftRate, ''),
-  playerAdvStat('adv_usagePct', '% Usage (possessions utilisées)',  'Usage%', '#60A5FA', a => a.usagePct),
+  // Deux lectures de l'usage, comme dans les tableaux de stats avancées (cf. playerAdvanced.ts) :
+  // la part brute dépend du temps de jeu, la version /min ne dépend que de ce qui se passe sur le
+  // terrain. Les deux sont proposées au classement, aux objectifs et aux corrélations — le libellé
+  // doit dire laquelle, sinon un remplaçant très sollicité sur peu de minutes ressort premier
+  // « à l'usage » sans qu'on comprenne pourquoi.
+  playerAdvStat('adv_usagePctRaw', '%USG — part des possessions de l\'équipe utilisées', '%USG', '#60A5FA', a => a.usagePctRaw),
+  playerAdvStat('adv_usagePct',    '%USG/min — usage rapporté aux minutes jouées',       '%USG/min', '#818CF8', a => a.usagePct),
   playerAdvStat('adv_astPct',   '% Passes décisives (paniers créés)', '%PD',  '#8B5CF6', a => a.astPct),
   playerAdvStat('adv_tovPct',   '% Ballons perdus par possession',  '%BP',    '#EF4444', a => a.tovPct),
   playerAdvStat('adv_trebPct',  '% Rebonds totaux captés',          '%TREB',  '#FB923C', a => a.trebPct),
   playerAdvStat('adv_orebPct',  '% Rebonds offensifs captés',       '%OREB',  '#F97316', a => a.orebPct),
   playerAdvStat('adv_drebPct',  '% Rebonds défensifs captés',       '%DREB',  '#F59E0B', a => a.drebPct),
-  playerAdvStat('adv_ptsProd',  'Points générés (pts + passes converties)', 'PtsGén', '#38BDF8', a => a.ptsProd, 'pts'),
+  playerAdvStat('adv_ptsProd',  'Points générés (pts + passes converties)', 'PtsGén', '#38BDF8', a => a.ptsProd, 'pts', true),
   // ── Match — Contexte équipe (catégoriel, encodé en 0/1 — même logique que côté joueur) ──
   {
     key: 'team_homeAway', label: 'Domicile / extérieur', shortLabel: 'Domicile', domain: 'match', group: 'Match — Contexte', unit: '', color: '#38BDF8',
@@ -499,6 +548,25 @@ const INDICATORS: IndicatorDef[] = [
     playerSeries: presenceSeries,
   },
 ];
+
+/**
+ * Valeur d'un indicateur sur une période, pour UN joueur — point d'entrée unique du classement
+ * joueurs et des objectifs, qui avaient chacun leur propre logique d'agrégation.
+ *
+ * Ordre de résolution :
+ *  1. `periodValue` quand l'indicateur en définit un — tous les indicateurs du domaine match le
+ *     font : ratio de sommes pour les ratios, moyenne sur les matchs pour les volumes ;
+ *  2. sinon, moyenne de la série — correct pour les domaines charge / bien-être / assiduité, dont
+ *     chaque point est déjà une observation quotidienne.
+ */
+export function periodValueOf(
+  def: IndicatorDef, d: PlayerCrossData, from: string, to: string,
+): number | null {
+  if (def.periodValue) return def.periodValue(d, from, to);
+  if (!def.playerSeries) return null;
+  const pts = def.playerSeries(d, from, to);
+  return pts.length ? round2(pts.reduce((sum, x) => sum + x.value, 0) / pts.length) : null;
+}
 
 export const teamIndicators   = () => INDICATORS.filter(i => i.teamSeries || i.playerSeries);
 

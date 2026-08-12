@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { getWeekTier } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, SESSION_TYPES, avgRpe as computeAvgRpe } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, SESSION_TYPES } from '../utils/rpe';
+import { roundedAvg } from '../utils/avg';
+import { EMPTY_TEAM_AVERAGE } from '../utils/teamAverage';
 import type { LoadEntry } from '../utils/rpe';
-import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
 import { fmtDate, fmtDateShort, fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
 import {
@@ -16,7 +17,7 @@ import { rpeApi } from '../api/rpe';
 import { notify } from '../api/notifications';
 import { attendanceApi } from '../api';
 import type { TrainingSession } from '../data/types';
-import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, RPEPlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle, Modal, Badge, PlayerLoadPanel } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, TeamRpeSub, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, RPEPlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle, Modal, Badge, PlayerLoadPanel } from '../components';
 import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -186,15 +187,16 @@ export default function RPEPage() {
 
   // ── Team history (chart, sessions, ranking, KPIs, moyennes saison, ACWR/TSB équipe)
   const {
-    teamChartData, teamSessionRows, playerRanking, teamKpis, typeStats,
+    teamChartData, teamSessionRows, teamWeekRows, playerRanking, teamKpis,
     loadingTeamHistory, teamHistoryError,
-    teamSeasonAvgRpe, teamSeasonAvgWeeklyLoad,
+    teamSeasonAvgRpe, teamSeasonAvgWeeklyLoad, teamPeriodAvgWeeklyLoad,
     teamAcwrAvg, teamFreshAvg, teamHistoryShort,
   } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster);
 
   // ── Derived (collective tab)
   const activeEntries = Object.entries(rpeValues).filter(([, v]) => v !== null) as [string, number][];
-  const avgRpe        = computeAvgRpe(activeEntries.map(([, v]) => v)) ?? 0;
+  // Estimation à la saisie : une seule séance, une entrée par joueuse — moyenne simple.
+  const avgRpe        = roundedAvg(activeEntries.map(([, v]) => v)) ?? 0;
   const estimatedLoad = Math.round(avgRpe * duration);
 
   const selSession     = linkedSessions.find(s => s.id === existingSessionId) ?? null;
@@ -216,47 +218,20 @@ export default function RPEPage() {
   const totalLoad    = filtered.reduce((s: number, e: RPEEntry) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
 
   // ── Team saison derived values
-  // Charge hebdo ramenée à l'effectif DISTINCT ayant réellement loggué cette semaine (union des
-  // joueurs de toutes les séances de la semaine) — pas une moyenne d'effectif par séance, qui
-  // se déforme dès qu'une semaine mélange des séances à effectifs très différents (sous-groupe +
-  // effectif complet, par ex.).
-  const teamWeeklyChargePerPlayerData = (() => {
-    const m = new Map<string, { load: number; players: Set<string> }>();
-    teamSessionRows.forEach(s => {
-      const k = getWeekMonday(s.date);
-      if (!m.has(k)) m.set(k, { load: 0, players: new Set() });
-      const e = m.get(k)!;
-      e.load += s.totalLoad;
-      s.playerIds.forEach(id => e.players.add(id));
-    });
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
-      .map(([d, { load, players }]) => ({
-        date: fmtDateShort(d),
-        load: Math.round(load / Math.max(players.size, 1)),
-      }));
-  })();
-  const teamWeeklyRpeData = (() => {
-    const m = new Map<string, number[]>();
-    teamChartData.filter(d => d.avg > 0).forEach(d => {
-      const k = getWeekMonday(d.date);
-      if (!m.has(k)) m.set(k, []);
-      m.get(k)!.push(d.avg);
-    });
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
-      .map(([d, rpes]) => ({ date: fmtDateShort(d), rpe: Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 }));
-  })();
-  // Moyenne des charges hebdomadaires ramenées à l'effectif réellement présent CHAQUE semaine
-  // (et non total de joueurs ayant loggué au moins une fois / nb de semaines calendaires) : sur
-  // une longue période (saison), le turnover d'effectif et les semaines sans séance faisaient
-  // sinon chuter artificiellement la moyenne affichée (bug : valeur ~10x trop basse).
-  // Réutilise teamWeeklyChargePerPlayerData (déjà calculé plus haut pour le graphique).
-  const teamWeeklyPerPlayerLoads = teamWeeklyChargePerPlayerData.map(d => d.load);
-  const avgWeeklyLoadTeam = teamWeeklyPerPlayerLoads.length
-    ? Math.round(teamWeeklyPerPlayerLoads.reduce((a, b) => a + b, 0) / teamWeeklyPerPlayerLoads.length)
-    : 0;
+  // Agrégation hebdo (charge ramenée à l'effectif DISTINCT de la semaine, RPE selon la règle
+  // d'équipe) fournie par useTeamRpeHistory — source unique partagée avec PerformanceCollective,
+  // qui en avait une copie à l'identique.
+  const teamWeeklyChargePerPlayerData = teamWeekRows.map(w => ({ date: fmtDateShort(w.week), load: w.load }));
+  const teamWeeklyRpeData = teamWeekRows
+    .filter(w => w.rpe.value !== null)
+    .map(w => ({ date: fmtDateShort(w.week), rpe: w.rpe.value! }));
+  // Charge hebdo moyenne de la période — règle d'équipe (une voix par joueuse), calculée par le
+  // hook sur les lignes brutes. Moyenner les valeurs hebdo ci-dessus donnerait une voix par
+  // SEMAINE : une joueuse active 1 semaine sur 4 n'y pèserait qu'un quart.
+  const avgWeeklyLoadTeam = teamPeriodAvgWeeklyLoad.value ?? 0;
   const tierTeam = getWeekTier(avgWeeklyLoadTeam, thresholds.lightMax, thresholds.normalMax);
   const teamShowSeasonDiff = dateRange.preset !== 'saison';
-  const rpeAvgTeamPeriod = teamKpis && teamKpis.sessions > 0 ? teamKpis.avg : null;
+  const rpeAvgTeamPeriod = teamKpis && teamKpis.sessions > 0 ? teamKpis.avg : EMPTY_TEAM_AVERAGE;
 
   async function pickSession(session: TrainingSession) {
     skipNextFindRef.current = true;
@@ -679,10 +654,10 @@ export default function RPEPage() {
                     {' '}vs saison
                   </span>;
 
-                const chargeDelta = teamShowSeasonDiff && avgWeeklyLoadTeam > 0 && teamSeasonAvgWeeklyLoad !== null && teamSeasonAvgWeeklyLoad > 0
-                  ? avgWeeklyLoadTeam - teamSeasonAvgWeeklyLoad : null;
-                const rpeDelta = teamShowSeasonDiff && teamSeasonAvgRpe !== null && rpeAvgTeamPeriod !== null
-                  ? Math.round((rpeAvgTeamPeriod - teamSeasonAvgRpe) * 10) / 10 : null;
+                const chargeDelta = teamShowSeasonDiff && avgWeeklyLoadTeam > 0 && (teamSeasonAvgWeeklyLoad.value ?? 0) > 0
+                  ? avgWeeklyLoadTeam - teamSeasonAvgWeeklyLoad.value! : null;
+                const rpeDelta = teamShowSeasonDiff && teamSeasonAvgRpe.value !== null && rpeAvgTeamPeriod.value !== null
+                  ? Math.round((rpeAvgTeamPeriod.value - teamSeasonAvgRpe.value) * 10) / 10 : null;
 
                 // Semaines en surcharge sur la période — réutilise teamWeeklyChargePerPlayerData
                 // (déjà calculé pour le graphique), même bucket hebdo que partout ailleurs.
@@ -703,13 +678,18 @@ export default function RPEPage() {
                         <span>{avgWeeklyLoadTeam > 0 ? avgWeeklyLoadTeam.toLocaleString('fr') : '—'}<span style={{ fontSize: '0.82rem', fontWeight: 400, marginLeft: 3 }}>UA</span></span>
                         <Badge color={tierTeam.color} size="sm" label={tierTeam.label} style={{ fontSize: '0.62rem' }} />
                       </span>}
-                      sub={chargeDelta !== null ? <>{arrow(chargeDelta)}{' '}{subSeason(chargeDelta, ' UA')}</> : undefined}
+                      sub={chargeDelta !== null
+                        ? <>{arrow(chargeDelta)}{' '}{subSeason(chargeDelta, ' UA')}</>
+                        // Moyenne non pondérée : le n rend le chiffre interprétable.
+                        : teamPeriodAvgWeeklyLoad.players > 0
+                          ? `${teamPeriodAvgWeeklyLoad.players} joueur${teamPeriodAvgWeeklyLoad.players > 1 ? 's' : ''}`
+                          : undefined}
                     />
                     <RpeKpiCard
-                      accent={rpeAvgTeamPeriod !== null ? rpeColor(rpeAvgTeamPeriod) : '#334155'}
+                      accent={rpeAvgTeamPeriod.value !== null ? rpeColor(rpeAvgTeamPeriod.value) : '#334155'}
                       label="RPE moyen de la période"
-                      value={fmt1(rpeAvgTeamPeriod)}
-                      sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{subSeason(rpeDelta)}</> : (rpeAvgTeamPeriod !== null ? rpeLabel(Math.round(rpeAvgTeamPeriod)) : '—')}
+                      value={fmt1(rpeAvgTeamPeriod.value)}
+                      sub={rpeDelta !== null ? <>{arrow(rpeDelta)}{' '}{subSeason(rpeDelta)}</> : <TeamRpeSub avg={rpeAvgTeamPeriod} />}
                     />
                     <RpeKpiCard
                       accent={surchargeWeeks > 0 ? '#EF4444' : '#00E5A0'}
@@ -762,22 +742,11 @@ export default function RPEPage() {
                   load: Math.round(s.totalLoad / Math.max(s.nbPlayers, 1)),
                   rpe:  s.avg,
                 }));
-                const weekCombMap = new Map<string, { load: number; players: Set<string>; rpes: number[] }>();
-                teamSessionRows.forEach(s => {
-                  const k = getWeekMonday(s.date);
-                  if (!weekCombMap.has(k)) weekCombMap.set(k, { load: 0, players: new Set(), rpes: [] });
-                  const e = weekCombMap.get(k)!;
-                  e.load += s.totalLoad; s.playerIds.forEach(id => e.players.add(id));
-                  if (s.avg > 0) e.rpes.push(s.avg);
-                });
-                const weekCombo = [...weekCombMap.entries()]
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([d, { load, players, rpes }]) => ({
-                    date: fmtDateWithDay(d),
-                    load: Math.round(load / Math.max(players.size, 1)),
-                    rpe:  rpes.length ? Math.round(rpes.reduce((s, v) => s + v, 0) / rpes.length * 10) / 10 : 0,
-                  }))
-                  .filter(d => d.rpe > 0);
+                // Même agrégation hebdo que le reste de la page (et que PerformanceCollective) :
+                // fournie par le hook, plus recalculée ici.
+                const weekCombo = teamWeekRows
+                  .filter(w => w.rpe.value !== null)
+                  .map(w => ({ date: fmtDateWithDay(w.week), load: w.load, rpe: w.rpe.value! }));
                 const comboData = teamComboView === 'session' ? sessionCombo : weekCombo;
                 const high      = teamComboView === 'session' ? sessionLoadNormal : thresholds.normalMax;
                 return (
