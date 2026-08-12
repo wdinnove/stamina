@@ -11,7 +11,7 @@ import { tacticalEventsApi } from '../api/tacticalEvents';
 import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
-import { calcPlayerAdvanced, calcPlayerAdvancedForMatch } from '../data/playerAdvanced';
+import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 
@@ -382,6 +382,25 @@ export default function MatchDetailPage() {
     else { setOppSortCol(col); setOppSortDir('desc'); }
   }
 
+  // Contexte "équipe" vu du côté adverse : ses propres totaux sont les colonnes opp_* de
+  // team_match_stats, et ses rebonds "adversaire" sont les nôtres.
+  const oppTeamCtx: TeamMatchStat | null = teamStats ? {
+    fg2m: teamStats.opp_fg2m, fg2a: teamStats.opp_fg2a,
+    fg3m: teamStats.opp_fg3m, fg3a: teamStats.opp_fg3a,
+    fta: teamStats.opp_fta, bp: teamStats.opp_bp,
+    ro: teamStats.opp_ro, rd: teamStats.opp_rd,
+    opp_ro: teamStats.ro, opp_rd: teamStats.rd,
+  } as unknown as TeamMatchStat : null;
+  // Σ minutes de l'effectif adverse sur ce match — même rôle que teamStats.teamMinutes côté
+  // équipe : rend la colonne %USG/min calculable pour l'adversaire aussi (repli sur %USG si la
+  // donnée est implausible, ex. minutes non importées côté adversaire).
+  const oppTeamMinutes = opponentStats.reduce((sum, s) => sum + s.min, 0);
+  const oppAdvFor = (s: OpponentMatchStat) => calcPlayerAdvanced(
+    s as unknown as MatchStat,
+    oppTeamCtx,
+    isTeamMinutesPlausible(oppTeamMinutes, 1) ? oppTeamMinutes : undefined,
+  );
+
   function getOppSortVal(s: OpponentMatchStat, col: string): number {
     switch (col) {
       case 'min':        return s.min;
@@ -401,15 +420,7 @@ export default function MatchDetailPage() {
       case 'eval':       return s.eval ?? -999;
       case 'plusMinus':  return s.plusMinus ?? -999;
       default: {
-        if (!teamStats) return -1;
-        const oppTeamCtx = {
-          fg2m: teamStats.opp_fg2m, fg2a: teamStats.opp_fg2a,
-          fg3m: teamStats.opp_fg3m, fg3a: teamStats.opp_fg3a,
-          fta: teamStats.opp_fta, bp: teamStats.opp_bp,
-          ro: teamStats.opp_ro, rd: teamStats.opp_rd,
-          opp_ro: teamStats.ro, opp_rd: teamStats.rd,
-        } as unknown as TeamMatchStat;
-        const adv = calcPlayerAdvanced(s as unknown as MatchStat, oppTeamCtx);
+        const adv = oppAdvFor(s);
         return (adv[col as keyof typeof adv] as number | null) ?? -1;
       }
     }
@@ -722,12 +733,13 @@ export default function MatchDetailPage() {
                           <tr>
                             <th rowSpan={2} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
-                            <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
+                            <th colSpan={5} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
                             <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Playmaking</th>
                             <th colSpan={3} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Rebonds</th>
                           </tr>
                           <tr>
-                            {THsort('USG%', 'usagePct', { borderLeft: '1px solid #334155' })}
+                            {THsort('%USG', 'usagePctRaw', { borderLeft: '1px solid #334155' })}
+                            {THsort('%USG/min', 'usagePct')}
                             {THsort('ORtg', 'offRating')}{THsort('eFG%', 'efgPct')}{THsort('FT Rate', 'ftRate')}
                             {THsort('Pts générés', 'ptsProd', { borderLeft: '1px solid #334155', color: '#00E5A080' })}
                             {THsort('%PD', 'astPct')}{THsort('%BP', 'tovPct')}{THsort('BP/poss', 'bpPerPoss')}
@@ -745,7 +757,8 @@ export default function MatchDetailPage() {
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                                 <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
-                                <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
+                                <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePctRaw, '%')}</td>
+                                <td style={{ ...TD }}>{fmt(adv.usagePct, '%')}</td>
                                 <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
                                 <td style={{ ...TD }}>{fmt(adv.efgPct, '%')}</td>
                                 <td style={{ ...TD }}>{fmt(adv.ftRate)}</td>
@@ -765,13 +778,6 @@ export default function MatchDetailPage() {
                   </div>
                 )}
                 {opponentStats.length > 0 && teamStats && (() => {
-                  const oppTeamCtx = {
-                    fg2m: teamStats.opp_fg2m, fg2a: teamStats.opp_fg2a,
-                    fg3m: teamStats.opp_fg3m, fg3a: teamStats.opp_fg3a,
-                    fta: teamStats.opp_fta, bp: teamStats.opp_bp,
-                    ro: teamStats.opp_ro, rd: teamStats.opp_rd,
-                    opp_ro: teamStats.ro, opp_rd: teamStats.rd,
-                  } as unknown as TeamMatchStat;
                   return (
                     <div>
                       <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 12px' }}>
@@ -783,12 +789,13 @@ export default function MatchDetailPage() {
                             <tr>
                               <th rowSpan={2} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                               <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
-                              <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
+                              <th colSpan={5} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
                               <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Playmaking</th>
                               <th colSpan={3} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Rebonds</th>
                             </tr>
                             <tr>
-                              {THoppSort('USG%', 'usagePct', { borderLeft: '1px solid #334155' })}
+                              {THoppSort('%USG', 'usagePctRaw', { borderLeft: '1px solid #334155' })}
+                              {THoppSort('%USG/min', 'usagePct')}
                               {THoppSort('ORtg', 'offRating')}{THoppSort('eFG%', 'efgPct')}{THoppSort('FT Rate', 'ftRate')}
                               {THoppSort('Pts générés', 'ptsProd', { borderLeft: '1px solid #334155', color: '#00E5A080' })}
                               {THoppSort('%PD', 'astPct')}{THoppSort('%BP', 'tovPct')}{THoppSort('BP/poss', 'bpPerPoss')}
@@ -798,14 +805,15 @@ export default function MatchDetailPage() {
                           </thead>
                           <tbody>
                             {sortedOppStats.map((s, i) => {
-                              const adv = calcPlayerAdvanced(s as unknown as MatchStat, oppTeamCtx);
+                              const adv = oppAdvFor(s);
                               const fmt = (v: number | null, suffix = '') => v !== null ? `${v}${suffix}` : '—';
                               const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                               return (
                                 <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                                   <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
                                   <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>—</td>
-                                  <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePct, '%')}</td>
+                                  <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePctRaw, '%')}</td>
+                                  <td style={{ ...TD }}>{fmt(adv.usagePct, '%')}</td>
                                   <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
                                   <td style={TD}>{fmt(adv.efgPct, '%')}</td>
                                   <td style={TD}>{fmt(adv.ftRate)}</td>

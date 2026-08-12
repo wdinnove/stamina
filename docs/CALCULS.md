@@ -219,7 +219,8 @@ ORtg      = points × 100 / indPoss
 Nécessitent en plus la stat collective de l'équipe sur le même match :
 
 ```
-%Usage   = indPoss / possessions_équipe × 100
+%USG     = indPoss / possessions_équipe × 100
+%USG/min = indPoss × (minutes_équipe / 5) / (minutes_joueur × possessions_équipe) × 100
 %PD      = passes_décisives / (tirs_réussis_équipe − tirs_réussis_joueur) × 100
 %TREB    = (rebonds_off + rebonds_déf du joueur) / (rebonds_équipe + rebonds_adversaire, tous types) × 100
 %DREB    = rebonds_déf_joueur / (rebonds_déf_équipe + rebonds_off_adversaire) × 100
@@ -227,6 +228,13 @@ Nécessitent en plus la stat collective de l'équipe sur le même match :
 
 Points_générés = points_marqués + passes_décisives × (points_marqués_au_tir_équipe / tirs_réussis_équipe)
 ```
+
+Les tableaux de stats avancées affichent les deux lectures de l'usage côte à côte :
+
+- **%USG** : part des possessions de l'équipe utilisées par le joueur sur l'ensemble du match — dépend donc mécaniquement de son temps de jeu (un remplaçant très sollicité sur 8 minutes reste bas).
+- **%USG/min** : la même part rapportée aux minutes réellement jouées (`minutes_équipe` = Σ des minutes de tout l'effectif sur les matchs couverts, ≈ 5 × durée du match) — répond à « quand il est sur le terrain, quelle part des possessions prend-il ? ».
+
+`%USG/min` retombe silencieusement sur `%USG` quand la correction n'est pas applicable : `minutes_équipe` absente ou implausible (hors fourchette [150, 300] par match — saisie « collectif » sans lignes individuelles, colonne MIN non reconnue à l'import…), ou joueur ayant joué moins de 5 minutes (le facteur d'amplification y produirait des usages > 100 % pour 2-3 possessions de fin de match).
 
 ---
 

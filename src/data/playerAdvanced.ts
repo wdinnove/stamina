@@ -7,7 +7,8 @@ export type PlayerAdvancedInput = Pick<MatchStat, 'fg2m' | 'fg2a' | 'fg3m' | 'fg
 export type TeamAdvancedInput = Pick<TeamMatchStat, 'fg2m' | 'fg2a' | 'fg3m' | 'fg3a' | 'fta' | 'bp' | 'ro' | 'rd' | 'opp_ro' | 'opp_rd'>;
 
 export interface PlayerAdvancedStats {
-  usagePct: number | null;    // % Usage
+  usagePctRaw: number | null; // %USG classique : indPoss / possessions équipe, sans correction du temps de jeu
+  usagePct: number | null;    // %USG/min : idem corrigé par la part de minutes jouées (voir plus bas)
   offRating: number | null;   // Offensive Rating (pts × 100 / indPoss)
   efgPct: number | null;      // eFG% = (fg2m + 1.5×fg3m) / fga
   ftRate: number | null;      // FT Rate = fta / fga
@@ -79,17 +80,24 @@ export function calcPlayerAdvanced(s: PlayerAdvancedInput, team?: TeamAdvancedIn
   const tovPct    = indPoss > 0 ? r1(s.bp / indPoss * 100)              : null;
 
   if (!team) {
-    return { usagePct: null, offRating, efgPct, ftRate, bpPerPoss, astPct: null, tovPct, trebPct: null, drebPct: null, orebPct: null, ptsProd: null };
+    return { usagePctRaw: null, usagePct: null, offRating, efgPct, ftRate, bpPerPoss, astPct: null, tovPct, trebPct: null, drebPct: null, orebPct: null, ptsProd: null };
   }
 
   const teamFga  = team.fg2a + team.fg3a;
   const teamFgm  = team.fg2m + team.fg3m;
   const teamPoss = teamFga + 0.44 * team.fta + team.bp;
 
+  // Deux lectures de l'usage, affichées côte à côte dans les tableaux de stats avancées :
+  //  • usagePctRaw (%USG) : part des possessions de l'équipe que le joueur a utilisées sur
+  //    l'ensemble du match — dépend donc mécaniquement de son temps de jeu ;
+  //  • usagePct (%USG/min) : la même part rapportée aux minutes réellement jouées (voir le
+  //    paramètre `teamMinutes` ci-dessus) — répond à « quand elle est sur le terrain, combien
+  //    de possessions prend-elle ? ». Retombe sur %USG quand la correction n'est pas applicable.
+  const usagePctRaw = teamPoss > 0 ? r1(indPoss / teamPoss * 100) : null;
   const usagePct = teamPoss > 0
     ? (teamMinutes && teamMinutes > 0 && s.min >= MIN_PLAYER_MINUTES_FOR_USAGE_CORRECTION
         ? r1((indPoss * (teamMinutes / 5)) / (s.min * teamPoss) * 100)
-        : r1(indPoss / teamPoss * 100))
+        : usagePctRaw)
     : null;
   const astPct   = (teamFgm - fgm) > 0   ? r1(s.pd / (teamFgm - fgm) * 100)                     : null;
   const trebPct  = (team.ro + team.rd + team.opp_ro + team.opp_rd) > 0
@@ -101,5 +109,5 @@ export function calcPlayerAdvanced(s: PlayerAdvancedInput, team?: TeamAdvancedIn
   const teamPtsFg = team.fg2m * 2 + team.fg3m * 3;
   const ptsProd   = teamFgm > 0 ? r1(s.pts + s.pd * teamPtsFg / teamFgm) : null;
 
-  return { usagePct, offRating, efgPct, ftRate, bpPerPoss, astPct, tovPct, trebPct, drebPct, orebPct, ptsProd };
+  return { usagePctRaw, usagePct, offRating, efgPct, ftRate, bpPerPoss, astPct, tovPct, trebPct, drebPct, orebPct, ptsProd };
 }

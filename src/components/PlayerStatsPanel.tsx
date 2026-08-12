@@ -63,9 +63,10 @@ export function PlayerStatsPanel({
           // inchangés : le facteur d'échelle s'annule au numérateur/dénominateur). La vue "advancée"
           // garde les stats brutes (recalculer ORtg/eFG%/etc. sur des stats mises à l'échelle
           // fausserait les possessions) — seuls Pts et Pts générés y sont recalculés au rendu,
-          // comme côté Performance Collective. Note : USG% n'est PAS un taux indépendant des
-          // minutes à lui seul — calcPlayerAdvancedForMatch le corrige déjà par la part de
-          // minutes jouées quand la donnée équipe le permet (voir playerAdvanced.ts).
+          // comme côté Performance Collective. Note : %USG n'est PAS un taux indépendant des
+          // minutes — c'est justement le rôle de la colonne %USG/min, que
+          // calcPlayerAdvancedForMatch corrige par la part de minutes jouées quand la donnée
+          // équipe le permet (voir playerAdvanced.ts).
           const dispRows = normalize25 ? rows.map(m => {
             const sc = m.min > 0 ? 25 / m.min : 1;
             const nr = (v: number) => Math.round(v * sc * 10) / 10;
@@ -145,7 +146,8 @@ export function PlayerStatsPanel({
               case 'date':  return mult * (a.date ?? '').localeCompare(b.date ?? '');
               case 'opp':   return mult * (a.opponent ?? '').localeCompare(b.opponent ?? '');
               case 'pts':   return mult * (a.pts - b.pts);
-              case 'usg':   return mult * ((a.adv.usagePct ?? -1) - (b.adv.usagePct ?? -1));
+              case 'usg':    return mult * ((a.adv.usagePctRaw ?? -1) - (b.adv.usagePctRaw ?? -1));
+              case 'usgmin': return mult * ((a.adv.usagePct ?? -1) - (b.adv.usagePct ?? -1));
               case 'ortg':  return mult * ((a.adv.offRating ?? -1) - (b.adv.offRating ?? -1));
               case 'efg':   return mult * ((a.adv.efgPct ?? -1) - (b.adv.efgPct ?? -1));
               case 'ftr':   return mult * ((a.adv.ftRate ?? -1) - (b.adv.ftRate ?? -1));
@@ -289,13 +291,14 @@ export function PlayerStatsPanel({
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', textAlign: 'left', width: 60, minWidth: 60, maxWidth: 60, verticalAlign: 'middle' }}>Date</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>L/E</th>
                     <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>Score</th>
-                    <th colSpan={5} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
+                    <th colSpan={6} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
                     <th colSpan={4} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Playmaking</th>
                     <th colSpan={3} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Rebonds</th>
                   </tr>
                   <tr>
                     <th onClick={() => toggleA('pts')}   style={{ ...TH, ...SEP, color: thC('pts', advSort) }}>Pts{si('pts', advSort)}</th>
-                    <th onClick={() => toggleA('usg')}   style={{ ...TH, color: thC('usg', advSort) }}>USG%{si('usg', advSort)}</th>
+                    <th onClick={() => toggleA('usg')}    title="% des possessions de l'équipe utilisées sur l'ensemble du match" style={{ ...TH, color: thC('usg', advSort) }}>%USG{si('usg', advSort)}</th>
+                    <th onClick={() => toggleA('usgmin')} title="% USG rapporté aux minutes réellement jouées" style={{ ...TH, color: thC('usgmin', advSort) }}>%USG/min{si('usgmin', advSort)}</th>
                     <th onClick={() => toggleA('ortg')}  style={{ ...TH, color: thC('ortg', advSort) }}>ORtg{si('ortg', advSort)}</th>
                     <th onClick={() => toggleA('efg')}   style={{ ...TH, color: thC('efg', advSort) }}>eFG%{si('efg', advSort)}</th>
                     <th onClick={() => toggleA('ftr')}   style={{ ...TH, color: thC('ftr', advSort) }}>FT Rate{si('ftr', advSort)}</th>
@@ -321,6 +324,7 @@ export function PlayerStatsPanel({
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{ptsDisp}</td>
+                        <td style={{ ...TD }}>{fmt(m.adv.usagePctRaw, '%')}</td>
                         <td style={{ ...TD }}>{fmt(m.adv.usagePct, '%')}</td>
                         <td style={{ ...TD, color: ortgCol(m.adv.offRating) }}>{fmt(m.adv.offRating)}</td>
                         <td style={{ ...TD }}>{fmt(m.adv.efgPct, '%')}</td>
@@ -341,6 +345,7 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 700 }}>{avgAdvPts}</td>
+                    <td style={{ ...TD }}>{fmt(avgAdvField('usagePctRaw'), '%')}</td>
                     <td style={{ ...TD }}>{fmt(avgAdvField('usagePct'), '%')}</td>
                     {(() => { const v = avgAdvField('offRating'); return <td style={{ ...TD, color: ortgCol(v) }}>{fmt(v)}</td>; })()}
                     <td style={{ ...TD }}>{fmt(avgAdvField('efgPct'), '%')}</td>

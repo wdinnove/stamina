@@ -89,6 +89,36 @@ describe('calcPlayerAdvanced — correction usage% par les minutes jouées', () 
   });
 });
 
+describe('calcPlayerAdvanced — usagePctRaw (%USG classique) vs usagePct (%USG/min)', () => {
+  it('usagePctRaw reste le calcul classique, quel que soit teamMinutes', () => {
+    const s = player({ min: 20 });
+    const t = team();
+    // 9.88 / 73.16 × 100 ≈ 13.5 — identique avec et sans correction
+    expect(calcPlayerAdvanced(s, t).usagePctRaw).toBeCloseTo(13.5, 1);
+    expect(calcPlayerAdvanced(s, t, 200).usagePctRaw).toBeCloseTo(13.5, 1);
+    expect(calcPlayerAdvancedForMatch(s, { ...t, teamMinutes: 200 }).usagePctRaw).toBeCloseTo(13.5, 1);
+  });
+
+  it('les deux colonnes diffèrent dès que la correction s\'applique', () => {
+    const corrected = calcPlayerAdvanced(player({ min: 20 }), team(), 200);
+    expect(corrected.usagePct).not.toBe(corrected.usagePctRaw);
+    expect(corrected.usagePct!).toBeGreaterThan(corrected.usagePctRaw!);
+  });
+
+  it('usagePct retombe exactement sur usagePctRaw quand la correction ne s\'applique pas', () => {
+    const noMinutes = calcPlayerAdvanced(player({ min: 20 }), team());
+    expect(noMinutes.usagePct).toBe(noMinutes.usagePctRaw);
+    const tooFewMinutes = calcPlayerAdvanced(player({ min: MIN_PLAYER_MINUTES_FOR_USAGE_CORRECTION - 1 }), team(), 200);
+    expect(tooFewMinutes.usagePct).toBe(tooFewMinutes.usagePctRaw);
+  });
+
+  it('les deux sont nulles sans stat collective', () => {
+    const adv = calcPlayerAdvanced(player(), null);
+    expect(adv.usagePctRaw).toBeNull();
+    expect(adv.usagePct).toBeNull();
+  });
+});
+
 describe('calcPlayerAdvancedForMatch', () => {
   it('applique la correction si team.teamMinutes est plausible pour un seul match', () => {
     const s = player({ min: 20 });

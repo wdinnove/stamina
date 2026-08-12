@@ -319,7 +319,7 @@ export default function PerformanceCollectivePage() {
         p, n,
         avgMin: avgStats(ss, 'min'),
         avgPts: n > 0 ? Math.round(ss.reduce((a, s) => a + s.pts, 0) / n * 10) / 10 : 0,
-        usagePct: avgA('usagePct'), offRating: avgA('offRating'),
+        usagePctRaw: avgA('usagePctRaw'), usagePct: avgA('usagePct'), offRating: avgA('offRating'),
         efgPct: avgA('efgPct'), ftRate: avgA('ftRate'), ptsProd: avgA('ptsProd'),
         astPct: avgA('astPct'), tovPct: avgA('tovPct'), bpPerPoss: avgA('bpPerPoss'),
         trebPct: avgA('trebPct'), drebPct: avgA('drebPct'), orebPct: avgA('orebPct'),
@@ -419,7 +419,8 @@ export default function PerformanceCollectivePage() {
       case 'mj':    return m * (a.n - b.n);
       case 'min':   return m * (a.avgMin - b.avgMin);
       case 'pts':   return m * (a.avgPts - b.avgPts);
-      case 'usg':   return m * ((a.usagePct ?? -1) - (b.usagePct ?? -1));
+      case 'usg':    return m * ((a.usagePctRaw ?? -1) - (b.usagePctRaw ?? -1));
+      case 'usgmin': return m * ((a.usagePct ?? -1) - (b.usagePct ?? -1));
       case 'ortg':  return m * ((a.offRating ?? -1) - (b.offRating ?? -1));
       case 'efg':   return m * ((a.efgPct ?? -1) - (b.efgPct ?? -1));
       case 'ftr':   return m * ((a.ftRate ?? -1) - (b.ftRate ?? -1));
@@ -489,6 +490,7 @@ export default function PerformanceCollectivePage() {
   const pjAdvFooter = {
     n:         colAvg1(sortedPJAdv, r => r.n),         avgMin:    colAvg1(sortedPJAdv, r => r.avgMin),
     avgPts:    colAvg1(sortedPJAdv, r => r.avgPts),    usagePct:  colAvg1(sortedPJAdv, r => r.usagePct),
+    usagePctRaw: colAvg1(sortedPJAdv, r => r.usagePctRaw),
     offRating: colAvg1(sortedPJAdv, r => r.offRating), efgPct:    colAvg1(sortedPJAdv, r => r.efgPct),
     ftRate:    colAvg1(sortedPJAdv, r => r.ftRate),    ptsProd:   colAvg1(sortedPJAdv, r => r.ptsProd),
     astPct:    colAvg1(sortedPJAdv, r => r.astPct),    tovPct:    colAvg1(sortedPJAdv, r => r.tovPct),
@@ -897,13 +899,14 @@ export default function PerformanceCollectivePage() {
                       <th rowSpan={2} style={{ ...TH, cursor: 'default', verticalAlign: 'middle' }}>#</th>
                       <th rowSpan={2} onClick={() => setS2(p => tog(p, 'mj'))} style={{ ...TH, verticalAlign: 'middle', color: thC('mj', s2) }}>MJ{si('mj', s2)}</th>
                       <th rowSpan={2} onClick={() => setS2(p => tog(p, 'min'))} style={{ ...TH, verticalAlign: 'middle', color: normalize25 ? '#F59E0B' : thC('min', s2) }}>Min{si('min', s2)}{normalize25 ? ' ⟳' : ''}</th>
-                      <th colSpan={5} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
+                      <th colSpan={6} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Impact offensif</th>
                       <th colSpan={4} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Playmaking</th>
                       <th colSpan={3} style={{ ...TH, ...SEP, borderBottom: 'none', fontSize: '0.6rem', letterSpacing: '0.08em', cursor: 'default' }}>Rebonds</th>
                     </tr>
                     <tr>
                       <th onClick={() => setS2(p => tog(p, 'pts'))}   style={{ ...TH, ...SEP, color: thC('pts', s2) }}>Pts{si('pts', s2)}</th>
-                      <th onClick={() => setS2(p => tog(p, 'usg'))}   style={{ ...TH, color: thC('usg', s2) }}>USG%{si('usg', s2)}</th>
+                      <th onClick={() => setS2(p => tog(p, 'usg'))}    title="% des possessions de l'équipe utilisées par la joueuse sur l'ensemble du match" style={{ ...TH, color: thC('usg', s2) }}>%USG{si('usg', s2)}</th>
+                      <th onClick={() => setS2(p => tog(p, 'usgmin'))} title="% USG rapporté aux minutes réellement jouées — usage quand la joueuse est sur le terrain" style={{ ...TH, color: thC('usgmin', s2) }}>%USG/min{si('usgmin', s2)}</th>
                       <th onClick={() => setS2(p => tog(p, 'ortg'))}  style={{ ...TH, color: thC('ortg', s2) }}>ORtg{si('ortg', s2)}</th>
                       <th onClick={() => setS2(p => tog(p, 'efg'))}   style={{ ...TH, color: thC('efg', s2) }}>eFG%{si('efg', s2)}</th>
                       <th onClick={() => setS2(p => tog(p, 'ftr'))}   style={{ ...TH, color: thC('ftr', s2) }}>FT Rate{si('ftr', s2)}</th>
@@ -917,13 +920,14 @@ export default function PerformanceCollectivePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
+                    {sortedPJAdv.map(({ p, n, avgMin, avgPts, usagePctRaw, usagePct, offRating, efgPct, ftRate, ptsProd, astPct, tovPct, bpPerPoss, trebPct, drebPct, orebPct }, i) => (
                       <tr key={p.id} onClick={() => navigate(`/performance-individuelle/${p.id}/statistiques`)} style={{ borderBottom: '1px solid #1E2229', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: 'pointer' }} className="hover:!bg-white/5">
                         <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></td>
                         <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                         <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
+                        <td style={{ ...TD }}>{fmt(usagePctRaw, '%')}</td>
                         <td style={{ ...TD }}>{fmt(usagePct, '%')}</td>
                         <td style={{ ...TD, color: offRating !== null ? ortgColor(offRating, statThresholds) : '#475569' }}>{fmt(offRating)}</td>
                         <td style={{ ...TD }}>{fmt(efgPct, '%')}</td>
@@ -945,6 +949,7 @@ export default function PerformanceCollectivePage() {
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{fmt(pjAdvFooter.n)}</td>
                       <td style={{ ...TD, color: '#94A3B8' }}>{fmt(pjAdvFooter.avgMin)}</td>
                       <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjAdvFooter.avgPts)}</td>
+                      <td style={{ ...TD }}>{fmt(pjAdvFooter.usagePctRaw, '%')}</td>
                       <td style={{ ...TD }}>{fmt(pjAdvFooter.usagePct, '%')}</td>
                       <td style={{ ...TD, color: pjAdvFooter.offRating !== null ? ortgColor(pjAdvFooter.offRating, statThresholds) : '#475569' }}>{fmt(pjAdvFooter.offRating)}</td>
                       <td style={{ ...TD }}>{fmt(pjAdvFooter.efgPct, '%')}</td>
