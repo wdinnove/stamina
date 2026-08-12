@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
 import { FilterField, filterControlStyle } from './FilterField';
 import { normalizeTacticalName } from '../utils/tacticalCsvParser';
+import { LAYER } from '../styles/layers';
 
 /** Dropdown adversaires à cases à cocher — même mécanique ouverture/fermeture (useRef + mousedown)
  *  que le sélecteur de matchs des onglets Comparer, mais keyé par nom d'adversaire. Champ de
@@ -47,7 +48,7 @@ function OpponentDropdown({ opponents, selected, onToggle }: {
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 200,
           backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 300,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: LAYER.dropdown,
           display: 'flex', flexDirection: 'column', maxHeight: 300,
         }}>
           {opponents.length > 5 && (

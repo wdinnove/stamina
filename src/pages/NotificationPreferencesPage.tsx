@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Bell, CheckCircle, AlertCircle } from 'lucide-react';
-import { Card, CardTitle, ChannelToggle, Breadcrumb } from '../components';
+import { Card, CardTitle, Breadcrumb } from '../components';
+import { NotificationChannelMatrix } from '../components/NotificationChannelMatrix';
 import { isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush } from '../api';
 import {
   fetchUserPreferences,
@@ -11,16 +12,7 @@ import {
   type TeamNotificationSettings,
 } from '../api/notificationSettings';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import {
-  NOTIFICATION_CATEGORIES,
-  typesInCategory,
-  categorySupportsEmail,
-} from '../../shared/notifications.js';
-
-const thStyle: React.CSSProperties = {
-  padding: '8px 10px', color: '#94A3B8', fontSize: '0.7rem', fontWeight: 600,
-  textTransform: 'uppercase', letterSpacing: '0.05em',
-};
+import { categorySupportsEmail } from '../../shared/notifications.js';
 
 /** Page « Mes notifications » : chaque utilisateur choisit ce qu'il reçoit. */
 export default function NotificationPreferencesPage() {
@@ -161,63 +153,46 @@ export default function NotificationPreferencesPage() {
         </div>
         <p style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: 16, marginTop: 0 }}>
           Les notifications dans l'app restent toujours actives : elles alimentent votre centre de
-          notifications. Vous choisissez ici ce qui vous est envoyé en plus, par push ou par email.
+          notifications, et seule votre équipe peut les couper. Vous choisissez ici ce qui vous est
+          envoyé en plus, par push ou par email.
         </p>
 
         {error && <p style={{ color: '#EF4444', fontSize: '0.8rem', marginTop: 0 }}>{error}</p>}
         {!prefs ? (
           <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                  <th style={{ ...thStyle, textAlign: 'left' }}>Catégorie</th>
-                  <th style={{ ...thStyle, textAlign: 'center' }}>Push</th>
-                  <th style={{ ...thStyle, textAlign: 'center' }}>Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {NOTIFICATION_CATEGORIES.map(cat => {
-                  const emailAllowed = categorySupportsEmail(cat.key);
-                  return (
-                    <tr key={cat.key} style={{ borderBottom: '1px solid #1A1F27' }}>
-                      <td style={{ padding: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: cat.color, flexShrink: 0 }} />
-                          <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500 }}>{cat.label}</span>
-                        </div>
-                        <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0 16px' }}>
-                          {typesInCategory(cat.key).map(t => t.label).join(' · ')}
-                        </p>
-                      </td>
-                      {(['push', 'email'] as const).map(channel => {
-                        // Un canal coupé au niveau de l'équipe n'est pas réactivable ici.
-                        const blockedByTeam = teamSettings ? !teamSettings[cat.key][channel] : false;
-                        const unsupported = channel === 'email' && !emailAllowed;
-                        return (
-                          <td key={channel} style={{ padding: '10px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center' }}>
-                              <ChannelToggle
-                                on={prefs[cat.key][channel] && !blockedByTeam}
-                                disabled={unsupported || blockedByTeam || savingKey === `${cat.key}:${channel}`}
-                                title={
-                                  unsupported ? 'Aucune notification de cette catégorie ne part par email'
-                                  : blockedByTeam ? `Désactivé pour l'équipe ${selected?.team.name ?? ''}`
-                                  : undefined
-                                }
-                                onClick={() => toggle(cat.key, channel)}
-                              />
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <NotificationChannelMatrix
+            channels={['inApp', 'push', 'email']}
+            cell={(category, channel) => {
+              // « Dans l'app » n'est pas un choix personnel : ces notifications alimentent le
+              // centre de notifications et il n'existe pas de préférence utilisateur pour les
+              // couper (pas de colonne en base). On l'affiche quand même, en lecture seule, parce
+              // que son absence donnait l'impression d'une colonne manquante — et parce que
+              // l'équipe PEUT la couper, ce que la valeur reflète.
+              const blockedByTeam = teamSettings ? !teamSettings[category][channel] : false;
+              if (channel === 'inApp') {
+                return {
+                  on: !blockedByTeam,
+                  disabled: true,
+                  reason: blockedByTeam
+                    ? `Désactivé pour l'équipe ${selected?.team.name ?? ''}`
+                    : 'Toujours actif — alimente votre centre de notifications',
+                };
+              }
+              const unsupported = channel === 'email' && !categorySupportsEmail(category);
+              return {
+                on: prefs[category][channel] && !blockedByTeam,
+                disabled: unsupported || blockedByTeam || savingKey === `${category}:${channel}`,
+                reason: unsupported ? 'Aucune notification de cette catégorie ne part par email'
+                  : blockedByTeam ? `Désactivé pour l'équipe ${selected?.team.name ?? ''}`
+                  : undefined,
+              };
+            }}
+            onToggle={(category, channel) => {
+              if (channel === 'inApp') return;   // lecture seule
+              toggle(category, channel);
+            }}
+          />
         )}
       </Card>
     </div>

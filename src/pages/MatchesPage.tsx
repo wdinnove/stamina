@@ -7,6 +7,7 @@ import { Modal, DropzoneEmptyState, MatchFormModal, EmptyState } from '../compon
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { Match } from '../data/types';
 import { notify } from '../api/notifications';
+import { LAYER } from '../styles/layers';
 
 function fmtDate(dateStr: string) {
   const d = new Date(dateStr + 'T12:00:00');
@@ -225,7 +226,7 @@ export default function MatchesPage() {
 
       {/* Confirm delete */}
       {confirmDelete && (
-        <Modal maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal maxWidth={360} overlayOpacity={0.8} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer ce match ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px' }}>
               {confirmDelete.opponent} — {confirmDelete.date}<br />

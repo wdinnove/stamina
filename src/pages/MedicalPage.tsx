@@ -12,6 +12,7 @@ import { rtpDaysLeft } from '../components/MedicalCard';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
@@ -766,7 +767,7 @@ export default function MedicalPage() {
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
-        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Clôturer l'entrée</h2>
               <button onClick={() => setCloseModal(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>

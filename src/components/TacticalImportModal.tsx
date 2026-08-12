@@ -155,7 +155,7 @@ export function TacticalImportModal({ match, hasExistingData, onClose, onSaved }
   );
 
   return (
-    <Modal maxWidth={720} overlayOpacity={0.85} zIndex={200} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
+    <Modal maxWidth={720} overlayOpacity={0.85} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #2A2F3A' }}>
         <div>
           <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Importer les statistiques tactiques</h2>

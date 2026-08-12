@@ -8,6 +8,7 @@ import { TeamSeasonProvider } from '../contexts/TeamSeasonContext';
 import { NotificationProvider } from '../contexts/NotificationContext';
 import { NotificationCenter } from '../components/NotificationCenter';
 import { CommandPalette } from '../components/CommandPalette';
+import { LAYER } from '../styles/layers';
 
 export function Layout() {
   const [collapsed,   setCollapsed]   = useState(false);
@@ -33,7 +34,7 @@ export function Layout() {
       <div className="hidden md:flex" style={{ position: 'relative' }}>
         <Sidebar collapsed={collapsed} />
         <button onClick={() => setCollapsed(!collapsed)}
-          style={{ position: 'absolute', top: '50%', right: -12, transform: 'translateY(-50%)', width: 24, height: 24, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94A3B8', zIndex: 10 }}>
+          style={{ position: 'absolute', top: '50%', right: -12, transform: 'translateY(-50%)', width: 24, height: 24, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94A3B8', zIndex: LAYER.sidebarToggle }}>
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
       </div>
@@ -50,7 +51,7 @@ export function Layout() {
         <MobileBottomBar onMenuOpen={() => setMobileOpen(v => !v)} />
       </div>
 
-      {/* Recherche : bouton flottant mobile (masqué quand le tiroir menu est ouvert, qui passe au-dessus) */}
+      {/* Recherche : bouton flottant mobile. Recouvert par le tiroir de navigation (LAYER.drawer). */}
       <button
         onClick={() => setSearchOpen(true)}
         className="flex md:hidden"
@@ -62,7 +63,7 @@ export function Layout() {
           backgroundColor: '#00E5A0', border: 'none',
           alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 4px 14px rgba(0,229,160,0.35)', cursor: 'pointer',
-          zIndex: 45,
+          zIndex: LAYER.fab,
         }}
       >
         <Search size={22} color="#0D0F14" />

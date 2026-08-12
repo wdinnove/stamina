@@ -14,6 +14,7 @@ import { fmt1 } from '../utils/format';
 import { importanceConfig, comparatorConfig } from '../data/config';
 import { DOMAIN_LABELS, indicatorByKey, buildTacticalIndicators, type CrossScope } from '../data/crossAnalysis';
 import type { Objective, ObjectiveImportance, ObjectiveComparator } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 interface ObjectivesPanelProps {
   playerId?: string;
@@ -264,7 +265,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
       )}
 
       {confirmDelete && (
-        <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
+        <Modal maxWidth={400} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
           <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cet objectif ?</h2>
           <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
             <strong style={{ color: '#F1F5F9' }}>{indicatorByKey(confirmDelete.indicatorKey, tacticalIndicators)?.label ?? orphanIndicatorLabel(confirmDelete.indicatorKey)}</strong>

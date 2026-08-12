@@ -4,6 +4,7 @@ import {
   CheckSquare, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Trophy, BarChart2, UserSearch,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
+import { LAYER } from '../styles/layers';
 
 export const navGroups = [
   {
@@ -70,7 +71,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
     <aside style={{
       width: collapsed ? 64 : 220, backgroundColor: '#161920',
       borderRight: '1px solid #2A2F3A', display: 'flex', flexDirection: 'column',
-      flexShrink: 0, transition: 'width 0.2s ease', position: 'relative', zIndex: 50,
+      flexShrink: 0, transition: 'width 0.2s ease', position: 'relative', zIndex: LAYER.sidebar,
     }}>
       {/* Logo */}
       <div style={{

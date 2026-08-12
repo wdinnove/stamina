@@ -322,7 +322,7 @@ export default function RPEPage() {
 
           {/* ── Modal sélecteur de séances ── */}
           {showSessionPicker && (
-            <Modal onClose={() => setShowSessionPicker(false)} closeOnBackdropClick maxWidth={420} maxHeight="80vh" zIndex={50} style={{ overflow: 'hidden' }}>
+            <Modal onClose={() => setShowSessionPicker(false)} closeOnBackdropClick maxWidth={420} maxHeight="80vh" style={{ overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ padding: '14px 18px', borderBottom: '1px solid #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                 <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.9rem' }}>Choisir une séance</span>

@@ -8,6 +8,7 @@ import { evalColor } from '../data';
 import { fmtDate } from '../utils/dateFormat';
 import type { MatchStat, RPEEntry, WellnessEntry, TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
+import { LAYER } from '../styles/layers';
 
 interface Props {
   /** Matchs de la saison sélectionnée pour ce joueur */
@@ -66,7 +67,7 @@ function MatchGroupDropdown({ color, matches, assign, group, otherLabel, onToggl
           <div style={{
             position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
             backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 300,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: LAYER.dropdown,
             maxHeight: 320, overflowY: 'auto',
           }}>
             {matches.length === 0 ? (

@@ -5,6 +5,7 @@ import { sanitizeHtml } from '../utils/sanitize';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull } from '../utils/playerName';
 import type { MedicalRecord, Player } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
@@ -36,7 +37,7 @@ export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCl
   ] as { label: string; value: string; color?: string }[]);
 
   return (
-    <Modal onClose={onClose} maxWidth={500} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+    <Modal onClose={onClose} maxWidth={500} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

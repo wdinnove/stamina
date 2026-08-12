@@ -7,6 +7,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, Modal, PlayerEditModal } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Team, Player, Organization, TeamRole, TeamRoleAssignment } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
@@ -470,7 +471,7 @@ function PlayersTab() {
       )}
 
       {confirmDelete && (
-        <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
+        <Modal maxWidth={400} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
           <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer ce joueur ?</h2>
           <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
             <strong style={{ color: '#F1F5F9' }}>{playerNameFull(confirmDelete)}</strong>

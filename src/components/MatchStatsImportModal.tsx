@@ -9,6 +9,7 @@ import type { BulkStatRow, CollectiveStatInput, OpponentStatInput } from '../api
 import { Modal } from './Modal';
 import { DropzoneEmptyState } from './DropzoneEmptyState';
 import { playerNameFull } from '../utils/playerName';
+import { LAYER } from '../styles/layers';
 
 // ─── Types internes ───────────────────────────────────────────────────────────
 
@@ -654,7 +655,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
   };
 
   return (
-    <Modal maxWidth={1400} overlayOpacity={0.85} zIndex={200} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
+    <Modal maxWidth={1400} overlayOpacity={0.85} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #2A2F3A' }}>

@@ -9,6 +9,7 @@ import { WIDGET_TYPE_LABELS, EmptyNote, renderTacticalWidgetContent } from './ta
 import type { WidgetLike } from './tacticalWidgetRenderer';
 import { useDateRange, PeriodFields } from './DateRangeCard';
 import { GroupPickerBox, GROUP_A_COLOR, GROUP_B_COLOR } from './FilterField';
+import { LAYER } from '../styles/layers';
 
 const selectStyle: React.CSSProperties = {
   width: '100%', padding: '7px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
@@ -261,7 +262,7 @@ export function TacticalWidgetEditorModal({ mode, teamId, initialWidget, sortOrd
   }
 
   return (
-    <Modal maxWidth={880} overlayOpacity={0.85} zIndex={210} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
+    <Modal maxWidth={880} overlayOpacity={0.85} zIndex={LAYER.modalOverModal} align="flex-start" closeOnBackdropClick style={{ flexShrink: 0 }} onClose={onClose}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #2A2F3A' }}>
         <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>
           {mode === 'edit' ? 'Modifier le bloc' : 'Ajouter un bloc'}

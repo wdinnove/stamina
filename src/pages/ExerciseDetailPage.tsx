@@ -10,6 +10,7 @@ import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, Soci
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -452,7 +453,7 @@ export default function ExerciseDetailPage() {
 
       {/* Confirmation suppression */}
       {showDelete && (
-        <Modal maxWidth={380} zIndex={110} overlayOpacity={0.8} scrollOverlay={false} style={{ padding: '24px' }} onClose={() => setShowDelete(false)}>
+        <Modal maxWidth={380} zIndex={LAYER.modalOverModal} overlayOpacity={0.8} scrollOverlay={false} style={{ padding: '24px' }} onClose={() => setShowDelete(false)}>
           <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer cet exercice ?</h3>
           <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
             <strong style={{ color: '#F1F5F9' }}>{exercise.name}</strong> sera supprimé.

@@ -87,12 +87,11 @@ export function ResponsiveTabNav({ groups, activeKey, onSelect }: ResponsiveTabN
       </div>
 
       {mobileOpen && (
-        // zIndex au-dessus de MobileBottomBar/TopBar (200) : sinon la barre du bas recouvre le bas
-        // de la modale dès que la liste de sections est assez longue pour l'atteindre. maxHeight
-        // retire aussi la place du marginTop et de la barre du bas, pour ne jamais passer dessous —
-        // le contenu défile à l'intérieur (en-tête "Sections" fixe, liste scrollable) le cas échéant.
-        <Modal onClose={() => setMobileOpen(false)} closeOnBackdropClick maxWidth={300} align="flex-start" zIndex={250}
-          style={{ marginTop: 60, maxHeight: 'calc(100vh - 140px)' }}>
+        // Le plan et les marges par rapport aux barres de navigation sont désormais gérés par
+        // `Modal` (LAYER.modal + inset mobile) — plus besoin de les régler ici. `marginTop`
+        // rapproche seulement la liste du bouton qui l'ouvre.
+        <Modal onClose={() => setMobileOpen(false)} closeOnBackdropClick maxWidth={300} align="flex-start"
+          style={{ marginTop: 60 }}>
           <div style={{ padding: '14px 14px 8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.9rem' }}>Sections</span>
             <button onClick={() => setMobileOpen(false)} style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 4 }}>

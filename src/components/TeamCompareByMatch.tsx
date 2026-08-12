@@ -7,6 +7,7 @@ import { StatDisplayToggle } from './StatDisplayToggle';
 import { fmtDate } from '../utils/dateFormat';
 import { roundedAvg } from '../utils/avg';
 import type { TeamMatchStat, MatchStat, RPEEntry, WellnessEntry } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 interface Props {
   /** Matchs de l'équipe sur la saison sélectionnée (pool sélectionnable pour les groupes A/B) */
@@ -66,7 +67,7 @@ function MatchGroupDropdown({ color, matches, assign, group, otherLabel, onToggl
           <div style={{
             position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
             backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 300,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: LAYER.dropdown,
             maxHeight: 320, overflowY: 'auto',
           }}>
             {matches.length === 0 ? (

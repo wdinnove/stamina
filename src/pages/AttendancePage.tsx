@@ -7,6 +7,7 @@ import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Player, TrainingSession, TrainingAttendance } from '../data/types';
 import { notify } from '../api/notifications';
+import { LAYER } from '../styles/layers';
 
 type AttendanceStatus = TrainingAttendance['status'];
 
@@ -531,7 +532,7 @@ export default function AttendancePage() {
         <div
           ref={popoverRef}
           style={{
-            position: 'fixed', left: activeCell.x, top: activeCell.y, zIndex: 1000,
+            position: 'fixed', left: activeCell.x, top: activeCell.y, zIndex: LAYER.dropdown,
             backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 10,
             padding: '6px', display: 'flex', gap: 4,
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
@@ -570,7 +571,7 @@ export default function AttendancePage() {
           <div
             ref={partnerPopoverRef}
             style={{
-              position: 'fixed', left: partnerPopover.x, top: partnerPopover.y, zIndex: 1000,
+              position: 'fixed', left: partnerPopover.x, top: partnerPopover.y, zIndex: LAYER.dropdown,
               backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 10,
               padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10,
               boxShadow: '0 8px 32px rgba(0,0,0,0.6)', minWidth: 200,

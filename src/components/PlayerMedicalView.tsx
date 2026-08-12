@@ -13,6 +13,7 @@ import { typeLabels, severityConfig } from './MedicalCard';
 import { playerNameFull } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { MedicalRecord, Player, PlayerStatus } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const labelStyle: React.CSSProperties = { color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 };
@@ -228,7 +229,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
 
       {/* ── CLOSE MODAL ── */}
       {closeModal && (
-        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Clôturer l'entrée</h2>
               <button onClick={() => setCloseModal(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>

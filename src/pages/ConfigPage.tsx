@@ -14,6 +14,7 @@ import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
 import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { ExerciseCategory, Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -322,7 +323,7 @@ function RosterAddModal({ teamId, seasonId, teamName, seasonLabel, rosterIds, on
   }
 
   return (
-    <Modal onClose={onClose} maxWidth={520} maxHeight="80vh" zIndex={1000} overlayOpacity={0.65} style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+    <Modal onClose={onClose} maxWidth={520} maxHeight="80vh" overlayOpacity={0.65} style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #1E2229' }}>
           <div>
             <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1rem' }}>Ajouter à l'effectif</div>
@@ -540,7 +541,7 @@ function RosterTab() {
       )}
 
       {unlinkTarget && (
-        <Modal onClose={() => setUnlinkTarget(null)} maxWidth={380} zIndex={110} overlayOpacity={0.7} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal onClose={() => setUnlinkTarget(null)} maxWidth={380} zIndex={LAYER.modalOverModal} overlayOpacity={0.7} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Retirer de l'effectif ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
               <strong style={{ color: '#F1F5F9' }}>{playerNameFull(unlinkTarget)}</strong> sera retiré de l'effectif de cette saison.

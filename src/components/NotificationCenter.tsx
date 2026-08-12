@@ -108,21 +108,25 @@ export function NotificationBell() {
 function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: string) => void }) {
   const color = notifColor(n);
   const label = typeLabel(n);
-  // Les types inconnus (historique) n'ont pas de destination : la ligne reste non cliquable.
+  // Un type absent du registre (notification antérieure à son ajout, ou type renommé) n'a pas de
+  // destination calculable. La ligne doit alors le DIRE : un clic mort silencieux se lit comme un
+  // bug de l'app, pas comme une limite de la donnée.
   const url = getNotificationType(n.type) ? urlFor(n.type, n.entity_id ?? undefined) : null;
   const clickable = url !== null;
 
   return (
     <div
       onClick={clickable ? () => onNavigate(url!) : undefined}
+      title={clickable ? undefined : "Cette notification n'a pas de page associée"}
       style={{
         display: 'flex', alignItems: 'stretch',
         borderBottom: '1px solid #1A1F27',
         backgroundColor: 'transparent',
         transition: 'background-color 0.1s',
         cursor: clickable ? 'pointer' : 'default',
+        opacity: clickable ? 1 : 0.55,
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1A1F27'; }}
+      onMouseEnter={e => { if (clickable) (e.currentTarget as HTMLDivElement).style.backgroundColor = '#1A1F27'; }}
       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent'; }}
     >
       <div style={{ display: 'flex', gap: 12, padding: '14px 18px', flex: 1, minWidth: 0 }}>
@@ -201,7 +205,6 @@ export function NotificationCenter() {
           closeOnBackdropClick
           maxWidth={460}
           maxHeight="82vh"
-          zIndex={1000}
           overlayOpacity={0.7}
           style={{ borderRadius: 14, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.8)' }}
         >

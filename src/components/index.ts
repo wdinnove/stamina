@@ -19,6 +19,7 @@ export { PlayerSelect }  from './PlayerSelect';
 export { StaminaLogo }   from './StaminaLogo';
 export { Breadcrumb }    from './Breadcrumb';
 export { RpeKpiCard, TeamRpeSub } from './RpeKpiCard';
+export { LoadingSteps }       from './LoadingSteps';
 export { PlayerLoadPanel }      from './PlayerLoadPanel';
 export { ChargeRpeComboChart }  from './ChargeRpeComboChart';
 export { TeamDisplayToggle }    from './TeamDisplayToggle';

@@ -14,7 +14,7 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar,
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
@@ -186,7 +186,7 @@ export default function PerformanceCollectivePage() {
   const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'overview';
   const setActiveTab = (slug: string) => navigate(`/performance-collective/${slug}`, { replace: true });
 
-  const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
+  const { data, loading, doneSteps, seasonStart, seasonEnd } = usePerformanceData();
   // Chargé une fois par équipe/saison, indépendamment de l'onglet actif (même pattern que
   // PerformanceIndividuellePage) — le calcul couvre tout l'effectif d'un coup.
   const { reports: archetypeReports } = useArchetypes(selected?.team.id, selected?.season.id);
@@ -660,7 +660,7 @@ export default function PerformanceCollectivePage() {
   const rankTeamAvg = roundedAvg(rankingRows.map(r => r.value).filter((v): v is number => v !== null));
 
   // ── Guards ─────────────────────────────────────────────────────────────────
-  if (teamLoading || loading) return <div className="p-4 md:p-6" style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>;
+  if (teamLoading || loading) return <LoadingSteps done={doneSteps} />;
   if (!selected) return <div className="p-4 md:p-6"><EmptyState message="Sélectionnez une équipe et une saison dans la barre du haut." size="lg" /></div>;
   if (!data || data.players.length === 0) {
     return (

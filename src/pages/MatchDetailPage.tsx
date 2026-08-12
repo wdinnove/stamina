@@ -14,6 +14,7 @@ import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, Tactic
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
+import { LAYER } from '../styles/layers';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const DAYS_FR   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -91,7 +92,7 @@ function MatchActionsMenu({
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 240,
           backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 300, padding: '4px 0',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: LAYER.dropdown, padding: '4px 0',
         }}>
           <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportStats)}>
             <Upload size={13} />{hasStats ? 'Modifier les statistiques' : 'Importer les statistiques'}
@@ -1262,7 +1263,7 @@ export default function MatchDetailPage() {
 
       {/* Confirm delete */}
       {confirmDelete && (
-        <Modal maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal maxWidth={360} overlayOpacity={0.8} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer ce match ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 4px' }}>vs {match.opponent} — {match.date}</p>
             <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '0 0 20px' }}>Les statistiques associées seront aussi supprimées.</p>
@@ -1278,7 +1279,7 @@ export default function MatchDetailPage() {
 
       {/* Confirm delete stats */}
       {confirmDeleteStats && (
-        <Modal onClose={() => setConfirmDeleteStats(false)} closeOnBackdropClick maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal onClose={() => setConfirmDeleteStats(false)} closeOnBackdropClick maxWidth={360} overlayOpacity={0.8} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer les statistiques de ce match ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px' }}>
               Les statistiques individuelles, collectives et adverses importées seront supprimées. Le match et les statistiques tactiques ne sont pas affectés.
@@ -1295,7 +1296,7 @@ export default function MatchDetailPage() {
 
       {/* Confirm delete tactical */}
       {confirmDeleteTactical && (
-        <Modal onClose={() => setConfirmDeleteTactical(false)} closeOnBackdropClick maxWidth={360} overlayOpacity={0.8} zIndex={110} scrollOverlay={false} style={{ padding: '24px' }}>
+        <Modal onClose={() => setConfirmDeleteTactical(false)} closeOnBackdropClick maxWidth={360} overlayOpacity={0.8} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
             <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Supprimer les statistiques tactiques de ce match ?</h3>
             <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px' }}>
               Tous les événements tactiques importés pour ce match seront supprimés. Les statistiques et le match ne sont pas affectés.

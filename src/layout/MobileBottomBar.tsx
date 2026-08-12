@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router';
 import { Menu, Dumbbell, Trophy, BarChart2, UserSearch } from 'lucide-react';
 import { isNavActive } from './Sidebar';
+import { LAYER } from '../styles/layers';
 
 interface MobileBottomBarProps {
   onMenuOpen: () => void;
@@ -34,7 +35,7 @@ export function MobileBottomBar({ onMenuOpen }: MobileBottomBarProps) {
       className="flex md:hidden"
       style={{
         height: 56, backgroundColor: '#161920', borderTop: '1px solid #2A2F3A',
-        alignItems: 'stretch', justifyContent: 'space-around', flexShrink: 0, zIndex: 200,
+        alignItems: 'stretch', justifyContent: 'space-around', flexShrink: 0, zIndex: LAYER.bars,
         position: 'relative',
       }}
     >

@@ -25,6 +25,7 @@ import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage, WellnessEntry } from '../data/types';
 import { notify } from '../api/notifications';
+import { LAYER } from '../styles/layers';
 
 // Noir, blanc, rouge, bleu, vert, jaune
 const TEAM_COLORS = ['#0D0F14', '#F1F5F9', '#EF4444', '#3B82F6', '#00E5A0', '#EAB308'];
@@ -221,7 +222,7 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
 
       {/* Dropdown */}
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', maxHeight: 220, overflowY: 'auto' }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: LAYER.dropdown, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', maxHeight: 220, overflowY: 'auto' }}>
           {filtered.length === 0 ? (
             <div style={{ padding: '10px 12px', color: '#475569', fontSize: '0.8rem' }}>Aucun exercice trouvé</div>
           ) : (
@@ -747,7 +748,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
       {viewExercise && (
         <div
           onClick={() => setViewExercise(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', zIndex: 1000, padding: 16 }}>
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', zIndex: LAYER.modal, padding: 16 }}>
           <style>{`
             .ex-view-desc { color:#94A3B8; font-size:0.88rem; line-height:1.6; }
             .ex-view-desc p { margin:0 0 8px; }

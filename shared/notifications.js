@@ -80,47 +80,77 @@ export function categorySupportsEmail(categoryKey) {
 /**
  * Cible du clic sur une notification. Le service worker ne sait suivre qu'une URL
  * pré-calculée : c'est cette fonction qui la produit, côté client comme côté serveur.
+ *
+ * Deux règles, apprises d'un renommage qui avait laissé cette fonction derrière :
+ *
+ * 1. **URLs canoniques uniquement** — celles déclarées dans `src/router.tsx`, jamais un ancien
+ *    chemin qui ne marche que par redirection. Les redirections fonctionnent, mais elles font
+ *    perdre l'onglet ciblé et rendent la fonction muette quand une route change.
+ *    `shared/notifications.test.ts` vérifie que chaque type pointe vers une route déclarée.
+ *
+ * 2. **Toujours viser l'onglet, pas seulement la page.** Une notification qui ramène sur l'écran
+ *    déjà affiché donne l'impression que le clic n'a rien fait — c'est le symptôme qui a mené
+ *    ici. `entityId` doit donc être placé dans le bon segment de route.
  */
 export function urlFor(type, entityId) {
   switch (type) {
     case 'player_added':
     case 'player_removed':
     case 'player_status_changed':
-      return '/roster';
+      return '/effectif';
+
+    // `entityId` = joueur concerné → onglet "joueur" du dossier médical, sur sa fiche.
     case 'medical_added':
     case 'medical_updated':
     case 'medical_resolved':
-      return entityId ? `/medical/record/${entityId}` : '/medical';
+      return entityId ? `/medical/joueur/${entityId}` : '/medical';
     case 'rtp_upcoming':
-      return '/medical';
+      return '/medical/infirmerie';
+
+    // `entityId` = joueur concerné (cf. WellnessPage) → onglet "joueur" sur sa fiche.
     case 'wellness_added':
-      return entityId ? `/wellness/new/${entityId}` : '/wellness';
+      return entityId ? `/bien-etre/joueur/${entityId}` : '/bien-etre';
+    // L'alerte porte l'id de l'ENTRÉE bien-être, pas celui du joueur : inutilisable comme
+    // paramètre de route, on reste donc sur la vue d'équipe qui met l'alerte en évidence.
     case 'wellness_alert':
+      return '/bien-etre/equipe';
     case 'wellness_digest':
     case 'wellness_weekly_reminder':
-      return '/wellness';
+      return '/bien-etre/equipe';
+
     case 'session_updated':
-      return entityId ? `/sessions/${entityId}` : '/sessions';
+      return entityId ? `/seances/${entityId}` : '/seances';
     case 'attendance_missing':
-      return '/attendance';
+      return '/presences';
+
+    // `entityId` = séance concernée → la fiche de séance porte les RPE saisis.
     case 'rpe_added':
+      return entityId ? `/seances/${entityId}` : '/rpe/equipe';
     case 'rpe_missing':
-      return entityId ? `/sessions/${entityId}` : '/rpe';
+      return entityId ? `/seances/${entityId}` : '/rpe/saisie';
+
     case 'meeting_added':
-      return entityId ? `/meetings/${entityId}` : '/meetings';
+      return entityId ? `/reunions/${entityId}` : '/reunions';
     case 'meeting_deleted':
-      return '/meetings';
+      return '/reunions';
+
     case 'action_added':
     case 'task_due_soon':
-      return '/actions';
+      return '/taches';
+
     case 'match_added':
+      return entityId ? `/matchs/${entityId}` : '/matchs';
     case 'match_stats_added':
+      return entityId ? `/matchs/${entityId}` : '/matchs';
+    // Import tactique : la donnée importée vit dans les onglets tactiques de la fiche match.
     case 'tactical_import_done':
-      return entityId ? `/matches/${entityId}` : '/matches';
+      return entityId ? `/matchs/${entityId}` : '/matchs';
+
     case 'season_changed':
-      return '/teams';
+      return '/equipes';
+
     default:
-      return '/';
+      return '/tableau-de-bord';
   }
 }
 

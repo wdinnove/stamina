@@ -10,7 +10,7 @@ import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, MiniStatCard, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
-  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel, PlayerArchetypesPanel,
+  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel, PlayerArchetypesPanel, LoadingSteps
 } from '../components';
 import { daysBetween } from '../components/MedicalCard';
 import { FilterField, filterControlStyle } from '../components/FilterField';
@@ -105,7 +105,7 @@ export default function PerformanceIndividuellePage() {
   const setActiveTab = (slug: string) => { if (id) navigate(`/performance-individuelle/${id}/${slug}`, { replace: true }); };
 
   // ── Données équipe (roster + saison courante), partagées par corrélations/médical/KPIs ──
-  const { data, loading, seasonStart, seasonEnd } = usePerformanceData();
+  const { data, loading, doneSteps, seasonStart, seasonEnd } = usePerformanceData();
   const roster = data?.players ?? [];
   const pd: PlayerCrossData | undefined = roster.find(p => p.player.id === id);
 
@@ -256,7 +256,7 @@ export default function PerformanceIndividuellePage() {
       onChange={pid => navigate(`/performance-individuelle/${pid}/${tabSlug ?? 'vue-ensemble'}`)}
     />
   );
-  if (loading) return <div className="p-4 md:p-6" style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>;
+  if (loading) return <LoadingSteps done={doneSteps} />;
   if (!roster.length) {
     return (
       <div className="p-4 md:p-6">

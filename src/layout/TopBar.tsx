@@ -6,6 +6,7 @@ import { Link, useNavigate, useLocation } from 'react-router';
 import { useTeamSeason, type TeamSeasonOption } from '../contexts/TeamSeasonContext';
 import { supabase } from '../api/client';
 import { NotificationBell } from '../components/NotificationCenter';
+import { LAYER } from '../styles/layers';
 
 interface TopBarProps { onOpenSearch: () => void; }
 
@@ -50,7 +51,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
     <header style={{
       height: 56, backgroundColor: '#161920', borderBottom: '1px solid #2A2F3A',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 16px', flexShrink: 0, position: 'relative', zIndex: 200,
+      padding: '0 16px', flexShrink: 0, position: 'relative', zIndex: LAYER.bars,
     }}>
       {/* Desktop: team selector */}
       <div ref={dropRef} className="hidden md:block" style={{ position: 'relative' }}>
@@ -81,7 +82,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
             position: 'absolute', top: 'calc(100% + 6px)', left: 0,
             backgroundColor: '#161920', border: '1px solid #2A2F3A',
             borderRadius: 8, minWidth: 260, boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-            overflow: 'hidden', zIndex: 300,
+            overflow: 'hidden', zIndex: LAYER.dropdown,
           }}>
             {Object.values(grouped).map(group => (
               <div key={group.label}>
@@ -239,13 +240,13 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
   return (
     <>
       {open && (
-        <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 40 }} />
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: LAYER.drawerOverlay }} />
       )}
       <aside
         style={{
           position: 'fixed', left: open ? 0 : '-100%', top: 0, bottom: 0, width: '100%',
           backgroundColor: '#161920', borderRight: '1px solid #2A2F3A',
-          display: 'flex', flexDirection: 'column', zIndex: 50,
+          display: 'flex', flexDirection: 'column', zIndex: LAYER.drawer,
           transition: 'left 0.25s ease',
         }}
         className="md:hidden"

@@ -12,6 +12,7 @@ import { sanitizeHtml } from '../utils/sanitize';
 import { PlayerAvatar, Modal, Badge } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Action, ActionStatus, ActionCategory, ActionPriority, Player, StaffMember } from '../data/types';
+import { LAYER } from '../styles/layers';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const _eow = new Date(TODAY);
@@ -355,7 +356,7 @@ export default function ActionsPage() {
       )}
 
       {confirmDelete && (
-        <Modal maxWidth={400} zIndex={200} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
+        <Modal maxWidth={400} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmDelete(null)}>
           <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>Supprimer cette tâche ?</h2>
           <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 6px' }}>
             <strong style={{ color: '#F1F5F9' }}>{confirmDelete.title}</strong>

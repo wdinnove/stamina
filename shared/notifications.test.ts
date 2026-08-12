@@ -32,7 +32,65 @@ describe('registre des notifications', () => {
 
   it('donne une destination à chaque type', () => {
     for (const type of NOTIFICATION_TYPES) {
-      expect(urlFor(type.key, 'abc-123'), type.key).not.toBe('/');
+      expect(urlFor(type.key, 'abc-123'), type.key).not.toBe('/tableau-de-bord');
+    }
+  });
+
+  /**
+   * Garde-fou du renommage des routes en français : `urlFor` est partagée avec le service worker
+   * et n'a pas de compilateur pour l'avertir qu'un chemin n'existe plus. Sans ce test, elle a
+   * continué à renvoyer /roster, /medical/record/:id, /actions… qui ne marchaient que par
+   * redirection — donc en perdant l'onglet ciblé.
+   *
+   * Les motifs ci-dessous sont recopiés de `src/router.tsx`. Y ajouter une entrée en même temps
+   * qu'une route.
+   */
+  const ROUTES = [
+    '/tableau-de-bord', '/equipes', '/equipes/:id', '/joueurs', '/effectif', '/taches',
+    '/rpe', '/rpe/:tab', '/rpe/:tab/:id',
+    '/bien-etre', '/bien-etre/:tab', '/bien-etre/:tab/:id',
+    '/medical', '/medical/:tab', '/medical/:tab/:id',
+    '/reunions', '/reunions/:id', '/presences', '/seances/:id', '/seances',
+    '/exercices', '/exercices/:id', '/matchs', '/matchs/:id',
+    '/performance-collective', '/performance-collective/:tab',
+    '/performance-individuelle', '/performance-individuelle/:id', '/performance-individuelle/:id/:tab',
+    '/profil', '/profil/notifications', '/configuration',
+  ];
+
+  /** Vrai si l'URL correspond à un motif de route déclaré (`:param` matche un segment). */
+  const matchesRoute = (url: string) => ROUTES.some(pattern => {
+    const p = pattern.split('/');
+    const u = url.split('/');
+    return p.length === u.length && p.every((seg, i) => seg.startsWith(':') || seg === u[i]);
+  });
+
+  it('ne pointe que vers des routes déclarées, avec et sans identifiant', () => {
+    for (const type of NOTIFICATION_TYPES) {
+      for (const entityId of ['abc-123', undefined]) {
+        const url = urlFor(type.key, entityId);
+        expect(matchesRoute(url), `${type.key} (entityId=${entityId}) → ${url}`).toBe(true);
+      }
+    }
+  });
+
+  it('cible un onglet précis et pas seulement la page, quand un identifiant est fourni', () => {
+    // Un clic qui ramène sur la page générique déjà affichée donne l'impression de ne rien faire.
+    expect(urlFor('medical_added', 'p1')).toBe('/medical/joueur/p1');
+    expect(urlFor('wellness_added', 'p1')).toBe('/bien-etre/joueur/p1');
+    expect(urlFor('rpe_added', 's1')).toBe('/seances/s1');
+    expect(urlFor('match_stats_added', 'm1')).toBe('/matchs/m1');
+    expect(urlFor('rtp_upcoming')).toBe('/medical/infirmerie');
+    expect(urlFor('wellness_alert')).toBe('/bien-etre/equipe');
+  });
+
+  it('n\'utilise aucun ancien chemin anglais', () => {
+    const legacy = ['/roster', '/medical/record', '/wellness', '/sessions', '/attendance',
+                    '/meetings', '/actions', '/matches', '/teams', '/players', '/dashboard'];
+    for (const type of NOTIFICATION_TYPES) {
+      const url = urlFor(type.key, 'abc-123');
+      for (const old of legacy) {
+        expect(url.startsWith(old + '/') || url === old, `${type.key} → ${url}`).toBe(false);
+      }
     }
   });
 
@@ -47,9 +105,9 @@ describe('registre des notifications', () => {
     expect(getNotificationCategory('categorie_inexistante')).toBeNull();
   });
 
-  it('insère l\'identifiant d\'entité dans l\'URL quand la cible le permet', () => {
-    expect(urlFor('medical_added', 'p1')).toBe('/medical/record/p1');
+  it('retombe sur la page générique sans identifiant', () => {
     expect(urlFor('medical_added', undefined)).toBe('/medical');
+    expect(urlFor('match_added', undefined)).toBe('/matchs');
   });
 
   it("n'annonce l'email que sur les catégories qui en envoient", () => {
