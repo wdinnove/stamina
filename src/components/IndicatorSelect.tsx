@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import { DOMAIN_LABELS, type IndicatorDef } from '../data/crossAnalysis';
+import { StatInfo } from './StatInfo';
 
 interface IndicatorSelectProps {
   indicators: IndicatorDef[];
@@ -42,6 +43,10 @@ export function IndicatorSelect({ indicators, value, onChange, excludeKey, style
         ))}
       </select>
       <ChevronDown size={15} style={{ position: 'absolute', right: 8, color: '#475569', pointerEvents: 'none' }} />
+      {/* Un <option> ne peut pas contenir de composant : l'explication porte donc sur l'indicateur
+          actuellement sélectionné, juste à côté du sélecteur. C'est là qu'on en a besoin — au
+          moment où on vient de choisir une stat qu'on ne connaît pas. */}
+      {selected && <StatInfo def={selected} size={14} />}
     </div>
   );
 }

@@ -567,6 +567,36 @@ Un profil est un jeu d'indicateurs pondérés ; son libellé ne doit rien promet
 
 ---
 
+## 13. Documentation des indicateurs (page /aide)
+
+Fichiers source : [`src/data/crossAnalysis.ts`](../src/data/crossAnalysis.ts) (`INDICATOR_DOCS`), [`src/data/pca.ts`](../src/data/pca.ts) (`VARIABLES`), [`src/data/faq.ts`](../src/data/faq.ts)
+
+Chaque indicateur porte sa propre documentation dans le registre :
+
+| Champ | Contenu | Règle |
+|---|---|---|
+| `explain` | ce que le chiffre **signifie**, en langage de terrain | obligatoire, vérifié par test |
+| `formula` | la formule | seulement quand elle éclaire — un total de rebonds n'en a pas besoin |
+| `sense` | `higher` / `lower` / `context` | obligatoire ; `context` pour ce qui n'est ni bon ni mauvais (minutes, rythme, RPE) |
+
+**Une seule source, trois consommateurs** : le tooltip [`StatInfo`](../src/components/StatInfo.tsx) sur les en-têtes de colonnes et le sélecteur d'indicateur, et les onglets Glossaire et Formules de la page `/aide`, qui sont **générés** depuis le registre.
+
+C'est le point qui compte : sans génération, on obtiendrait une troisième version des explications — après les tooltips et ce document — et elle divergerait au premier changement de calcul.
+
+Les indicateurs `team_*` héritent leur documentation de `VARIABLES` (pca.ts), et les `well_*` de `WELLNESS_DIMENSIONS` (utils/wellness.ts). Là encore, pas de liste parallèle.
+
+### 13.1 Garde-fous
+
+[`crossAnalysis.test.ts`](../src/data/crossAnalysis.test.ts) vérifie que **chaque** indicateur a une explication et un sens, qu'une explication ne se réduit pas à une formule, que les ratios avancés ont bien une formule, et que `%USG` et `%USG/min` ne sont pas expliqués de la même façon.
+
+Un indicateur ajouté sans explication fait donc échouer les tests : c'est ce qui force à écrire la phrase au moment où on ajoute la colonne, plutôt que « plus tard ».
+
+### 13.2 La FAQ, elle, est écrite à la main
+
+Seul contenu de l'aide qui ne se déduit pas du code. Critère d'entrée : **une question réellement posée, ou un piège de lecture identifié** — pas une documentation exhaustive. Chaque entrée de `FAQ_ENTRIES` correspond à une confusion rencontrée pendant la revue de l'app (les deux colonnes d'usage, la moyenne d'équipe non pondérée, les objectifs qui « disparaissent » au changement de saison, le push iOS qui exige la PWA installée).
+
+---
+
 ## Récapitulatif des seuils & constantes clés
 
 | Constante | Valeur | Usage |

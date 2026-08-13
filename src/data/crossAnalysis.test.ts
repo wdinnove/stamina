@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { indicatorByKey, periodValueOf, type PlayerCrossData } from './crossAnalysis';
+import { playerAttributeIndicators, teamIndicators, indicatorByKey, periodValueOf, type PlayerCrossData } from './crossAnalysis';
 import type { MatchStat } from './types';
 
 const FROM = '2026-01-01';
@@ -70,5 +70,64 @@ describe('periodValueOf — tous les indicateurs de match ont une valeur de pér
       expect(def, key).toBeDefined();
       expect(def!.periodValue, key).toBeDefined();
     }
+  });
+});
+
+describe('documentation des indicateurs', () => {
+  /**
+   * Garde-fou : un indicateur sans explication apparaît quand même dans les sélecteurs et le
+   * glossaire, sous forme d'une ligne vide. C'est ce test qui force à écrire la phrase en même
+   * temps qu'on ajoute l'indicateur.
+   */
+  it('chaque indicateur porte une explication et un sens de lecture', () => {
+    for (const def of teamIndicators()) {
+      expect(def.explain, `${def.key} — explication manquante`).toBeTruthy();
+      expect(['higher', 'lower', 'context'], `${def.key} — sens manquant`).toContain(def.sense);
+    }
+    for (const def of playerAttributeIndicators()) {
+      expect(def.explain, `${def.key} — explication manquante`).toBeTruthy();
+      expect(['higher', 'lower', 'context'], `${def.key} — sens manquant`).toContain(def.sense);
+    }
+  });
+
+  it('explique ce que le chiffre signifie, pas seulement comment il se calcule', () => {
+    // Une explication qui n'est qu'une formule ne rend pas service : la formule a son champ.
+    for (const def of playerAttributeIndicators()) {
+      expect(def.explain!.length, `${def.key} — explication trop courte`).toBeGreaterThan(25);
+    }
+  });
+
+  it('donne une formule aux ratios avancés, où elle éclaire', () => {
+    for (const key of ['adv_efgPct', 'adv_usagePct', 'adv_usagePctRaw', 'adv_tovPct', 'adv_astPct', 'adv_offRating']) {
+      expect(indicatorByKey(key)!.formula, `${key} — formule manquante`).toBeTruthy();
+    }
+  });
+
+  it('distingue %USG de %USG/min dans les explications', () => {
+    const raw = indicatorByKey('adv_usagePctRaw')!.explain!;
+    const perMin = indicatorByKey('adv_usagePct')!.explain!;
+    expect(raw).toContain('temps de jeu');       // dit qu'il en dépend
+    expect(perMin).toContain('minutes réellement jouées');
+    expect(raw).not.toBe(perMin);
+  });
+
+  it('marque comme « contexte » ce qui n\'est ni bon ni mauvais', () => {
+    for (const key of ['min', 'starter', 'homeAway', 'team_possessions', 'rpe', 'acwr', 'tsb']) {
+      expect(indicatorByKey(key)!.sense, key).toBe('context');
+    }
+  });
+
+  it('marque comme « plus bas = mieux » ce qui doit baisser', () => {
+    for (const key of ['bp', 'fpr', 'adv_tovPct', 'team_defRating', 'team_ptsAgainst', 'team_opp_efgPct']) {
+      expect(indicatorByKey(key)!.sense, key).toBe('lower');
+    }
+  });
+
+  it('n\'inverse plus fautes commises et fautes provoquées', () => {
+    // `fte` = fautes reçues, `fpr` = fautes commises (schema.sql, formulaire d'import).
+    expect(indicatorByKey('fte')!.label).toBe('Fautes provoquées');
+    expect(indicatorByKey('fpr')!.label).toBe('Fautes commises');
+    expect(indicatorByKey('fte')!.sense).toBe('higher');
+    expect(indicatorByKey('fpr')!.sense).toBe('lower');
   });
 });

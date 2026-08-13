@@ -51,6 +51,7 @@ export { TeamMedicalOverview } from './TeamMedicalOverview';
 export { StatDisplayToggle } from './StatDisplayToggle';
 export type { StatDisplayMode } from './StatDisplayToggle';
 export { IndicatorSelect }       from './IndicatorSelect';
+export { StatInfo }              from './StatInfo';
 export { SubjectSelect, TEAM_SUBJECT } from './SubjectSelect';
 export { CrossTimelineChart }    from './CrossTimelineChart';
 export { CorrelationScatterChart } from './CorrelationScatterChart';

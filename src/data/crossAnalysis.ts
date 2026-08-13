@@ -23,7 +23,7 @@ import type {
   MatchStat, MedicalRecord, Player, RPEEntry, TeamMatchStat, TrainingAttendance, WellnessEntry,
   TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption,
 } from './types';
-import { VARIABLES } from './pca';
+import { VARIABLES, type IndicatorSense } from './pca';
 import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from './playerAdvanced';
 import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEntry } from '../utils/rpe';
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
@@ -156,6 +156,16 @@ export interface IndicatorDef {
   periodValue?: (d: PlayerCrossData, from: string, to: string) => number | null;
   /** Décimales à l'affichage. Défaut 1. Les % de tir sont affichés en entier, comme dans les tableaux. */
   decimals?: number;
+  /**
+   * Une phrase en langage de terrain : ce que le chiffre DIT, pas comment il est calculé.
+   * Alimente le tooltip `<StatInfo>` et le glossaire de la page d'aide. Source unique : ne pas
+   * dupliquer ces textes dans les composants.
+   */
+  explain?: string;
+  /** Formule, quand elle éclaire (ratios, stats avancées). Inutile pour un total brut. */
+  formula?: string;
+  /** Sens de lecture — `context` pour ce qui n'est ni bon ni mauvais (titulaire, domicile…). */
+  sense?: IndicatorSense;
   /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueurs */
   teamSeries?: (d: TeamCrossData, from: string, to: string) => SeriesPoint[];
 }
@@ -388,7 +398,92 @@ export function buildTacticalIndicators(tactical: TeamTacticalCrossData | undefi
   return defs;
 }
 
-const INDICATORS: IndicatorDef[] = [
+
+/**
+ * Documentation des indicateurs — SOURCE UNIQUE des textes affichés au staff (tooltips `StatInfo`,
+ * glossaire de la page d'aide).
+ *
+ * Séparée des déclarations pour garder celles-ci lisibles, et pour que la prose vive au même
+ * endroit : c'est ce qui permet de la relire d'un bloc quand on doute d'un libellé.
+ *
+ * Règle de rédaction : `explain` dit ce que le chiffre SIGNIFIE en langage de terrain, pas comment
+ * il est calculé. La formule va dans `formula`, et seulement quand elle éclaire — un total de
+ * rebonds n'a pas besoin de formule.
+ *
+ * Les indicateurs `team_*` et `well_*` ne sont pas listés ici : ils héritent leur documentation de
+ * `VARIABLES` (pca.ts) et de `WELLNESS_DIMENSIONS` (utils/wellness.ts).
+ */
+const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense: IndicatorSense }> = {
+  // ── Contexte ──
+  starter:  { explain: 'La joueuse était-elle dans le cinq de départ. Sert de filtre de contexte, pas de mesure de performance.', sense: 'context' },
+  homeAway: { explain: 'Match à domicile ou à l\'extérieur. Utile pour croiser une performance avec le lieu.', sense: 'context' },
+  result:   { explain: 'Victoire ou défaite. Encodé 1/0 pour pouvoir être corrélé aux autres indicateurs.', sense: 'context' },
+
+  // ── Match — brutes ──
+  eval:      { explain: 'Évaluation officielle de la feuille de match : une note synthétique qui additionne les actions positives et retire les négatives.', sense: 'higher' },
+  plusMinus: { explain: "Différence de score pendant que la joueuse est sur le terrain. Dépend fortement des coéquipières présentes : à lire sur beaucoup de matchs.", formula: 'points_équipe − points_adversaire, sur son temps de jeu', sense: 'higher' },
+  min:       { explain: 'Temps de jeu. À regarder avant tout indicateur de volume : 12 points en 10 minutes et en 35 minutes ne disent pas la même chose.', sense: 'context' },
+  pts:       { explain: 'Points marqués sur le match.', sense: 'higher' },
+  fg2Pct:    { explain: 'Part des tirs à 2 points réussis.', formula: 'Σ réussis / Σ tentés sur la période (jamais la moyenne des % par match)', sense: 'higher' },
+  fg3Pct:    { explain: 'Part des tirs à 3 points réussis. Très variable d\'un match à l\'autre : à lire sur plusieurs matchs.', formula: 'Σ réussis / Σ tentés sur la période', sense: 'higher' },
+  ftPct:     { explain: 'Part des lancers francs réussis. Se travaille à l\'entraînement, peu dépendant de l\'adversaire.', formula: 'Σ réussis / Σ tentés sur la période', sense: 'higher' },
+  ro:        { explain: 'Rebonds pris après un tir manqué de son équipe : autant de secondes chances.', sense: 'higher' },
+  rd:        { explain: "Rebonds pris après un tir manqué de l'adversaire : la possession change de camp.", sense: 'higher' },
+  reb:       { explain: 'Total des rebonds, offensifs et défensifs.', sense: 'higher' },
+  pd:        { explain: 'Passes ayant directement mené à un panier.', sense: 'higher' },
+  ct:        { explain: 'Tirs adverses contrés. Mesure la protection du cercle, pas la qualité défensive globale.', sense: 'higher' },
+  intercepts:{ explain: "Ballons volés à l'adversaire. Défense active, mais un excès peut signaler des prises de risque.", sense: 'higher' },
+  bp:        { explain: 'Possessions perdues sans tir. À rapporter au rythme de jeu via %BP.', sense: 'lower' },
+  fte:       { explain: "Fautes subies : autant d'occasions de lancers francs et de fautes accumulées côté adverse.", sense: 'higher' },
+  fpr:       { explain: "Fautes sifflées contre la joueuse. Trop de fautes l'expose à sortir et envoie l'adversaire sur la ligne.", sense: 'lower' },
+
+  // ── Match — avancées ──
+  adv_offRating:   { explain: "Points produits pour 100 possessions utilisées par la joueuse. Mesure l'efficacité, pas le volume.", formula: 'points × 100 / possessions utilisées', sense: 'higher' },
+  adv_efgPct:      { explain: "Réussite au tir en tenant compte du fait qu'un 3 points vaut plus qu'un 2 points. Meilleure mesure d'adresse qu'un pourcentage brut.", formula: '(tirs réussis + 0,5 × 3 pts réussis) / tirs tentés × 100', sense: 'higher' },
+  adv_ftRate:      { explain: "Lancers francs obtenus pour chaque tir tenté. Mesure l'agressivité vers le cercle.", formula: 'lancers tentés / tirs tentés', sense: 'higher' },
+  adv_usagePctRaw: { explain: "Part des possessions de l'équipe que la joueuse a utilisées. Dépend mécaniquement de son temps de jeu : une remplaçante très sollicitée sur 8 minutes reste basse.", formula: 'possessions utilisées / possessions équipe × 100', sense: 'context' },
+  adv_usagePct:    { explain: "La même part, mais rapportée aux minutes réellement jouées : « quand elle est sur le terrain, combien de possessions prend-elle ? ». C'est cette colonne qui répond à la question du volume de jeu, pas %USG.", formula: 'possessions × (minutes équipe / 5) / (minutes joueuse × possessions équipe) × 100', sense: 'context' },
+  adv_astPct:      { explain: "Part des paniers de l'équipe que la joueuse a créés par une passe, hors ses propres paniers.", formula: 'passes décisives / (paniers équipe − ses paniers) × 100', sense: 'higher' },
+  adv_tovPct:      { explain: 'Part de ses possessions terminées par une perte de balle. Plus juste que le total brut, qui grandit avec le volume de jeu.', formula: 'ballons perdus / possessions utilisées × 100', sense: 'lower' },
+  adv_trebPct:     { explain: 'Part des rebonds disponibles pendant son temps de jeu qu\'elle a captés.', sense: 'higher' },
+  adv_orebPct:     { explain: 'Part des rebonds offensifs disponibles qu\'elle a captés. Indépendant du nombre de tirs manqués, contrairement au total de RO.', sense: 'higher' },
+  adv_drebPct:     { explain: 'Part des rebonds défensifs disponibles qu\'elle a captés.', sense: 'higher' },
+  adv_ptsProd:     { explain: 'Points marqués plus ceux créés par ses passes décisives. Donne le crédit de la création, pas seulement de la finition.', formula: 'points + passes × (points au tir équipe / paniers équipe)', sense: 'higher' },
+
+  // ── Match — équipe (les autres héritent de VARIABLES) ──
+  team_homeAway:    { explain: 'Match à domicile ou à l\'extérieur.', sense: 'context' },
+  team_result:      { explain: 'Victoire ou défaite, encodé 1/0 pour la corrélation.', sense: 'context' },
+  team_scorediff:   { explain: 'Écart final. Positif = victoire.', formula: 'points marqués − points encaissés', sense: 'higher' },
+  team_ptsFor:      { explain: 'Points marqués par l\'équipe sur le match.', sense: 'higher' },
+  team_ptsAgainst:  { explain: 'Points encaissés sur le match.', sense: 'lower' },
+  team_possessions: { explain: "Nombre de possessions jouées : mesure le RYTHME, ni bon ni mauvais. Sert à comparer attaque et défense indépendamment du tempo (ORtg, DRtg).", sense: 'context' },
+
+  // ── Charge ──
+  loadUa: { explain: "Charge d'une séance selon la méthode de Foster : l'effort ressenti multiplié par la durée. En unités arbitraires (UA), l'unité standard de la méthode.", formula: 'RPE (0-10) × durée réelle en minutes', sense: 'context' },
+  rpe:    { explain: "Effort ressenti déclaré par la joueuse après la séance, de 0 à 10. Subjectif par construction — c'est ce qui en fait un bon indicateur de vécu.", sense: 'context' },
+  acwr:   { explain: "Charge des 7 derniers jours comparée à celle des 28 derniers. Autour de 1, la charge est habituelle ; nettement au-dessus, elle a augmenté vite — c'est ce que la littérature associe à un risque accru de blessure.", formula: 'charge aiguë (7 j) / charge chronique (28 j)', sense: 'context' },
+  tsb:    { explain: "Fraîcheur : écart entre la forme construite sur le long terme et la fatigue accumulée récemment. Positif = frais, très négatif = surmené.", formula: 'CTL (forme, 42 j) − ATL (fatigue, 7 j)', sense: 'context' },
+
+  // ── Bien-être ──
+  well_score: { explain: "Moyenne des 6 axes de bien-être, tous redressés dans le sens « plus haut = mieux ». Un seul chiffre pour repérer une joueuse à surveiller.", formula: '((11 − fatigue) + humeur + (11 − stress) + motivation + sommeil + (11 − douleurs)) / 6', sense: 'higher' },
+
+  // ── Assiduité ──
+  presence: { explain: 'Part des séances où la joueuse était présente, sur les 28 derniers jours. Une joueuse en retard compte comme présente.', formula: 'présences / séances attendues × 100', sense: 'higher' },
+};
+
+/** Attache sa documentation à un indicateur, sans écraser celle qu'il porte déjà. */
+function withDocs(def: IndicatorDef): IndicatorDef {
+  const doc = INDICATOR_DOCS[def.key];
+  if (!doc) return def;
+  return {
+    ...def,
+    explain: def.explain ?? doc.explain,
+    formula: def.formula ?? doc.formula,
+    sense:   def.sense   ?? doc.sense,
+  };
+}
+
+const RAW_INDICATORS: IndicatorDef[] = [
   // ── Match — Contexte (catégoriel, encodé en 0/1 pour être corrélable) ──
   {
     ...playerMatchStat('starter', 'Titulaire', 'Titulaire', '#60A5FA', '', m => m.starter ? 1 : 0, 'Match — Contexte'),
@@ -484,6 +579,8 @@ const INDICATORS: IndicatorDef[] = [
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.possessions),
   },
+  // Les indicateurs d'équipe héritent leur documentation de `VARIABLES` (pca.ts) : une seule
+  // source pour les facteurs de victoire, le biplot, le classement, les objectifs et le glossaire.
   ...VARIABLES.map((v, i): IndicatorDef => ({
     key: `team_${v.key}`,
     label: v.longLabel,
@@ -492,6 +589,8 @@ const INDICATORS: IndicatorDef[] = [
     unit: v.key.includes('Pct') ? '%' : '',
     color: TEAM_COLORS[i % TEAM_COLORS.length],
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
+    explain: v.explain,
+    sense: v.sense,
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, v.get),
   })),
   // ── Charge ──
@@ -535,6 +634,12 @@ const INDICATORS: IndicatorDef[] = [
     domain: 'wellness', unit: '/10', color: dim.color,
     chart: 'line', yDomain: [0, 10], anchor: { window: 3, agg: 'mean' }, weeklyAgg: 'mean',
     valueColor: wellnessScoreColor,
+    // Documentation dérivée de WELLNESS_DIMENSIONS, seule source du sens de chaque axe.
+    explain: dim.inverted
+      ? `Saisi de 1 à 10 dans le sens « ${dim.desc} », puis REDRESSÉ pour l'affichage : ici, 10 = au mieux. Sans ce redressement, les axes inversés annuleraient les autres dans une moyenne.`
+      : `Saisi de 1 à 10 dans le sens « ${dim.desc} ». 10 = au mieux.`,
+    formula: dim.inverted ? 'valeur_affichée = 11 − valeur_saisie' : undefined,
+    sense: 'higher',
     playerSeries: (d, f, t) => wellnessSeries(d, f, t, w => {
       const raw = Number(w[dim.key]);
       return dim.inverted ? 11 - raw : raw;
@@ -552,6 +657,9 @@ const INDICATORS: IndicatorDef[] = [
     playerSeries: presenceSeries,
   },
 ];
+
+const INDICATORS: IndicatorDef[] = RAW_INDICATORS.map(withDocs);
+
 
 /**
  * Valeur d'un indicateur sur une période, pour UN joueur — point d'entrée unique du classement

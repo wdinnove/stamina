@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
-import { ChevronDown, Check, X, ArrowLeft, Settings, Search, User } from 'lucide-react';
+import { ChevronDown, Check, X, ArrowLeft, Settings, Search, User, HelpCircle } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { navGroups, isNavActive } from './Sidebar';
 import { Link, useNavigate, useLocation } from 'react-router';
@@ -169,6 +169,16 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
       {/* Desktop right: notifications + configuration + avatar */}
       <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <NotificationBell />
+        <button onClick={() => navigate('/aide')} title="Aide — à quoi correspond chaque chiffre"
+          style={{
+            width: 34, height: 34, borderRadius: '50%',
+            backgroundColor: location.pathname.startsWith('/aide') ? 'rgba(0,229,160,0.08)' : '#1E2229',
+            border: `1px solid ${location.pathname.startsWith('/aide') ? '#00E5A0' : '#2A2F3A'}`,
+            color: location.pathname.startsWith('/aide') ? '#00E5A0' : '#94A3B8',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          <HelpCircle size={16} />
+        </button>
         {(isSuperadmin || canConfigureTeam) && (
           <button onClick={() => navigate('/configuration')} title="Configuration"
             style={{
@@ -311,6 +321,10 @@ export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () =>
             </div>
           ))}
           <div style={{ height: 1, margin: '4px 8px', backgroundColor: '#2A2F3A' }} />
+          <Link to="/aide" onClick={onClose} style={navLinkStyle(location.pathname.startsWith('/aide'))}>
+            <HelpCircle size={18} style={{ flexShrink: 0 }} />
+            Aide
+          </Link>
           <Link to="/profil" onClick={onClose} style={navLinkStyle(location.pathname.startsWith('/profil'))}>
             <User size={18} style={{ flexShrink: 0 }} />
             Mon profil

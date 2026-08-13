@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { BarChart2 } from 'lucide-react';
 import { Card, CardTitle, EmptyState } from '../components';
 import { evalColor, ortgColor, shotPct } from '../data';
+import { indicatorByKey } from '../data/crossAnalysis';
+import { StatInfo } from './StatInfo';
 import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
@@ -22,6 +24,12 @@ interface PlayerStatsPanelProps {
   /** Plage de dates affichée (from/to) — mêmes filtres que les autres onglets de la page. */
   from:               string;
   to:                 string;
+}
+
+/** En-tête de colonne documenté : le texte vient du registre, jamais du composant. */
+function StatInfoFor({ k }: { k: string }) {
+  const def = indicatorByKey(k);
+  return def ? <StatInfo def={def} /> : null;
 }
 
 export function PlayerStatsPanel({
@@ -301,18 +309,18 @@ export function PlayerStatsPanel({
                   </tr>
                   <tr>
                     <th onClick={() => toggleA('pts')}   style={{ ...TH, ...SEP, color: thC('pts', advSort) }}>Pts{si('pts', advSort)}</th>
-                    <th onClick={() => toggleA('usg')}    title="% des possessions de l'équipe utilisées sur l'ensemble du match" style={{ ...TH, color: thC('usg', advSort) }}>%USG{si('usg', advSort)}</th>
-                    <th onClick={() => toggleA('usgmin')} title="% USG rapporté aux minutes réellement jouées" style={{ ...TH, color: thC('usgmin', advSort) }}>%USG/min{si('usgmin', advSort)}</th>
-                    <th onClick={() => toggleA('ortg')}  style={{ ...TH, color: thC('ortg', advSort) }}>ORtg{si('ortg', advSort)}</th>
-                    <th onClick={() => toggleA('efg')}   style={{ ...TH, color: thC('efg', advSort) }}>eFG%{si('efg', advSort)}</th>
-                    <th onClick={() => toggleA('ftr')}   style={{ ...TH, color: thC('ftr', advSort) }}>FT Rate{si('ftr', advSort)}</th>
-                    <th onClick={() => toggleA('pprod')} style={{ ...TH, ...SEP, color: thC('pprod', advSort) }}>Pts générés{si('pprod', advSort)}</th>
-                    <th onClick={() => toggleA('ast')}   style={{ ...TH, color: thC('ast', advSort) }}>%PD{si('ast', advSort)}</th>
-                    <th onClick={() => toggleA('tov')}   style={{ ...TH, color: thC('tov', advSort) }}>%BP{si('tov', advSort)}</th>
+                    <th onClick={() => toggleA('usg')}    style={{ ...TH, color: thC('usg', advSort) }}>%USG{si('usg', advSort)}<StatInfoFor k="adv_usagePctRaw" /></th>
+                    <th onClick={() => toggleA('usgmin')} style={{ ...TH, color: thC('usgmin', advSort) }}>%USG/min{si('usgmin', advSort)}<StatInfoFor k="adv_usagePct" /></th>
+                    <th onClick={() => toggleA('ortg')}  style={{ ...TH, color: thC('ortg', advSort) }}>ORtg{si('ortg', advSort)}<StatInfoFor k="adv_offRating" /></th>
+                    <th onClick={() => toggleA('efg')}   style={{ ...TH, color: thC('efg', advSort) }}>eFG%{si('efg', advSort)}<StatInfoFor k="adv_efgPct" /></th>
+                    <th onClick={() => toggleA('ftr')}   style={{ ...TH, color: thC('ftr', advSort) }}>FT Rate{si('ftr', advSort)}<StatInfoFor k="adv_ftRate" /></th>
+                    <th onClick={() => toggleA('pprod')} style={{ ...TH, ...SEP, color: thC('pprod', advSort) }}>Pts générés{si('pprod', advSort)}<StatInfoFor k="adv_ptsProd" /></th>
+                    <th onClick={() => toggleA('ast')}   style={{ ...TH, color: thC('ast', advSort) }}>%PD{si('ast', advSort)}<StatInfoFor k="adv_astPct" /></th>
+                    <th onClick={() => toggleA('tov')}   style={{ ...TH, color: thC('tov', advSort) }}>%BP{si('tov', advSort)}<StatInfoFor k="adv_tovPct" /></th>
                     <th onClick={() => toggleA('bppos')} style={{ ...TH, color: thC('bppos', advSort) }}>BP/poss{si('bppos', advSort)}</th>
-                    <th onClick={() => toggleA('treb')}  style={{ ...TH, ...SEP, color: thC('treb', advSort) }}>%TREB{si('treb', advSort)}</th>
-                    <th onClick={() => toggleA('dreb')}  style={{ ...TH, color: thC('dreb', advSort) }}>%DREB{si('dreb', advSort)}</th>
-                    <th onClick={() => toggleA('oreb')}  style={{ ...TH, color: thC('oreb', advSort) }}>%OREB{si('oreb', advSort)}</th>
+                    <th onClick={() => toggleA('treb')}  style={{ ...TH, ...SEP, color: thC('treb', advSort) }}>%TREB{si('treb', advSort)}<StatInfoFor k="adv_trebPct" /></th>
+                    <th onClick={() => toggleA('dreb')}  style={{ ...TH, color: thC('dreb', advSort) }}>%DREB{si('dreb', advSort)}<StatInfoFor k="adv_drebPct" /></th>
+                    <th onClick={() => toggleA('oreb')}  style={{ ...TH, color: thC('oreb', advSort) }}>%OREB{si('oreb', advSort)}<StatInfoFor k="adv_orebPct" /></th>
                   </tr>
                 </thead>
                 <tbody>

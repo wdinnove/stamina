@@ -97,6 +97,8 @@ export const router = createBrowserRouter([
           { path: 'seances/:id',    lazy: () => import('./pages/TrainingSessionDetailPage').then(m => ({ Component: m.default })) },
           { path: 'exercices',       lazy: () => import('./pages/ExercisesPage').then(m => ({ Component: m.default })) },
           { path: 'exercices/:id',   lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'aide',            lazy: () => import('./pages/HelpPage').then(m => ({ Component: m.default })) },
+          { path: 'aide/:section',   lazy: () => import('./pages/HelpPage').then(m => ({ Component: m.default })) },
           { path: 'profil',          lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },
           // Une section par URL, comme /configuration/:scope/:section. `/profil/notifications`
           // existait déjà comme page autonome : l'URL est conservée, elle sélectionne l'onglet.
