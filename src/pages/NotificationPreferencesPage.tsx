@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Bell, CheckCircle, AlertCircle } from 'lucide-react';
-import { Card, CardTitle, Breadcrumb } from '../components';
+import { Card, CardTitle } from '../components';
 import { NotificationChannelMatrix } from '../components/NotificationChannelMatrix';
 import { isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush } from '../api';
 import {
@@ -14,8 +14,11 @@ import {
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { categorySupportsEmail } from '../../shared/notifications.js';
 
-/** Page « Mes notifications » : chaque utilisateur choisit ce qu'il reçoit. */
-export default function NotificationPreferencesPage() {
+/**
+ * Section « Notifications » du profil : chaque utilisateur choisit ce qu'il reçoit.
+ * Le titre et le fil d'Ariane sont portés par la coquille `/profil` (ProfilePage).
+ */
+export function NotificationPreferencesSection() {
   const { selected } = useTeamSeason();
   const teamId = selected?.team.id;
 
@@ -86,10 +89,7 @@ export default function NotificationPreferencesPage() {
   }
 
   return (
-    <div className="p-4 md:p-6">
-      <Breadcrumb items={[{ label: 'Mon profil', path: '/profil' }]} />
-      <h1 style={{ color: '#F1F5F9', margin: '8px 0 20px' }}>Mes notifications</h1>
-
+    <div>
       <Card style={{ padding: '20px 24px', borderRadius: 10, marginBottom: 20 }}>
         <div style={{ borderBottom: '1px solid #2A2F3A', marginBottom: 18, paddingBottom: 14 }}>
           <CardTitle icon={<Bell size={14} color="#00E5A0" />}>Push sur cet appareil</CardTitle>

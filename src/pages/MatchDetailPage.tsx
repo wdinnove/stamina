@@ -9,6 +9,7 @@ import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalEventsApi } from '../api/tacticalEvents';
 import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted } from '../components';
+import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
@@ -128,8 +129,42 @@ function MatchActionsMenu({
   );
 }
 
+/**
+ * Onglets de la fiche match, groupés — même sous-menu latéral que Configuration et les deux pages
+ * Performance. Ils étaient auparavant dans une barre à défilement horizontal, seule page de l'app
+ * à ne pas utiliser `ResponsiveTabNav` : les libellés courts (« Box », « Tactique brutes »)
+ * n'existaient que pour tenir dans cette barre, et le groupement était invisible.
+ *
+ * Chaque onglet a son slug d'URL : `/matchs/:id/:tab`. Sans ça, impossible de partager un lien
+ * vers l'analyse tactique d'un match — et les notifications ne pouvaient pas viser un onglet.
+ */
+interface MatchTab { key: string; slug: string; label: string }
+
+const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
+  { label: 'Statistiques', tabs: [
+    { key: 'boxscore',     slug: 'boxscore',   label: 'Boxscore' },
+    { key: 'advanced',     slug: 'avancees',   label: 'Statistiques avancées' },
+    { key: 'four_factors', slug: '4-factors',  label: 'Four Factors' },
+  ]},
+  { label: 'Comparaisons', tabs: [
+    { key: 'comp_players', slug: 'joueurs',    label: 'Joueurs' },
+    { key: 'comp_teams',   slug: 'equipes',    label: 'Équipes' },
+    { key: 'comp_matches', slug: 'saison',     label: 'Saison' },
+  ]},
+  { label: 'Tactique', tabs: [
+    { key: 'tactical_brutes',    slug: 'tactique',        label: 'Statistiques brutes' },
+    { key: 'tactical_dashboard', slug: 'tableau-de-bord', label: 'Tableau de bord' },
+  ]},
+];
+
+const MATCH_TABS = MATCH_TAB_GROUPS.flatMap(g => g.tabs);
+const DEFAULT_MATCH_TAB = MATCH_TABS[0];
+
+const tabBySlug = (slug: string | undefined) => MATCH_TABS.find(t => t.slug === slug);
+const slugByKey = (key: string) => MATCH_TABS.find(t => t.key === key)?.slug ?? DEFAULT_MATCH_TAB.slug;
+
 export default function MatchDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id, tab: tabSlug } = useParams<{ id: string; tab?: string }>();
   const navigate = useNavigate();
   const { selected, canEditTeamData } = useTeamSeason();
 
@@ -164,7 +199,10 @@ export default function MatchDetailPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [oppSortCol, setOppSortCol] = useState<string | null>(null);
   const [oppSortDir, setOppSortDir] = useState<'asc' | 'desc'>('desc');
-  const [activeTab, setActiveTab] = useState('boxscore');
+  // L'onglet actif est porté par l'URL, plus par un état local : une fiche match est partageable
+  // onglet compris, et un lien de notification peut viser directement la vue tactique.
+  const activeTab = (tabBySlug(tabSlug) ?? DEFAULT_MATCH_TAB).key;
+  const setActiveTab = (key: string) => navigate(`/matchs/${id}/${slugByKey(key)}`, { replace: true });
 
   const [playerA, setPlayerA] = useState('');
   const [playerB, setPlayerB] = useState('');
@@ -514,32 +552,20 @@ export default function MatchDetailPage() {
         </div>
       </div>
 
-      {/* Stats section */}
-      {/* Tab bar */}
-      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #2A2F3A' }}>
-          <style>{`.tabs-scroll::-webkit-scrollbar{display:none}`}</style>
-          <div className="tabs-scroll" style={{ flex: 1, minWidth: 0, display: 'flex', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-            {([
-              { id: 'boxscore',      label: 'Boxscore',        short: 'Box'       },
-              { id: 'advanced',      label: 'Statistiques avancées',  short: 'Avancées'  },
-              { id: 'four_factors',  label: 'Four Factors',    short: '4 Factors' },
-              { id: 'comp_players',  label: 'Compar. joueurs', short: 'Joueurs'   },
-              { id: 'comp_teams',    label: 'Compar. équipes', short: 'Équipes'   },
-              { id: 'comp_matches',  label: 'Compar. saison',  short: 'Saison'    },
-              { id: 'tactical_brutes',    label: 'Statistiques tactiques brutes', short: 'Tactique brutes'   },
-              { id: 'tactical_dashboard', label: 'Tableau de bord tactique',      short: 'Tableau de bord'   },
-            ] as const).map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className="px-3 sm:px-[18px] py-2.5 sm:py-3"
-                style={{ background: 'none', border: 'none', borderBottom: `2px solid ${activeTab === tab.id ? '#00E5A0' : 'transparent'}`, cursor: 'pointer', fontSize: '0.78rem', fontWeight: activeTab === tab.id ? 700 : 400, color: activeTab === tab.id ? '#F1F5F9' : '#475569', whiteSpace: 'nowrap', marginBottom: -1, transition: 'color 0.15s' }}>
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.short}</span>
-              </button>
-            ))}
-          </div>
+      {/* Sous-menu latéral + contenu — même disposition que Configuration et Performance */}
+      <div className="flex flex-col lg:flex-row" style={{ gap: 20 }}>
+        <div style={{ marginBottom: 4 }}>
+          <ResponsiveTabNav
+            groups={MATCH_TAB_GROUPS.map(g => ({
+              label: g.label,
+              tabs: g.tabs.map(t => ({ key: t.key, slug: t.slug, label: t.label })),
+            }))}
+            activeKey={activeTab}
+            onSelect={setActiveTab}
+          />
         </div>
 
+        <div style={{ width: '100%', minWidth: 0, flex: 1, backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 12, overflow: 'hidden' }}>
         {/* Tab content */}
         <div className="p-3 sm:p-5">
 
@@ -1246,6 +1272,7 @@ export default function MatchDetailPage() {
             )
           )}
 
+        </div>
         </div>
       </div>
 

@@ -97,14 +97,19 @@ export const router = createBrowserRouter([
           { path: 'seances/:id',    lazy: () => import('./pages/TrainingSessionDetailPage').then(m => ({ Component: m.default })) },
           { path: 'exercices',       lazy: () => import('./pages/ExercisesPage').then(m => ({ Component: m.default })) },
           { path: 'exercices/:id',   lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
-          { path: 'profil',         lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },
-          { path: 'profil/notifications', lazy: () => import('./pages/NotificationPreferencesPage').then(m => ({ Component: m.default })) },
+          { path: 'profil',          lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },
+          // Une section par URL, comme /configuration/:scope/:section. `/profil/notifications`
+          // existait déjà comme page autonome : l'URL est conservée, elle sélectionne l'onglet.
+          { path: 'profil/:section', lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },
           { path: 'notifications/test', lazy: () => import('./pages/PushNotificationTestPage').then(m => ({ Component: m.default })) },
           { path: 'configuration',                  lazy: () => import('./pages/ConfigurationPage').then(m => ({ Component: m.default })) },
           { path: 'configuration/:scope',           lazy: () => import('./pages/ConfigurationPage').then(m => ({ Component: m.default })) },
           { path: 'configuration/:scope/:section',  lazy: () => import('./pages/ConfigurationPage').then(m => ({ Component: m.default })) },
           { path: 'matchs',        lazy: () => import('./pages/MatchesPage').then(m => ({ Component: m.default })) },
-          { path: 'matchs/:id',   lazy: () => import('./pages/MatchDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'matchs/:id',       lazy: () => import('./pages/MatchDetailPage').then(m => ({ Component: m.default })) },
+          // Onglet dans l'URL : une fiche match est partageable onglet compris, et une
+          // notification d'import tactique peut viser directement la vue concernée.
+          { path: 'matchs/:id/:tab',  lazy: () => import('./pages/MatchDetailPage').then(m => ({ Component: m.default })) },
           { path: 'performance-collective',            lazy: () => import('./pages/PerformanceCollectivePage').then(m => ({ Component: m.default })) },
           { path: 'performance-collective/:tab',       lazy: () => import('./pages/PerformanceCollectivePage').then(m => ({ Component: m.default })) },
           { path: 'performance-individuelle',          lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },

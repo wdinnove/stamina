@@ -23,6 +23,32 @@ export function zoneColor(pct: number, hib: boolean): string {
   return ok ? '#6EE7B7' : '#FCA5A5';
 }
 
+/** Neutre : la valeur perdante, ou une ligne sans gagnant identifiable. */
+const NEUTRAL_VALUE_COLOR = '#94A3B8';
+/** Barre du côté perdant — même gris que l'adversaire du bloc 4 Factors. */
+const NEUTRAL_BAR_COLOR = '#475569';
+
+/**
+ * Quel côté gagne la ligne, pour colorer sa valeur (mode tableau) ou sa barre (mode graphique).
+ *
+ * On colore le côté GAGNANT avec sa couleur de filtre (A ou B), l'autre reste neutre — plutôt que
+ * l'ancien dégradé vert/rouge de `zoneColor`, qui exprimait un progrès vs régression et n'avait
+ * rien à voir avec les couleurs qui identifient les deux groupes partout ailleurs dans l'app.
+ * Le lecteur repère ainsi d'un coup d'œil quel groupe mène, sans relire la légende.
+ *
+ * `null` quand il n'y a pas de gagnant : valeur manquante, égalité, écart négligeable (< 3 %,
+ * même seuil que la flèche d'évolution) ou ligne de contexte (`muted`).
+ */
+export function winningSide(
+  period: number | null, season: number | null, higherIsBetter: boolean, muted: boolean,
+): 'a' | 'b' | null {
+  if (muted || period === null || season === null || period === season) return null;
+  const pct = deltaPct(period, season);
+  if (pct !== null && Math.abs(pct) < 3) return null;
+  const periodWins = higherIsBetter ? period > season : period < season;
+  return periodWins ? 'a' : 'b';
+}
+
 export interface MetricRowProps {
   label: string;
   period: number | null;
@@ -40,9 +66,11 @@ const COL = { period: 56, arrow: 22, season: 56, evo: 18 } as const;
 export function MetricRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false }: MetricRowProps) {
   const pct = deltaPct(period, season);
   const significant = !muted && pct !== null && Math.abs(pct) >= 3;
-  const periodColor = muted
-    ? '#475569'
-    : significant ? zoneColor(pct!, higherIsBetter) : '#94A3B8';
+  // Le chiffre du côté gagnant porte SA couleur de filtre, l'autre reste neutre.
+  const winner = winningSide(period, season, higherIsBetter, muted);
+  const periodColor = muted ? '#475569' : winner === 'a' ? GROUP_A_COLOR : NEUTRAL_VALUE_COLOR;
+  const seasonColor = muted ? '#334155' : winner === 'b' ? GROUP_B_COLOR : '#E2E8F0';
+  // La flèche garde le sens « progrès / régression » : c'est une autre information que « qui gagne ».
   const evoColor = significant ? zoneColor(pct!, higherIsBetter) : pct !== null && !muted ? '#334155' : 'transparent';
 
   // % et " UA" s'affichent dans le chiffre, les autres unités vont dans le label
@@ -71,7 +99,7 @@ export function MetricRow({ label, period, season, unit = '', higherIsBetter = t
       </span>
 
       {/* Valeur saison — largeur fixe, alignée à gauche, blanche */}
-      <span style={{ width: COL.season, flexShrink: 0, textAlign: 'left', fontSize: muted ? '0.78rem' : '0.88rem', fontWeight: 600, color: muted ? '#334155' : '#E2E8F0', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+      <span style={{ width: COL.season, flexShrink: 0, textAlign: 'left', fontSize: muted ? '0.78rem' : '0.88rem', fontWeight: winner === 'b' ? 700 : 600, color: seasonColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
         {seasonStr}
       </span>
 
@@ -98,14 +126,20 @@ function BarTrack({ pct, color, value, empty }: { pct: number; color: string; va
 
 /** Variante graphique de MetricRow : deux barres horizontales fines (une par groupe), longueur
  * relative au plus grand des deux valeurs de la ligne — même signature de props que MetricRow pour
- * pouvoir se substituer à l'identique dans les blocs. */
-export function MetricBarRow({ label, period, season, unit = '', dec = 1, sign = false, muted = false }: MetricRowProps) {
+ * pouvoir se substituer à l'identique dans les blocs.
+ *
+ * Seule la barre du côté GAGNANT porte sa couleur de filtre, l'autre reste neutre : c'est la même
+ * convention que le mode tableau, et elle reprend le principe du bloc 4 Factors où une seule barre
+ * est colorée. Colorer les deux (comportement précédent) identifiait les groupes mais ne disait
+ * rien du résultat de la ligne. */
+export function MetricBarRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false }: MetricRowProps) {
   const unitInNumber = unit === '%' || unit === ' UA';
   const unitSuffix = unitInNumber ? unit : '';
   const unitLabel = unit && !unitInNumber ? unit.trim() : '';
   const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmt(period, dec)}${unitSuffix}` : '—';
   const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmt(season, dec)}${unitSuffix}` : '—';
 
+  const winner = winningSide(period, season, higherIsBetter, muted);
   const maxAbs = Math.max(Math.abs(period ?? 0), Math.abs(season ?? 0)) || 1;
   const pPct = period !== null ? (period === 0 ? 0 : Math.max(Math.abs(period) / maxAbs * 100, 3)) : 0;
   const sPct = season !== null ? (season === 0 ? 0 : Math.max(Math.abs(season) / maxAbs * 100, 3)) : 0;
@@ -116,8 +150,8 @@ export function MetricBarRow({ label, period, season, unit = '', dec = 1, sign =
         {label}{unitLabel && <span style={{ color: '#334155', fontSize: '0.6rem', marginLeft: 3 }}>{unitLabel}</span>}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <BarTrack pct={pPct} color={GROUP_A_COLOR} value={periodStr} empty={period === null} />
-        <BarTrack pct={sPct} color={GROUP_B_COLOR} value={seasonStr} empty={season === null} />
+        <BarTrack pct={pPct} color={winner === 'a' ? GROUP_A_COLOR : NEUTRAL_BAR_COLOR} value={periodStr} empty={period === null} />
+        <BarTrack pct={sPct} color={winner === 'b' ? GROUP_B_COLOR : NEUTRAL_BAR_COLOR} value={seasonStr} empty={season === null} />
       </div>
     </div>
   );

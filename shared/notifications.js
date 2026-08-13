@@ -142,9 +142,10 @@ export function urlFor(type, entityId) {
       return entityId ? `/matchs/${entityId}` : '/matchs';
     case 'match_stats_added':
       return entityId ? `/matchs/${entityId}` : '/matchs';
-    // Import tactique : la donnée importée vit dans les onglets tactiques de la fiche match.
+    // Import tactique : viser l'onglet tactique de la fiche match, pas son boxscore — c'est la
+    // donnée que la notification annonce. Slug défini dans MatchDetailPage (MATCH_TAB_GROUPS).
     case 'tactical_import_done':
-      return entityId ? `/matchs/${entityId}` : '/matchs';
+      return entityId ? `/matchs/${entityId}/tactique` : '/matchs';
 
     case 'season_changed':
       return '/equipes';

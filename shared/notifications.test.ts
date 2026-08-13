@@ -51,7 +51,7 @@ describe('registre des notifications', () => {
     '/bien-etre', '/bien-etre/:tab', '/bien-etre/:tab/:id',
     '/medical', '/medical/:tab', '/medical/:tab/:id',
     '/reunions', '/reunions/:id', '/presences', '/seances/:id', '/seances',
-    '/exercices', '/exercices/:id', '/matchs', '/matchs/:id',
+    '/exercices', '/exercices/:id', '/matchs', '/matchs/:id', '/matchs/:id/:tab',
     '/performance-collective', '/performance-collective/:tab',
     '/performance-individuelle', '/performance-individuelle/:id', '/performance-individuelle/:id/:tab',
     '/profil', '/profil/notifications', '/configuration',
@@ -79,6 +79,7 @@ describe('registre des notifications', () => {
     expect(urlFor('wellness_added', 'p1')).toBe('/bien-etre/joueur/p1');
     expect(urlFor('rpe_added', 's1')).toBe('/seances/s1');
     expect(urlFor('match_stats_added', 'm1')).toBe('/matchs/m1');
+    expect(urlFor('tactical_import_done', 'm1')).toBe('/matchs/m1/tactique');
     expect(urlFor('rtp_upcoming')).toBe('/medical/infirmerie');
     expect(urlFor('wellness_alert')).toBe('/bien-etre/equipe');
   });
