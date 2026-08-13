@@ -163,7 +163,6 @@ const MATCH_TABS = MATCH_TAB_GROUPS.flatMap(g => g.tabs);
 const DEFAULT_MATCH_TAB = MATCH_TABS[0];
 
 const tabBySlug = (slug: string | undefined) => MATCH_TABS.find(t => t.slug === slug);
-const slugByKey = (key: string) => MATCH_TABS.find(t => t.key === key)?.slug ?? DEFAULT_MATCH_TAB.slug;
 
 export default function MatchDetailPage() {
   const { id, tab: tabSlug } = useParams<{ id: string; tab?: string }>();
@@ -204,7 +203,9 @@ export default function MatchDetailPage() {
   // L'onglet actif est porté par l'URL, plus par un état local : une fiche match est partageable
   // onglet compris, et un lien de notification peut viser directement la vue tactique.
   const activeTab = (tabBySlug(tabSlug) ?? DEFAULT_MATCH_TAB).key;
-  const setActiveTab = (key: string) => navigate(`/matchs/${id}/${slugByKey(key)}`, { replace: true });
+  // `ResponsiveTabNav` remonte le slug de l'onglet cliqué, pas sa clé — même contrat que sur les
+  // deux pages Performance.
+  const setActiveTab = (slug: string) => navigate(`/matchs/${id}/${slug}`, { replace: true });
 
   const [playerA, setPlayerA] = useState('');
   const [playerB, setPlayerB] = useState('');
