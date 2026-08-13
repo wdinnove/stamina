@@ -1,6 +1,7 @@
 import { X, Pencil, Check, Bandage, Stethoscope, Pill } from 'lucide-react';
 import { Modal } from './Modal';
-import { severityConfig, typeLabels, daysBetween, isNoStopInjury } from './MedicalCard';
+import { severityConfig, typeLabels } from './MedicalCard';
+import { daysBetween, isNoStopInjury } from '../utils/medical';
 import { sanitizeHtml } from '../utils/sanitize';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull } from '../utils/playerName';

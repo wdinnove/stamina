@@ -481,8 +481,13 @@ const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense:
   adv_offRating:   { explain: "Points produits pour 100 possessions utilisées par la joueuse. Mesure l'efficacité, pas le volume.", formula: 'points × 100 / possessions utilisées', sense: 'higher' },
   adv_efgPct:      { explain: "Réussite au tir en tenant compte du fait qu'un 3 points vaut plus qu'un 2 points. Meilleure mesure d'adresse qu'un pourcentage brut.", formula: '(tirs réussis + 0,5 × 3 pts réussis) / tirs tentés × 100', sense: 'higher' },
   adv_ftRate:      { explain: "Lancers francs obtenus pour chaque tir tenté. Mesure l'agressivité vers le cercle.", formula: 'lancers tentés / tirs tentés', sense: 'higher' },
-  adv_usagePctRaw: { explain: "Part des possessions de l'équipe que la joueuse a utilisées. Dépend mécaniquement de son temps de jeu : une remplaçante très sollicitée sur 8 minutes reste basse.", formula: 'possessions utilisées / possessions équipe × 100', sense: 'context' },
-  adv_usagePct:    { explain: "La même part, mais rapportée aux minutes réellement jouées : « quand elle est sur le terrain, combien de possessions prend-elle ? ». C'est cette colonne qui répond à la question du volume de jeu, pas %USG.", formula: 'possessions × (minutes équipe / 5) / (minutes joueuse × possessions équipe) × 100', sense: 'context' },
+  // ⚠️ Le dénominateur nommé ici « actions terminées par l'effectif » n'est PAS la colonne
+  // « Possessions » affichée par ailleurs : celle-ci retire les rebonds offensifs (mesure de rythme),
+  // celui-là non. C'est ce qui fait que la somme des %USG de l'effectif vaut exactement 100 % — avec
+  // l'autre comptage elle dépasserait 100. Les deux formules sont justes ; c'est le nom commun de
+  // « possessions » qui rendait le %USG non réconciliable à la main. Cf. docs/CALCULS.md § 4.
+  adv_usagePctRaw: { explain: "Part des actions offensives de l'équipe que la joueuse a conclues. Dépend mécaniquement de son temps de jeu : une remplaçante très sollicitée sur 8 minutes reste basse.", formula: 'actions terminées par la joueuse / actions terminées par l\'effectif × 100 — « action terminée » = tir tenté + ballon perdu + 0,44 × lancer tenté, sans retirer les rebonds offensifs (contrairement à la colonne Possessions, qui mesure le rythme)', sense: 'context' },
+  adv_usagePct:    { explain: "La même part, mais rapportée aux minutes réellement jouées : « quand elle est sur le terrain, combien d'actions conclut-elle ? ». C'est cette colonne qui répond à la question du volume de jeu, pas %USG.", formula: 'actions de la joueuse × (minutes équipe / 5) / (minutes joueuse × actions de l\'effectif) × 100', sense: 'context' },
   adv_astPct:      { explain: "Part des paniers de l'équipe que la joueuse a créés par une passe, hors ses propres paniers.", formula: 'passes décisives / (paniers équipe − ses paniers) × 100', sense: 'higher' },
   adv_tovPct:      { explain: 'Part de ses possessions terminées par une perte de balle. Plus juste que le total brut, qui grandit avec le volume de jeu.', formula: 'ballons perdus / possessions utilisées × 100', sense: 'lower' },
   adv_trebPct:     { explain: 'Part des rebonds disponibles pendant son temps de jeu qu\'elle a captés.', sense: 'higher' },
@@ -496,7 +501,7 @@ const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense:
   team_scorediff:   { explain: 'Écart final. Positif = victoire.', formula: 'points marqués − points encaissés', sense: 'higher' },
   team_ptsFor:      { explain: 'Points marqués par l\'équipe sur le match.', sense: 'higher' },
   team_ptsAgainst:  { explain: 'Points encaissés sur le match.', sense: 'lower' },
-  team_possessions: { explain: "Nombre de possessions jouées : mesure le RYTHME, ni bon ni mauvais. Sert à comparer attaque et défense indépendamment du tempo (ORtg, DRtg).", sense: 'context' },
+  team_possessions: { explain: "Nombre de possessions jouées : mesure le RYTHME, ni bon ni mauvais. Sert à comparer attaque et défense indépendamment du tempo (ORtg, DRtg). À ne pas confondre avec le dénominateur du %USG, qui ne retire pas les rebonds offensifs.", formula: 'tirs tentés − rebonds offensifs + ballons perdus + 0,44 × lancers tentés', sense: 'context' },
 
   // ── Charge ──
   loadUa: { explain: "Charge d'une séance selon la méthode de Foster : l'effort ressenti multiplié par la durée. En unités arbitraires (UA), l'unité standard de la méthode.", formula: 'RPE (0-10) × durée réelle en minutes', sense: 'context' },
@@ -1100,6 +1105,10 @@ export function injuryEpisodes(medical: MedicalRecord[], from: string, to: strin
   return medical
     .filter(m => m.type === 'injury')
     .map(m => {
+      // Même règle de fin d'épisode que `injuryDays` (utils/medical) : la date de clôture réelle
+      // quand elle existe, sinon le retour prévu. Les deux étaient d'accord ici et en désaccord dans
+      // les compteurs de jours, qui ignoraient `resolvedDate` — ce qui faisait afficher une bande de
+      // 7 jours sur le graphique à côté d'un KPI de 25 jours pour la même blessure.
       const end = m.resolvedDate ?? m.rtpDate ?? to;
       return { from: m.date, to: end < to ? end : to, label: m.location || m.description || 'Blessure' };
     })

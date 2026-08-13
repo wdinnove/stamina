@@ -3,7 +3,7 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { StatusBadge } from './StatusBadge';
 import { Badge } from './Badge';
 import { statusConfig } from '../data/config';
-import { isNoStopInjury } from './MedicalCard';
+import { isNoStopInjury } from '../utils/medical';
 import { playerNameFull } from '../utils/playerName';
 import type { MedicalRecord, Player } from '../data/types';
 

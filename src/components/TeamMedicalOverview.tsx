@@ -12,7 +12,8 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { MedicalRecordFormModal } from './MedicalRecordFormModal';
 import { playerStatusColor, playerStatusLabel } from './PlayerHero';
-import { rtpDaysLeft, severityConfig, typeLabels } from './MedicalCard';
+import { severityConfig, typeLabels } from './MedicalCard';
+import { rtpDaysLeft, injuryDays, sumInjuryDays } from '../utils/medical';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -33,12 +34,6 @@ interface TeamMedicalOverviewProps {
   onUpdated?: () => void;
   /** Bouton "Nouvelle entrée" — masqué sur Performance collective (consultation seule), visible sur la page Médicale */
   showAddButton?: boolean;
-}
-
-function daysBetween(from: string, to: string): number {
-  const start = new Date(from + 'T00:00:00');
-  const end   = new Date(to   + 'T00:00:00');
-  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
 }
 
 /**
@@ -81,10 +76,9 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
     .sort((a, b) => b.date.localeCompare(a.date));
   const playerById = (id: string) => players.find(p => p.id === id);
 
-  const injuryDays = (r: MedicalRecord): number => r.rtpDate ? daysBetween(r.date, r.rtpDate) : 0;
 
   const seasonCount   = teamSeasonInjuries.length;
-  const seasonDays    = teamSeasonInjuries.reduce((s, r) => s + injuryDays(r), 0);
+  const seasonDaysTotal = sumInjuryDays(teamSeasonInjuries);
   const seasonPlayers = new Set(teamSeasonInjuries.map(r => r.playerId)).size;
   const limitedPlayers = players.filter(p => p.status === 'limited').length;
 
@@ -210,10 +204,13 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
           sub={`${seasonPlayers} joueurs touchés`}
         />
         <RpeKpiCard
-          accent={seasonDays > 0 ? '#3B82F6' : '#00E5A0'}
+          accent={seasonDaysTotal.days > 0 ? '#3B82F6' : '#00E5A0'}
           label="Jours blessés"
-          value={seasonDays > 0 ? `${seasonDays}j` : '—'}
-          sub="cumulés saison"
+          value={seasonDaysTotal.days > 0 ? `${seasonDaysTotal.days}j` : '—'}
+          // Blessures sans date de fin connue : signalées plutôt que comptées pour 0.
+          sub={seasonDaysTotal.undated > 0
+            ? `cumulés saison · ${seasonDaysTotal.undated} sans date de fin`
+            : 'cumulés saison'}
         />
       </div>
 

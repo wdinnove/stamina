@@ -6,7 +6,15 @@ import type { TeamMatchStat, MatchStat, Player } from './types';
 
 export interface PCAPoint { x: number; y: number; win: boolean; label: string }
 export interface PCAVector { x: number; y: number; label: string }
-export interface PCAResult { points: PCAPoint[]; vectors: PCAVector[]; varPct: [number, number] }
+export interface PCAResult {
+  points: PCAPoint[];
+  vectors: PCAVector[];
+  varPct: [number, number];
+  /** Matchs réellement entrés dans l'analyse (stats collectives complètes). */
+  matchesUsed: number;
+  /** Matchs écartés faute de stats collectives complètes — à afficher, pas à taire. */
+  matchesDropped: number;
+}
 /**
  * Un lien corrélé, avec sa significativité statistique. `MIN_MATCHES` (4) suffit à calculer un `r`
  * mais pas à le croire : sur 4 observations, même r = 0,80 n'est pas significatif. Sans cette
@@ -209,14 +217,41 @@ export function computePlayerImpact(players: Player[], allStats: MatchStat[]): P
     .sort((a, b) => b.corr - a.corr);
 }
 
-export function computeMatchPCA(teamStats: TeamMatchStat[]): PCAResult | null {
-  const rows = teamStats.filter(m => VARIABLES.some(v => v.get(m) !== null));
-  if (rows.length < MIN_MATCHES) return null;
+/** Part minimale de matchs sur laquelle une variable doit être renseignée pour entrer dans la PCA. */
+const PCA_MIN_COVERAGE = 0.8;
 
-  const vars = VARIABLES.filter(v => hasVariance(rows.map(m => v.get(m) ?? 0)));
+/**
+ * PCA des stats collectives, sur données COMPLÈTES uniquement.
+ *
+ * L'ancien filtre admettait un match dès qu'*au moins une* variable était renseignée
+ * (`VARIABLES.some`), puis substituait un zéro à chaque valeur manquante (`v.get(m) ?? 0`). Un match
+ * dont seul le score était saisi entrait donc avec un vecteur quasi nul. Sur une matrice
+ * centrée-réduite, ces lignes deviennent des points extrêmes qui captent une grande part de la
+ * variance : les deux axes finissaient par séparer « match documenté » de « match non documenté »
+ * plutôt que deux styles de jeu, et le pourcentage de variance expliquée gonflait sans rien
+ * expliquer.
+ *
+ * On choisit donc d'abord les variables suffisamment couvertes, puis on ne garde que les matchs
+ * complets sur celles-là. Aucun zéro n'est fabriqué. `matchesDropped` permet de dire au staff
+ * combien de matchs sont sortis, au lieu de réduire l'échantillon en silence.
+ */
+export function computeMatchPCA(teamStats: TeamMatchStat[]): PCAResult | null {
+  if (teamStats.length < MIN_MATCHES) return null;
+
+  // Variables renseignées sur au moins 80 % des matchs : une colonne rarement saisie ferait sinon
+  // sortir des matchs entiers de l'analyse à elle seule.
+  const covered = VARIABLES.filter(v =>
+    teamStats.filter(m => v.get(m) !== null).length >= teamStats.length * PCA_MIN_COVERAGE);
+  if (covered.length < 2) return null;
+
+  const rows = teamStats.filter(m => covered.every(v => v.get(m) !== null));
+  if (rows.length < MIN_MATCHES) return null;
+  const matchesDropped = teamStats.length - rows.length;
+
+  const vars = covered.filter(v => hasVariance(rows.map(m => v.get(m) as number)));
   if (vars.length < 2) return null;
 
-  const matrix = rows.map(m => vars.map(v => v.get(m) ?? 0));
+  const matrix = rows.map(m => vars.map(v => v.get(m) as number));
 
   try {
     const pca = new PCA(matrix, { center: true, scale: true, ignoreZeroVariance: true });
@@ -236,6 +271,8 @@ export function computeMatchPCA(teamStats: TeamMatchStat[]): PCAResult | null {
       })),
       vectors: rawVectors.map(v => ({ x: v.x * scale, y: v.y * scale, label: v.label })),
       varPct: [Math.round(pc1 * 1000) / 10, Math.round(pc2 * 1000) / 10],
+      matchesUsed: rows.length,
+      matchesDropped,
     };
   } catch {
     return null;

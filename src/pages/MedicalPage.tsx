@@ -7,7 +7,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
 import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalOverview, InjuryRecordCard, MedicalRecordDetailModal, MedicalRecordFormModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
 import type { PlayerMedicalViewHandle } from '../components';
-import { rtpDaysLeft } from '../components/MedicalCard';
+import { rtpDaysLeft, sumInjuryDays } from '../utils/medical';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { MedicalRecord, Player } from '../data/types';
@@ -140,28 +140,20 @@ export default function MedicalPage() {
   const selectedPlayer     = teamPlayers.find(p => p.id === selectedPlayerId);
   const playerById         = (id: string) => teamPlayers.find(p => p.id === id);
 
-  const daysBetween = (from: string, to: string): number => {
-    const start = new Date(from + 'T00:00:00');
-    const end   = new Date(to   + 'T00:00:00');
-    return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
-  };
-
-  // Actif : jours prévus jusqu'au RTP
-  const injuryDaysActive = (r: MedicalRecord): number =>
-    r.rtpDate ? daysBetween(r.date, r.rtpDate) : 0;
-
-  // Saison : toujours rtpDate (valeur absolue planifiée, indépendante de la clôture)
-  const injuryDaysSeason = (r: MedicalRecord): number =>
-    r.rtpDate ? daysBetween(r.date, r.rtpDate) : 0;
+  // `injuryDaysActive` et `injuryDaysSeason` avaient des commentaires distincts pour un corps
+  // identique : la distinction annoncée n'existait pas. Elle vit maintenant dans `injuryDays`
+  // (utils/medical) — jours constatés pour une blessure clôturée, prévus pour une active — et une
+  // seule fonction suffit. `undated` compte les blessures sans date de fin connue, qui étaient
+  // silencieusement comptées pour 0 jour.
 
   // Stats — actif
   const activeCount    = teamInjuries.length;
-  const activeDays     = teamInjuries.reduce((s, r) => s + injuryDaysActive(r), 0);
+  const activeDaysTotal = sumInjuryDays(teamInjuries);
   const activePlayers  = new Set(teamInjuries.map(r => r.playerId)).size;
 
   // Stats — saison
   const seasonCount    = teamSeasonInjuries.length;
-  const seasonDays     = teamSeasonInjuries.reduce((s, r) => s + injuryDaysSeason(r), 0);
+  const seasonDaysTotal = sumInjuryDays(teamSeasonInjuries);
   const seasonPlayers  = new Set(teamSeasonInjuries.map(r => r.playerId)).size;
 
   // Stats — joueur sélectionné (onglet Historique joueur)
@@ -169,7 +161,7 @@ export default function MedicalPage() {
     (!selected?.season.startDate || r.date >= selected.season.startDate) &&
     (!selected?.season.endDate   || r.date <= selected.season.endDate)
   );
-  const playerSeasonDays  = playerSeasonInjuries.reduce((s, r) => s + injuryDaysSeason(r), 0);
+  const playerSeasonDays  = sumInjuryDays(playerSeasonInjuries).days;
 
   const openForm = () => {
     setEditingRecord(null);
@@ -372,10 +364,14 @@ export default function MedicalPage() {
                 sub={`${seasonPlayers} joueurs touchés`}
               />
               <RpeKpiCard
-                accent={seasonDays > 0 ? '#3B82F6' : '#00E5A0'}
+                accent={seasonDaysTotal.days > 0 ? '#3B82F6' : '#00E5A0'}
                 label="Jours blessés"
-                value={seasonDays > 0 ? `${seasonDays}j` : '—'}
-                sub="cumulés saison"
+                value={seasonDaysTotal.days > 0 ? `${seasonDaysTotal.days}j` : '—'}
+                // Les blessures sans date de fin connue sont hors du total : le dire plutôt que de
+                // laisser croire que le cumul les couvre.
+                sub={seasonDaysTotal.undated > 0
+                  ? `cumulés saison · ${seasonDaysTotal.undated} sans date de fin`
+                  : 'cumulés saison'}
               />
             </div>
 

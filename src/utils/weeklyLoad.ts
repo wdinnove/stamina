@@ -36,7 +36,21 @@ import { mean, roundedAvg } from './avg';
 import { teamAverage, type TeamAverage } from './teamAverage';
 
 export interface WeeklyLoadRow { date: string; playerId: string; rpe: number; actualDuration?: number; plannedDuration: number }
-export interface WeeklyLoadBucket { week: string; load: number; players: number; avgRpe: number | null }
+export interface WeeklyLoadBucket {
+  week: string;
+  load: number;
+  players: number;
+  /**
+   * ⚠️ Moyenne À PLAT des RPE de la semaine, toutes joueuses et toutes séances confondues —
+   * contrairement à `load`, qui est bien ramené à l'effectif distinct.
+   *
+   * Valable uniquement sur un périmètre MONO-JOUEUSE (les deux appelants actuels le sont :
+   * `PlayerLoadPanel` et `PerformanceIndividuellePage`). Sur un périmètre d'équipe couvrant
+   * plusieurs séances, ce chiffre pondérerait le RPE par l'assiduité : utiliser `teamAvgRpe`
+   * (utils/rpe), comme le fait la vue « Semaine » d'équipe dans `useTeamRpeHistory`.
+   */
+  avgRpe: number | null;
+}
 
 /**
  * Regroupe des lignes de charge par semaine calendaire réelle (lundi = clé), charge totale

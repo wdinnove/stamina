@@ -108,62 +108,81 @@ export function buildDimensionTable(
   expectedOptions: string[] = [],
   groups: RowGroupDef[] = [],
 ): DimensionTable {
+  // Tout est indexé par libellé NORMALISÉ (accents, casse, espaces), jamais par libellé brut.
+  // Les valeurs d'événements sont stockées telles qu'elles arrivent du CSV : deux exports écrivant
+  // « Panier » et « panier » produisaient deux lignes distinctes ici, alors que l'attribut de
+  // rentabilité correspondant (`buildTacticalIndicators`, crossAnalysis.ts) normalise et n'en voit
+  // qu'une. Le rapport tactique et l'indicateur qui porte le même nom donnaient donc deux
+  // rentabilités différentes — l'une pouvait être verte et l'autre rouge.
   const counts = new Map<string, number>();
   const sums = new Map<string, number>();
   const sumCounts = new Map<string, number>();
+  /** normalisé -> libellé affiché : celui du catalogue s'il existe, sinon le premier observé. */
+  const display = new Map<string, string>();
 
-  for (const label of expectedOptions) counts.set(label, 0);
+  for (const label of expectedOptions) {
+    const key = normalizeTacticalName(label);
+    counts.set(key, 0);
+    display.set(key, label); // le catalogue configuré est la référence d'affichage
+  }
 
   for (const event of events) {
     if (event.categoryId !== categoryId) continue;
     const value = event.values.find(v => v.dimensionId === dimension.id);
     if (!value) continue;
-    counts.set(value.label, (counts.get(value.label) ?? 0) + 1);
+    const key = normalizeTacticalName(value.label);
+    if (!display.has(key)) display.set(key, value.label);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
     const v = valueByEvent.get(event.id);
     if (v !== undefined) {
-      sums.set(value.label, (sums.get(value.label) ?? 0) + v);
-      sumCounts.set(value.label, (sumCounts.get(value.label) ?? 0) + 1);
+      sums.set(key, (sums.get(key) ?? 0) + v);
+      sumCounts.set(key, (sumCounts.get(key) ?? 0) + 1);
     }
   }
 
-  const groupedAwayLabels = new Set<string>();
+  const groupedAwayKeys = new Set<string>();
   for (const group of groups) {
     if (group.options.length < 2) continue; // un groupe d'une seule option n'a aucun effet
     let mergedCount = 0, mergedSum = 0, mergedSumCount = 0, anyPresent = false;
     for (const opt of group.options) {
-      if (counts.has(opt)) anyPresent = true;
-      mergedCount += counts.get(opt) ?? 0;
-      mergedSum += sums.get(opt) ?? 0;
-      mergedSumCount += sumCounts.get(opt) ?? 0;
-      counts.delete(opt); sums.delete(opt); sumCounts.delete(opt);
-      groupedAwayLabels.add(opt);
+      const key = normalizeTacticalName(opt);
+      if (counts.has(key)) anyPresent = true;
+      mergedCount += counts.get(key) ?? 0;
+      mergedSum += sums.get(key) ?? 0;
+      mergedSumCount += sumCounts.get(key) ?? 0;
+      counts.delete(key); sums.delete(key); sumCounts.delete(key);
+      groupedAwayKeys.add(key);
     }
     if (!anyPresent) continue;
     const mergedLabel = group.label?.trim() || group.options.join(' + ');
-    counts.set(mergedLabel, mergedCount);
-    sums.set(mergedLabel, mergedSum);
-    sumCounts.set(mergedLabel, mergedSumCount);
+    const mergedKey = normalizeTacticalName(mergedLabel);
+    counts.set(mergedKey, mergedCount);
+    sums.set(mergedKey, mergedSum);
+    sumCounts.set(mergedKey, mergedSumCount);
+    display.set(mergedKey, mergedLabel);
   }
 
   const totalActions = [...counts.values()].reduce((a, b) => a + b, 0);
-  const makeRow = (label: string): DimensionOptionRow => {
-    const actions = counts.get(label) ?? 0;
-    const sc = sumCounts.get(label) ?? 0;
+  const makeRow = (key: string): DimensionOptionRow => {
+    const actions = counts.get(key) ?? 0;
+    const sc = sumCounts.get(key) ?? 0;
     return {
-      label,
+      label: display.get(key) ?? key,
       actions,
       sharePct: totalActions > 0 ? actions / totalActions : 0,
-      valeur: sc > 0 ? sums.get(label)! : null,
-      rentabilite: sc > 0 ? sums.get(label)! / sc : null,
+      valeur: sc > 0 ? sums.get(key)! : null,
+      rentabilite: sc > 0 ? sums.get(key)! / sc : null,
     };
   };
 
-  const remainingExpected = expectedOptions.filter(label => !groupedAwayLabels.has(label));
+  const remainingExpected = expectedOptions
+    .map(normalizeTacticalName)
+    .filter(key => !groupedAwayKeys.has(key));
   const expectedSet = new Set(remainingExpected);
-  const extraLabels = [...counts.keys()]
-    .filter(label => !expectedSet.has(label))
+  const extraKeys = [...counts.keys()]
+    .filter(key => !expectedSet.has(key))
     .sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0));
-  const rows = [...remainingExpected.map(makeRow), ...extraLabels.map(makeRow)];
+  const rows = [...remainingExpected.map(makeRow), ...extraKeys.map(makeRow)];
 
   const totalSum = [...sums.values()].reduce((a, b) => a + b, 0);
   const totalSumCount = [...sumCounts.values()].reduce((a, b) => a + b, 0);
@@ -225,10 +244,13 @@ export function buildCustomTableRows(events: TacticalEvent[], dimensions: Tactic
       if (!dim) continue;
       labels.push(ref.option);
       const valueByEvent = valueByEventFor(ref.categoryId);
+      // Comparaison sur le libellé normalisé, comme `buildDimensionTable` : sinon une ligne
+      // personnalisée visant « Panier » raterait les événements écrits « panier ».
+      const refKey = normalizeTacticalName(ref.option);
       for (const event of events) {
         if (event.categoryId !== ref.categoryId) continue;
         const value = event.values.find(v => v.dimensionId === dim.id);
-        if (!value || value.label !== ref.option) continue;
+        if (!value || normalizeTacticalName(value.label) !== refKey) continue;
         actions++;
         const v = valueByEvent.get(event.id);
         if (v !== undefined) { sum += v; sumCount++; }
@@ -396,16 +418,23 @@ export function buildCrossMatrix(
   const cellSumCounts = new Map<string, number>();
   const xTotals = new Map<string, number>();
   const yTotals = new Map<string, number>();
+  // Même indexation normalisée que `buildDimensionTable`, sinon deux variantes de casse ouvriraient
+  // deux lignes (ou deux colonnes) pour la même option, chacune avec la moitié des actions.
+  const display = new Map<string, string>();
 
   for (const event of events) {
     if (event.categoryId !== categoryId) continue;
     const vx = event.values.find(v => v.dimensionId === dimensionX.id);
     const vy = event.values.find(v => v.dimensionId === dimensionY.id);
     if (!vx || !vy) continue;
-    const key = `${vx.label}::${vy.label}`;
+    const kx = normalizeTacticalName(vx.label);
+    const ky = normalizeTacticalName(vy.label);
+    if (!display.has(kx)) display.set(kx, vx.label);
+    if (!display.has(ky)) display.set(ky, vy.label);
+    const key = `${kx}::${ky}`;
     cellCounts.set(key, (cellCounts.get(key) ?? 0) + 1);
-    xTotals.set(vx.label, (xTotals.get(vx.label) ?? 0) + 1);
-    yTotals.set(vy.label, (yTotals.get(vy.label) ?? 0) + 1);
+    xTotals.set(kx, (xTotals.get(kx) ?? 0) + 1);
+    yTotals.set(ky, (yTotals.get(ky) ?? 0) + 1);
     const v = valueByEvent.get(event.id);
     if (v !== undefined) {
       cellSums.set(key, (cellSums.get(key) ?? 0) + v);
@@ -413,13 +442,18 @@ export function buildCrossMatrix(
     }
   }
 
-  const optionsX = [...xTotals.entries()].sort((a, b) => b[1] - a[1]).map(([label]) => label);
-  const optionsY = [...yTotals.entries()].sort((a, b) => b[1] - a[1]).map(([label]) => label);
+  const optionsX = [...xTotals.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => display.get(key) ?? key);
+  const optionsY = [...yTotals.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => display.get(key) ?? key);
 
+  // L'agrégation se fait en normalisé, mais les clés exposées sont les libellés d'affichage : le
+  // contrat de `cells` est « `${labelX}::${labelY}` » avec les libellés de `optionsX`/`optionsY`,
+  // et c'est comme ça que les consommateurs y accèdent.
   const cells = new Map<string, CrossMatrixCell>();
   for (const [key, actions] of cellCounts) {
+    const [kx, ky] = key.split('::');
+    const displayKey = `${display.get(kx) ?? kx}::${display.get(ky) ?? ky}`;
     const sc = cellSumCounts.get(key) ?? 0;
-    cells.set(key, { actions, rentabilite: sc > 0 ? cellSums.get(key)! / sc : null });
+    cells.set(displayKey, { actions, rentabilite: sc > 0 ? cellSums.get(key)! / sc : null });
   }
 
   return { optionsX, optionsY, cells, totalActions: [...cellCounts.values()].reduce((a, b) => a + b, 0) };

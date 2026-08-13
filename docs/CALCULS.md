@@ -57,6 +57,12 @@ Sur **une seule séance** ou **un seul jour**, chaque joueuse n'a qu'une saisie 
 
 Une moyenne non pondérée est nerveuse sur petit échantillon : une joueuse ayant une seule saisie pèse autant qu'une en ayant dix. `TeamAverage` transporte donc `players` à côté de `value`, et l'interface l'affiche systématiquement (« 6,2 · 8 joueurs »).
 
+### La règle vaut aussi pour l'évaluation
+
+Le KPI « Statistiques » de la vue d'ensemble échappait à la règle : moyenne à plat de toutes les lignes d'éval de la période, sans `n` affiché — entre trois cartes voisines (Présences, RPE, Bien-être) qui l'appliquaient et affichaient le leur. Il était donc pondéré par le nombre de matchs joués, c'est-à-dire par la disponibilité, exactement le biais que le § 0 existe pour éliminer.
+
+Avec 20 matchs à 12 d'éval pour l'une et 3 matchs à 4 pour l'autre : moyenne à plat **11,0**, règle du § 0 **8,0**. Corrigé aussi dans les comparaisons d'équipe par période et par match.
+
 ---
 
 ## 1. Charge d'entraînement & RPE
@@ -282,6 +288,8 @@ Et non `Σ présences / Σ attendus`, qui pondère par le nombre de séances att
 
 Seuils de couleur, identiques joueuse et équipe : ≥ 85 % vert, ≥ 70 % orange, sinon rouge.
 
+Le taux **individuel** est arrondi à l'entier pour l'affichage, mais c'est le taux **brut** qui entre dans la moyenne d'équipe (`rawPresenceRate`) : la règle de `teamAverage` est de n'arrondir qu'une fois, sur le chiffre final. Moyenner des pourcentages déjà arrondis pouvait faire basculer le résultat d'un côté ou de l'autre d'un seuil de couleur pile.
+
 Le **% de présence sur 28 jours glissants** utilisé par les corrélations et les objectifs reste un calcul par joueuse (`presenceSeries`, [`crossAnalysis.ts`](../src/data/crossAnalysis.ts)).
 
 ---
@@ -357,8 +365,8 @@ ORtg      = points × 100 / indPoss
 Nécessitent en plus la stat collective de l'équipe sur le même match :
 
 ```
-%USG     = indPoss / possessions_équipe × 100
-%USG/min = indPoss × (minutes_équipe / 5) / (minutes_joueur × possessions_équipe) × 100
+%USG     = indPoss / actions_effectif × 100
+%USG/min = indPoss × (minutes_équipe / 5) / (minutes_joueur × actions_effectif) × 100
 %PD      = passes_décisives / (tirs_réussis_équipe − tirs_réussis_joueur) × 100
 %TREB    = (rebonds_off + rebonds_déf du joueur) / (rebonds_équipe + rebonds_adversaire, tous types) × 100
 %DREB    = rebonds_déf_joueur / (rebonds_déf_équipe + rebonds_off_adversaire) × 100
@@ -366,6 +374,24 @@ Nécessitent en plus la stat collective de l'équipe sur le même match :
 
 Points_générés = points_marqués + passes_décisives × (points_marqués_au_tir_équipe / tirs_réussis_équipe)
 ```
+
+### ⚠️ Deux comptages de possessions, et il faut les deux
+
+`actions_effectif` (dénominateur du %USG) **n'est pas** la colonne « Possessions » affichée par ailleurs :
+
+```
+Possessions (colonne affichée, mesure du RYTHME)
+  = fga − rebonds_offensifs + ballons_perdus + 0,44 × LF_tentés
+
+actions_effectif (dénominateur du %USG)
+  = fga + ballons_perdus + 0,44 × LF_tentés          ← sans retirer les rebonds offensifs
+```
+
+Les deux sont justes pour leur usage, et il ne faut surtout pas les unifier. La raison est vérifiable : avec `actions_effectif`, la somme des %USG de toutes les joueuses vaut **exactement 100 %**, puisque leurs actions individuelles somment au total de l'effectif. Avec le comptage « rythme », elle dépasserait 100 % (de la valeur des rebonds offensifs) et la colonne ne voudrait plus rien dire.
+
+C'était un piège de lecture, pas un bug : la doc appelait « possessions_équipe » un chiffre différent de la colonne « Possessions », si bien qu'un staff vérifiant à la main tombait sur un écart et concluait que le %USG était faux. `computePossessions` (formule du rythme) est désormais défini une seule fois, avec l'avertissement en regard, et une entrée de FAQ couvre la question.
+
+**FT Rate est un ratio, pas un pourcentage.** `0,28` = 28 lancers tentés pour 100 tirs. Même forme partout : base (`ft_rate NUMERIC(4,2)`), boxscore, fiche match, comparaisons et classement (`decimals: 2`). Deux surfaces l'affichaient ×100 avec un suffixe « % », dont une qui suffixait « % » à un ratio non converti — soit un « 0,3 % » sans signification physique.
 
 ### Agrégation sur une période — ne jamais moyenner un ratio
 
@@ -431,13 +457,21 @@ Fichier source : [`src/data/pca.ts`](../src/data/pca.ts)
 
 Corrélation de Pearson entre chaque statistique collective (2%, 3%, rebonds, pertes de balle, ORtg, DRtg…) et le résultat du match (victoire = 1, défaite = 0). Nécessite au moins 4 matchs.
 
+**Chaque lien porte sa p-value** (§ 3.3, α = 0,05), et l'affichage la respecte : une ligne non significative est atténuée et libellée « Non significatif » au lieu de son mot d'ampleur. 4 matchs suffisent à *calculer* un `r`, pas à le croire — 20/30/40/50 % de réussite à 3 points contre des résultats alternés donne `r = 0,45`, que les seuils d'ampleur qualifient de « Fort », pour `p ≈ 0,55`. Ce lien s'affichait « Impact fort » sans réserve.
+
+Ce marqueur remplace un proxy `n < 8` étiqueté « tendance fragile », qui ne regardait que la taille de l'échantillon et jamais l'ampleur du lien.
+
 ### 5.2 Impact joueur
 
-Pour chaque joueur, corrélation de Pearson entre son évaluation match par match et le résultat de l'équipe (victoire/défaite). Un lien positif signifie que ses bons matchs coïncident avec des victoires — **corrélation, pas causalité**. Nécessite au moins 5 matchs avec évaluation.
+Pour chaque joueur, corrélation de Pearson entre son évaluation match par match et le résultat de l'équipe (victoire/défaite). Un lien positif signifie que ses bons matchs coïncident avec des victoires — **corrélation, pas causalité**. Nécessite au moins 5 matchs avec évaluation, et porte sa p-value comme les facteurs de victoire. Sur 5 matchs, le minimum du calcul, il faut un `r` d'environ 0,88 pour que le lien soit significatif.
 
 ### 5.3 Analyse en composantes principales (PCA)
 
 Réduction des statistiques collectives de chaque match à 2 axes (PC1/PC2) via `ml-pca` (centré-réduit), pour visualiser en 2D la structure des performances et le pourcentage de variance expliquée par chaque axe.
+
+**Sur données complètes uniquement.** On retient d'abord les variables renseignées sur au moins **80 %** des matchs, puis seulement les matchs complets sur celles-là. Aucune valeur manquante n'est remplacée par un zéro.
+
+Le calcul admettait auparavant un match dès qu'*une seule* variable était renseignée, en substituant 0 partout ailleurs. Sur une matrice centrée-réduite, ces lignes deviennent des points extrêmes qui captent une grande part de la variance : les deux axes se mettaient à séparer « match documenté » de « match non documenté » plutôt que deux styles de jeu, et le pourcentage de variance expliquée gonflait sans rien expliquer. Le nombre de matchs écartés est affiché sous le graphique — un échantillon réduit doit se voir.
 
 ---
 
@@ -471,6 +505,14 @@ Seuils de coloration de la rentabilité, configurables par catégorie (défauts 
 
 Une **matrice croisée** entre deux dimensions d'une même catégorie ne compte que les actions renseignées sur les deux dimensions à la fois.
 
+### Regroupement par libellé normalisé
+
+Les valeurs d'événements sont stockées **telles qu'elles arrivent du CSV** (`tactical_event_values.label`), contrairement au catalogue (catégories, dimensions, options) qui porte une colonne `normalized_name`/`normalized_label`. Deux exports vidéo écrivant « Panier » et « panier » créent donc deux libellés distincts en base.
+
+Tous les regroupements — `buildDimensionTable`, `buildCustomTableRows`, `buildCrossMatrix` — indexent donc par **libellé normalisé** (accents, casse, espaces), comme le faisait déjà `buildTacticalIndicators`. Le libellé affiché est celui du catalogue quand l'option y figure, sinon le premier observé.
+
+Sans cela, le rapport tactique affichait deux lignes là où l'attribut de rentabilité du même nom n'en voyait qu'une : la ligne du rapport pouvait être verte (rentabilité 1,10 sur 12 actions) et l'objectif bâti sur le même libellé rouge (0,82 sur les 20 actions réunies).
+
 ---
 
 ## 8. Statistiques collectives & normalisation
@@ -478,6 +520,20 @@ Une **matrice croisée** entre deux dimensions d'une même catégorie ne compte 
 Fichier source : `src/pages/PerformanceCollectivePage.tsx`
 
 - Moyennes par match, pourcentages aux tirs (`réussis / tentés × 100`), agrégés par équipe.
+- **DRtg se rapporte aux possessions ADVERSES** (`COALESCE(opp_possessions, possessions)`), pas aux nôtres. `opp_possessions` est saisi à l'import et la colonne voisine `opp_to_pct` s'en servait déjà : la vue `team_match_stats_full` était le seul endroit qui ne distinguait pas les deux jeux de possessions. L'approximation est inoffensive quand les deux équipes jouent au même rythme, mais elle biaise systématiquement les matchs à fort déséquilibre de rebonds offensifs — précisément ceux que l'analyse défensive cherche à expliquer, et DRtg est un facteur de victoire corrélé au résultat.
+
+### Pied de tableau : « Moyenne » ne veut pas dire la même chose selon l'axe
+
+Deux pieds de tableau portent le même libellé et répondent à deux questions différentes :
+
+| Tableau | Une ligne = | Agrégation d'un ratio |
+|---|---|---|
+| Statistiques **joueurs** | une joueuse | moyenne non pondérée des valeurs individuelles (§ 0) |
+| Statistiques **matchs** | un match | ratio des sommes (§ 4) |
+
+Les pieds des tableaux par match moyennaient les pourcentages match par match, ce qui donnait le même poids à un match à 3 tirs qu'à un match à 60. Même correction dans les blocs de comparaison d'équipe, où quatre ratios (% BP, FT Rate, % DREB, % OREB) moyennaient encore les valeurs déjà agrégées à côté de six qui sommaient correctement — dix lignes d'apparence homogène, deux méthodes.
+
+La brique est unique : [`ratioFromSums`](../src/utils/ratioFromSums.ts). Elle exclut des **deux** sommes les observations sans dénominateur, pour qu'un match sans possession saisie ne verse pas ses points dans un dénominateur qui les ignore.
 - **Normalisation « pour 25 minutes »** (option `normalize25`) : permet de comparer des joueurs à temps de jeu différent en ramenant leurs stats à un volume de jeu standard :
   ```
   facteur = 25 / minutes_moyennes_jouées
@@ -511,7 +567,13 @@ atteint = comparateur(valeur_fenêtre, seuil)
 
 Fenêtres : **dernier match**, **3 derniers matchs**, **saison complète**. `null` si aucune donnée sur la fenêtre (pas de verdict plutôt qu'un faux « non atteint »).
 
-La valeur d'une fenêtre passe par [`periodValueOf`](../src/data/crossAnalysis.ts) : ratio de sommes pour les ratios, moyenne sur les matchs pour les volumes (cf. § 4). Les fenêtres sont traduites en bornes de dates depuis les matchs joués — « 3 derniers matchs » désigne bien 3 matchs, pas 3 journées.
+La valeur d'une fenêtre passe par [`periodValueOf`](../src/data/crossAnalysis.ts) côté joueuse et par `def.teamPeriodValue` côté équipe : ratio de sommes pour les ratios, moyenne sur les matchs pour les volumes (cf. § 4). **Les deux périmètres agrègent de la même façon.**
+
+Le périmètre équipe retombait auparavant sur la moyenne de la série, c'est-à-dire la moyenne des pourcentages match par match — alors que le sélecteur propose `team_fg3Pct`, `team_efgPct`, `team_toPct`, `team_orebPct`… tous des ratios. Sur trois matchs à 3 points de 1/1, 2/10 et 3/12, un objectif « ≥ 32 % » ressortait **atteint** (moyenne des ratios : 48,3 %) alors qu'il ne l'est pas (ratio des sommes : 6/23 = 26,1 %). Le verdict binaire affiché au staff s'inversait.
+
+L'agrégation d'équipe se dérive du champ `sums` de [`TeamVariable`](../src/data/pca.ts) (numérateur et dénominateur bruts), et non d'une liste parallèle : sur les 21 variables collectives, 13 sont des ratios et 8 des volumes. Un test vérifie que les **27** indicateurs d'équipe du domaine match définissent bien un `teamPeriodValue`.
+
+**« 3 derniers matchs » se découpe sur la liste des matchs, pas en bornes de dates.** Une fenêtre exprimée en dates ne peut pas séparer deux matchs joués le même jour : sur un plateau, elle ramenait la date du 2ᵉ match de la journée et en couvrait donc 4. Le périmètre est restreint aux k dernières lignes, puis passé à l'agrégateur. Cette correction valait pour les deux périmètres — le côté joueuse avait le même défaut.
 
 ### 10.1 Rattachement à une saison
 
@@ -531,25 +593,36 @@ Aucune requête de statistiques n'est ajoutée — le périmètre d'évaluation 
 
 ## 11. Médical
 
-Fichier source : `src/components/MedicalCard.tsx`, `src/pages/PerformanceIndividuellePage.tsx`
+Fichier source : [`src/utils/medical.ts`](../src/utils/medical.ts)
+
+### Jours constatés, ou jours prévus
 
 ```
-jours_indisponibilité = arrondi( (date_retour_terrain − date_blessure) en jours )
+blessure clôturée → jours CONSTATÉS  = resolved_date − date_blessure
+blessure active   → jours PRÉVUS     = rtp_date      − date_blessure
+aucune des deux   → null (« inconnu »), jamais 0
 ```
 
-Cumulé sur la saison pour obtenir le total de jours d'indisponibilité d'un joueur.
+Cumulé sur la saison via `sumInjuryDays`, qui renvoie `{ days, undated }` : les blessures sans date de fin connue sortent du total **et sont comptées à part**, pour être signalées sous le KPI plutôt que noyées.
+
+`resolved_date` est écrit par les trois surfaces de clôture et affiché dans la fiche détail, mais aucun compteur ne le lisait : une blessure clôturée avec deux semaines d'avance comptait quand même sa durée prévue. Pour une entorse du 5 janvier avec retour prévu le 30 et clôture le 12, le KPI affichait **25 jours** pendant que la bande du graphique de charge (qui lit bien `resolved_date`, cf. `injuryEpisodes`) en dessinait **7**. Deux définitions de la fin d'un même épisode.
+
+Second trou, plus net : une blessure sans `rtp_date` **ni** clôture comptait **0 jour** — le `: 0` d'un ternaire — même si la joueuse était restée absente un mois.
+
+Les deux fonctions `injuryDaysActive` et `injuryDaysSeason` de la page Médicale avaient des commentaires distincts pour un corps identique : la distinction annoncée n'existait pas. Elle vit maintenant dans `injuryDays`, et une seule fonction suffit. `daysBetween`, jusque-là recopié à l'identique dans trois fichiers, est également unique.
 
 ### 11.1 Blessure sans arrêt
 
-Toutes les agrégations de jours partent de `rtp_date`, jamais de `days_absent` — ce dernier n'est qu'un
-champ d'affichage. Une blessure **sans arrêt** (case du formulaire) est donc enregistrée avec
-`days_absent = 0` **et** `rtp_date = date`, ce qui donne 0 jour partout sans cas particulier dans les
-calculs. Sans `rtp_date`, « sans arrêt » serait indiscernable de « durée inconnue », qui compte aussi 0.
+Les agrégations de jours partent des dates (`resolved_date` / `rtp_date`), jamais de `days_absent` — ce
+dernier n'est qu'un champ d'affichage. Une blessure **sans arrêt** (case du formulaire) est donc
+enregistrée avec `days_absent = 0` **et** `rtp_date = date`, ce qui donne 0 jour sans cas particulier.
+`injuryDays` teste néanmoins `isNoStopInjury` en premier, pour que le 0 d'une blessure sans arrêt reste
+distinct du `null` d'une durée inconnue — c'est cette confusion qui faisait compter les deux pour 0.
 
 Elle est créée directement clôturée (`status = 'resolved'`, `resolved_date = date`) : elle n'a rien à
 suivre dans les blessures en cours, et le statut du joueur reste *actif*. Elle compte en revanche dans
 le **nombre** de blessures de la saison — c'est un événement médical réel, seulement sans indisponibilité.
-[`isNoStopInjury`](../src/components/MedicalCard.tsx) reconnaît les deux signaux (`days_absent = 0` ou
+[`isNoStopInjury`](../src/utils/medical.ts) reconnaît les deux signaux (`days_absent = 0` ou
 reprise le jour même) pour couvrir les entrées créées avant l'existence de la case.
 
 ---
@@ -610,6 +683,32 @@ Seul contenu de l'aide qui ne se déduit pas du code. Critère d'entrée : **une
 
 ---
 
+## 14. « Pas de donnée » n'est pas « zéro »
+
+Fichiers source : [`src/api/stats.ts`](../src/api/stats.ts) (`toTeamMatchStat`), [`tsconfig.app.json`](../tsconfig.app.json)
+
+> **Un NULL venu de la base ne doit jamais être écrasé en 0 dans un mapper.**
+
+Le schéma est rigoureux : `efg_pct`, `to_pct`, `oreb_pct`, `dreb_pct`, `ft_rate`, `off_rating`, `def_rating` et leurs équivalents `opp_*` sont des colonnes générées qui renvoient `NULL` quand le dénominateur est nul. Un match dont seul le score est saisi **n'a pas** d'eFG% — il n'a pas un eFG% de 0.
+
+Le mapper client transformait ce `NULL` en `0`. Comme tous les compteurs bruts sont `NOT NULL DEFAULT 0`, une ligne `team_match_stats` créée avec le seul score produisait exactement ce cas.
+
+### Pourquoi c'était plus grave que le zéro lui-même
+
+Les garde-fous anti-null situés en aval devenaient **du code mort**. Dans `computeWinFactors`, `rows.filter(m => VARIABLES.some(v => v.get(m) !== null))` ne filtrait plus rien : la condition était toujours vraie. `hasVariance` voyait une variance artificielle créée par les zéros. Sur 8 matchs dont 2 non documentés, une corrélation eFG%/victoire de **0,71** tombait à **0,18** — le facteur disparaissait du classement.
+
+Trois surfaces avaient indépendamment inventé le même contournement — `r.offRating > 0 ? r.offRating : null` en pied de tableau, `teamStats.possessions > 0` sur la fiche match, `filter(m => m.offRating > 0)` dans le hero. Trois rustines pour une cause unique, et chacune écartait aussi les **vrais** zéros : un match sans aucune perte de balle sortait du % BP d'équipe.
+
+### Le garde-fou
+
+`strictNullChecks` est activé dans `tsconfig.app.json` (seul, pas tout `strict` — le projet assume `noImplicitAny: false`). Les ratios avancés de `TeamMatchStat` sont typés `number | null`.
+
+C'est ce qui rend la règle exécutoire : le compilateur a listé les **74 sites** à traiter et refuse désormais de laisser passer un `null` non géré. Sans le flag, la même modification de type produisait **zéro** erreur — la garantie ne tenait qu'à la vigilance.
+
+Corollaire d'écriture : dans un mapper, distinguer deux lecteurs — `n()` pour les compteurs bruts (`?? 0` légitime, la colonne est `NOT NULL`), `nn()` pour tout ce qui peut être absent.
+
+---
+
 ## Récapitulatif des seuils & constantes clés
 
 | Constante | Valeur | Usage |
@@ -635,3 +734,6 @@ Seul contenu de l'aide qui ne se déduit pas du code. Critère d'entrée : **une
 | Présence — bonne | ≥ 85 % | assiduité |
 | Présence — moyenne | ≥ 70 % | assiduité |
 | Normalisation stats | pour 25 min jouées | comparaison équitable |
+| PCA — couverture minimale d'une variable | 80 % des matchs | garde-fou données complètes |
+| Σ minutes effectif — fourchette plausible | 150–300 par match | repli %USG/min → %USG |
+| %USG/min — minutes joueuse minimales | 5 min | repli %USG/min → %USG |

@@ -837,8 +837,14 @@ SELECT
   CASE WHEN tms.possessions > 0
     THEN ROUND(m.score_us::NUMERIC   / tms.possessions * 100, 1)
     ELSE NULL END AS off_rating,
-  CASE WHEN tms.possessions > 0
-    THEN ROUND(m.score_them::NUMERIC / tms.possessions * 100, 1)
+  -- DRtg = points encaissés pour 100 possessions ADVERSES. On utilisait ici nos propres
+  -- possessions, alors que `opp_possessions` est saisi et que la colonne voisine `opp_to_pct` s'en
+  -- sert déjà. L'approximation est inoffensive quand les deux s'équilibrent, mais elle biaise
+  -- systématiquement les matchs à fort déséquilibre de rebonds offensifs — précisément ceux que
+  -- l'analyse défensive cherche à expliquer, et DRtg est un facteur de victoire corrélé au résultat.
+  -- COALESCE : repli sur nos possessions quand celles de l'adversaire ne sont pas renseignées.
+  CASE WHEN COALESCE(tms.opp_possessions, tms.possessions) > 0
+    THEN ROUND(m.score_them::NUMERIC / COALESCE(tms.opp_possessions, tms.possessions) * 100, 1)
     ELSE NULL END AS def_rating
 FROM team_match_stats tms
 JOIN matches m ON m.id = tms.match_id;
@@ -920,8 +926,11 @@ ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
 -- ────────────────────────────────────────────────────────────────
 -- 21b. EXERCISES
---      Bibliothèque d'exercices de l'équipe
---      Images stockées dans le bucket Supabase Storage 'exercises'
+--      Bibliothèque d'exercices de l'équipe.
+--      Un exercice = un en-tête (nom, catégorie, objectifs) + une séquence de
+--      phases (0 à N), une phase étant un schéma de terrain et son texte.
+--      Rien n'est stocké en fichier : les schémas vivent en JSONB et se rendent
+--      en SVG (cf. src/utils/diagram.ts).
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE exercise_categories (
@@ -3444,3 +3453,54 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- Puis, si les deux comptes sont à 0 :
 --   ALTER TABLE player_actions ALTER COLUMN season_id SET NOT NULL;
 --   ALTER TABLE objectives     ALTER COLUMN season_id SET NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────────
+-- Migration — DRtg rapporté aux possessions ADVERSES
+--
+-- `def_rating` (vue team_match_stats_full) divisait les points encaissés par NOS possessions.
+-- Or `opp_possessions` est saisi à l'import, et la colonne voisine `opp_to_pct` s'en sert déjà :
+-- la vue était le seul endroit qui ne distinguait pas les deux jeux de possessions.
+--
+-- L'écart est faible quand les deux équipes jouent le même nombre de possessions, mais il devient
+-- systématique dès qu'un déséquilibre de rebonds offensifs les sépare — soit exactement les matchs
+-- que l'analyse défensive cherche à expliquer. Et DRtg n'est pas qu'affiché : il entre dans les
+-- facteurs de victoire (corrélation avec le résultat) et dans les objectifs d'équipe.
+--
+-- COALESCE assure le repli sur nos possessions quand celles de l'adversaire manquent, donc aucune
+-- ligne ne perd sa valeur. Migration de vue seule : aucune donnée n'est réécrite, aucun recalcul.
+-- La définition de référence plus haut dans ce fichier est déjà à jour (nouvelle installation).
+--
+-- CREATE OR REPLACE VIEW team_match_stats_full AS
+-- SELECT
+--   tms.*,
+--   m.score_us,
+--   m.score_them,
+--   m.date,
+--   m.opponent,
+--   m.home_away,
+--   m.competition,
+--   m.result,
+--   m.game_number,
+--   m.team_id,
+--   m.season_id,
+--   CASE WHEN tms.possessions > 0
+--     THEN ROUND(m.score_us::NUMERIC   / tms.possessions * 100, 1)
+--     ELSE NULL END AS off_rating,
+--   CASE WHEN COALESCE(tms.opp_possessions, tms.possessions) > 0
+--     THEN ROUND(m.score_them::NUMERIC / COALESCE(tms.opp_possessions, tms.possessions) * 100, 1)
+--     ELSE NULL END AS def_rating
+-- FROM team_match_stats tms
+-- JOIN matches m ON m.id = tms.match_id;
+--
+-- Contrôle avant/après — les matchs dont le DRtg va bouger, et de combien.
+-- NULLIF protège la division : une ligne à 0 possession donne NULL, pas une erreur.
+--   SELECT m.date, m.opponent,
+--          tms.possessions AS poss_nous, tms.opp_possessions AS poss_adv,
+--          ROUND(m.score_them::NUMERIC / NULLIF(tms.possessions, 0)     * 100, 1) AS drtg_avant,
+--          ROUND(m.score_them::NUMERIC / NULLIF(tms.opp_possessions, 0) * 100, 1) AS drtg_apres
+--   FROM team_match_stats tms
+--   JOIN matches m ON m.id = tms.match_id
+--   WHERE tms.opp_possessions IS NOT NULL
+--     AND tms.opp_possessions <> tms.possessions
+--   ORDER BY ABS(tms.opp_possessions - tms.possessions) DESC;

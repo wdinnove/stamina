@@ -12,7 +12,7 @@ import {
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
   CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel, PlayerArchetypesPanel, LoadingSteps
 } from '../components';
-import { daysBetween } from '../components/MedicalCard';
+import { sumInjuryDays } from '../utils/medical';
 import { FilterField, filterControlStyle } from '../components/FilterField';
 import { roundedAvg } from '../utils/avg';
 import type { DatePreset } from '../components/DateRangeCard';
@@ -210,9 +210,10 @@ export default function PerformanceIndividuellePage() {
   const seasonInjuryCount = selected?.season.startDate
     ? allInjuries.filter(m => m.date >= selected.season.startDate).length
     : allInjuries.length;
-  const seasonInjuryDays = allInjuries
+  // Jours constatés pour une blessure clôturée, prévus pour une active (cf. utils/medical).
+  const seasonInjuryDays = sumInjuryDays(allInjuries
     .filter(m => (!selected?.season.startDate || m.date >= selected.season.startDate) && (!selected?.season.endDate || m.date <= selected.season.endDate))
-    .reduce((s, m) => s + (m.rtpDate ? daysBetween(m.date, m.rtpDate) : 0), 0);
+  ).days;
   const acwr = computeAcwr(rpe, isoDaysAgo(0));
   const acwrZ = acwrZone(acwr);
   const redAlerts = recentAlerts.filter(a => a.level === 'red');

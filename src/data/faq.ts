@@ -26,6 +26,15 @@ export const FAQ_ENTRIES: FaqEntry[] = [
   },
   {
     theme: 'Lire les chiffres',
+    question: "Je n'arrive pas à retrouver le %USG à la main avec la colonne Possessions",
+    answer:
+      "C'est normal : ce sont deux comptages de possessions différents, et c'est volontaire.\n\n" +
+      "• La colonne « Possessions » affichée mesure le RYTHME du match : tirs tentés − rebonds offensifs + ballons perdus + 0,44 × lancers tentés. On retire les rebonds offensifs parce qu'ils prolongent la même possession.\n" +
+      "• Le dénominateur du %USG compte les ACTIONS TERMINÉES par l'effectif : tirs tentés + ballons perdus + 0,44 × lancers tentés, sans retirer les rebonds offensifs.\n\n" +
+      "La raison est simple : avec le second, la somme des %USG de toutes les joueuses fait exactement 100 %. Avec le premier, elle dépasserait 100 % et la colonne ne voudrait plus rien dire. L'écart entre les deux chiffres vaut le nombre de rebonds offensifs du match.",
+  },
+  {
+    theme: 'Lire les chiffres',
     question: "Le même chiffre est différent d'un écran à l'autre, c'est un bug ?",
     answer:
       "Le plus souvent non : vérifiez d'abord la période sélectionnée. Performance individuelle et Performance collective ont chacune leur propre filtre de dates, et ils ne sont pas synchronisés.\n\n" +

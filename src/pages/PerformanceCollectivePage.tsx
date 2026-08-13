@@ -1193,6 +1193,13 @@ export default function PerformanceCollectivePage() {
                     influence fortement le résultat des matchs.
                   </p>
                   <PCABiplot points={pcaResult.points} vectors={pcaResult.vectors} varPct={pcaResult.varPct} />
+                  {/* L'analyse n'a plus le droit de compléter les trous par des zéros : les matchs
+                      sans stats collectives complètes en sortent, et on le dit. */}
+                  {pcaResult.matchesDropped > 0 && (
+                    <p style={{ color: '#475569', fontSize: '0.7rem', margin: '12px 0 0', lineHeight: 1.6 }}>
+                      Calculée sur {pcaResult.matchesUsed} match{pcaResult.matchesUsed > 1 ? 's' : ''} — {pcaResult.matchesDropped} écarté{pcaResult.matchesDropped > 1 ? 's' : ''} faute de statistiques collectives complètes.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
