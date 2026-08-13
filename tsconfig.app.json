@@ -15,6 +15,10 @@
     "jsx": "react-jsx",
 
     "strict": false,
+    // Activé seul (pas tout `strict`) : c'est le garde-fou qui empêche un NULL venu de la base
+    // d'être silencieusement écrasé en 0 dans les mappers de api/, et qui rend visibles les
+    // garde-fous anti-null devenus inopérants en aval. Voir docs/CALCULS.md § 14.
+    "strictNullChecks": true,
     "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,

@@ -164,7 +164,7 @@ function calcCollective(rows: CsvRow[]): CollectiveStatInput {
   const ftm  = s('ftm'),  fta  = s('fta');
   const ro   = s('ro'),   rd   = s('rd');
   const bp   = s('bp');
-  const possessions = Math.round(((fg2a + fg3a) - ro + bp + 0.44 * fta) * 10) / 10;
+  const possessions = computePossessions({ fg2a, fg3a, ro, bp, fta });
   return { fg2m, fg2a, fg3m, fg3a, ftm, fta, ro, rd, pd: s('pd'), ct: s('ct'), intercepts: s('intercepts'), bp, fte: s('fte'), fpr: s('fpr'), possessions };
 }
 
@@ -192,11 +192,28 @@ function emptyCollective(): CollectiveStatInput {
   return { fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0, ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0, possessions: 0 };
 }
 
+/**
+ * Possessions offensives d'une équipe sur un match : tirs tentés − rebonds offensifs + ballons
+ * perdus + 0,44 × lancers tentés (formule standard). Une seule définition pour l'import CSV,
+ * l'aperçu du formulaire et l'enregistrement — elle était recopiée aux trois endroits.
+ *
+ * ⚠️ À ne pas confondre avec le dénominateur de %USG (`teamPoss` dans playerAdvanced.ts), qui ne
+ * soustrait PAS les rebonds offensifs — c'est ce qui fait que la somme des %USG de l'effectif vaut
+ * exactement 100 %. Voir docs/CALCULS.md § 4.
+ */
+function computePossessions(c: { fg2a: number; fg3a: number; ro: number; bp: number; fta: number }): number {
+  return Math.round(((c.fg2a + c.fg3a) - c.ro + c.bp + 0.44 * c.fta) * 10) / 10;
+}
+
 function teamStatToCollective(ts: TeamMatchStat, side: 'own' | 'opp'): CollectiveStatInput {
   if (side === 'own') {
     return { fg2m: ts.fg2m, fg2a: ts.fg2a, fg3m: ts.fg3m, fg3a: ts.fg3a, ftm: ts.ftm, fta: ts.fta, ro: ts.ro, rd: ts.rd, pd: ts.pd, ct: ts.ct, intercepts: ts.intercepts, bp: ts.bp, fte: ts.fte, fpr: ts.fpr, possessions: ts.possessions };
   }
-  return { fg2m: ts.opp_fg2m, fg2a: ts.opp_fg2a, fg3m: ts.opp_fg3m, fg3a: ts.opp_fg3a, ftm: ts.opp_ftm, fta: ts.opp_fta, ro: ts.opp_ro, rd: ts.opp_rd, pd: ts.opp_pd, ct: ts.opp_ct, intercepts: ts.opp_intercepts, bp: ts.opp_bp, fte: ts.opp_fte, fpr: ts.opp_fpr, possessions: ts.opp_possessions };
+  // `opp_possessions` est nullable en base : on recalcule depuis les compteurs adverses plutôt que
+  // de préremplir le formulaire avec un 0 trompeur (la valeur est de toute façon recalculée à
+  // l'enregistrement, cf. `withPoss`).
+  const opp = { fg2a: ts.opp_fg2a, fg3a: ts.opp_fg3a, ro: ts.opp_ro, bp: ts.opp_bp, fta: ts.opp_fta };
+  return { fg2m: ts.opp_fg2m, fg2a: ts.opp_fg2a, fg3m: ts.opp_fg3m, fg3a: ts.opp_fg3a, ftm: ts.opp_ftm, fta: ts.opp_fta, ro: ts.opp_ro, rd: ts.opp_rd, pd: ts.opp_pd, ct: ts.opp_ct, intercepts: ts.opp_intercepts, bp: ts.opp_bp, fte: ts.opp_fte, fpr: ts.opp_fpr, possessions: ts.opp_possessions ?? computePossessions(opp) };
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -429,7 +446,7 @@ function CollectiveForm({ values, onChange }: {
   );
 
   const calcPoss = () => {
-    const p = Math.round(((values.fg2a + values.fg3a) - values.ro + values.bp + 0.44 * values.fta) * 10) / 10;
+    const p = computePossessions(values);
     return p > 0 ? p : '—';
   };
   const readonlyVal = (label: string, val: React.ReactNode) => (
@@ -611,7 +628,7 @@ export function MatchStatsImportModal({ match, players, hasExistingStats, onClos
       // Statistiques collectives (possessions recalculées depuis les champs)
       const withPoss = (c: CollectiveStatInput): CollectiveStatInput => ({
         ...c,
-        possessions: Math.round(((c.fg2a + c.fg3a) - c.ro + c.bp + 0.44 * c.fta) * 10) / 10,
+        possessions: computePossessions(c),
       });
       if (finalOwn || finalOpp) {
         await statsApi.upsertTeamStats(

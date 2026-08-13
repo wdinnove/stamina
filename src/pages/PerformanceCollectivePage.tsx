@@ -36,6 +36,7 @@ import {
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
 import type { MatchStat, TeamMatchStat, Action, Match } from '../data/types';
+import { ratioFromSums, pctFromSums } from '../utils/ratioFromSums';
 
 // ─── Helpers partagés (portés depuis AnalyseCollectivePage / PerformancePage) ──
 
@@ -467,13 +468,15 @@ export default function PerformanceCollectivePage() {
       case 'date':  return m * (a.date ?? '').localeCompare(b.date ?? '');
       case 'opp':   return m * (a.opponent ?? '').localeCompare(b.opponent ?? '');
       case 'pts':   return m * (a.pts - b.pts);
-      case 'ortg':  return m * (a.offRating - b.offRating);
-      case 'drtg':  return m * (a.defRating - b.defRating);
-      case 'efg':   return m * (a.efgPct - b.efgPct);
-      case 'ftr':   return m * (a.ftRate - b.ftRate);
-      case 'to':    return m * (a.toPct - b.toPct);
-      case 'oreb':  return m * (a.orebPct - b.orebPct);
-      case 'dreb':  return m * (a.drebPct - b.drebPct);
+      // `?? -1` : même convention que le tri du tableau joueurs ci-dessus — un match sans stat
+      // avancée saisie part en fin de tri décroissant plutôt que de compter comme un zéro.
+      case 'ortg':  return m * ((a.offRating ?? -1) - (b.offRating ?? -1));
+      case 'drtg':  return m * ((a.defRating ?? -1) - (b.defRating ?? -1));
+      case 'efg':   return m * ((a.efgPct ?? -1) - (b.efgPct ?? -1));
+      case 'ftr':   return m * ((a.ftRate ?? -1) - (b.ftRate ?? -1));
+      case 'to':    return m * ((a.toPct ?? -1) - (b.toPct ?? -1));
+      case 'oreb':  return m * ((a.orebPct ?? -1) - (b.orebPct ?? -1));
+      case 'dreb':  return m * ((a.drebPct ?? -1) - (b.drebPct ?? -1));
       default:      return 0;
     }
   }), [pmRows, s5]);
@@ -503,25 +506,43 @@ export default function PerformanceCollectivePage() {
     bpPerPoss: colAvg1(sortedPJAdv, r => r.bpPerPoss), trebPct:   colAvg1(sortedPJAdv, r => r.trebPct),
     drebPct:   colAvg1(sortedPJAdv, r => r.drebPct),   orebPct:   colAvg1(sortedPJAdv, r => r.orebPct),
   };
+  /**
+   * Pieds des tableaux PAR MATCH : chaque ligne est un match, donc un ratio s'y agrège en sommant
+   * numérateur et dénominateur (§ 4) — et non en moyennant les pourcentages de chaque match, ce
+   * qui donnait le même poids à un match à 3 tirs qu'à un match à 60.
+   *
+   * ⚠️ À ne pas aligner sur les pieds des tableaux PAR JOUEUSE (`pjFooter`/`pjAdvFooter`) : là,
+   * chaque ligne est une joueuse, et la moyenne non pondérée des valeurs individuelles est
+   * précisément la règle voulue (§ 0). Les deux pieds portent le même libellé « Moyenne » mais
+   * répondent à deux questions différentes.
+   */
+  const teamOppPoss = (r: TeamMatchStat) => r.opp_possessions ?? r.possessions;
   const pmFooter = {
     pts:  colAvg1(sortedPM, r => r.pts),
-    fg2m: colAvg1(sortedPM, r => r.fg2m), fg2a: colAvg1(sortedPM, r => r.fg2a), fg2Pct: colAvgInt(sortedPM, r => r.fg2Pct),
-    fg3m: colAvg1(sortedPM, r => r.fg3m), fg3a: colAvg1(sortedPM, r => r.fg3a), fg3Pct: colAvgInt(sortedPM, r => r.fg3Pct),
-    ftm:  colAvg1(sortedPM, r => r.ftm),  fta:  colAvg1(sortedPM, r => r.fta),  ftPct:  colAvgInt(sortedPM, r => r.ftPct),
+    fg2m: colAvg1(sortedPM, r => r.fg2m), fg2a: colAvg1(sortedPM, r => r.fg2a),
+    fg2Pct: pctFromSums(sortedPM, r => r.fg2m, r => r.fg2a),
+    fg3m: colAvg1(sortedPM, r => r.fg3m), fg3a: colAvg1(sortedPM, r => r.fg3a),
+    fg3Pct: pctFromSums(sortedPM, r => r.fg3m, r => r.fg3a),
+    ftm:  colAvg1(sortedPM, r => r.ftm),  fta:  colAvg1(sortedPM, r => r.fta),
+    ftPct: pctFromSums(sortedPM, r => r.ftm, r => r.fta),
     ro:   colAvg1(sortedPM, r => r.ro),   rd:   colAvg1(sortedPM, r => r.rd),   rt:     colAvg1(sortedPM, r => r.rt),
     pd:   colAvg1(sortedPM, r => r.pd),   ct:   colAvg1(sortedPM, r => r.ct),
     intercepts: colAvg1(sortedPM, r => r.intercepts), bp: colAvg1(sortedPM, r => r.bp),
     evalTeamAvg: colAvg1(sortedPM, r => r.evalTeamAvg),
   };
+  // Les gardes `> 0` qui traînaient ici écartaient les matchs non documentés, que le mapper
+  // renvoyait à 0 au lieu de null — au prix d'exclure aussi un vrai 0 (un match sans aucune perte
+  // de balle sortait du % BP d'équipe). `ratioFromSums` écarte les matchs sans dénominateur de
+  // lui-même, et un vrai 0 compte à nouveau.
   const pmAdvFooter = {
     pts:       colAvg1(sortedPMAdv, r => r.pts),
-    offRating: colAvg1(sortedPMAdv, r => r.offRating > 0 ? r.offRating : null),
-    defRating: colAvg1(sortedPMAdv, r => r.defRating > 0 ? r.defRating : null),
-    efgPct:    colAvgInt(sortedPMAdv, r => r.efgPct > 0 ? r.efgPct : null),
-    ftRate:    colAvg1(sortedPMAdv, r => r.ftRate > 0 ? r.ftRate : null),
-    toPct:     colAvgInt(sortedPMAdv, r => r.toPct > 0 ? r.toPct : null),
-    orebPct:   colAvgInt(sortedPMAdv, r => r.orebPct > 0 ? r.orebPct : null),
-    drebPct:   colAvgInt(sortedPMAdv, r => r.drebPct > 0 ? r.drebPct : null),
+    offRating: pctFromSums(sortedPMAdv, r => r.scoreUs,   r => r.possessions),
+    defRating: pctFromSums(sortedPMAdv, r => r.scoreThem, teamOppPoss),
+    efgPct:    pctFromSums(sortedPMAdv, r => r.fg2m + 1.5 * r.fg3m, r => r.fg2a + r.fg3a),
+    ftRate:    ratioFromSums(sortedPMAdv, r => r.fta, r => r.fg2a + r.fg3a, 1),
+    toPct:     pctFromSums(sortedPMAdv, r => r.bp, r => r.possessions),
+    orebPct:   pctFromSums(sortedPMAdv, r => r.ro, r => r.ro + r.opp_rd),
+    drebPct:   pctFromSums(sortedPMAdv, r => r.rd, r => r.rd + r.opp_ro),
   };
 
   // ── Charge physique (ex-RPEPage team_history + verdict/graphe alignés sur PerformanceIndividuellePage) ──
@@ -1080,13 +1101,15 @@ export default function PerformanceCollectivePage() {
                           <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                           <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                           <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
-                          <td style={{ ...TD, color: m.offRating > 0 ? ortgColor(m.offRating, statThresholds) : '#475569' }}>{m.offRating > 0 ? m.offRating : '—'}</td>
-                          <td style={{ ...TD, color: m.defRating > 0 ? drtgColor(m.defRating, statThresholds) : '#475569' }}>{m.defRating > 0 ? m.defRating : '—'}</td>
-                          <td style={{ ...TD }}>{m.efgPct > 0 ? `${m.efgPct}%` : '—'}</td>
-                          <td style={{ ...TD }}>{m.ftRate > 0 ? m.ftRate : '—'}</td>
-                          <td style={{ ...TD, ...SEP }}>{m.toPct > 0 ? `${m.toPct}%` : '—'}</td>
-                          <td style={{ ...TD }}>{m.orebPct > 0 ? `${m.orebPct}%` : '—'}</td>
-                          <td style={{ ...TD }}>{m.drebPct > 0 ? `${m.drebPct}%` : '—'}</td>
+                          {/* `!== null` et non `> 0` : un vrai 0 (aucune perte de balle, aucun
+                              rebond offensif concédé) est une valeur, pas une absence de donnée. */}
+                          <td style={{ ...TD, color: m.offRating !== null ? ortgColor(m.offRating, statThresholds) : '#475569' }}>{m.offRating ?? '—'}</td>
+                          <td style={{ ...TD, color: m.defRating !== null ? drtgColor(m.defRating, statThresholds) : '#475569' }}>{m.defRating ?? '—'}</td>
+                          <td style={{ ...TD }}>{m.efgPct !== null ? `${m.efgPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.ftRate ?? '—'}</td>
+                          <td style={{ ...TD, ...SEP }}>{m.toPct !== null ? `${m.toPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.orebPct !== null ? `${m.orebPct}%` : '—'}</td>
+                          <td style={{ ...TD }}>{m.drebPct !== null ? `${m.drebPct}%` : '—'}</td>
                         </tr>
                       );
                     })}

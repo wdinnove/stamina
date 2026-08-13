@@ -472,7 +472,8 @@ export default function AttendancePage() {
                   <span style={{ color: '#94A3B8', fontSize: '0.82rem', fontWeight: 500 }}>Partenaires</span>
                 </td>
                 {sessions.map(s => {
-                  const count = s.partnerCount;
+                  // `partner_count` est NOT NULL DEFAULT 0 en base ; le ?? 0 couvre le type optionnel côté client.
+                  const count = s.partnerCount ?? 0;
                   return (
                     <td
                       key={s.id}

@@ -951,11 +951,17 @@ CREATE TABLE exercises (
 
 CREATE INDEX ON exercises (team_id);
 
+-- Une ligne = une illustration de l'exercice, dans l'ordre `position`. Deux origines
+-- possibles, volontairement dans la même table pour que la galerie n'ait rien à savoir des
+-- schémas : `diagram` NULL = image téléversée par le coach, `diagram` renseigné = schéma
+-- dessiné dans l'éditeur (la scène JSON permet de le rouvrir et de le modifier, `url`
+-- pointe sur le PNG qu'il a produit).
 CREATE TABLE exercise_images (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
   url         TEXT NOT NULL,
   position    SMALLINT NOT NULL DEFAULT 0,
+  diagram     JSONB,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -1915,6 +1921,14 @@ GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT,
 --
 -- -- Une fois vérifié, supprimer l'ancienne colonne texte :
 -- ALTER TABLE exercises DROP COLUMN IF EXISTS category;
+
+-- Exercices : schémas dessinés dans l'app (éditeur de terrain)
+-- La scène JSON vit dans la galerie existante, à côté du PNG qu'elle a produit : une image
+-- avec `diagram` NULL reste un simple téléversement, une image avec `diagram` est rouvrable
+-- dans l'éditeur. Rien d'autre à migrer — les écrans qui affichent la galerie continuent de
+-- ne lire que `url`.
+-- ALTER TABLE exercise_images
+--   ADD COLUMN IF NOT EXISTS diagram JSONB;
 
 -- Wellness : formule du score corrigée pour utiliser (11 - v) au lieu de (10 - v) sur les
 -- métriques inversées (fatigue/stress/soreness), pour rester cohérent avec la coloration

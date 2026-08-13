@@ -527,7 +527,10 @@ const RAW_INDICATORS: IndicatorDef[] = [
   // ── Match — Statistiques avancées ──
   playerAdvStat('adv_offRating', 'ORtg individuel (pts × 100 / possessions utilisées)', 'ORtg', '#00E5A0', a => a.offRating, ''),
   playerAdvStat('adv_efgPct',   'eFG% individuel',                  'eFG%',   '#EAB308', a => a.efgPct),
-  playerAdvStat('adv_ftRate',   'FT Rate individuel (LF tentés / tirs)', 'FTr', '#2DD4BF', a => a.ftRate, ''),
+  // `decimals: 2` : FT Rate est un RATIO (0,28), affiché à 2 décimales dans les tableaux de stats
+  // avancées et stocké ainsi en base (`ft_rate NUMERIC(4,2)`). Sans ça, le classement l'arrondissait
+  // à 0,3 — le même défaut que celui corrigé pour les % de tir.
+  { ...playerAdvStat('adv_ftRate', 'FT Rate individuel (LF tentés / tirs)', 'FTr', '#2DD4BF', a => a.ftRate, ''), decimals: 2 },
   // Deux lectures de l'usage, comme dans les tableaux de stats avancées (cf. playerAdvanced.ts) :
   // la part brute dépend du temps de jeu, la version /min ne dépend que de ce qui se passe sur le
   // terrain. Les deux sont proposées au classement, aux objectifs et aux corrélations — le libellé

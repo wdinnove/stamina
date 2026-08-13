@@ -3,6 +3,7 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { StatusBadge } from './StatusBadge';
 import { Badge } from './Badge';
 import { statusConfig } from '../data/config';
+import { isNoStopInjury } from './MedicalCard';
 import { playerNameFull } from '../utils/playerName';
 import type { MedicalRecord, Player } from '../data/types';
 
@@ -56,6 +57,8 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
   // l'entrée (rouge/vert/bleu), pas le statut courant du joueur — évite la confusion vue en pratique.
   const statusColor = airy ? col : (player ? statusConfig[player.status].color : col);
   const reprise = reprisEstimeeDisplay(record.rtpDate);
+  // Sans arrêt : afficher « Reprise le : <même jour> » n'a pas de sens, on l'annonce comme tel.
+  const noStop = isNoStopInjury(record);
 
   if (airy) {
     return (
@@ -77,10 +80,12 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
           <div style={{ marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: '#64748B', fontSize: '0.78rem' }}>{typeLabels[record.type]} le : {fmtDateLong(record.date)}</span>
             {record.type !== 'checkup' && (
-              <span style={{ color: reprise ? reprise.color : '#475569', fontSize: '0.78rem', fontWeight: reprise ? 700 : 500 }}>
-                {reprise
-                  ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
-                  : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
+              <span style={{ color: noStop ? '#00E5A0' : reprise ? reprise.color : '#475569', fontSize: '0.78rem', fontWeight: noStop || reprise ? 700 : 500 }}>
+                {noStop
+                  ? 'Sans arrêt — 0 jour'
+                  : reprise
+                    ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
+                    : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
               </span>
             )}
           </div>
@@ -97,10 +102,12 @@ export function InjuryRecordCard({ record, player, onEdit, onClose, navigate, sh
 
       {/* reprise estimée (injury/treatment uniquement) */}
       {record.type !== 'checkup' && (
-        <div style={{ color: reprise ? reprise.color : '#475569', fontSize: '0.7rem', fontWeight: reprise ? 700 : 500 }}>
-          {reprise
-            ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
-            : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
+        <div style={{ color: noStop ? '#00E5A0' : reprise ? reprise.color : '#475569', fontSize: '0.7rem', fontWeight: noStop || reprise ? 700 : 500 }}>
+          {noStop
+            ? 'Sans arrêt — 0 jour'
+            : reprise
+              ? `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : ${reprise.label}`
+              : `${record.type === 'treatment' ? 'Fin' : 'Reprise'} le : non renseigné`}
         </div>
       )}
     </>

@@ -533,7 +533,16 @@ function toMatchStat(row: Record<string, unknown>): MatchStat {
 }
 
 function toTeamMatchStat(row: Record<string, unknown>): TeamMatchStat {
+  // Compteurs bruts : NOT NULL DEFAULT 0 en base, le ?? 0 n'est qu'une ceinture de sécurité.
   const n = (k: string): number => (row[k] ?? 0) as number;
+  /**
+   * Ratios avancés (colonnes GENERATED) et `opp_possessions` : la base renvoie délibérément NULL
+   * quand le dénominateur est nul — un match dont seul le score est saisi n'a pas d'eFG%, il n'a
+   * pas un eFG% de 0. Les écraser en 0 les faisait entrer comme observations réelles dans les
+   * facteurs de victoire, la PCA et les moyennes d'équipe, et rendait inopérants les garde-fous
+   * `!== null` situés en aval. Voir docs/CALCULS.md § 14.
+   */
+  const nn = (k: string): number | null => (row[k] ?? null) as number | null;
   return {
     id:            row.id              as string,
     matchId:       row.match_id        as string | undefined,
@@ -559,13 +568,13 @@ function toTeamMatchStat(row: Record<string, unknown>): TeamMatchStat {
     fte:           n('fte'),
     fpr:           n('fpr'),
     possessions:   n('possessions'),
-    offRating:     n('off_rating'),
-    defRating:     n('def_rating'),
-    efgPct:        n('efg_pct'),
-    ftRate:        n('ft_rate'),
-    toPct:         n('to_pct'),
-    orebPct:       n('oreb_pct'),
-    drebPct:       n('dreb_pct'),
+    offRating:     nn('off_rating'),
+    defRating:     nn('def_rating'),
+    efgPct:        nn('efg_pct'),
+    ftRate:        nn('ft_rate'),
+    toPct:         nn('to_pct'),
+    orebPct:       nn('oreb_pct'),
+    drebPct:       nn('dreb_pct'),
     opp_fg2m:      n('opp_fg2m'),
     opp_fg2a:      n('opp_fg2a'),
     opp_fg3m:      n('opp_fg3m'),
@@ -581,10 +590,10 @@ function toTeamMatchStat(row: Record<string, unknown>): TeamMatchStat {
     opp_bp:        n('opp_bp'),
     opp_fte:       n('opp_fte'),
     opp_fpr:       n('opp_fpr'),
-    opp_possessions: n('opp_possessions'),
-    opp_efgPct:    n('opp_efg_pct'),
-    opp_toPct:     n('opp_to_pct'),
-    opp_orebPct:   n('opp_oreb_pct'),
+    opp_possessions: nn('opp_possessions'),
+    opp_efgPct:    nn('opp_efg_pct'),
+    opp_toPct:     nn('opp_to_pct'),
+    opp_orebPct:   nn('opp_oreb_pct'),
   };
 }
 

@@ -1,6 +1,6 @@
 import { X, Pencil, Check, Bandage, Stethoscope, Pill } from 'lucide-react';
 import { Modal } from './Modal';
-import { severityConfig, typeLabels, daysBetween } from './MedicalCard';
+import { severityConfig, typeLabels, daysBetween, isNoStopInjury } from './MedicalCard';
 import { sanitizeHtml } from '../utils/sanitize';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull } from '../utils/playerName';
@@ -24,6 +24,7 @@ export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCl
   const sev = record.severity ? severityConfig[record.severity] : null;
   const TypeIcon = typeIconComponents[record.type];
   const totalDays = record.rtpDate ? daysBetween(record.date, record.rtpDate) : null;
+  const noStop = isNoStopInjury(record);
 
   const details = ([
     { label: 'Joueur', value: player ? playerNameFull(player) : '—' },
@@ -31,8 +32,11 @@ export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCl
     { label: 'Statut', value: record.status === 'active' ? 'En cours' : 'Clôturé', color: record.status === 'active' ? '#F59E0B' : '#00E5A0' },
     ...(sev ? [{ label: 'Gravité', value: sev.label, color: sev.color }] : []),
     ...(record.location ? [{ label: 'Localisation', value: record.location }] : []),
-    ...(record.daysAbsent != null ? [{ label: 'Jours blessés', value: `${record.daysAbsent} jour${record.daysAbsent > 1 ? 's' : ''}`, color: '#F59E0B' }] : []),
-    ...(record.rtpDate ? [{ label: record.type === 'injury' ? 'Date de retour' : 'Date de fin', value: `${fmtDate(record.rtpDate)} ${record.rtpDate.slice(0, 4)}${totalDays ? ` · ${totalDays}j` : ''}` }] : []),
+    // Sans arrêt : « 0 jour » et une reprise le jour même se lisent mal, un seul bloc explicite suffit.
+    ...(noStop ? [{ label: 'Arrêt', value: 'Sans arrêt — 0 jour', color: '#00E5A0' }] : [
+      ...(record.daysAbsent != null ? [{ label: 'Jours blessés', value: `${record.daysAbsent} jour${record.daysAbsent > 1 ? 's' : ''}`, color: '#F59E0B' }] : []),
+      ...(record.rtpDate ? [{ label: record.type === 'injury' ? 'Date de retour' : 'Date de fin', value: `${fmtDate(record.rtpDate)} ${record.rtpDate.slice(0, 4)}${totalDays ? ` · ${totalDays}j` : ''}` }] : []),
+    ]),
     ...(record.resolvedDate ? [{ label: 'Clôturé le', value: `${fmtDate(record.resolvedDate)} ${record.resolvedDate.slice(0, 4)}`, color: '#00E5A0' }] : []),
   ] as { label: string; value: string; color?: string }[]);
 

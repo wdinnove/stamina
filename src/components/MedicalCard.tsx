@@ -27,6 +27,15 @@ export function daysBetween(from: string, to: string): number {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
 }
 
+/**
+ * Blessure « sans arrêt » : aucune indisponibilité, donc reprise le jour même.
+ * Les deux signaux sont acceptés — `daysAbsent = 0` saisi dans le formulaire, ou une date de retour
+ * égale à la date de la blessure — pour couvrir les entrées créées avant la case « sans arrêt ».
+ */
+export function isNoStopInjury(r: MedicalRecord): boolean {
+  return r.type === 'injury' && (r.daysAbsent === 0 || (!!r.rtpDate && r.rtpDate === r.date));
+}
+
 export function rtpDaysLeft(rtpDate: string): number {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const rtp   = new Date(rtpDate + 'T00:00:00');

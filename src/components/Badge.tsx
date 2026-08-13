@@ -1,5 +1,10 @@
 import type { ReactNode, CSSProperties } from 'react';
 
+/** Couleur de repli d'une catégorie sans couleur définie (exercices, séances) — le gris neutre
+ *  de l'app. Partagée pour ne pas laisser un `undefined` produire des styles invalides du type
+ *  `"undefined18"`, et pour ne pas répéter le littéral à chaque point d'affichage. */
+export const CATEGORY_FALLBACK_COLOR = '#94A3B8';
+
 interface BadgeProps {
   color: string;
   /** Fond du badge — défaut : `${color}22` (même convention que partout dans l'app) */

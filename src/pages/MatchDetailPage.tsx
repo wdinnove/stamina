@@ -16,6 +16,7 @@ import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, Tactic
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
+import { ratioFromSums, pctFromSums } from '../utils/ratioFromSums';
 import { LAYER } from '../styles/layers';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -1073,9 +1074,10 @@ export default function MatchDetailPage() {
             const f1 = (v: number) => `${v}%`;
             const f2 = (v: number) => v.toFixed(2);
             const oppFga = teamStats.opp_fg2a + teamStats.opp_fg3a;
-            const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : 0;
-            const oppDrebPct = (teamStats.opp_rd + teamStats.ro) > 0 ? Math.round(teamStats.opp_rd / (teamStats.opp_rd + teamStats.ro) * 1000) / 10 : 0;
-            type Row = { label: string; own: number; opp: number; higherBetter: boolean | null; fmt?: (v: number) => string };
+            // `null` et non 0 quand le dénominateur est nul : « pas de donnée » n'est pas « zéro ».
+            const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : null;
+            const oppDrebPct = (teamStats.opp_rd + teamStats.ro) > 0 ? Math.round(teamStats.opp_rd / (teamStats.opp_rd + teamStats.ro) * 1000) / 10 : null;
+            type Row = { label: string; own: number | null; opp: number | null; higherBetter: boolean | null; fmt?: (v: number) => string };
             const groups: { title: string; rows: Row[] }[] = [
               { title: 'Score', rows: [
                 { label: 'Points', own: match.scoreUs, opp: match.scoreThem, higherBetter: true },
@@ -1127,17 +1129,18 @@ export default function MatchDetailPage() {
                           <td colSpan={3} style={{ padding: '10px 14px 5px', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #1E2229', borderTop: '1px solid #1A1F28', backgroundColor: '#12151A' }}>{g.title}</td>
                         </tr>
                         {g.rows.map((r, i) => {
-                          const ownWins = r.higherBetter === true ? r.own > r.opp : r.higherBetter === false ? r.own < r.opp : false;
-                          const oppWins = r.higherBetter === true ? r.opp > r.own : r.higherBetter === false ? r.opp < r.own : false;
-                          const delta = r.own - r.opp;
-                          const absDelta = Math.abs(Math.round(delta * 10) / 10);
-                          const fmtDelta = r.fmt ? r.fmt(absDelta) : String(absDelta);
-                          const deltaPositive = delta > 0 === (r.higherBetter !== false);
+                          // Une ligne dont l'un des deux côtés n'a pas de donnée ne désigne aucun
+                          // vainqueur et n'affiche pas d'écart : comparer à une absence produirait
+                          // un « on gagne » gratuit sur un match non documenté.
+                          const comparable = r.own !== null && r.opp !== null;
+                          const ownWins = comparable && (r.higherBetter === true ? r.own! > r.opp! : r.higherBetter === false ? r.own! < r.opp! : false);
+                          const oppWins = comparable && (r.higherBetter === true ? r.opp! > r.own! : r.higherBetter === false ? r.opp! < r.own! : false);
+                          const show = (v: number | null) => v === null ? '—' : r.fmt ? r.fmt(v) : String(v);
                           return (
-                            <tr key={r.label} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', opacity: !hasOpp && r.opp === 0 ? 0.35 : 1 }}>
-                              <td style={{ ...TD, textAlign: 'right', fontWeight: ownWins ? 700 : 400, color: ownWins ? '#00E5A0' : oppWins ? '#EF4444' : '#94A3B8', fontSize: '0.88rem' }}>{r.fmt ? r.fmt(r.own) : r.own}</td>
+                            <tr key={r.label} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', opacity: !hasOpp && (r.opp === 0 || r.opp === null) ? 0.35 : 1 }}>
+                              <td style={{ ...TD, textAlign: 'right', fontWeight: ownWins ? 700 : 400, color: ownWins ? '#00E5A0' : oppWins ? '#EF4444' : '#94A3B8', fontSize: '0.88rem' }}>{show(r.own)}</td>
                               <td style={{ ...TD, color: '#475569', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{r.label}</td>
-                              <td style={{ ...TD, textAlign: 'left', fontSize: '0.88rem' }}>{r.fmt ? r.fmt(r.opp) : r.opp}</td>
+                              <td style={{ ...TD, textAlign: 'left', fontSize: '0.88rem' }}>{show(r.opp)}</td>
                             </tr>
                           );
                         })}
@@ -1160,38 +1163,45 @@ export default function MatchDetailPage() {
             const others = seasonTeamStats.filter(ts => ts.matchId !== match.id);
             const n = others.length;
             if (n === 0) return <EmptyState message="Aucun autre match cette saison." />;
-            const avg = (fn: (ts: TeamMatchStat) => number) => {
-              const vals = others.map(fn);
-              return Math.round(vals.reduce((a, b) => a + b, 0) / n * 10) / 10;
+            // Volumes : moyenne sur les autres matchs, en ignorant les valeurs absentes (le
+            // dénominateur suit, sinon un match non documenté tire la moyenne vers le bas).
+            const avg = (fn: (ts: TeamMatchStat) => number | null) => {
+              const vals = others.map(fn).filter((v): v is number => v !== null);
+              return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
             };
+            // Ratios : somme des numérateurs / somme des dénominateurs sur les autres matchs (§ 4),
+            // et non la moyenne des pourcentages match par match.
+            const oppPoss = (ts: TeamMatchStat) => ts.opp_possessions ?? ts.possessions;
+            const fgaOf = (ts: TeamMatchStat) => ts.fg2a + ts.fg3a;
+            const curFga = fgaOf(teamStats);
             const f1 = (v: number) => `${v}%`;
             const f2 = (v: number) => v.toFixed(2);
-            type MatchRow = { label: string; cur: number; avgVal: number; higherBetter: boolean | null; fmt?: (v: number) => string };
+            type MatchRow = { label: string; cur: number | null; avgVal: number | null; higherBetter: boolean | null; fmt?: (v: number) => string };
             type MatchGroup = { title: string; rows: MatchRow[] };
             const matchGroups: MatchGroup[] = [
               { title: 'Score', rows: [
                 { label: 'Points', cur: match.scoreUs, avgVal: avg(ts => ts.scoreUs), higherBetter: true },
                 { label: 'Pts encaissés', cur: match.scoreThem, avgVal: avg(ts => ts.scoreThem), higherBetter: false },
-                { label: 'ORtg', cur: teamStats.offRating, avgVal: avg(ts => ts.offRating), higherBetter: true, fmt: f1 },
-                { label: 'DRtg', cur: teamStats.defRating, avgVal: avg(ts => ts.defRating), higherBetter: false, fmt: f1 },
+                { label: 'ORtg', cur: teamStats.offRating, avgVal: pctFromSums(others, ts => ts.scoreUs, ts => ts.possessions), higherBetter: true, fmt: f1 },
+                { label: 'DRtg', cur: teamStats.defRating, avgVal: pctFromSums(others, ts => ts.scoreThem, oppPoss), higherBetter: false, fmt: f1 },
                 { label: 'Possessions', cur: teamStats.possessions, avgVal: avg(ts => ts.possessions), higherBetter: null },
               ]},
               { title: 'Tirs', rows: [
-                { label: 'eFG%', cur: teamStats.efgPct, avgVal: avg(ts => ts.efgPct), higherBetter: true, fmt: f1 },
-                { label: '2pts%', cur: teamStats.fg2a > 0 ? Math.round(teamStats.fg2m/teamStats.fg2a*100) : 0, avgVal: avg(ts => ts.fg2a > 0 ? Math.round(ts.fg2m/ts.fg2a*100) : 0), higherBetter: true, fmt: f1 },
-                { label: '3pts%', cur: teamStats.fg3a > 0 ? Math.round(teamStats.fg3m/teamStats.fg3a*100) : 0, avgVal: avg(ts => ts.fg3a > 0 ? Math.round(ts.fg3m/ts.fg3a*100) : 0), higherBetter: true, fmt: f1 },
-                { label: 'LF%', cur: teamStats.fta > 0 ? Math.round(teamStats.ftm/teamStats.fta*100) : 0, avgVal: avg(ts => ts.fta > 0 ? Math.round(ts.ftm/ts.fta*100) : 0), higherBetter: true, fmt: f1 },
-                { label: 'FT Rate', cur: teamStats.ftRate, avgVal: avg(ts => ts.ftRate), higherBetter: true, fmt: f2 },
+                { label: 'eFG%', cur: teamStats.efgPct, avgVal: pctFromSums(others, ts => ts.fg2m + 1.5 * ts.fg3m, fgaOf), higherBetter: true, fmt: f1 },
+                { label: '2pts%', cur: teamStats.fg2a > 0 ? Math.round(teamStats.fg2m/teamStats.fg2a*100) : null, avgVal: pctFromSums(others, ts => ts.fg2m, ts => ts.fg2a), higherBetter: true, fmt: f1 },
+                { label: '3pts%', cur: teamStats.fg3a > 0 ? Math.round(teamStats.fg3m/teamStats.fg3a*100) : null, avgVal: pctFromSums(others, ts => ts.fg3m, ts => ts.fg3a), higherBetter: true, fmt: f1 },
+                { label: 'LF%', cur: teamStats.fta > 0 ? Math.round(teamStats.ftm/teamStats.fta*100) : null, avgVal: pctFromSums(others, ts => ts.ftm, ts => ts.fta), higherBetter: true, fmt: f1 },
+                { label: 'FT Rate', cur: curFga > 0 ? Math.round(teamStats.fta / curFga * 100) / 100 : null, avgVal: ratioFromSums(others, ts => ts.fta, fgaOf, 1), higherBetter: true, fmt: f2 },
               ]},
               { title: 'Rebonds', rows: [
                 { label: 'RT', cur: teamStats.rt, avgVal: avg(ts => ts.rt), higherBetter: true },
-                { label: 'OREB%', cur: teamStats.orebPct, avgVal: avg(ts => ts.orebPct), higherBetter: true, fmt: f1 },
-                { label: 'DREB%', cur: teamStats.drebPct, avgVal: avg(ts => ts.drebPct), higherBetter: true, fmt: f1 },
+                { label: 'OREB%', cur: teamStats.orebPct, avgVal: pctFromSums(others, ts => ts.ro, ts => ts.ro + ts.opp_rd), higherBetter: true, fmt: f1 },
+                { label: 'DREB%', cur: teamStats.drebPct, avgVal: pctFromSums(others, ts => ts.rd, ts => ts.rd + ts.opp_ro), higherBetter: true, fmt: f1 },
               ]},
               { title: 'Playmaking', rows: [
                 { label: 'PD', cur: teamStats.pd, avgVal: avg(ts => ts.pd), higherBetter: true },
                 { label: 'BP', cur: teamStats.bp, avgVal: avg(ts => ts.bp), higherBetter: false },
-                { label: 'TO%', cur: teamStats.toPct, avgVal: avg(ts => ts.toPct), higherBetter: false, fmt: f1 },
+                { label: 'TO%', cur: teamStats.toPct, avgVal: pctFromSums(others, ts => ts.bp, ts => ts.possessions), higherBetter: false, fmt: f1 },
               ]},
               { title: 'Défense', rows: [
                 { label: 'CT', cur: teamStats.ct, avgVal: avg(ts => ts.ct), higherBetter: true },
@@ -1216,13 +1226,17 @@ export default function MatchDetailPage() {
                             <td colSpan={3} style={{ padding: '10px 14px 5px', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #1E2229', borderTop: '1px solid #1A1F28', backgroundColor: '#12151A' }}>{g.title}</td>
                           </tr>
                           {g.rows.map((r, i) => {
-                            const better = r.higherBetter === true ? r.cur > r.avgVal : r.higherBetter === false ? r.cur < r.avgVal : false;
-                            const worse = r.higherBetter === true ? r.cur < r.avgVal : r.higherBetter === false ? r.cur > r.avgVal : false;
+                            // Pas de verdict mieux/moins bien quand l'un des deux côtés manque :
+                            // ce match non documenté, ou aucun autre match comparable.
+                            const comparable = r.cur !== null && r.avgVal !== null;
+                            const better = comparable && (r.higherBetter === true ? r.cur! > r.avgVal! : r.higherBetter === false ? r.cur! < r.avgVal! : false);
+                            const worse  = comparable && (r.higherBetter === true ? r.cur! < r.avgVal! : r.higherBetter === false ? r.cur! > r.avgVal! : false);
+                            const show = (v: number | null) => v === null ? '—' : r.fmt ? r.fmt(v) : String(v);
                             return (
                               <tr key={r.label} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: better ? 700 : 400, color: better ? '#00E5A0' : worse ? '#EF4444' : '#94A3B8', fontSize: '0.9rem' }}>{r.fmt ? r.fmt(r.cur) : r.cur}</td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: better ? 700 : 400, color: better ? '#00E5A0' : worse ? '#EF4444' : '#94A3B8', fontSize: '0.9rem' }}>{show(r.cur)}</td>
                                 <td style={{ ...TD, color: '#475569', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{r.label}</td>
-                                <td style={{ ...TD, textAlign: 'left', fontSize: '0.9rem' }}>{r.fmt ? r.fmt(r.avgVal) : r.avgVal}</td>
+                                <td style={{ ...TD, textAlign: 'left', fontSize: '0.9rem' }}>{show(r.avgVal)}</td>
                               </tr>
                             );
                           })}

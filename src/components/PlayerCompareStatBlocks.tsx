@@ -86,10 +86,14 @@ function threePtRate(ms: MatchStat[]): number | null {
   return +(ms.reduce((s, m) => s + m.fg3a, 0) / fga * 100).toFixed(1);
 }
 
+/** FT Rate : un RATIO (0,28 = 28 lancers tentés pour 100 tirs), pas un pourcentage — même forme
+ *  qu'en base (`ft_rate NUMERIC(4,2)`), que le boxscore avancé et que la fiche match. Cette
+ *  surface l'affichait ×100 avec un suffixe « % », si bien que la même joueuse lisait 0,28 dans un
+ *  onglet et 28 % dans l'autre. */
 function ftRate(ms: MatchStat[]): number | null {
   const fga = ms.reduce((s, m) => s + m.fg2a + m.fg3a, 0);
   if (fga === 0) return null;
-  return +(ms.reduce((s, m) => s + m.fta, 0) / fga * 100).toFixed(1);
+  return +(ms.reduce((s, m) => s + m.fta, 0) / fga).toFixed(2);
 }
 
 function astToRatio(ms: MatchStat[]): number | null {
@@ -297,7 +301,7 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
               <Row label="Ballons perdus"    period={p('bp')}  season={s('bp')}  dec={1} higherIsBetter={false} />
               <Row label="% BP"              period={pTovR}    season={sTovR}    unit="%" higherIsBetter={false} />
               <Row label="Fautes provoquées" period={p('fte')} season={s('fte')} dec={1} />
-              <Row label="FT Rate"           period={pFtr}     season={sFtr}     unit="%" />
+              <Row label="FT Rate"           period={pFtr}     season={sFtr}     dec={2} />
             </>
           </Block>
 

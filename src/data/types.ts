@@ -1,3 +1,5 @@
+import type { DiagramScene } from '../utils/diagram';
+
 // ─── Primitive types ──────────────────────────────────────────────────────────
 export type OrgRole           = 'superadmin' | 'member';
 export type TeamRole          = 'admin' | 'editor' | 'viewer';
@@ -162,9 +164,12 @@ export interface MedicalRecord {
   severity?: 'mild' | 'moderate' | 'severe';
   daysAbsent?: number;
   status: 'active' | 'resolved';
-  resolvedDate?: string;
+  /** `null` explicite = rouvrir l'entrée en effaçant la date de clôture (cf. `treatment`). */
+  resolvedDate?: string | null;
   rtpDate?: string;
-  treatment?: string;
+  /** `null` explicite = effacer le champ en base (cf. `toRow` dans api/medical.ts), à distinguer
+   *  de `undefined` = champ non modifié par cette mise à jour partielle. */
+  treatment?: string | null;
 }
 
 export interface Action {
@@ -238,22 +243,26 @@ export interface TeamMatchStat {
   ro: number; rd: number; rt: number;
   pd: number; ct: number; intercepts: number; bp: number; fte: number; fpr: number;
   possessions: number;
-  offRating: number;
-  defRating: number;
-  efgPct: number;
-  ftRate: number;
-  toPct: number;
-  orebPct: number;
-  drebPct: number;
+  // Ratios avancés : `null` = dénominateur nul en base (aucun tir, aucune possession saisie), donc
+  // « pas de donnée » — jamais 0. Les colonnes GENERATED de schema.sql renvoient bien NULL dans ce
+  // cas ; les écraser en 0 côté client faisait entrer des matchs non documentés dans les facteurs
+  // de victoire, la PCA et les moyennes d'équipe. Voir docs/CALCULS.md § 14.
+  offRating: number | null;
+  defRating: number | null;
+  efgPct: number | null;
+  ftRate: number | null;
+  toPct: number | null;
+  orebPct: number | null;
+  drebPct: number | null;
   opp_fg2m: number; opp_fg2a: number;
   opp_fg3m: number; opp_fg3a: number;
   opp_ftm: number;  opp_fta: number;
   opp_ro: number; opp_rd: number; opp_rt: number;
   opp_pd: number; opp_ct: number; opp_intercepts: number; opp_bp: number; opp_fte: number; opp_fpr: number;
-  opp_possessions: number;
-  opp_efgPct: number;
-  opp_toPct: number;
-  opp_orebPct: number;
+  opp_possessions: number | null;
+  opp_efgPct: number | null;
+  opp_toPct: number | null;
+  opp_orebPct: number | null;
   /** Champ client-only (jamais lu depuis la DB) : Σ des minutes de TOUT l'effectif sur ce
    *  match — calculé quand les MatchStat du roster complet sont disponibles (voir
    *  usePerformanceData.ts), utilisé pour corriger usagePct par la part de minutes jouées
@@ -419,6 +428,8 @@ export interface ExerciseImage {
   exerciseId: string;
   url: string;
   position: number;
+  /** Renseigné si l'image a été dessinée dans l'éditeur de schéma : la scène rouvrable. */
+  diagram?: DiagramScene;
   createdAt: string;
 }
 

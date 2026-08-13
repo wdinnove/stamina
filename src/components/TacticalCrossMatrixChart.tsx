@@ -34,7 +34,7 @@ export function TacticalCrossMatrixChart({ matrix, labelX, labelY }: { matrix: C
               contentStyle={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, fontSize: '0.72rem' }}
               labelStyle={{ color: '#94A3B8' }}
               itemStyle={{ color: '#fff' }}
-              formatter={(value: number | null) => (value === null ? ['—'] : [value.toFixed(2)])}
+              formatter={value => (value === null || value === undefined ? ['—'] : [Number(value).toFixed(2)])}
             />
             <Legend wrapperStyle={{ fontSize: 11, color: '#94A3B8' }} />
             {matrix.optionsY.map((y, i) => (

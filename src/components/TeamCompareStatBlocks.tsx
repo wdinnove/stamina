@@ -2,6 +2,7 @@ import { Block, MetricRow, MetricBarRow, SubLabel } from './TrendBlocks';
 import { teamWellnessAvg, type WellnessMetric } from '../utils/wellness';
 import { teamAvgWeeklyLoad } from '../utils/weeklyLoad';
 import { teamAvgRpe } from '../utils/rpe';
+import { ratioFromSums, pctFromSums } from '../utils/ratioFromSums';
 import type { RPEEntry, WellnessEntry, TeamMatchStat } from '../data/types';
 
 /**
@@ -34,11 +35,7 @@ function avgField(arr: TeamMatchStat[], pick: (t: TeamMatchStat) => number): num
   if (!arr.length) return null;
   return Math.round(arr.reduce((s, t) => s + pick(t), 0) / arr.length * 10) / 10;
 }
-function pctFromSums(arr: TeamMatchStat[], made: (t: TeamMatchStat) => number, att: (t: TeamMatchStat) => number): number | null {
-  const a = arr.reduce((s, t) => s + att(t), 0);
-  if (a === 0) return null;
-  return Math.round(arr.reduce((s, t) => s + made(t), 0) / a * 1000) / 10;
-}
+// Ratio des sommes (jamais la moyenne des ratios) — brique partagée, cf. utils/ratioFromSums.ts.
 function ptsFor(t: TeamMatchStat): number { return t.fg2m * 2 + t.fg3m * 3 + t.ftm; }
 function fga(t: TeamMatchStat): number { return t.fg2a + t.fg3a; }
 function fgm(t: TeamMatchStat): number { return t.fg2m + t.fg3m; }
@@ -65,8 +62,16 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
 
   const ptsP = avgField(matchP, ptsFor), ptsS = avgField(matchS, ptsFor);
   const ptsAgainstP = p(t => t.scoreThem), ptsAgainstS = s(t => t.scoreThem);
-  const ortgP = p(t => t.offRating), ortgS = s(t => t.offRating);
-  const drtgP = p(t => t.defRating), drtgS = s(t => t.defRating);
+  // ORtg/DRtg d'un GROUPE de matchs : points × 100 / possessions, sommés puis divisés — et non la
+  // moyenne des ORtg de chaque match, qui pondérerait chaque match à égalité quel que soit son
+  // rythme. Les matchs sans possessions saisies sortent d'eux-mêmes (dénominateur nul).
+  // DRtg se rapporte aux possessions ADVERSES quand elles sont connues, cohérent avec la vue
+  // `team_match_stats_full` corrigée (cf. docs/CALCULS.md § 8).
+  const oppPoss = (t: TeamMatchStat) => t.opp_possessions ?? t.possessions;
+  const ortgP = pctFromSums(matchP, t => t.scoreUs, t => t.possessions);
+  const ortgS = pctFromSums(matchS, t => t.scoreUs, t => t.possessions);
+  const drtgP = pctFromSums(matchP, t => t.scoreThem, oppPoss);
+  const drtgS = pctFromSums(matchS, t => t.scoreThem, oppPoss);
 
   const efgP = pctFromSums(matchP, fgm, fga), efgS = pctFromSums(matchS, fgm, fga);
   const fg2PctP = pctFromSums(matchP, t => t.fg2m, t => t.fg2a), fg2PctS = pctFromSums(matchS, t => t.fg2m, t => t.fg2a);
@@ -80,6 +85,18 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
   const rebP = p(t => t.rt), rebS = s(t => t.rt);
   const trebPctP = pctFromSums(matchP, t => t.rt, t => t.rt + t.opp_rt);
   const trebPctS = pctFromSums(matchS, t => t.rt, t => t.rt + t.opp_rt);
+
+  // Ces quatre ratios lisaient les colonnes déjà agrégées (`toPct`, `ftRate`, `drebPct`, `orebPct`)
+  // et les moyennaient match par match — alors que les six ratios ci-dessus utilisaient bien le
+  // ratio des sommes, dans le même bloc. Ils repartent maintenant des compteurs bruts, comme eux.
+  const toPctP   = pctFromSums(matchP, t => t.bp, t => t.possessions);
+  const toPctS   = pctFromSums(matchS, t => t.bp, t => t.possessions);
+  const drebPctP = pctFromSums(matchP, t => t.rd, t => t.rd + t.opp_ro);
+  const drebPctS = pctFromSums(matchS, t => t.rd, t => t.rd + t.opp_ro);
+  const orebPctP = pctFromSums(matchP, t => t.ro, t => t.ro + t.opp_rd);
+  const orebPctS = pctFromSums(matchS, t => t.ro, t => t.ro + t.opp_rd);
+  const ftRateP  = ratioFromSums(matchP, t => t.fta, fga, 1);
+  const ftRateS  = ratioFromSums(matchS, t => t.fta, fga, 1);
 
   // RPE d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses (les groupes
   // comparés couvrent plusieurs séances, donc une moyenne à plat pondérerait par l'assiduité).
@@ -175,9 +192,11 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
             <Row label="Passes décisives"  period={p(t => t.pd)}          season={s(t => t.pd)}          dec={1} />
             <Row label="% PD"              period={astShareP}             season={astShareS}             unit="%" />
             <Row label="Ballons perdus"    period={p(t => t.bp)}          season={s(t => t.bp)}          dec={1} higherIsBetter={false} />
-            <Row label="% BP"              period={p(t => t.toPct)}       season={s(t => t.toPct)}       unit="%" higherIsBetter={false} />
+            <Row label="% BP"              period={toPctP}                season={toPctS}                unit="%" higherIsBetter={false} />
             <Row label="Fautes provoquées" period={p(t => t.fte)}         season={s(t => t.fte)}         dec={1} />
-            <Row label="FT Rate"           period={p(t => t.ftRate)}      season={s(t => t.ftRate)}      unit="%" />
+            {/* FT Rate est un RATIO (0,28 = 28 LF pour 100 tirs), pas un pourcentage : même forme
+                qu'en base (ft_rate NUMERIC(4,2)) et que dans le boxscore. */}
+            <Row label="FT Rate"           period={ftRateP}               season={ftRateS}               dec={2} />
           </>
         </Block>
 
@@ -187,9 +206,9 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
               <Row label="Totaux"      period={rebP}              season={rebS}              dec={1} />
               <Row label="% Totaux"    period={trebPctP}          season={trebPctS}          unit="%" />
               <Row label="Défensifs"   period={p(t => t.rd)}       season={s(t => t.rd)}       dec={1} />
-              <Row label="% défensifs" period={p(t => t.drebPct)}  season={s(t => t.drebPct)}  unit="%" />
+              <Row label="% défensifs" period={drebPctP}           season={drebPctS}           unit="%" />
               <Row label="Offensifs"   period={p(t => t.ro)}       season={s(t => t.ro)}       dec={1} />
-              <Row label="% offensifs" period={p(t => t.orebPct)}  season={s(t => t.orebPct)}  unit="%" />
+              <Row label="% offensifs" period={orebPctP}           season={orebPctS}           unit="%" />
             </>
           </Block>
         </div>

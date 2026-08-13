@@ -10,7 +10,7 @@ import { sessionTeamsApi } from '../api/sessionTeams';
 import { exercisesApi } from '../api/exercises';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, DropzoneEmptyState, AccessRestricted, EmptyState } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState } from '../components';
 import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform } from '../utils/socialVideo';
@@ -232,7 +232,7 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
                 onMouseEnter={() => setCursor(i)}
                 onMouseLeave={() => setCursor(-1)}>
                 {ex.categoryName && (
-                  <span style={{ color: ex.categoryColor ?? '#94A3B8', backgroundColor: (ex.categoryColor ?? '#94A3B8') + '22', fontSize: '0.64rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  <span style={{ color: ex.categoryColor ?? CATEGORY_FALLBACK_COLOR, backgroundColor: (ex.categoryColor ?? CATEGORY_FALLBACK_COLOR) + '22', fontSize: '0.64rem', fontWeight: 700, padding: '2px 7px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {ex.categoryName}
                   </span>
                 )}
@@ -772,7 +772,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16, paddingRight: 28 }}>
               <h1 style={{ color: '#F1F5F9', margin: 0 }}>{viewExercise.name}</h1>
               {viewExercise.categoryName && (
-                <Badge color={viewExercise.categoryColor} label={viewExercise.categoryName}
+                <Badge color={viewExercise.categoryColor ?? CATEGORY_FALLBACK_COLOR} label={viewExercise.categoryName}
                   style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', flexShrink: 0 }} />
               )}
             </div>

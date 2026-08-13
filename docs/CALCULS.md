@@ -539,6 +539,19 @@ jours_indisponibilité = arrondi( (date_retour_terrain − date_blessure) en jou
 
 Cumulé sur la saison pour obtenir le total de jours d'indisponibilité d'un joueur.
 
+### 11.1 Blessure sans arrêt
+
+Toutes les agrégations de jours partent de `rtp_date`, jamais de `days_absent` — ce dernier n'est qu'un
+champ d'affichage. Une blessure **sans arrêt** (case du formulaire) est donc enregistrée avec
+`days_absent = 0` **et** `rtp_date = date`, ce qui donne 0 jour partout sans cas particulier dans les
+calculs. Sans `rtp_date`, « sans arrêt » serait indiscernable de « durée inconnue », qui compte aussi 0.
+
+Elle est créée directement clôturée (`status = 'resolved'`, `resolved_date = date`) : elle n'a rien à
+suivre dans les blessures en cours, et le statut du joueur reste *actif*. Elle compte en revanche dans
+le **nombre** de blessures de la saison — c'est un événement médical réel, seulement sans indisponibilité.
+[`isNoStopInjury`](../src/components/MedicalCard.tsx) reconnaît les deux signaux (`days_absent = 0` ou
+reprise le jour même) pour couvrir les entrées créées avant l'existence de la case.
+
 ---
 
 ## 12. Archétypes — fiabilité vs limite de méthode

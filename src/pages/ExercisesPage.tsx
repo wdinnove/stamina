@@ -7,7 +7,8 @@ import { exercisesApi } from '../api/exercises';
 import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { ExerciseImagePicker, ExerciseDocumentPicker, type ExerciseImagePickerItem, Modal, Badge, DropzoneEmptyState, EmptyState } from '../components';
+import { ExerciseImagePicker, ExerciseDocumentPicker, DiagramEditorModal, type ExerciseImagePickerItem, Modal, Badge, DropzoneEmptyState, EmptyState } from '../components';
+import type { DiagramScene } from '../utils/diagram';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 
@@ -133,10 +134,13 @@ function ExerciseModal({
   const [saving,      setSaving]      = useState(false);
   const [formError,   setFormError]   = useState('');
 
-  // Images : persistées immédiatement en édition, en attente jusqu'à la création
+  // Images : persistées immédiatement en édition, en attente jusqu'à la création.
+  // Un schéma en attente traîne sa scène avec lui, pour rester rouvrable avant l'enregistrement.
   const [images,        setImages]        = useState<ExerciseImage[]>([]);
-  const [pendingImages, setPendingImages]  = useState<{ file: File; previewUrl: string }[]>([]);
+  const [pendingImages, setPendingImages]  = useState<{ file: File; previewUrl: string; diagram?: DiagramScene }[]>([]);
   const [imageBusy,     setImageBusy]     = useState(false);
+  /** null = éditeur fermé ; `{ key: null }` = nouveau schéma ; `{ key }` = retouche. */
+  const [diagramOpen,   setDiagramOpen]   = useState<{ key: string | null } | null>(null);
 
   // Document PDF : même logique que les images
   const [documentUrl,  setDocumentUrl]  = useState(editing?.documentUrl ?? '');
@@ -153,8 +157,32 @@ function ExerciseModal({
   const videoInvalid = videoUrl.trim() !== '' && !videoPlatform;
 
   const imageItems: ExerciseImagePickerItem[] = editing
-    ? images.map(img => ({ key: img.id, url: img.url }))
-    : pendingImages.map((p, i) => ({ key: String(i), url: p.previewUrl }));
+    ? images.map(img => ({ key: img.id, url: img.url, isDiagram: !!img.diagram }))
+    : pendingImages.map((p, i) => ({ key: String(i), url: p.previewUrl, isDiagram: !!p.diagram }));
+
+  /** Scène à rouvrir dans l'éditeur, selon qu'on retouche une image persistée ou en attente. */
+  function sceneOf(key: string | null): DiagramScene | null {
+    if (key === null) return null;
+    return (editing ? images.find(i => i.id === key)?.diagram : pendingImages[Number(key)]?.diagram) ?? null;
+  }
+
+  async function handleSaveDiagram(scene: DiagramScene, png: File) {
+    if (!diagramOpen) return;
+    const { key } = diagramOpen;
+
+    if (!editing) {
+      // Pas encore d'exercice en base : le PNG et sa scène attendent la création.
+      const entry = { file: png, previewUrl: URL.createObjectURL(png), diagram: scene };
+      setPendingImages(prev => (key === null ? [...prev, entry] : prev.map((p, i) => (String(i) === key ? entry : p))));
+      setDiagramOpen(null);
+      return;
+    }
+
+    const target = key === null ? null : images.find(i => i.id === key) ?? null;
+    const saved  = await exercisesApi.saveDiagram(editing.id, scene, png, target, images.length);
+    setImages(prev => (target ? prev.map(i => (i.id === saved.id ? saved : i)) : [...prev, saved]));
+    setDiagramOpen(null);
+  }
 
   async function handleAddImages(files: File[]) {
     if (!editing) {
@@ -259,7 +287,7 @@ function ExerciseModal({
         });
         for (let i = 0; i < pendingImages.length; i++) {
           const url = await exercisesApi.uploadImage(created.id, pendingImages[i].file);
-          await exercisesApi.addImage(created.id, url, i);
+          await exercisesApi.addImage(created.id, url, i, pendingImages[i].diagram);
         }
         if (pendingDocumentFile) {
           const { url, name: docName } = await exercisesApi.uploadDocument(created.id, pendingDocumentFile);
@@ -333,7 +361,14 @@ function ExerciseModal({
 
             <div>
               <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
-              <ExerciseImagePicker items={imageItems} onAdd={handleAddImages} onRemove={handleRemoveImage} disabled={imageBusy} />
+              <ExerciseImagePicker
+                items={imageItems}
+                onAdd={handleAddImages}
+                onRemove={handleRemoveImage}
+                onCreateDiagram={() => setDiagramOpen({ key: null })}
+                onEditDiagram={key => setDiagramOpen({ key })}
+                disabled={imageBusy}
+              />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -379,6 +414,15 @@ function ExerciseModal({
             .exercise-form-row { flex-direction: column; }
           }
         `}</style>
+
+        {/* Éditeur de schéma */}
+        {diagramOpen && (
+          <DiagramEditorModal
+            initial={sceneOf(diagramOpen.key)}
+            onCancel={() => setDiagramOpen(null)}
+            onSave={handleSaveDiagram}
+          />
+        )}
     </Modal>
   );
 }

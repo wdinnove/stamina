@@ -6,9 +6,10 @@ import StarterKit from '@tiptap/starter-kit';
 import { exercisesApi } from '../api/exercises';
 import { sanitizeHtml } from '../utils/sanitize';
 import { exerciseCategoriesApi } from '../api/exerciseCategories';
-import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, type ExerciseImagePickerItem, Modal, Badge, AccessRestricted } from '../components';
+import { ExerciseImageGallery, ExerciseImagePicker, ExerciseDocumentPicker, SocialVideoEmbed, DiagramEditorModal, type ExerciseImagePickerItem, Modal, Badge, CATEGORY_FALLBACK_COLOR, AccessRestricted } from '../components';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import type { DiagramScene } from '../utils/diagram';
 import type { Exercise, ExerciseImage, ExerciseCategory } from '../data/types';
 import { LAYER } from '../styles/layers';
 
@@ -114,6 +115,8 @@ export default function ExerciseDetailPage() {
   const [formError,   setFormError]   = useState('');
   const [imageBusy,   setImageBusy]   = useState(false);
   const [docBusy,     setDocBusy]     = useState(false);
+  /** null = éditeur fermé ; `{ image: null }` = nouveau schéma ; `{ image }` = retouche. */
+  const [diagramOpen, setDiagramOpen] = useState<{ image: ExerciseImage | null } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -167,6 +170,13 @@ export default function ExerciseDetailPage() {
     } finally {
       setImageBusy(false);
     }
+  }
+
+  async function handleSaveDiagram(scene: DiagramScene, png: File) {
+    if (!exercise || !diagramOpen) return;
+    const saved = await exercisesApi.saveDiagram(exercise.id, scene, png, diagramOpen.image, images.length);
+    setImages(prev => (diagramOpen.image ? prev.map(i => (i.id === saved.id ? saved : i)) : [...prev, saved]));
+    setDiagramOpen(null);
   }
 
   async function handleRemoveImage(key: string) {
@@ -301,7 +311,7 @@ export default function ExerciseDetailPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
           <h1 style={{ color: '#F1F5F9', margin: 0 }}>{exercise.name}</h1>
           {exercise.categoryName && (
-            <Badge color={exercise.categoryColor} bg={exercise.categoryColor + '18'} label={exercise.categoryName} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', flexShrink: 0 }} />
+            <Badge color={exercise.categoryColor ?? CATEGORY_FALLBACK_COLOR} bg={(exercise.categoryColor ?? CATEGORY_FALLBACK_COLOR) + '18'} label={exercise.categoryName} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', flexShrink: 0 }} />
           )}
         </div>
 
@@ -398,9 +408,11 @@ export default function ExerciseDetailPage() {
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 5 }}>Images</label>
                   <ExerciseImagePicker
-                    items={images.map((img): ExerciseImagePickerItem => ({ key: img.id, url: img.url }))}
+                    items={images.map((img): ExerciseImagePickerItem => ({ key: img.id, url: img.url, isDiagram: !!img.diagram }))}
                     onAdd={handleAddImages}
                     onRemove={handleRemoveImage}
+                    onCreateDiagram={() => setDiagramOpen({ image: null })}
+                    onEditDiagram={key => setDiagramOpen({ image: images.find(i => i.id === key) ?? null })}
                     disabled={imageBusy}
                   />
                 </div>
@@ -473,6 +485,15 @@ export default function ExerciseDetailPage() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* Éditeur de schéma */}
+      {diagramOpen && (
+        <DiagramEditorModal
+          initial={diagramOpen.image?.diagram ?? null}
+          onCancel={() => setDiagramOpen(null)}
+          onSave={handleSaveDiagram}
+        />
       )}
     </div>
   );

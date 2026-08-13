@@ -73,7 +73,7 @@ function toMedical(row: Record<string, unknown>): MedicalRecord {
     location:    row.location     as string | undefined,
     severity:    row.severity     as MedicalRecord['severity'] | undefined,
     status:       row.status        as MedicalRecord['status'],
-    resolvedDate: row.resolved_date as string | undefined,
+    resolvedDate: (row.resolved_date as string | null) ?? undefined,
     rtpDate:     row.rtp_date  as string | undefined,
     treatment:   row.treatment as string | undefined,
     daysAbsent:  row.days_absent as number | undefined,
@@ -89,7 +89,7 @@ function toRow(m: Partial<Omit<MedicalRecord, 'id'>>): Record<string, unknown> {
   if (m.location    !== undefined) row.location     = m.location;
   if (m.severity    !== undefined) row.severity     = m.severity;
   if (m.status       !== undefined) row.status        = m.status;
-  if (m.resolvedDate !== undefined) row.resolved_date = m.resolvedDate;
+  if (m.resolvedDate !== undefined) row.resolved_date = m.resolvedDate ?? null;
   if (m.rtpDate    !== undefined) row.rtp_date    = m.rtpDate;
   if (m.daysAbsent !== undefined) row.days_absent = m.daysAbsent ?? null;
   if (m.treatment  !== undefined) row.treatment   = m.treatment ?? null;

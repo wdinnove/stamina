@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ortgColor, drtgColor } from '../data';
 import { SlideCarousel, CarouselDots } from './SlideCarousel';
+import { pctFromSums } from '../utils/ratioFromSums';
 import type { TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 
@@ -63,10 +64,12 @@ export function TeamStatsHero({ teamName, category, seasonLabel, teamStats, stat
   const avgScoreUs   = matchCount > 0 ? Math.round(teamStats.reduce((a, m) => a + m.scoreUs,   0) / matchCount * 10) / 10 : null;
   const avgScoreThem = matchCount > 0 ? Math.round(teamStats.reduce((a, m) => a + m.scoreThem, 0) / matchCount * 10) / 10 : null;
   const heroDiff     = avgScoreUs !== null && avgScoreThem !== null ? Math.round((avgScoreUs - avgScoreThem) * 10) / 10 : null;
-  const validORtg    = teamStats.filter(m => m.offRating > 0);
-  const avgORtg      = validORtg.length > 0 ? Math.round(validORtg.reduce((a, m) => a + m.offRating, 0) / validORtg.length * 10) / 10 : null;
-  const validDRtg    = teamStats.filter(m => m.defRating > 0);
-  const avgDRtg      = validDRtg.length > 0 ? Math.round(validDRtg.reduce((a, m) => a + m.defRating, 0) / validDRtg.length * 10) / 10 : null;
+  // ORtg/DRtg sur plusieurs matchs : points × 100 / possessions, sommés puis divisés (§ 4), et non
+  // la moyenne des valeurs par match. Le filtre `> 0` qui traînait ici servait à écarter les matchs
+  // non documentés, que le mapper renvoyait à 0 au lieu de null ; `ratioFromSums` les exclut
+  // désormais de lui-même (dénominateur nul), et un vrai 0 n'est plus confondu avec une absence.
+  const avgORtg = pctFromSums(teamStats, m => m.scoreUs,   m => m.possessions);
+  const avgDRtg = pctFromSums(teamStats, m => m.scoreThem, m => m.opp_possessions ?? m.possessions);
   const teamInitials = teamName.split(' ').map(w => w[0]?.toUpperCase() ?? '').slice(0, 2).join('');
 
   const identityChip = (

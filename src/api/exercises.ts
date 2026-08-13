@@ -1,5 +1,6 @@
 import { supabase } from './client';
 import type { Exercise, ExerciseImage } from '../data/types';
+import type { DiagramScene } from '../utils/diagram';
 
 const BUCKET = 'exercises';
 
@@ -29,6 +30,7 @@ function toExerciseImage(row: Record<string, unknown>): ExerciseImage {
     exerciseId: row.exercise_id as string,
     url:        row.url as string,
     position:   row.position as number,
+    diagram:    (row.diagram as DiagramScene | null) ?? undefined,
     createdAt:  row.created_at as string,
   };
 }
@@ -121,14 +123,46 @@ export const exercisesApi = {
     return data.publicUrl;
   },
 
-  async addImage(exerciseId: string, url: string, position: number): Promise<ExerciseImage> {
+  /** `diagram` n'est renseigné que pour un schéma dessiné dans l'éditeur, jamais pour un upload. */
+  async addImage(exerciseId: string, url: string, position: number, diagram?: DiagramScene): Promise<ExerciseImage> {
     const { data, error } = await supabase
       .from('exercise_images')
-      .insert({ exercise_id: exerciseId, url, position })
+      .insert({ exercise_id: exerciseId, url, position, diagram: diagram ?? null })
       .select()
       .single();
     if (error) throw error;
     return toExerciseImage(data as Record<string, unknown>);
+  },
+
+  /**
+   * Réenregistre un schéma modifié : nouveau PNG, scène mise à jour, ancien fichier supprimé.
+   * L'ancien PNG n'est effacé qu'après la mise à jour de la ligne — en cas d'échec en base,
+   * l'image affichée reste valide plutôt que de laisser une vignette cassée.
+   */
+  async updateDiagram(image: ExerciseImage, url: string, diagram: DiagramScene): Promise<ExerciseImage> {
+    const { data, error } = await supabase
+      .from('exercise_images')
+      .update({ url, diagram })
+      .eq('id', image.id)
+      .select()
+      .single();
+    if (error) throw error;
+    if (image.url !== url) exercisesApi.deleteImageByUrl(image.url).catch(() => {});
+    return toExerciseImage(data as Record<string, unknown>);
+  },
+
+  /**
+   * Enregistre un schéma dessiné dans l'éditeur : le PNG part dans le bucket, puis la ligne
+   * de galerie est créée ou mise à jour selon qu'on dessine ou qu'on retouche.
+   */
+  async saveDiagram(
+    exerciseId: string, scene: DiagramScene, png: File,
+    existing: ExerciseImage | null, position: number,
+  ): Promise<ExerciseImage> {
+    const url = await exercisesApi.uploadImage(exerciseId, png);
+    return existing
+      ? exercisesApi.updateDiagram(existing, url, scene)
+      : exercisesApi.addImage(exerciseId, url, position, scene);
   },
 
   async removeImage(image: ExerciseImage): Promise<void> {
