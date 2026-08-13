@@ -9,28 +9,29 @@ interface WinFactorsListProps {
 
 const HIGH_IS_GOOD_COLOR = '#06B6D4';
 const LOW_IS_GOOD_COLOR = '#F59E0B';
-const LOW_CONFIDENCE_MATCHES = 8;
 
 function FactorRow({ f, color }: { f: WinFactor; color: string }) {
   const pct = Math.round(Math.abs(f.corr) * 100);
-  const lowConfidence = f.n < LOW_CONFIDENCE_MATCHES;
+  // La significativité remplace l'ancien proxy « moins de 8 matchs » : c'est le test de Student sur
+  // r qui dit si le lien tient, et il tient compte à la fois de l'ampleur et du nombre
+  // d'observations. Même convention d'affichage que `CorrelationCard` (atténuation + libellé).
   return (
     <div
       className="grid items-center gap-3 [grid-template-columns:minmax(140px,220px)_1fr_130px] sm:[grid-template-columns:minmax(140px,220px)_1fr_60px_130px]"
-      style={{ opacity: lowConfidence ? 0.72 : 1 }}
+      style={{ opacity: f.significant ? 1 : 0.72 }}
     >
       <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600 }}>{f.label}</span>
       <div className="hidden sm:block" style={{ height: 8, backgroundColor: '#1E2229', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 4 }} />
+        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 4, opacity: f.significant ? 1 : 0.4 }} />
       </div>
       <span className="sm:hidden" style={{ color, fontSize: '0.8rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
         {pct}%
       </span>
       <span className="hidden sm:inline" style={{ fontSize: '0.68rem', color: '#475569', whiteSpace: 'nowrap', textAlign: 'right' }}>
-        {lowConfidence ? 'tendance fragile' : ''}
+        {f.significant ? `${f.n} matchs` : `${f.n} matchs · p = ${f.p.toFixed(2)}`}
       </span>
-      <span style={{ fontSize: '0.72rem', fontWeight: 700, color, whiteSpace: 'nowrap', textAlign: 'right' }}>
-        {strengthWord(Math.abs(f.corr))}
+      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: f.significant ? color : '#64748B', whiteSpace: 'nowrap', textAlign: 'right' }}>
+        {f.significant ? strengthWord(Math.abs(f.corr)) : 'Non significatif'}
       </span>
     </div>
   );
@@ -87,7 +88,7 @@ export function WinFactorsList({ factors, maxItems = 8, minCorr = 0.15 }: WinFac
         <br />
         <span style={{ color: LOW_IS_GOOD_COLOR, fontWeight: 700 }}>Ambre</span> : l'équipe gagne davantage quand cette statistique est basse.
         <br />
-        Corrélation, pas causalité : certaines statistiques se recoupent entre elles (l'eFG% dérive des tirs à 2 et 3 points, l'ORtg et le DRtg agrègent plusieurs lignes ci-dessus) — un signal fort sur plusieurs lignes peut refléter une seule et même information comptée deux fois. À lire comme une tendance, pas un plan d'action isolé, surtout quand la mention « tendance fragile » apparaît.
+        Corrélation, pas causalité : certaines statistiques se recoupent entre elles (l'eFG% dérive des tirs à 2 et 3 points, l'ORtg et le DRtg agrègent plusieurs lignes ci-dessus) — un signal fort sur plusieurs lignes peut refléter une seule et même information comptée deux fois. À lire comme une tendance, pas un plan d'action isolé — et pas du tout quand la ligne est marquée <span style={{ fontWeight: 700 }}>Non significatif</span> : le lien y est trop faible ou l'échantillon trop mince pour se distinguer du hasard (seuil p &lt; 0,05).
       </p>
     </div>
   );

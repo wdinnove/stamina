@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { playerAttributeIndicators, teamIndicators, indicatorByKey, periodValueOf, type PlayerCrossData } from './crossAnalysis';
-import type { MatchStat } from './types';
+import { playerAttributeIndicators, teamIndicators, indicatorByKey, periodValueOf, type PlayerCrossData, type TeamCrossData } from './crossAnalysis';
+import type { MatchStat, TeamMatchStat } from './types';
 
 const FROM = '2026-01-01';
 const TO   = '2026-12-31';
@@ -18,6 +18,24 @@ const player = (matchStats: MatchStat[]): PlayerCrossData => ({
   player: { id: 'p1', firstName: 'A', lastName: 'B' } as PlayerCrossData['player'],
   matchStats, rpe: [], allTimeRpe: [], wellness: [], medical: [], attendance: [],
 });
+
+/** Ligne collective minimale. Les ratios avancés sont à `null` (« pas de donnée ») comme le fait le
+ *  mapper : les valeurs de période se recalculent depuis les compteurs bruts, pas depuis eux. */
+const teamMatch = (date: string, o: Partial<TeamMatchStat> = {}): TeamMatchStat => ({
+  id: `t-${date}-${o.scoreUs ?? 0}-${o.fg3a ?? 0}`, matchId: `m-${date}-${o.scoreUs ?? 0}-${o.fg3a ?? 0}`,
+  date, opponent: 'X', homeAway: 'home', result: 'win',
+  scoreUs: 0, scoreThem: 0,
+  fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
+  ro: 0, rd: 0, rt: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,
+  possessions: 0,
+  offRating: null, defRating: null, efgPct: null, ftRate: null, toPct: null, orebPct: null, drebPct: null,
+  opp_fg2m: 0, opp_fg2a: 0, opp_fg3m: 0, opp_fg3a: 0, opp_ftm: 0, opp_fta: 0,
+  opp_ro: 0, opp_rd: 0, opp_rt: 0, opp_pd: 0, opp_ct: 0, opp_intercepts: 0, opp_bp: 0, opp_fte: 0, opp_fpr: 0,
+  opp_possessions: null, opp_efgPct: null, opp_toPct: null, opp_orebPct: null,
+  ...o,
+});
+
+const team = (teamMatchStats: TeamMatchStat[]): TeamCrossData => ({ players: [], teamMatchStats });
 
 describe('periodValueOf — volumes : moyenne sur les MATCHS, pas sur les dates', () => {
   it('compte deux matchs joués le même jour comme deux observations', () => {
@@ -69,6 +87,49 @@ describe('periodValueOf — tous les indicateurs de match ont une valeur de pér
       const def = indicatorByKey(key);
       expect(def, key).toBeDefined();
       expect(def!.periodValue, key).toBeDefined();
+    }
+  });
+});
+
+describe('teamPeriodValue — le périmètre équipe agrège comme le périmètre joueuse', () => {
+  it('un ratio d\'équipe est le ratio des sommes, pas la moyenne des ratios par match', () => {
+    // Cas de l'audit : trois matchs à 3 points — 1/1, 2/10, 3/12.
+    // Moyenne des ratios : (100 + 20 + 25) / 3 = 48,3 %  → au-dessus d'un objectif à 32 %
+    // Ratio des sommes  : 6 / 23                = 26,1 % → en dessous. Le verdict s'inverse.
+    const d = team([
+      teamMatch('2026-01-10', { fg3m: 1, fg3a: 1 }),
+      teamMatch('2026-01-17', { fg3m: 2, fg3a: 10 }),
+      teamMatch('2026-01-24', { fg3m: 3, fg3a: 12 }),
+    ]);
+    const def = indicatorByKey('team_fg3Pct')!;
+    expect(def.teamPeriodValue!(d, FROM, TO)).toBeCloseTo(26.1, 1);
+  });
+
+  it('un volume d\'équipe se moyenne sur les MATCHS, pas sur les dates', () => {
+    // Plateau : deux matchs le même jour. Par date : (60 + 100) / 2 = 80. Par match : 80... on
+    // choisit donc des valeurs qui séparent les deux lectures.
+    const d = team([
+      teamMatch('2026-01-10', { scoreUs: 50 }),
+      teamMatch('2026-01-10', { scoreUs: 70 }),
+      teamMatch('2026-01-17', { scoreUs: 90 }),
+    ]);
+    // Par date : ((50+70)/2 + 90) / 2 = 75. Par match : (50 + 70 + 90) / 3 = 70.
+    expect(indicatorByKey('team_ptsFor')!.teamPeriodValue!(d, FROM, TO)).toBe(70);
+  });
+
+  it('exclut des DEUX sommes un match sans dénominateur saisi', () => {
+    // Le second match n'a aucun tir à 3 points : il ne doit ni compter comme 0 %, ni diluer.
+    const d = team([
+      teamMatch('2026-01-10', { fg3m: 3, fg3a: 10 }),
+      teamMatch('2026-01-17', { fg3m: 0, fg3a: 0 }),
+    ]);
+    expect(indicatorByKey('team_fg3Pct')!.teamPeriodValue!(d, FROM, TO)).toBe(30);
+  });
+
+  it('aucun indicateur d\'équipe du domaine match ne retombe sur la moyenne de la série', () => {
+    for (const def of teamIndicators()) {
+      if (def.domain !== 'match' || !def.teamSeries) continue;
+      expect(def.teamPeriodValue, def.key).toBeDefined();
     }
   });
 });

@@ -1,5 +1,5 @@
 import { PCA } from 'ml-pca';
-import { pearson, hasVariance } from '../utils/correlation';
+import { pearson, hasVariance, pearsonPValue, SIGNIFICANCE_ALPHA } from '../utils/correlation';
 import { playerNameFull } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 import type { TeamMatchStat, MatchStat, Player } from './types';
@@ -7,8 +7,23 @@ import type { TeamMatchStat, MatchStat, Player } from './types';
 export interface PCAPoint { x: number; y: number; win: boolean; label: string }
 export interface PCAVector { x: number; y: number; label: string }
 export interface PCAResult { points: PCAPoint[]; vectors: PCAVector[]; varPct: [number, number] }
-export interface WinFactor { key: string; label: string; corr: number; n: number }
-export interface PlayerImpact { playerId: string; label: string; corr: number; n: number; avgEval: number }
+/**
+ * Un lien corrélé, avec sa significativité statistique. `MIN_MATCHES` (4) suffit à calculer un `r`
+ * mais pas à le croire : sur 4 observations, même r = 0,80 n'est pas significatif. Sans cette
+ * information, un lien du hasard s'affichait « Impact majeur » — les corrélations de l'onglet
+ * Analyse croisée, elles, exposaient déjà `p` et `significant` via `correlatePairs`.
+ */
+interface Correlated {
+  corr: number;
+  n: number;
+  /** p-value bilatérale du test H₀ : r = 0 */
+  p: number;
+  /** p < 0,05 */
+  significant: boolean;
+}
+
+export interface WinFactor extends Correlated { key: string; label: string }
+export interface PlayerImpact extends Correlated { playerId: string; label: string; avgEval: number }
 
 const MIN_MATCHES = 4;
 const PLAYER_MIN_MATCHES = 5;
@@ -28,7 +43,28 @@ export interface TeamVariable {
   explain: string;
   sense: IndicatorSense;
   get: (m: TeamMatchStat) => number | null;
+  /**
+   * Numérateur et dénominateur BRUTS de la variable, quand c'en est un ratio. Sert à l'agréger sur
+   * une période en sommant les deux puis en divisant (§ 4 de docs/CALCULS.md) — et non en moyennant
+   * les pourcentages de chaque match, ce qui donnait le même poids à un match à 3 tirs qu'à un
+   * match à 60. C'est ce qui manquait pour que les objectifs d'ÉQUIPE portant sur un ratio soient
+   * évalués comme ceux d'une joueuse.
+   *
+   * Absent = la variable est un volume (rebonds, passes, contres…), qui se moyenne match par match.
+   */
+  sums?: {
+    num: (m: TeamMatchStat) => number;
+    den: (m: TeamMatchStat) => number;
+    /** 100 pour un pourcentage (défaut), 1 pour un ratio brut comme FT Rate. */
+    factor?: 1 | 100;
+  };
 }
+
+// Accesseurs partagés par les définitions `sums` ci-dessous.
+const fgaOf     = (m: TeamMatchStat) => m.fg2a + m.fg3a;
+const oppFgaOf  = (m: TeamMatchStat) => m.opp_fg2a + m.opp_fg3a;
+/** Possessions adverses quand elles sont connues, sinon les nôtres (elles s'équilibrent à ±2). */
+const oppPossOf = (m: TeamMatchStat) => m.opp_possessions ?? m.possessions;
 
 /**
  * Variables collectives suivies par match. Servent à la fois aux facteurs de victoire, au biplot
@@ -42,19 +78,25 @@ export interface TeamVariable {
 export const VARIABLES: TeamVariable[] = [
   { key: 'fg2Pct',     label: '2%',        longLabel: 'Réussite aux tirs à 2 points',
     explain: "Part des tirs à 2 points réussis. Le premier levier d'efficacité intérieure.", sense: 'higher',
-    get: m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null },
+    get: m => m.fg2a > 0 ? m.fg2m / m.fg2a * 100 : null,
+    sums: { num: m => m.fg2m, den: m => m.fg2a } },
   { key: 'fg3Pct',     label: '3%',        longLabel: 'Réussite aux tirs à 3 points',
     explain: "Part des tirs à 3 points réussis. Très variable d'un match à l'autre : à lire sur plusieurs matchs.", sense: 'higher',
-    get: m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null },
+    get: m => m.fg3a > 0 ? m.fg3m / m.fg3a * 100 : null,
+    sums: { num: m => m.fg3m, den: m => m.fg3a } },
   { key: 'ftPct',      label: 'LF%',       longLabel: 'Réussite aux lancers francs',
     explain: 'Part des lancers francs réussis. Se travaille à l\'entraînement, peu dépendant de l\'adversaire.', sense: 'higher',
-    get: m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null },
+    get: m => m.fta  > 0 ? m.ftm  / m.fta  * 100 : null,
+    sums: { num: m => m.ftm, den: m => m.fta } },
   { key: 'efgPct',     label: 'eFG%',      longLabel: 'Efficacité globale aux tirs (eFG%)',
     explain: "Réussite au tir en tenant compte du fait qu'un 3 points vaut plus qu'un 2 points. Meilleure mesure d'adresse qu'un pourcentage brut.", sense: 'higher',
-    get: m => m.efgPct },
+    get: m => m.efgPct,
+    sums: { num: m => m.fg2m + 1.5 * m.fg3m, den: fgaOf } },
   { key: 'ftRate',     label: 'FT Rate',   longLabel: 'Taux de lancers francs tentés',
     explain: "Lancers francs obtenus pour chaque tir tenté. Mesure l'agressivité vers le cercle.", sense: 'higher',
-    get: m => m.ftRate },
+    get: m => m.ftRate,
+    // factor 1 : FT Rate est un ratio (0,28), pas un pourcentage — comme en base et au boxscore.
+    sums: { num: m => m.fta, den: fgaOf, factor: 1 } },
   { key: 'ro',         label: 'RO',        longLabel: 'Rebonds offensifs',
     explain: 'Rebonds pris après un tir manqué de son équipe : autant de secondes chances.', sense: 'higher',
     get: m => m.ro },
@@ -63,13 +105,16 @@ export const VARIABLES: TeamVariable[] = [
     get: m => m.rd },
   { key: 'toPct',      label: '%BP',       longLabel: 'Taux de ballons perdus',
     explain: 'Part des possessions terminées par une perte de balle. Un des quatre facteurs de Dean Oliver.', sense: 'lower',
-    get: m => m.toPct },
+    get: m => m.toPct,
+    sums: { num: m => m.bp, den: m => m.possessions } },
   { key: 'orebPct',    label: '%OREB',     longLabel: '% de rebonds offensifs captés',
     explain: 'Part des rebonds offensifs disponibles effectivement captés. Indépendant du nombre de tirs manqués, contrairement au total de RO.', sense: 'higher',
-    get: m => m.orebPct },
+    get: m => m.orebPct,
+    sums: { num: m => m.ro, den: m => m.ro + m.opp_rd } },
   { key: 'drebPct',    label: '%DREB',     longLabel: '% de rebonds défensifs captés',
     explain: "Part des rebonds défensifs disponibles captés. Mesure la capacité à clore la possession adverse.", sense: 'higher',
-    get: m => m.drebPct },
+    get: m => m.drebPct,
+    sums: { num: m => m.rd, den: m => m.rd + m.opp_ro } },
   { key: 'pd',         label: 'Pd',        longLabel: 'Passes décisives',
     explain: 'Passes ayant directement mené à un panier. Indice de circulation de balle.', sense: 'higher',
     get: m => m.pd },
@@ -90,19 +135,24 @@ export const VARIABLES: TeamVariable[] = [
     get: m => m.fpr },
   { key: 'offRating',  label: 'ORtg',      longLabel: 'Efficacité offensive (ORtg)',
     explain: "Points marqués pour 100 possessions. Compare l'attaque indépendamment du rythme de jeu.", sense: 'higher',
-    get: m => m.offRating },
+    get: m => m.offRating,
+    sums: { num: m => m.scoreUs, den: m => m.possessions } },
   { key: 'defRating',  label: 'DRtg',      longLabel: 'Efficacité défensive (DRtg)',
     explain: 'Points encaissés pour 100 possessions. Plus bas = meilleure défense.', sense: 'lower',
-    get: m => m.defRating },
+    get: m => m.defRating,
+    sums: { num: m => m.scoreThem, den: oppPossOf } },
   { key: 'opp_efgPct', label: 'Adv eFG%',  longLabel: 'Efficacité aux tirs subie (adversaire)',
     explain: "Adresse pondérée laissée à l'adversaire. Le meilleur indicateur de défense sur le tir.", sense: 'lower',
-    get: m => m.opp_efgPct },
+    get: m => m.opp_efgPct,
+    sums: { num: m => m.opp_fg2m + 1.5 * m.opp_fg3m, den: oppFgaOf } },
   { key: 'opp_toPct',  label: 'Adv %BP',   longLabel: 'Pertes de balle forcées à l\'adversaire',
     explain: "Part des possessions adverses terminées par une perte de balle. Mesure la pression défensive.", sense: 'higher',
-    get: m => m.opp_toPct },
+    get: m => m.opp_toPct,
+    sums: { num: m => m.opp_bp, den: oppPossOf } },
   { key: 'opp_orebPct',label: 'Adv %OREB', longLabel: 'Rebonds offensifs concédés à l\'adversaire',
     explain: 'Part des rebonds offensifs que l\'adversaire récupère : autant de secondes chances offertes.', sense: 'lower',
-    get: m => m.opp_orebPct },
+    get: m => m.opp_orebPct,
+    sums: { num: m => m.opp_ro, den: m => m.opp_ro + m.rd } },
 ];
 
 /** Corrélation de chaque statistique avec la victoire, exprimée en langage simple pour un coach. */
@@ -119,7 +169,9 @@ export function computeWinFactors(teamStats: TeamMatchStat[]): WinFactor[] {
       if (pairs.length < MIN_MATCHES) return null;
       const xs = pairs.map(p => p[0]);
       if (!hasVariance(xs)) return null;
-      return { key: v.key, label: v.longLabel, corr: pearson(xs, pairs.map(p => p[1])), n: pairs.length };
+      const corr = pearson(xs, pairs.map(p => p[1]));
+      const pVal = pearsonPValue(corr, pairs.length);
+      return { key: v.key, label: v.longLabel, corr, n: pairs.length, p: pVal, significant: pVal < SIGNIFICANCE_ALPHA };
     })
     .filter((f): f is WinFactor => f !== null)
     .sort((a, b) => Math.abs(b.corr) - Math.abs(a.corr));
@@ -145,9 +197,11 @@ export function computePlayerImpact(players: Player[], allStats: MatchStat[]): P
       const xs = ss.map(s => s.eval as number);
       if (!hasVariance(xs)) return null;
       const ys = ss.map(s => s.result === 'win' ? 1 : 0);
+      const corr = pearson(xs, ys);
+      const pVal = pearsonPValue(corr, ss.length);
       return {
         playerId: p.id, label: playerNameFull(p),
-        corr: pearson(xs, ys), n: ss.length,
+        corr, n: ss.length, p: pVal, significant: pVal < SIGNIFICANCE_ALPHA,
         avgEval: roundedAvg(xs)!,
       };
     })

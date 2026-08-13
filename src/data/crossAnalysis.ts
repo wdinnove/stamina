@@ -23,7 +23,8 @@ import type {
   MatchStat, MedicalRecord, Player, RPEEntry, TeamMatchStat, TrainingAttendance, WellnessEntry,
   TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption,
 } from './types';
-import { VARIABLES, type IndicatorSense } from './pca';
+import { VARIABLES, type IndicatorSense, type TeamVariable } from './pca';
+import { ratioFromSums } from '../utils/ratioFromSums';
 import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from './playerAdvanced';
 import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEntry } from '../utils/rpe';
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
@@ -168,6 +169,45 @@ export interface IndicatorDef {
   sense?: IndicatorSense;
   /** Série équipe dédiée (stats collectives) ; sinon moyenne des séries joueurs */
   teamSeries?: (d: TeamCrossData, from: string, to: string) => SeriesPoint[];
+  /**
+   * Pendant de `periodValue` pour le périmètre ÉQUIPE — même raison d'être : un ratio s'agrège en
+   * sommant numérateur et dénominateur (§ 4), un volume se moyenne sur les MATCHS et non sur les
+   * dates. Sans lui, les objectifs d'équipe retombaient sur la moyenne de la série, c'est-à-dire la
+   * moyenne des pourcentages match par match — un objectif « 3 pts ≥ 32 % » pouvait passer de
+   * « atteint » à « non atteint » selon la méthode.
+   *
+   * Absent pour les domaines charge / bien-être / assiduité, dont chaque point de série est déjà une
+   * observation quotidienne : la moyenne de la série y est la bonne réponse.
+   */
+  teamPeriodValue?: (d: TeamCrossData, from: string, to: string) => number | null;
+}
+
+/** Matchs collectifs de la période, dans l'ordre chronologique. */
+function teamMatchesIn(d: TeamCrossData, from: string, to: string): TeamMatchStat[] {
+  return d.teamMatchStats
+    .filter(m => m.date >= from && m.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Valeur de période d'un VOLUME d'équipe : moyenne sur les matchs de la période. Volontairement
+ * pas la moyenne de la série `teamSeries`, qui est indexée par date et fusionnerait deux matchs
+ * joués le même jour (plateau, tournoi) en une seule observation.
+ */
+function teamMatchAvg(get: (m: TeamMatchStat) => number | null) {
+  return (d: TeamCrossData, from: string, to: string): number | null => {
+    const vals = teamMatchesIn(d, from, to)
+      .map(get)
+      .filter((v): v is number => v !== null && v !== undefined && !Number.isNaN(v));
+    return vals.length ? round2(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  };
+}
+
+/** Valeur de période d'une variable collective : ratio de sommes si c'en est un ratio, sinon moyenne sur les matchs. */
+function teamPeriodValueOf(v: TeamVariable): NonNullable<IndicatorDef['teamPeriodValue']> {
+  const sums = v.sums;
+  if (!sums) return teamMatchAvg(v.get);
+  return (d, from, to) => ratioFromSums(teamMatchesIn(d, from, to), sums.num, sums.den, sums.factor ?? 100);
 }
 
 const sessionLoad = (e: RPEEntry) => e.rpe * (e.actualDuration ?? e.plannedDuration);
@@ -552,6 +592,7 @@ const RAW_INDICATORS: IndicatorDef[] = [
     valueColor: v => v >= 0.5 ? '#00E5A0' : '#94A3B8',
     valueLabel: v => v >= 0.999 ? 'Domicile' : v <= 0.001 ? 'Extérieur' : `${Math.round(v * 100)}% à domicile`,
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.homeAway === 'home' ? 1 : 0),
+    teamPeriodValue: teamMatchAvg(m => m.homeAway === 'home' ? 1 : 0),
   },
   {
     key: 'team_result', label: 'Résultat du match', shortLabel: 'Résultat', domain: 'match', group: 'Match — Contexte', unit: '', color: '#00E5A0',
@@ -560,27 +601,32 @@ const RAW_INDICATORS: IndicatorDef[] = [
     valueColor: v => v >= 0.5 ? '#00E5A0' : '#EF4444',
     valueLabel: v => v >= 0.999 ? 'Victoire' : v <= 0.001 ? 'Défaite' : `${Math.round(v * 100)}% de victoires`,
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.result === 'win' ? 1 : 0),
+    teamPeriodValue: teamMatchAvg(m => m.result === 'win' ? 1 : 0),
   },
   // ── Match — équipe (mêmes variables que les facteurs de victoire de pca.ts) ──
   {
     key: 'team_scorediff', label: 'Écart au score', shortLabel: 'Écart', domain: 'match', group: 'Match — équipe', unit: 'pts', color: '#A78BFA',
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.scoreUs - m.scoreThem),
+    teamPeriodValue: teamMatchAvg(m => m.scoreUs - m.scoreThem),
   },
   {
     key: 'team_ptsFor', label: 'Points marqués (équipe)', shortLabel: 'Pts+', domain: 'match', group: 'Match — équipe', unit: 'pts', color: '#00E5A0',
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.scoreUs),
+    teamPeriodValue: teamMatchAvg(m => m.scoreUs),
   },
   {
     key: 'team_ptsAgainst', label: 'Points encaissés', shortLabel: 'Pts−', domain: 'match', group: 'Match — équipe', unit: 'pts', color: '#EF4444',
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.scoreThem),
+    teamPeriodValue: teamMatchAvg(m => m.scoreThem),
   },
   {
     key: 'team_possessions', label: 'Possessions (rythme)', shortLabel: 'Poss', domain: 'match', group: 'Match — équipe', unit: '', color: '#2DD4BF',
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, m => m.possessions),
+    teamPeriodValue: teamMatchAvg(m => m.possessions),
   },
   // Les indicateurs d'équipe héritent leur documentation de `VARIABLES` (pca.ts) : une seule
   // source pour les facteurs de victoire, le biplot, le classement, les objectifs et le glossaire.
@@ -594,7 +640,10 @@ const RAW_INDICATORS: IndicatorDef[] = [
     chart: 'dots', anchor: { window: 1, agg: 'last' }, weeklyAgg: 'mean',
     explain: v.explain,
     sense: v.sense,
+    // FT Rate est le seul ratio de la liste affiché à 2 décimales (c'est un ratio, pas un %).
+    decimals: v.sums?.factor === 1 ? 2 : undefined,
     teamSeries: (d, f, t) => matchSeries(d.teamMatchStats, f, t, v.get),
+    teamPeriodValue: teamPeriodValueOf(v),
   })),
   // ── Charge ──
   {

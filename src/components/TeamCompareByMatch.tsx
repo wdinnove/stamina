@@ -5,7 +5,7 @@ import { TeamCompareStatBlocks } from './TeamCompareStatBlocks';
 import { filterControlStyle, GroupPickerBox, GROUP_A_COLOR, GROUP_B_COLOR } from './FilterField';
 import { StatDisplayToggle } from './StatDisplayToggle';
 import { fmtDate } from '../utils/dateFormat';
-import { roundedAvg } from '../utils/avg';
+import { teamAverageOfField } from '../utils/teamAverage';
 import type { TeamMatchStat, MatchStat, RPEEntry, WellnessEntry } from '../data/types';
 import { LAYER } from '../styles/layers';
 
@@ -139,8 +139,14 @@ export function TeamCompareByMatch({ teamStats, allStats, allRpe, allWellness, s
 
   const rpeInRange = (range: { from: string; to: string } | null) => range ? allRpe.filter(e => e.date >= range.from && e.date <= range.to) : [];
   const wellnessInRange = (range: { from: string; to: string } | null) => range ? allWellness.filter(w => w.date >= range.from && w.date <= range.to) : [];
+  // Règle d'équipe (§ 0) : moyenne par joueuse puis moyenne non pondérée des joueuses — les deux
+  // groupes de matchs comparés n'ont pas le même effectif présent.
   const evalAvgOf = (ids: Set<string>) =>
-    roundedAvg(allStats.filter(m => m.matchId && ids.has(m.matchId) && m.eval !== null).map(m => Number(m.eval)));
+    teamAverageOfField(
+      allStats.filter(m => m.matchId && ids.has(m.matchId) && m.eval !== null),
+      m => m.playerId,
+      m => Number(m.eval),
+    ).value;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

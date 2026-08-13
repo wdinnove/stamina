@@ -37,11 +37,15 @@ export function evaluateObjectiveAt(
   const def = indicatorByKey(objective.indicatorKey, extraTeamIndicators);
   if (!def || def.domain !== 'match') return null;
 
-  // Fenêtre réduite au jour du match : `periodValueOf` côté joueuse (sommes/division pour les
-  // ratios), série côté équipe.
+  // Fenêtre réduite au jour du match, avec la même agrégation qu'ailleurs des deux côtés :
+  // `periodValueOf` côté joueuse, `teamPeriodValue` côté équipe. Sur un seul match les deux
+  // coïncident avec la valeur du match — sauf plateau/tournoi, où la série fusionnerait les deux
+  // matchs du jour en un point moyenné alors que le ratio de sommes les additionne correctement.
   const value = scope.player
     ? periodValueOf(def, scope.player, date, date)
-    : getSeries(def, scope, date, date)[0]?.value ?? null;
+    : scope.team && def.teamPeriodValue
+      ? def.teamPeriodValue(scope.team, date, date)
+      : getSeries(def, scope, date, date)[0]?.value ?? null;
   if (value === null) return null;
 
   return { value, met: compare(value, objective.comparator, objective.thresholdValue) };
@@ -63,20 +67,44 @@ export function evaluateObjectiveWindows(
   const series = getSeries(def, scope, from, refEnd).sort((a, b) => a.date.localeCompare(b.date));
   const vals = series.map(p => p.value);
 
-  // Périmètre joueur : la valeur de chaque fenêtre passe par `periodValueOf`, qui agrège les
-  // ratios en sommant numérateur et dénominateur au lieu de moyenner les ratios de chaque match.
-  // La fenêtre est traduite en bornes de dates depuis la série (les k derniers matchs joués).
-  // Périmètre équipe : pas de `periodValueOf` (il est individuel), on garde la moyenne de la série.
+  // Les deux périmètres agrègent désormais de la même façon — ratio de sommes pour un ratio,
+  // moyenne sur les MATCHS pour un volume (§ 4) — via `periodValueOf` côté joueuse et
+  // `def.teamPeriodValue` côté équipe. Le périmètre équipe retombait auparavant sur la moyenne de
+  // la série, c'est-à-dire la moyenne des pourcentages match par match : un objectif « 3 pts ≥ 32 % »
+  // évalué sur 1/1, 2/10 et 3/12 donnait 48,3 % (atteint) au lieu de 26,1 % (non atteint).
   const player = scope.player;
+  const team = scope.team;
+
+  /**
+   * « k derniers matchs » se découpe sur la LISTE DES MATCHS, pas sur des bornes de dates.
+   *
+   * Une fenêtre exprimée en dates ne peut pas séparer deux matchs joués le même jour : sur un
+   * plateau, « 3 derniers matchs » ramenait la date du 2ᵉ match de la journée et en couvrait donc
+   * 4. On restreint plutôt le périmètre aux k dernières lignes, puis on laisse `periodValueOf` /
+   * `teamPeriodValue` agréger ce sous-ensemble — ils refiltrent par date, ce qui est alors sans
+   * effet. C'est ce qui rend vraie la promesse du § 10 : « 3 matchs, pas 3 journées ».
+   */
+  const lastKMatches = <T extends { date: string }>(rows: T[], lastK: number | null): T[] => {
+    const inRange = rows
+      .filter(m => m.date >= from && m.date <= refEnd)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return lastK === null ? inRange : inRange.slice(-lastK);
+  };
+
   const windowValue = (lastK: number | null): number | null => {
-    const dates = series.map(p => p.date);
-    if (!dates.length) return null;
-    const winFrom = lastK === null ? from : dates[Math.max(0, dates.length - lastK)];
-    if (!player) {
-      const slice = lastK === null ? vals : vals.slice(-lastK);
-      return slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : null;
+    if (player) {
+      const scoped = { ...player, matchStats: lastKMatches(player.matchStats, lastK) };
+      return periodValueOf(def, scoped, from, refEnd);
     }
-    return periodValueOf(def, player, winFrom, refEnd);
+    if (team && def.teamPeriodValue) {
+      const scoped = { ...team, teamMatchStats: lastKMatches(team.teamMatchStats, lastK) };
+      return def.teamPeriodValue(scoped, from, refEnd);
+    }
+    // Charge / bien-être / assiduité : chaque point de série est déjà une observation quotidienne,
+    // la moyenne de la série est la bonne réponse — et il n'y a pas de « match » à découper.
+    if (!series.length) return null;
+    const slice = lastK === null ? vals : vals.slice(-lastK);
+    return slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : null;
   };
 
   const window = (label: string, lastK: number | null): ObjectiveWindowResult => {

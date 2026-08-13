@@ -30,6 +30,7 @@ import { getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
+import { teamAverageOfField } from '../utils/teamAverage';
 import { fmt1 } from '../utils/format';
 import {
   playerAttributeIndicators, getSeries, periodValueOf, detectRiskAlerts,
@@ -248,7 +249,15 @@ export default function PerformanceCollectivePage() {
   // Règle d'équipe : moyenne par joueuse puis moyenne des joueuses — directement sur les saisies
   // brutes, et non via l'agrégat quotidien (qui donnait une voix par jour).
   const wellAvgP   = teamWellnessAvg(allWellness.filter(w => inRangeTeam(w.date)));
-  const evalAvgP   = roundedAvg(allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)).map(m => Number(m.eval)));
+  // Règle d'équipe (§ 0), comme les trois cartes voisines : moyenne de chaque joueuse, puis moyenne
+  // non pondérée des joueuses. Une moyenne à plat des lignes d'éval pondérait par le nombre de
+  // matchs joués, donc par la disponibilité — une joueuse à 20 matchs y pesait 7 fois une joueuse
+  // revenue de blessure sur 3 matchs.
+  const evalAvgP   = teamAverageOfField(
+    allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)),
+    m => m.playerId,
+    m => Number(m.eval),
+  );
   // Règle d'équipe : moyenne non pondérée des taux individuels (et non Σprésences / Σattendus).
   const presence = teamPresenceRate(allPd.map(pd => ({
     playerId: pd.player.id,
@@ -745,10 +754,12 @@ export default function PerformanceCollectivePage() {
           <MiniStatCard
             icon={<BarChart2 size={18} color="#3B82F6" />} iconBg="#3B82F622"
             title="Statistiques"
-            value={evalAvgP !== null ? fmt1(evalAvgP) : '—'}
-            valueColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
-            subtitle={`${ptsAvgP ?? 0} pts / match`}
-            borderColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
+            value={evalAvgP.value !== null ? fmt1(evalAvgP.value) : '—'}
+            valueColor={evalAvgP.value !== null ? evalColor(evalAvgP.value, statThresholds) : '#475569'}
+            // Le `n` accompagne le chiffre, comme sur Présences / RPE / Bien-être : une moyenne non
+            // pondérée est nerveuse quand peu de joueuses la composent.
+            subtitle={`${ptsAvgP ?? 0} pts / match${evalAvgP.players > 0 ? ` · ${evalAvgP.players} joueur${evalAvgP.players > 1 ? 's' : ''}` : ''}`}
+            borderColor={evalAvgP.value !== null ? evalColor(evalAvgP.value, statThresholds) : '#475569'}
             onOpen={() => setActiveTab('stats-joueurs')}
           />
           <MiniStatCard

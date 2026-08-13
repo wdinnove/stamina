@@ -10,31 +10,31 @@ interface PlayerImpactListProps {
 const WIN_COLOR = '#06B6D4';
 const LOSS_COLOR = '#F59E0B';
 const LEADER_COLOR = '#8B5CF6';
-const LOW_CONFIDENCE_MATCHES = 8;
 
 function ImpactRow({ f, color, isLeader }: { f: PlayerImpact; color: string; isLeader: boolean }) {
   const pct = Math.round(Math.abs(f.corr) * 100);
-  const lowConfidence = f.n < LOW_CONFIDENCE_MATCHES;
+  // Significativité réelle (test de Student sur r) au lieu du proxy « moins de 8 matchs » : sur 5
+  // matchs, seuil minimal de ce calcul, il faut un r d'environ 0,88 pour que le lien tienne.
   return (
     <div
       className="grid items-center gap-3 [grid-template-columns:minmax(140px,220px)_1fr_130px] sm:[grid-template-columns:minmax(140px,220px)_1fr_60px_130px]"
-      style={{ opacity: lowConfidence ? 0.72 : 1 }}
+      style={{ opacity: f.significant ? 1 : 0.72 }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
         <span style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.label}</span>
         {isLeader && <Badge color={LEADER_COLOR} label="★ Top 3" size="sm" style={{ flexShrink: 0 }} />}
       </span>
       <div className="hidden sm:block" style={{ height: 8, backgroundColor: '#1E2229', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 4 }} />
+        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 4, opacity: f.significant ? 1 : 0.4 }} />
       </div>
       <span className="sm:hidden" style={{ color, fontSize: '0.8rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
         {pct}%
       </span>
       <span className="hidden sm:inline" style={{ fontSize: '0.68rem', color: '#475569', whiteSpace: 'nowrap', textAlign: 'right' }}>
-        {lowConfidence ? 'tendance fragile' : ''}
+        {f.significant ? `${f.n} matchs` : `${f.n} matchs · p = ${f.p.toFixed(2)}`}
       </span>
-      <span style={{ fontSize: '0.72rem', fontWeight: 700, color, whiteSpace: 'nowrap', textAlign: 'right' }}>
-        {strengthWord(Math.abs(f.corr))}
+      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: f.significant ? color : '#64748B', whiteSpace: 'nowrap', textAlign: 'right' }}>
+        {f.significant ? strengthWord(Math.abs(f.corr)) : 'Non significatif'}
       </span>
     </div>
   );
@@ -98,7 +98,7 @@ export function PlayerImpactList({ impacts }: PlayerImpactListProps) {
       )}
 
       <p style={{ color: '#475569', fontSize: '0.68rem', lineHeight: 1.7, margin: '24px 0 0' }}>
-        Ces deux listes ne mesurent pas le niveau de jeu général d'un joueur : elles repèrent uniquement les écarts entre ses matchs, et si ses pics de forme tombent plutôt en victoire ou en défaite. Un joueur très régulier (bon tout le temps) peut donc apparaître en bas de liste sans que ce soit un signe négatif — le badge <span style={{ color: LEADER_COLOR, fontWeight: 700 }}>★ Top 3</span> le rappelle quand il fait partie des meilleures éval de la saison, quel que soit son classement ci-dessus. À lire comme une tendance, pas un jugement, surtout quand la mention « tendance fragile » apparaît.
+        Ces deux listes ne mesurent pas le niveau de jeu général d'un joueur : elles repèrent uniquement les écarts entre ses matchs, et si ses pics de forme tombent plutôt en victoire ou en défaite. Un joueur très régulier (bon tout le temps) peut donc apparaître en bas de liste sans que ce soit un signe négatif — le badge <span style={{ color: LEADER_COLOR, fontWeight: 700 }}>★ Top 3</span> le rappelle quand il fait partie des meilleures éval de la saison, quel que soit son classement ci-dessus. À lire comme une tendance, pas un jugement — et pas du tout quand la ligne est marquée <span style={{ fontWeight: 700 }}>Non significatif</span> : le lien ne se distingue alors pas du hasard (seuil p &lt; 0,05).
       </p>
     </div>
   );
