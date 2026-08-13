@@ -511,6 +511,22 @@ atteint = comparateur(valeur_fenêtre, seuil)
 
 Fenêtres : **dernier match**, **3 derniers matchs**, **saison complète**. `null` si aucune donnée sur la fenêtre (pas de verdict plutôt qu'un faux « non atteint »).
 
+La valeur d'une fenêtre passe par [`periodValueOf`](../src/data/crossAnalysis.ts) : ratio de sommes pour les ratios, moyenne sur les matchs pour les volumes (cf. § 4). Les fenêtres sont traduites en bornes de dates depuis les matchs joués — « 3 derniers matchs » désigne bien 3 matchs, pas 3 journées.
+
+### 10.1 Rattachement à une saison
+
+Un objectif appartient à une **saison**, pas à l'équipe en général (colonne `objectives.season_id`). Sans ça, un objectif défini en 2024-2025 restait affiché et évalué sur les matchs de la saison suivante.
+
+Corollaire : au changement de saison, les objectifs de l'an passé n'apparaissent plus. Le report est **explicite** (`objectivesApi.copyFromSeason`, bouton « Reprendre la saison passée ») — un objectif de l'an dernier n'est pas forcément encore pertinent, et une reprise automatique ferait s'accumuler des objectifs périmés. La copie ignore les indicateurs déjà présents sur la saison cible, donc un second clic ne crée pas de doublons.
+
+Même règle pour les **tâches** (`player_actions.season_id`), avec le même principe : un bandeau signale les tâches non terminées de la saison précédente et propose de les reporter, sans jamais le faire d'office.
+
+### 10.2 Objectifs sur la fiche match
+
+[`evaluateObjectiveAt`](../src/utils/objectiveStatus.ts) évalue un objectif sur **un seul match**, pour l'onglet « Objectifs » de la fiche match. Renvoie `null` hors du domaine match : un objectif de RPE ou de bien-être n'a rien à dire d'un match donné.
+
+Aucune requête de statistiques n'est ajoutée — le périmètre d'évaluation est reconstruit depuis les stats du match déjà chargées par la page.
+
 ---
 
 ## 11. Médical
@@ -522,6 +538,32 @@ jours_indisponibilité = arrondi( (date_retour_terrain − date_blessure) en jou
 ```
 
 Cumulé sur la saison pour obtenir le total de jours d'indisponibilité d'un joueur.
+
+---
+
+## 12. Archétypes — fiabilité vs limite de méthode
+
+Fichiers source : [`src/data/archetypes/`](../src/data/archetypes/)
+
+Deux informations distinctes accompagnent un score d'archétype. Elles étaient affichées dans le même point d'interrogation, si bien qu'on lisait une explication sur la méthode là où on cherchait à savoir si le chiffre était solide.
+
+| Information | Porté par | Dépend de | Affichage |
+|---|---|---|---|
+| **Fiabilité** du score | `confidenceNote(confidence, sampleSize)` | la joueuse (matchs et minutes jouées) | badge `?`, une ligne sur deux |
+| **Limite de méthode** du profil | `caveat` de la définition | le profil, jamais la joueuse | badge « Estimation » sur la fiche, note sous le tableau d'équipe |
+
+Le message de fiabilité annonce explicitement le manque de données et le décompte (« Trop peu de données pour que ce score soit significatif (3 matchs, 24 min jouées) »). Un test vérifie qu'il ne parle jamais de méthode.
+
+Le `caveat` étant une propriété du profil, il est affiché **une fois** sous le classement d'équipe plutôt que répété en tooltip sur chaque ligne.
+
+### 12.1 Ce qu'un profil promet doit correspondre à ce qu'il mesure
+
+Un profil est un jeu d'indicateurs pondérés ; son libellé ne doit rien promettre que ces indicateurs ne mesurent. Deux corrections issues de cette règle :
+
+- « Moteur d'énergie » (rebond offensif + fautes provoquées) est devenu **« Présence au rebond et au contact »**. Un moteur d'énergie se reconnaît aux déviations, ballons libres récupérés et écrans — aucune de ces données n'est saisie.
+- **« Intérieur shooteur (stretch 5) »** ajouté : il manquait. Volume ET adresse à 3 points, avec un poids négatif sur le rebond offensif — une intérieure qui reste au cercle est l'inverse d'un profil qui écarte le jeu.
+
+⚠️ `fte` = fautes **reçues** (provoquées), `fpr` = fautes **commises**. Le schéma, le formulaire d'import et `featureRegistry` concordent ; le registre d'indicateurs avait les deux libellés inversés, si bien que « Fautes commises » affichait les fautes provoquées dans le classement, les objectifs et les corrélations.
 
 ---
 

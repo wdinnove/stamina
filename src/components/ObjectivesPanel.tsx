@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Target, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Target, AlertTriangle, CopyPlus } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
@@ -61,8 +61,9 @@ function orphanIndicatorLabel(indicatorKey: string): string {
 }
 
 export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEnd }: ObjectivesPanelProps) {
-  const { canEditTeamData } = useTeamSeason();
-  const { objectives, loading, reload } = useObjectives({ playerId, teamId });
+  const { canEditTeamData, selected, options } = useTeamSeason();
+  const seasonId = selected?.season.id;
+  const { objectives, loading, reload } = useObjectives({ playerId, teamId, seasonId });
   // Mémoïsé comme dans CorrelationsPanel : sans ça, ce scan (catégories × dimensions × événements)
   // est refait à chaque rendu — y compris à chaque frappe dans le formulaire de création/édition,
   // qui vit dans ce même composant et déclenche donc un re-render de tout l'écran.
@@ -81,6 +82,37 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
   const [formError, setFormError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Objective | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  /** Saison précédente de la même équipe — source du report d'objectifs en début de saison. */
+  const previousSeasonId = useMemo(() => {
+    if (!selected) return null;
+    const sameTeam = options
+      .filter(o => o.team.id === selected.team.id)
+      .sort((a, b) => b.season.startDate.localeCompare(a.season.startDate));
+    const i = sameTeam.findIndex(o => o.season.id === selected.season.id);
+    return i >= 0 && i + 1 < sameTeam.length ? sameTeam[i + 1].season.id : null;
+  }, [options, selected?.team.id, selected?.season.id]);
+
+  const [copying, setCopying] = useState(false);
+  const [copyMsg, setCopyMsg] = useState('');
+
+  /** Report explicite : un objectif de l'an passé n'est pas forcément encore pertinent. */
+  async function handleCopyPrevious() {
+    if (!previousSeasonId || !seasonId) return;
+    setCopying(true);
+    setCopyMsg('');
+    try {
+      const created = await objectivesApi.copyFromSeason({ playerId, teamId }, previousSeasonId, seasonId);
+      setCopyMsg(created.length
+        ? `${created.length} objectif${created.length > 1 ? 's' : ''} repris.`
+        : 'Rien à reprendre : ces objectifs existent déjà.');
+      reload();
+    } catch (err) {
+      setCopyMsg(err instanceof Error ? err.message : 'Erreur lors du report.');
+    } finally {
+      setCopying(false);
+    }
+  }
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setFormError(''); setShowForm(true); };
   const openEdit = (o: Objective) => {
@@ -104,7 +136,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
         });
       } else {
         await objectivesApi.create({
-          playerId, teamId, indicatorKey: form.indicatorKey, importance: form.importance,
+          playerId, teamId, seasonId, indicatorKey: form.indicatorKey, importance: form.importance,
           comparator: form.comparator, thresholdValue, active: true,
         });
       }
@@ -142,13 +174,25 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
       <Card style={{ marginBottom: 14 }}>
         <CardTitle icon={<Target size={12} style={{ color: '#3B82F6' }} />} mb={0} right={
           canEditTeamData && (
-          <button onClick={openCreate} style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Plus size={16} /><span>Ajouter un objectif</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {/* Les objectifs sont rattachés à une saison : sans ce report, chaque début de saison
+                obligerait à tout resaisir, et la migration se vivrait comme une perte. */}
+            {previousSeasonId && (
+              <button onClick={handleCopyPrevious} disabled={copying}
+                title="Recopier les objectifs actifs de la saison précédente"
+                style={{ padding: '8px 12px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: copying ? '#475569' : '#94A3B8', cursor: copying ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CopyPlus size={14} /><span>{copying ? 'Report…' : 'Reprendre la saison passée'}</span>
+              </button>
+            )}
+            <button onClick={openCreate} style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Plus size={16} /><span>Ajouter un objectif</span>
+            </button>
+          </div>
           )
         }>
           Objectifs
         </CardTitle>
+        {copyMsg && <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '10px 0 0' }}>{copyMsg}</p>}
       </Card>
 
       {loading ? (
@@ -166,35 +210,60 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
                 const imp = importanceConfig[o.importance];
                 const cmp = comparatorConfig[o.comparator];
                 return (
-                  <div key={o.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', flexWrap: 'wrap',
+                  /* Grille et non flex+flexWrap : le flexWrap faisait retomber le badge, le
+                     libellé, les 3 fenêtres et les 2 boutons en lignes bancales sous 400 px.
+                     Sous md, deux lignes nettes : identité de l'objectif, puis les 3 fenêtres
+                     alignées en grid-cols-3. */
+                  <div key={o.id} className="grid grid-cols-1 md:flex md:items-center" style={{
+                    gap: 10, padding: '10px 12px',
                     backgroundColor: imp.bg, borderRadius: 6, borderLeft: `3px solid ${imp.color}`,
                   }}>
-                    <Badge color={imp.color} label={imp.label} size="sm" />
-                    <div style={{ flex: 1, minWidth: 140 }}>
-                      {def ? (
-                        <div style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600 }}>{def.label}</div>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#F59E0B', fontSize: '0.85rem', fontWeight: 600, fontStyle: 'italic' }}>
-                          <AlertTriangle size={13} />{orphanIndicatorLabel(o.indicatorKey)}
+                    {/* Ligne 1 — importance, indicateur, et le SEUIL, qui est l'information
+                        centrale de la ligne : il était noyé dans un sous-titre gris 0,72rem
+                        alors que les valeurs mesurées s'affichaient deux fois plus gros. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                      <Badge color={imp.color} label={imp.label} size="sm" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {def ? (
+                          <div style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600 }}>{def.label}</div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#F59E0B', fontSize: '0.85rem', fontWeight: 600, fontStyle: 'italic' }}>
+                            <AlertTriangle size={13} />{orphanIndicatorLabel(o.indicatorKey)}
+                          </div>
+                        )}
+                        <div style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 1 }}>
+                          Objectif
                         </div>
-                      )}
-                      <div style={{ color: '#64748B', fontSize: '0.72rem' }}>
-                        Objectif : {cmp.symbol} {o.thresholdValue}{def?.unit ? ` ${def.unit}` : ''}
+                      </div>
+                      <div style={{
+                        display: 'flex', alignItems: 'baseline', gap: 3, flexShrink: 0,
+                        padding: '4px 10px', borderRadius: 6,
+                        backgroundColor: `${imp.color}1A`, border: `1px solid ${imp.color}55`,
+                      }}>
+                        <span style={{ color: imp.color, fontSize: '0.78rem', fontWeight: 700 }}>{cmp.symbol}</span>
+                        <span style={{ color: imp.color, fontSize: '1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>
+                          {o.thresholdValue}
+                        </span>
+                        {def?.unit && <span style={{ color: imp.color, fontSize: '0.68rem', opacity: 0.8 }}>{def.unit}</span>}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 16 }}>
-                      {windows.map(w => (
-                        <div key={w.label} style={{ textAlign: 'center', minWidth: 82 }}>
-                          <div style={{ color: '#64748B', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, whiteSpace: 'nowrap' }}>{w.label}</div>
-                          <div style={{ color: '#F1F5F9', fontSize: '0.9rem', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(w.value)}</div>
-                          <div style={{ marginTop: 2, display: 'flex', justifyContent: 'center' }}>
-                            {w.met === null ? <span style={{ color: '#475569', fontSize: '0.7rem' }}>—</span>
-                              : w.met ? <CheckCircle2 size={14} style={{ color: '#00E5A0' }} />
-                              : <XCircle size={14} style={{ color: '#EF4444' }} />}
+
+                    {/* Ligne 2 — les 3 fenêtres. La couleur atteint/manqué porte sur la VALEUR
+                        elle-même, l'icône ne fait plus que confirmer. */}
+                    <div className="grid grid-cols-3 md:flex" style={{ gap: 8 }}>
+                      {windows.map(w => {
+                        const color = w.met === null ? '#475569' : w.met ? '#00E5A0' : '#EF4444';
+                        return (
+                          <div key={w.label} style={{ textAlign: 'center', minWidth: 78 }}>
+                            <div style={{ color: '#64748B', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, whiteSpace: 'nowrap' }}>{w.label}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                              <span style={{ color, fontSize: '0.95rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(w.value)}</span>
+                              {w.met === true  && <CheckCircle2 size={12} style={{ color, flexShrink: 0 }} />}
+                              {w.met === false && <XCircle size={12} style={{ color, flexShrink: 0 }} />}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     {canEditTeamData && (
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>

@@ -3319,3 +3319,114 @@ $$;
 
 REVOKE ALL ON FUNCTION move_team_to_organization(UUID, UUID, BOOLEAN, BOOLEAN, BOOLEAN)
   FROM PUBLIC, anon, authenticated;
+
+
+-- ================================================================
+-- MIGRATION — Rattacher tâches et objectifs à une SAISON
+--
+-- player_actions et objectives ne portaient que team_id / player_id. Conséquences
+-- observées : changer de saison dans la barre du haut ne changeait rien à la liste
+-- des tâches, et un objectif défini en 2024-2025 restait affiché et évalué sur les
+-- matchs de la saison suivante.
+--
+-- Idempotente : colonnes et index en IF NOT EXISTS, backfill restreint aux lignes
+-- dont season_id est encore NULL. Un second passage ne fait donc rien.
+--
+-- La colonne reste VOLONTAIREMENT nullable à ce stade. Le passage en NOT NULL est
+-- une étape distincte, à faire après contrôle du backfill — la requête de contrôle
+-- est fournie en fin de section. Le backfill des objectifs repose sur created_at
+-- faute de date métier : il mérite une vérification humaine avant d'être figé.
+-- ================================================================
+
+ALTER TABLE player_actions ADD COLUMN IF NOT EXISTS season_id UUID REFERENCES seasons(id) ON DELETE CASCADE;
+ALTER TABLE objectives     ADD COLUMN IF NOT EXISTS season_id UUID REFERENCES seasons(id) ON DELETE CASCADE;
+
+-- ── Backfill : lignes rattachées à une ÉQUIPE ───────────────────────────────
+-- Tâches : par date d'échéance, qui est une vraie date métier.
+UPDATE player_actions a
+   SET season_id = s.id
+  FROM seasons s
+ WHERE a.season_id IS NULL
+   AND a.team_id   = s.team_id
+   AND a.due_date BETWEEN s.start_date AND s.end_date;
+
+-- Objectifs : pas de date métier, on retombe sur la date de création.
+UPDATE objectives o
+   SET season_id = s.id
+  FROM seasons s
+ WHERE o.season_id IS NULL
+   AND o.team_id   = s.team_id
+   AND o.created_at::date BETWEEN s.start_date AND s.end_date;
+
+-- ── Backfill : lignes rattachées à une JOUEUSE sans équipe ──────────────────
+-- L'équipe est alors indirecte (player_season → seasons) : on prend la saison de
+-- la joueuse qui couvre la date.
+UPDATE player_actions a
+   SET season_id = ps.season_id
+  FROM player_season ps
+  JOIN seasons s ON s.id = ps.season_id
+ WHERE a.season_id IS NULL
+   AND a.team_id   IS NULL
+   AND a.player_id = ps.player_id
+   AND a.due_date BETWEEN s.start_date AND s.end_date;
+
+UPDATE objectives o
+   SET season_id = ps.season_id
+  FROM player_season ps
+  JOIN seasons s ON s.id = ps.season_id
+ WHERE o.season_id IS NULL
+   AND o.team_id   IS NULL
+   AND o.player_id = ps.player_id
+   AND o.created_at::date BETWEEN s.start_date AND s.end_date;
+
+-- ── Orphelines : aucune saison ne couvre la date ────────────────────────────
+-- (tâche datée hors saison, objectif créé pendant l'intersaison…) → saison
+-- courante de l'équipe, ou de la seule équipe de la joueuse le cas échéant.
+UPDATE player_actions a
+   SET season_id = s.id
+  FROM seasons s
+ WHERE a.season_id IS NULL
+   AND a.team_id   = s.team_id
+   AND s.is_current;
+
+UPDATE objectives o
+   SET season_id = s.id
+  FROM seasons s
+ WHERE o.season_id IS NULL
+   AND o.team_id   = s.team_id
+   AND s.is_current;
+
+UPDATE player_actions a
+   SET season_id = s.id
+  FROM player_season ps
+  JOIN seasons s ON s.id = ps.season_id
+ WHERE a.season_id IS NULL
+   AND a.player_id = ps.player_id
+   AND s.is_current;
+
+UPDATE objectives o
+   SET season_id = s.id
+  FROM player_season ps
+  JOIN seasons s ON s.id = ps.season_id
+ WHERE o.season_id IS NULL
+   AND o.player_id = ps.player_id
+   AND s.is_current;
+
+-- ── Index — mêmes accès que les index team_id existants, saison en tête ─────
+CREATE INDEX IF NOT EXISTS player_actions_season_status_due_idx
+  ON player_actions (season_id, status, due_date);
+CREATE INDEX IF NOT EXISTS objectives_season_idx
+  ON objectives (season_id) WHERE active;
+
+-- RLS : inchangée. Les policies existantes cloisonnent déjà par équipe
+-- (writable_team_ids / accessible_team_ids) ou par organisation via la joueuse ;
+-- une saison appartenant toujours à une équipe, season_id n'ouvre aucun accès.
+
+-- ── Contrôle avant de passer en NOT NULL ────────────────────────────────────
+--   SELECT 'player_actions' AS t, count(*) FROM player_actions WHERE season_id IS NULL
+--   UNION ALL
+--   SELECT 'objectives',          count(*) FROM objectives     WHERE season_id IS NULL;
+--
+-- Puis, si les deux comptes sont à 0 :
+--   ALTER TABLE player_actions ALTER COLUMN season_id SET NOT NULL;
+--   ALTER TABLE objectives     ALTER COLUMN season_id SET NOT NULL;

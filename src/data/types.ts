@@ -171,6 +171,8 @@ export interface Action {
   id: string;
   playerId?: string;
   teamId?: string;
+  /** Saison de rattachement — un objectif/une tâche appartient à une saison. */
+  seasonId?: string;
   title: string;
   description?: string;
   category?: ActionCategory;
@@ -185,6 +187,8 @@ export interface Objective {
   id: string;
   playerId?: string;
   teamId?: string;
+  /** Saison de rattachement — un objectif/une tâche appartient à une saison. */
+  seasonId?: string;
   indicatorKey: string;
   importance: ObjectiveImportance;
   comparator: ObjectiveComparator;

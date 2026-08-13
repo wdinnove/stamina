@@ -72,6 +72,7 @@ export { ExerciseDocumentPicker } from './ExerciseDocumentPicker';
 export { SocialVideoEmbed } from './SocialVideoEmbed';
 export { SlideCarousel, CarouselDots, useSwipeCarousel } from './SlideCarousel';
 export { ObjectivesPanel } from './ObjectivesPanel';
+export { MatchObjectivesRecap } from './MatchObjectivesRecap';
 export { PlayerArchetypesPanel } from './PlayerArchetypesPanel';
 export { TeamArchetypesPanel } from './TeamArchetypesPanel';
 export { ArchetypeSelect } from './ArchetypeSelect';

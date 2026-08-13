@@ -259,8 +259,8 @@ export default function PerformanceCollectivePage() {
   const [teamActions, setTeamActions] = useState<Action[]>([]);
   useEffect(() => {
     if (!selected) { setTeamActions([]); return; }
-    actionsApi.list({ teamId: selected.team.id }).then(setTeamActions).catch(() => {});
-  }, [selected?.team.id]);
+    actionsApi.list({ teamId: selected.team.id, seasonId: selected.season.id }).then(setTeamActions).catch(() => {});
+  }, [selected?.team.id, selected?.season.id]);
   const openActions = teamActions.filter(a => a.status !== 'done').length;
   const doneActions = teamActions.filter(a => a.status === 'done').length;
 

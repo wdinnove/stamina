@@ -35,3 +35,32 @@ describe('FEATURE_REGISTRY', () => {
     }
   });
 });
+
+describe('profils — cohérence des indicateurs déclarés', () => {
+  it('ne référence que des features existantes', () => {
+    const known = new Set(FEATURE_REGISTRY.map(f => f.key));
+    for (const profile of PROFILES_V1) {
+      for (const ind of profile.indicators) {
+        expect(known, `${profile.key} → ${ind.featureKey}`).toContain(ind.featureKey);
+      }
+    }
+  });
+
+  it('propose un intérieur shooteur (stretch 5), qui manquait', () => {
+    const stretch = PROFILES_V1.find(p => p.key === 'stretch_five');
+    expect(stretch).toBeDefined();
+    expect(stretch!.eligiblePositions).toContain('Pivot');
+    // Volume ET adresse à 3 points : sans l'adresse, on décrirait juste une intérieure qui shoote mal.
+    const keys = stretch!.indicators.map(i => i.featureKey);
+    expect(keys).toContain('fg3VolumePer36');
+    expect(keys).toContain('fg3Pct');
+    // Poids négatif sur le rebond offensif : un stretch 5 s'éloigne du cercle.
+    expect(stretch!.indicators.find(i => i.featureKey === 'orebPct')!.weight).toBeLessThan(0);
+  });
+
+  it('ne promet plus « énergie » là où seuls rebond offensif et fautes provoquées sont mesurés', () => {
+    expect(PROFILES_V1.find(p => p.key === 'moteur_energie')).toBeUndefined();
+    const p = PROFILES_V1.find(p => p.key === 'presence_offensive')!;
+    expect(p.label.toLowerCase()).not.toContain('énergie');
+  });
+});

@@ -10,6 +10,7 @@ import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalEventsApi } from '../api/tacticalEvents';
 import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
+import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
@@ -145,6 +146,7 @@ const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
     { key: 'boxscore',     slug: 'boxscore',   label: 'Boxscore' },
     { key: 'advanced',     slug: 'avancees',   label: 'Statistiques avancées' },
     { key: 'four_factors', slug: '4-factors',  label: 'Four Factors' },
+    { key: 'objectives',   slug: 'objectifs',  label: 'Objectifs' },
   ]},
   { label: 'Comparaisons', tabs: [
     { key: 'comp_players', slug: 'joueurs',    label: 'Joueurs' },
@@ -1233,6 +1235,16 @@ export default function MatchDetailPage() {
           })()}
 
           {/* ── STATISTIQUES TACTIQUES BRUTES ── */}
+          {/* ── OBJECTIFS ── */}
+          {activeTab === 'objectives' && (
+            <MatchObjectivesRecap
+              match={match}
+              teamStats={teamStats}
+              individualStats={individualStats}
+              players={players}
+            />
+          )}
+
           {activeTab === 'tactical_brutes' && (
             loadingTactical ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>

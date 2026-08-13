@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Player } from '../data/types';
 import type { PlayerArchetypeReport, ArchetypeSelection } from '../data/archetypes';
+import { confidenceNote } from '../data/archetypes';
 import type { RankingRow } from './PlayerRankingTable';
 import { Badge } from './Badge';
 import { PlayerAvatar } from './PlayerAvatar';
@@ -13,6 +14,7 @@ type SortDir = 'asc' | 'desc';
 
 interface Row {
   player: Player; score: number; confidence: 'low' | 'medium' | 'high'; caveat?: string;
+  sampleSize: { matches: number; minutes: number };
   avgMin: number | null; evalAvg: number | null;
 }
 
@@ -55,11 +57,15 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
       const ref = refByPlayerId.get(player.id);
       built.push({
         player, score: result.score, confidence: result.confidence, caveat: result.caveat,
+        sampleSize: result.sampleSize,
         avgMin: ref?.avgMin ?? null, evalAvg: ref?.evalAvg ?? null,
       });
     }
     return built;
   }, [reports, roster, selection, rankingRows]);
+
+  // Le caveat est une propriété du PROFIL, pas de la joueuse : identique sur toutes les lignes.
+  const methodCaveat = rows.find(r => r.caveat)?.caveat;
 
   const teamAvg = roundedAvg(rows.map(r => r.score));
 
@@ -121,9 +127,13 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
               <td style={TD}>{row.evalAvg !== null ? row.evalAvg : '—'}</td>
               <td style={{ ...TD, color: '#00E5A0', fontWeight: 700 }}>
                 {row.score}%
+                {/* Le `?` ne porte QUE la fiabilité du chiffre. La limite méthodologique du profil
+                    (`caveat`) est indiquée une fois pour toutes sous le tableau : mélanger les deux
+                    faisait lire une explication sur la méthode là où on cherchait à savoir si le
+                    score était solide. */}
                 {row.confidence !== 'high' && (
-                  <span title={row.caveat ?? "Échantillon ou groupe de comparaison limité"} style={{ marginLeft: 6, cursor: 'help' }}>
-                    <Badge color="#F59E0B" label="i" size="sm" />
+                  <span title={confidenceNote(row.confidence, row.sampleSize) ?? undefined} style={{ marginLeft: 6, cursor: 'help' }}>
+                    <Badge color="#F59E0B" label="?" size="sm" />
                   </span>
                 )}
               </td>
@@ -132,6 +142,13 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
           ))}
         </tbody>
       </table>
+      {/* La limite méthodologique du profil ne dépend pas de la joueuse : une note sous le tableau
+          plutôt qu'un tooltip répété sur chaque ligne. */}
+      {methodCaveat && (
+        <p style={{ color: '#475569', fontSize: '0.7rem', lineHeight: 1.5, margin: '10px 2px 0' }}>
+          <span style={{ color: '#64748B', fontWeight: 600 }}>Méthode : </span>{methodCaveat}
+        </p>
+      )}
     </div>
   );
 }

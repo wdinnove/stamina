@@ -9,7 +9,7 @@ export { aggregateRawStats } from './statsAggregator';
 export { percentileRank } from './normalizer';
 export { buildFeatureVectors } from './featureBuilder';
 export { scoreIndicators, type ScoredProfile, type IndicatorLike } from './scoringEngine';
-export { explainScore, MIN_MATCHES_HARD_CUTOFF, MIN_MINUTES_FULL_CONFIDENCE, type ExplainedScore } from './explainer';
+export { explainScore, confidenceNote, MIN_MATCHES_HARD_CUTOFF, MIN_MINUTES_FULL_CONFIDENCE, type ExplainedScore } from './explainer';
 export { computeArchetypesForSquad } from './archetypeEngine';
 export { POSITION_GROUP, POSITION_GROUP_LABELS, MIN_GROUP_SIZE_FOR_FULL_CONFIDENCE, type PositionGroup } from './positionGroups';
 export { CATEGORY_LABELS } from './profiles/categories';

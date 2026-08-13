@@ -109,7 +109,7 @@ export default function DashboardPage() {
 
     Promise.all([
       playersApi.listBySeason(selected.season.id),
-      actionsApi.list({ teamId: selected.team.id }),
+      actionsApi.list({ teamId: selected.team.id, seasonId: selected.season.id }),
       rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, from30, today),
       matchesApi.listBySeason(selected.team.id, selected.season.id),
       staffApi.listByTeam(selected.team.id),

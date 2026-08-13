@@ -1,7 +1,7 @@
 import { Card, CardTitle } from './Card';
 import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
-import { CATEGORY_LABELS, DIMENSIONS_V1 } from '../data/archetypes';
+import { CATEGORY_LABELS, DIMENSIONS_V1, confidenceNote } from '../data/archetypes';
 import type { ArchetypeCategory, ArchetypeResult, StyleDimensionResult, DimensionDefinition, PlayerArchetypeReport } from '../data/archetypes';
 
 const CATEGORY_COLORS: Record<ArchetypeCategory, string> = {
@@ -102,8 +102,17 @@ function ArchetypeCard({ result }: { result: ArchetypeResult }) {
     <Card accentColor={color} style={{ display: 'flex', flexDirection: 'column' }}>
       <CardTitle mb={8}>{CATEGORY_LABELS[result.category]}</CardTitle>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.92rem', flex: 1 }}>{result.label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.92rem', flex: 1, minWidth: 0 }}>{result.label}</span>
+        {/* Deux informations distinctes, deux badges. « Estimation » dit comment le profil est
+            construit (limite permanente de la méthode) ; « ? » dit si le score de CETTE joueuse
+            repose sur assez de données. Les fondre dans un seul tooltip empêchait de savoir
+            laquelle des deux on lisait. */}
+        {result.confidence !== 'high' && (
+          <span title={confidenceNote(result.confidence, result.sampleSize) ?? undefined} style={{ cursor: 'help', flexShrink: 0 }}>
+            <Badge color="#F59E0B" label="?" size="sm" />
+          </span>
+        )}
         {result.caveat && (
           <span title={result.caveat} style={{ cursor: 'help', flexShrink: 0 }}>
             <Badge color={ESTIMATE_COLOR} label="Estimation" size="sm" />
@@ -159,6 +168,15 @@ function DimensionRow({ dim, result }: { dim: DimensionDefinition; result?: Styl
       </div>
       <span style={{ fontSize: '0.82rem', fontWeight: 700, color: DIMENSION_COLOR, width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
         {score}
+      </span>
+      {/* Même séparation que pour les profils : `*` + tooltip du libellé = limite de méthode,
+          `?` = fiabilité de l'échantillon de cette joueuse. */}
+      <span style={{ width: 14, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+        {result.confidence !== 'high' && (
+          <span title={confidenceNote(result.confidence, result.sampleSize) ?? undefined} style={{ cursor: 'help' }}>
+            <Badge color="#F59E0B" label="?" size="sm" />
+          </span>
+        )}
       </span>
     </div>
   );

@@ -4,6 +4,8 @@ import type { Objective, ObjectiveImportance, ObjectiveComparator } from '../dat
 export interface ListObjectivesFilters {
   playerId?: string;
   teamId?: string;
+  /** Saison — un objectif appartient à une saison, pas à l'équipe en général. */
+  seasonId?: string;
   active?: boolean;
 }
 
@@ -11,6 +13,7 @@ export const objectivesApi = {
   async list(filters: ListObjectivesFilters = {}): Promise<Objective[]> {
     let query = supabase.from('objectives').select('*');
     if (filters.teamId)   query = query.eq('team_id', filters.teamId);
+    if (filters.seasonId) query = query.eq('season_id', filters.seasonId);
     if (filters.playerId) query = query.eq('player_id', filters.playerId);
     if (filters.active !== undefined) query = query.eq('active', filters.active);
     const { data, error } = await query.order('created_at');
@@ -43,6 +46,42 @@ export const objectivesApi = {
     const { error } = await supabase.from('objectives').delete().eq('id', id);
     if (error) throw error;
   },
+
+  /**
+   * Recopie les objectifs actifs d'une saison vers une autre, pour le même sujet.
+   *
+   * Les objectifs étant désormais rattachés à une saison, ils disparaissent au changement de
+   * saison. Les redéfinir un par un chaque année ferait vivre la migration comme une perte : ce
+   * report est le geste naturel de début de saison. Il est explicite et non automatique — un
+   * objectif de l'an passé n'est pas forcément encore pertinent.
+   *
+   * Ne duplique que ce qui n'existe pas déjà sur la saison cible (même indicateur), pour qu'un
+   * second clic ne crée pas de doublons.
+   */
+  async copyFromSeason(
+    subject: { playerId?: string; teamId?: string },
+    fromSeasonId: string,
+    toSeasonId: string,
+  ): Promise<Objective[]> {
+    const [source, target] = await Promise.all([
+      objectivesApi.list({ ...subject, seasonId: fromSeasonId, active: true }),
+      objectivesApi.list({ ...subject, seasonId: toSeasonId }),
+    ]);
+    const alreadyThere = new Set(target.map(o => o.indicatorKey));
+    const toCreate = source.filter(o => !alreadyThere.has(o.indicatorKey));
+    if (!toCreate.length) return [];
+
+    const { data, error } = await supabase
+      .from('objectives')
+      .insert(toCreate.map(o => toRow({
+        playerId: o.playerId, teamId: o.teamId, seasonId: toSeasonId,
+        indicatorKey: o.indicatorKey, importance: o.importance,
+        comparator: o.comparator, thresholdValue: o.thresholdValue, active: true,
+      })))
+      .select();
+    if (error) throw error;
+    return (data ?? []).map(toObjective);
+  },
 };
 
 function toObjective(row: Record<string, unknown>): Objective {
@@ -50,6 +89,7 @@ function toObjective(row: Record<string, unknown>): Objective {
     id:             row.id              as string,
     playerId:       (row.player_id      as string | null) ?? undefined,
     teamId:         (row.team_id        as string | null) ?? undefined,
+    seasonId:       (row.season_id      as string | null) ?? undefined,
     indicatorKey:   row.indicator_key   as string,
     importance:     row.importance      as ObjectiveImportance,
     comparator:     row.comparator      as ObjectiveComparator,
@@ -63,6 +103,7 @@ function toRow(o: Partial<Omit<Objective, 'id'>>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if (o.playerId       !== undefined) row.player_id       = o.playerId;
   if (o.teamId          !== undefined) row.team_id         = o.teamId;
+  if (o.seasonId        !== undefined) row.season_id       = o.seasonId;
   if (o.indicatorKey    !== undefined) row.indicator_key   = o.indicatorKey;
   if (o.importance      !== undefined) row.importance      = o.importance;
   if (o.comparator      !== undefined) row.comparator      = o.comparator;

@@ -4,6 +4,26 @@ import type { ScoredProfile } from './scoringEngine';
 /** Sous ce nombre de matchs, le score n'est pas affiché du tout (pas assez de données pour être
  *  significatif) — un shrinkage seul ne suffit pas à éviter d'afficher un chiffre trompeur. */
 export const MIN_MATCHES_HARD_CUTOFF = 3;
+
+/**
+ * Message de FIABILITÉ d'un score, dérivé de la taille d'échantillon.
+ *
+ * À ne pas confondre avec le `caveat` d'un profil, qui est une limite MÉTHODOLOGIQUE permanente
+ * (« proxy sans donnée de déviations »). Les deux étaient affichés dans le même point
+ * d'interrogation : on lisait une explication sur la méthode là où on cherchait à savoir si le
+ * chiffre était solide. Le `?` ne porte plus que la fiabilité ; le caveat a son propre indicateur.
+ */
+export function confidenceNote(
+  confidence: 'low' | 'medium' | 'high',
+  sampleSize: { matches: number; minutes: number },
+): string | null {
+  if (confidence === 'high') return null;
+  const m = `${sampleSize.matches} match${sampleSize.matches > 1 ? 's' : ''}`;
+  const min = `${Math.round(sampleSize.minutes)} min`;
+  return confidence === 'low'
+    ? `Trop peu de données pour que ce score soit significatif (${m}, ${min} jouées). Il est rapproché de la moyenne tant que l'échantillon reste faible.`
+    : `Échantillon encore limité (${m}, ${min} jouées) : le score se précisera avec les prochains matchs.`;
+}
 /** Minutes cumulées à partir desquelles le score n'est plus atténué vers 50 (neutre). */
 export const MIN_MINUTES_FULL_CONFIDENCE = 150;
 

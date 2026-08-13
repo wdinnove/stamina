@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { explainScore, MIN_MATCHES_HARD_CUTOFF, MIN_MINUTES_FULL_CONFIDENCE } from './explainer';
+import { explainScore, MIN_MATCHES_HARD_CUTOFF, MIN_MINUTES_FULL_CONFIDENCE, confidenceNote } from './explainer';
 import type { ScoredProfile } from './scoringEngine';
 
 function scored(rawScore: number, points: number[]): ScoredProfile {
@@ -46,5 +46,32 @@ describe('explainScore', () => {
     const result = explainScore(null, { matches: 10, minutes: 300 });
     expect(result.computable).toBe(false);
     expect(result.score).toBeNull();
+  });
+});
+
+describe('confidenceNote — fiabilité, et rien d\'autre', () => {
+  it('ne dit rien quand la fiabilité est bonne', () => {
+    expect(confidenceNote('high', { matches: 20, minutes: 600 })).toBeNull();
+  });
+
+  it('annonce explicitement le manque de données, avec le décompte', () => {
+    const note = confidenceNote('low', { matches: 3, minutes: 24 });
+    expect(note).toContain('significatif');
+    expect(note).toContain('3 matchs');
+    expect(note).toContain('24 min');
+  });
+
+  it('distingue un échantillon limité d\'un échantillon insuffisant', () => {
+    const medium = confidenceNote('medium', { matches: 6, minutes: 110 })!;
+    expect(medium).toContain('se précisera');
+    expect(medium).not.toContain('significatif');
+  });
+
+  it('ne parle jamais de méthode — c\'est le rôle du caveat du profil', () => {
+    for (const c of ['low', 'medium'] as const) {
+      const note = confidenceNote(c, { matches: 4, minutes: 60 })!;
+      expect(note.toLowerCase()).not.toContain('proxy');
+      expect(note.toLowerCase()).not.toContain('déviation');
+    }
   });
 });

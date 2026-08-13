@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search, Trash2 } from 'lucide-react';
 import RichTextEditor from '../components/RichTextEditor';
 import { actionsApi } from '../api/actions';
@@ -36,7 +36,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function ActionsPage() {
-  const { selected, canEditTeamData } = useTeamSeason();
+  const { selected, options, canEditTeamData } = useTeamSeason();
   const location = useLocation();
   const navigate = useNavigate();
   const locState = location.state as { playerId?: string; playerName?: string; from?: string } | null;
@@ -64,13 +64,55 @@ export default function ActionsPage() {
     setPlayers([]);
     setLoading(true);
     Promise.all([
-      actionsApi.list({ teamId: selected.team.id }),
+      actionsApi.list({ teamId: selected.team.id, seasonId: selected.season.id }),
       playersApi.listBySeason(selected.season.id),
     ])
       .then(([actions, ps]) => { setActs(actions); setPlayers(ps); })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [selected?.team.id, selected?.season.id]);
+
+  /**
+   * Tâches non terminées de la saison PRÉCÉDENTE de la même équipe.
+   *
+   * Les tâches sont désormais rattachées à une saison : au changement de saison, celles restées
+   * ouvertes disparaissent donc de la liste. Les migrer automatiquement serait pire — on hériterait
+   * chaque année d'un fond de tâches périmées. On les signale, et le report est un geste explicite.
+   */
+  const previousSeason = useMemo(() => {
+    if (!selected) return null;
+    const sameTeam = options
+      .filter(o => o.team.id === selected.team.id)
+      .sort((a, b) => b.season.startDate.localeCompare(a.season.startDate));
+    const i = sameTeam.findIndex(o => o.season.id === selected.season.id);
+    return i >= 0 && i + 1 < sameTeam.length ? sameTeam[i + 1].season : null;
+  }, [options, selected?.team.id, selected?.season.id]);
+
+  const [carryOver, setCarryOver] = useState<Action[]>([]);
+  const [carryingOver, setCarryingOver] = useState(false);
+  const [carryDismissed, setCarryDismissed] = useState(false);
+
+  useEffect(() => {
+    setCarryOver([]);
+    setCarryDismissed(false);
+    if (!previousSeason) return;
+    actionsApi.listUnfinishedInSeason(previousSeason.id).then(setCarryOver).catch(() => {});
+  }, [previousSeason?.id]);
+
+  async function handleCarryOver() {
+    if (!selected || !carryOver.length) return;
+    setCarryingOver(true);
+    try {
+      await actionsApi.moveToSeason(carryOver.map(a => a.id), selected.season.id);
+      setActs(prev => [...prev, ...carryOver.map(a => ({ ...a, seasonId: selected.season.id }))]
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
+      setCarryOver([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors du report.');
+    } finally {
+      setCarryingOver(false);
+    }
+  }
 
   useEffect(() => {
     if (!selected) return;
@@ -127,6 +169,7 @@ export default function ActionsPage() {
       const created = await actionsApi.create({
         playerId:    form.playerId || undefined,
         teamId:      selected?.team.id,
+        seasonId:    selected?.season.id,
         title:       form.title,
         description: form.description || undefined,
         category:    form.category || undefined,
@@ -259,6 +302,37 @@ export default function ActionsPage() {
           </button>
         )}
       </div>
+
+      {/* Report depuis la saison précédente — signalé, jamais automatique. */}
+      {carryOver.length > 0 && !carryDismissed && previousSeason && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.28)',
+          borderRadius: 8, padding: '12px 14px', marginBottom: 16,
+        }}>
+          <AlertCircle size={16} style={{ color: '#F59E0B', flexShrink: 0 }} />
+          <span style={{ color: '#F1F5F9', fontSize: '0.85rem', flex: 1, minWidth: 200 }}>
+            {carryOver.length} tâche{carryOver.length > 1 ? 's' : ''} non terminée{carryOver.length > 1 ? 's' : ''}
+            {' '}sur la saison {previousSeason.label}.
+          </span>
+          {canEditTeamData && (
+            <button
+              onClick={handleCarryOver}
+              disabled={carryingOver}
+              style={{ padding: '7px 14px', backgroundColor: carryingOver ? '#1E2229' : '#F59E0B', border: 'none', borderRadius: 6, color: carryingOver ? '#475569' : '#0D0F14', cursor: carryingOver ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem', flexShrink: 0 }}
+            >
+              {carryingOver ? 'Report…' : `Reporter sur ${selected?.season.label ?? 'cette saison'}`}
+            </button>
+          )}
+          <button
+            onClick={() => setCarryDismissed(true)}
+            title="Masquer"
+            style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', padding: 4, flexShrink: 0 }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       <style>{`@media (max-width: 639px) { .act-filters { flex-direction: column !important; } .act-filters > * { flex: none !important; width: 100% !important; } }`}</style>
       <div className="act-filters" style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>

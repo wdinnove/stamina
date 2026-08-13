@@ -113,6 +113,23 @@ export const PROFILES_V1: ProfileDefinition[] = [
     eligiblePositions: ['Ailier Fort', 'Pivot'],
   },
   {
+    key: 'stretch_five',
+    label: 'Intérieur shooteur (stretch 5)',
+    description: "Intérieur qui étire la défense en menaçant depuis la ligne à 3 points, au lieu de vivre près du cercle — libère la raquette pour les autres.",
+    category: 'interieurs',
+    indicators: [
+      { featureKey: 'fg3VolumePer36', weight: 2 },
+      { featureKey: 'fg3Pct', weight: 2 },
+      { featureKey: 'efgPct', weight: 1 },
+      // Poids négatif volontaire : un fort taux de rebond offensif signale une intérieure qui
+      // reste au cercle, donc l'inverse d'un profil qui écarte le jeu.
+      { featureKey: 'orebPct', weight: -1 },
+    ],
+    status: 'partial_proxy',
+    eligiblePositions: ['Ailier Fort', 'Pivot'],
+    caveat: `${NO_PLAY_TYPE_DATA} Sans donnée de zone de tir, le volume à 3 points sert de proxy à l'écartement réel : une intérieure qui tire beaucoup de 3 points sans les rentrer ressort quand même partiellement.`,
+  },
+  {
     key: 'protecteur_cercle',
     label: 'Protecteur de cercle',
     description: 'Contreur intimidant qui verrouille la raquette, avec peu de fautes inutiles.',
@@ -186,9 +203,13 @@ export const PROFILES_V1: ProfileDefinition[] = [
     caveat: `${NO_PLAY_TYPE_DATA} Pas de donnée de déviations ni de charges provoquées.`,
   },
   {
-    key: 'moteur_energie',
-    label: "Moteur d'énergie",
-    description: 'Impact par les secondes efforts et les fautes provoquées.',
+    // Anciennement « Moteur d'énergie ». Renommé d'après ce que les indicateurs mesurent
+    // réellement : un moteur d'énergie se reconnaît aux déviations, ballons libres récupérés et
+    // secondes chances créées — aucune de ces données n'est saisie. Promettre « énergie » avec un
+    // taux de rebond offensif et des fautes provoquées induisait en erreur.
+    key: 'presence_offensive',
+    label: 'Présence au rebond et au contact',
+    description: "Se rend disponible près du cercle après un tir manqué et provoque des fautes — deux façons de créer des munitions sans avoir à créer son tir.",
     category: 'energie',
     indicators: [
       { featureKey: 'orebPct', weight: 2 },
@@ -196,7 +217,7 @@ export const PROFILES_V1: ProfileDefinition[] = [
     ],
     status: 'partial_proxy',
     // Pas d'eligiblePositions : rôle transversal, proposé à tous les postes.
-    caveat: "Proxy sans donnée de déviations ni de ballons libres récupérés.",
+    caveat: "Le rebond offensif et les fautes provoquées ne couvrent qu'une partie de l'activité : ni les déviations, ni les ballons libres récupérés, ni les écrans ne sont saisis.",
   },
   {
     key: 'scoreur_volume',
