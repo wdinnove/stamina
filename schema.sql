@@ -945,36 +945,44 @@ CREATE TABLE exercise_categories (
 
 CREATE INDEX ON exercise_categories (team_id);
 
+-- `team_id` est obligatoire : un exercice appartient toujours à une équipe. Une ligne sans
+-- équipe serait de toute façon invisible pour tout le monde — la policy de lecture compare
+-- `team_id IN (…)`, et `NULL IN (…)` ne vaut jamais vrai.
 CREATE TABLE exercises (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id       UUID REFERENCES teams(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL,
-  description   TEXT,
-  consignes     TEXT,  -- consignes par défaut, copiées dans le bloc de séance à l'ajout (modifiables sans impacter la bibliothèque)
-  category_id   UUID REFERENCES exercise_categories(id) ON DELETE SET NULL,
-  document_url  TEXT,
-  document_name TEXT,
-  video_url     TEXT,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  objectifs   TEXT,  -- le « pourquoi » de l'exercice, recopié dans le bloc de séance à l'ajout (modifiable ensuite sans impacter la bibliothèque)
+  category_id UUID REFERENCES exercise_categories(id) ON DELETE SET NULL,
+  video_url   TEXT,  -- option : lien réseau social, si le coach en a un
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX ON exercises (team_id);
 
--- Une ligne = une illustration de l'exercice, dans l'ordre `position`. Deux origines
--- possibles, volontairement dans la même table pour que la galerie n'ait rien à savoir des
--- schémas : `diagram` NULL = image téléversée par le coach, `diagram` renseigné = schéma
--- dessiné dans l'éditeur (la scène JSON permet de le rouvrir et de le modifier, `url`
--- pointe sur le PNG qu'il a produit).
-CREATE TABLE exercise_images (
+-- Une ligne = une phase de l'exercice, dans l'ordre `position` : un schéma et son texte.
+-- Le déroulement de l'exercice n'existe qu'ici, phase par phase — l'exercice lui-même ne
+-- porte que ses objectifs.
+--
+-- `scene` est la source de vérité (coordonnées en mètres, cf. src/utils/diagram.ts) et se
+-- rend en SVG partout : fiche, liste, séance. Aucun PNG n'est produit au quotidien, donc
+-- aucun fichier à garder synchronisé avec la ligne. `thumb_url` reste NULL ; il est réservé
+-- à un futur export PDF de séance, seul cas où un raster sera nécessaire.
+--
+-- Une scène peut être vide (`elements: []`) : la phase est alors purement textuelle, et
+-- l'app l'affiche comme un bloc de texte plutôt que comme un terrain désert.
+CREATE TABLE exercise_phases (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
-  url         TEXT NOT NULL,
   position    SMALLINT NOT NULL DEFAULT 0,
-  diagram     JSONB,
+  title       TEXT,
+  text        TEXT,
+  scene       JSONB NOT NULL,
+  thumb_url   TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX ON exercise_images (exercise_id);
+CREATE INDEX ON exercise_phases (exercise_id);
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -1043,7 +1051,7 @@ ALTER TABLE team_match_stats      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff_meetings        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_attendance   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercises             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exercise_images       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercise_phases       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercise_categories   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications         ENABLE ROW LEVEL SECURITY;
 
@@ -1484,14 +1492,14 @@ CREATE POLICY "exercise_categories_write" ON exercise_categories
   USING      (team_id IN (SELECT * FROM admin_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
 
--- Images d'exercices : suivent l'exercice parent
-CREATE POLICY "exercise_images_select" ON exercise_images
+-- Phases d'exercices : suivent l'exercice parent
+CREATE POLICY "exercise_phases_select" ON exercise_phases
   FOR SELECT TO authenticated
   USING (
     exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids()))
   );
 
-CREATE POLICY "exercise_images_write" ON exercise_images
+CREATE POLICY "exercise_phases_write" ON exercise_phases
   FOR ALL TO authenticated
   USING (
     exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids()))
@@ -1503,8 +1511,7 @@ CREATE POLICY "exercise_images_write" ON exercise_images
 
 -- ────────────────────────────────────────────────────────────────
 -- 22b. STORAGE — Buckets
---      3 buckets : player-photos (public), session-documents (privé),
---                  exercises (public)
+--      2 buckets : player-photos (public), session-documents (privé)
 --      Créer chaque bucket via Dashboard Storage avant les policies
 -- ────────────────────────────────────────────────────────────────
 
@@ -1546,26 +1553,9 @@ CREATE POLICY "session_documents_storage_delete"
   ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'session-documents');
 
--- ── exercises (public) ───────────────────────────────────────────
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('exercises', 'exercises', true)
-ON CONFLICT (id) DO NOTHING;
-
-CREATE POLICY "exercises_storage_select"
-  ON storage.objects FOR SELECT TO public
-  USING (bucket_id = 'exercises');
-
-CREATE POLICY "exercises_storage_insert"
-  ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'exercises');
-
-CREATE POLICY "exercises_storage_update"
-  ON storage.objects FOR UPDATE TO authenticated
-  USING (bucket_id = 'exercises');
-
-CREATE POLICY "exercises_storage_delete"
-  ON storage.objects FOR DELETE TO authenticated
-  USING (bucket_id = 'exercises');
+-- Pas de bucket pour les exercices : une phase ne stocke aucun fichier, sa scène est du
+-- JSONB rendu en SVG. Le jour où l'export PDF de séance arrivera, il faudra un bucket pour
+-- les rasters (`exercise_phases.thumb_url`) — à créer à ce moment-là, pas avant.
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -2790,7 +2780,7 @@ CREATE POLICY "session_documents_write" ON session_documents
   USING      (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())))
   WITH CHECK (session_id IN (SELECT id FROM training_sessions WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
--- 15. RLS : exercises / exercise_categories / exercise_images
+-- 15. RLS : exercises / exercise_categories / exercise_phases
 DROP POLICY IF EXISTS "exercises_access" ON exercises;
 DROP POLICY IF EXISTS "exercises_select" ON exercises;
 CREATE POLICY "exercises_select" ON exercises
@@ -2813,13 +2803,12 @@ CREATE POLICY "exercise_categories_write" ON exercise_categories
   USING      (team_id IN (SELECT * FROM admin_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
 
-DROP POLICY IF EXISTS "exercise_images_access" ON exercise_images;
-DROP POLICY IF EXISTS "exercise_images_select" ON exercise_images;
-CREATE POLICY "exercise_images_select" ON exercise_images
+DROP POLICY IF EXISTS "exercise_phases_select" ON exercise_phases;
+CREATE POLICY "exercise_phases_select" ON exercise_phases
   FOR SELECT TO authenticated
   USING (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids())));
-DROP POLICY IF EXISTS "exercise_images_write" ON exercise_images;
-CREATE POLICY "exercise_images_write" ON exercise_images
+DROP POLICY IF EXISTS "exercise_phases_write" ON exercise_phases;
+CREATE POLICY "exercise_phases_write" ON exercise_phases
   FOR ALL TO authenticated
   USING      (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids())))
   WITH CHECK (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids())));
@@ -3504,3 +3493,64 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --   WHERE tms.opp_possessions IS NOT NULL
 --     AND tms.opp_possessions <> tms.possessions
 --   ORDER BY ABS(tms.opp_possessions - tms.possessions) DESC;
+
+-- Exercices : passage au modèle « phases »
+--
+-- Un exercice n'est plus un texte + une galerie d'images, mais un en-tête (nom, catégorie,
+-- objectifs) et une séquence de phases — une phase = un schéma de terrain + son texte.
+-- Le déroulement descend donc au niveau de la phase, et disparaît de l'exercice.
+--
+-- Ce qui part : les images téléversées et le PDF joint (le schéma dessiné les remplace), et
+-- avec eux le bucket `exercises` — plus aucun fichier dans le domaine exercice. `consignes`
+-- est renommé `objectifs`, pour ne plus dire deux choses différentes selon la table
+-- (`session_blocks.consignes`, lui, veut bien dire « consignes »).
+--
+-- La bascule s'est faite sur une base sans aucun exercice : pas de reprise de données, on
+-- remplace. Sur une base qui en contient, il faudrait d'abord verser les lignes
+-- `exercise_images` à `diagram` non NULL dans `exercise_phases` (scene = diagram,
+-- thumb_url = url, position renumérotée) et `exercises.description` dans le texte de la
+-- phase 0 — les photos, elles, n'ont pas d'équivalent et seraient perdues.
+--
+-- DROP TABLE IF EXISTS exercise_images;
+--
+-- ALTER TABLE exercises RENAME COLUMN consignes TO objectifs;
+-- ALTER TABLE exercises
+--   DROP COLUMN IF EXISTS description,
+--   DROP COLUMN IF EXISTS document_url,
+--   DROP COLUMN IF EXISTS document_name;
+--
+-- -- Un exercice sans équipe est déjà invisible pour tout le monde (`NULL IN (…)` ne vaut
+-- -- jamais vrai dans la policy de lecture) : rien à sauver avant de rendre la colonne
+-- -- obligatoire.
+-- DELETE FROM exercises WHERE team_id IS NULL;
+-- ALTER TABLE exercises ALTER COLUMN team_id SET NOT NULL;
+--
+-- CREATE TABLE IF NOT EXISTS exercise_phases (
+--   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+--   position    SMALLINT NOT NULL DEFAULT 0,
+--   title       TEXT,
+--   text        TEXT,
+--   scene       JSONB NOT NULL,
+--   thumb_url   TEXT,
+--   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS exercise_phases_exercise_id_idx ON exercise_phases (exercise_id);
+--
+-- ALTER TABLE exercise_phases ENABLE ROW LEVEL SECURITY;
+--
+-- CREATE POLICY "exercise_phases_select" ON exercise_phases
+--   FOR SELECT TO authenticated
+--   USING (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+--
+-- CREATE POLICY "exercise_phases_write" ON exercise_phases
+--   FOR ALL TO authenticated
+--   USING      (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids())))
+--   WITH CHECK (exercise_id IN (SELECT id FROM exercises WHERE team_id IN (SELECT * FROM writable_team_ids())));
+--
+-- -- Le bucket `exercises` ne sert plus : plus aucun upload dans le domaine exercice.
+-- -- À supprimer depuis Dashboard → Storage après avoir vérifié qu'il est vide.
+-- DROP POLICY IF EXISTS "exercises_storage_select" ON storage.objects;
+-- DROP POLICY IF EXISTS "exercises_storage_insert" ON storage.objects;
+-- DROP POLICY IF EXISTS "exercises_storage_update" ON storage.objects;
+-- DROP POLICY IF EXISTS "exercises_storage_delete" ON storage.objects;

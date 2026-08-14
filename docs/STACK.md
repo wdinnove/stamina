@@ -88,7 +88,7 @@ petites fonctions serverless dans `api/`.
 | **Supabase Postgres** | toute la donnée. Le schéma complet est versionné dans [`schema.sql`](../schema.sql) |
 | **Row Level Security (RLS)** | la sécurité. ~148 policies : un utilisateur ne voit que les données de son club / ses équipes |
 | **Supabase Auth** | connexion email+mot de passe et Google OAuth |
-| **Supabase Storage** | 3 buckets : `player-photos`, `session-documents`, `exercises` |
+| **Supabase Storage** | 2 buckets : `player-photos`, `session-documents` |
 | **Fonctions serverless Vercel** (`api/*.js`) | ce qui exige un secret : emails, push, cron |
 | **MailerSend** | envoi des emails |
 | **Web Push (VAPID)** | notifications push sur mobile |

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
-import { Modal, DropzoneEmptyState, EmptyState } from '../components';
+import { Modal, DropzoneEmptyState, EmptyState, AddButton } from '../components';
 import { rpeApi } from '../api/rpe';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { playersApi } from '../api';
@@ -222,10 +222,7 @@ export default function TrainingSessionsPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Séances</h1>
         {selected && canEditTeamData && (
-          <button onClick={() => setShowAdd(true)}
-            style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Plus size={15} /><span className="hidden sm:inline">Nouvelle séance</span>
-          </button>
+          <AddButton label="Ajouter une séance" onClick={() => setShowAdd(true)} />
         )}
       </div>
 
@@ -357,7 +354,7 @@ export default function TrainingSessionsPage() {
       {showAdd && (
         <Modal onClose={() => { setShowAdd(false); setAddError(''); setRecError(''); }} closeOnBackdropClick maxWidth={440} overlayOpacity={0.7} style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouvelle séance</h2>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Ajouter une séance</h2>
             <button onClick={() => { setShowAdd(false); setAddError(''); setRecError(''); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
           </div>
 

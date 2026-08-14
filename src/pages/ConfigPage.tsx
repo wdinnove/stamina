@@ -11,7 +11,7 @@ import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
-import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview } from '../components';
+import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview, AddButton } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { ExerciseCategory, Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod } from '../data/types';
 import { LAYER } from '../styles/layers';
@@ -451,7 +451,7 @@ function RosterTab() {
       title="Effectif"
       action={
         <ConfigAction icon={<Plus size={14} />} onClick={() => setShowAddModal(true)} hideLabelOnMobile>
-          Ajouter
+          Ajouter un joueur
         </ConfigAction>
       }>
       <div style={{ position: 'relative', marginBottom: 14 }}>
@@ -1306,10 +1306,8 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
           <input type="color" value={newCatColor} onChange={e => setNewCatColor(e.target.value)}
             style={{ width: 36, height: 36, border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, backgroundColor: '#1E2229', cursor: 'pointer', flexShrink: 0 }} />
           <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Nouvelle catégorie…" style={{ ...inputStyle, flex: 1 }} />
-          <button type="submit" disabled={addingCat || !newCatName.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', backgroundColor: (addingCat || !newCatName.trim()) ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: (addingCat || !newCatName.trim()) ? '#475569' : '#0A0C10', fontWeight: 700, fontSize: '0.82rem', cursor: (addingCat || !newCatName.trim()) ? 'not-allowed' : 'pointer' }}>
-            <Plus size={14} /><span className="hidden sm:inline">{addingCat ? 'Ajout…' : 'Ajouter'}</span>
-          </button>
+          <AddButton type="submit" label={addingCat ? 'Ajout…' : 'Ajouter une catégorie'}
+            disabled={addingCat || !newCatName.trim()} />
         </form>
         {addCatError && <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{addCatError}</p>}
       </ConfigCard>

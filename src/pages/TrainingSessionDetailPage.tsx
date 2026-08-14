@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, Plus, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, Users, Check, Save, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router';
+import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, Users, Check, Save, ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -8,12 +8,12 @@ import { documentsApi } from '../api/documents';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { sessionTeamsApi } from '../api/sessionTeams';
 import { exercisesApi } from '../api/exercises';
+import { exercisePhasesApi } from '../api/exercisePhases';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState } from '../components';
-import { ExerciseImageGallery, SocialVideoEmbed } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, AddButton } from '../components';
+import { ExerciseView } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
-import { detectSocialPlatform } from '../utils/socialVideo';
 import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { wellnessTier as sharedWellnessTier } from '../utils/wellness';
@@ -23,7 +23,7 @@ import { roundedAvg } from '../utils/avg';
 import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExerciseImage, WellnessEntry } from '../data/types';
+import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExercisePhase, WellnessEntry } from '../data/types';
 import { notify } from '../api/notifications';
 import { LAYER } from '../styles/layers';
 
@@ -251,7 +251,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   blocks: SessionBlock[];
   onBlocksChange: (blocks: SessionBlock[]) => void;
 }) {
-  const { thresholds, canEditTeamData } = useTeamSeason();
+  const { thresholds, selected, canEditTeamData } = useTeamSeason();
   const [showForm,       setShowForm]       = useState(false);
   const [saving,         setSaving]         = useState(false);
   const [blockError,     setBlockError]     = useState('');
@@ -266,15 +266,18 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   const [overIndex,      setOverIndex]      = useState<number | null>(null);
   const [exercises,       setExercises]       = useState<Exercise[]>([]);
   const [viewExercise,    setViewExercise]    = useState<Exercise | null>(null);
-  const [viewExerciseImages, setViewExerciseImages] = useState<ExerciseImage[]>([]);
+  const [viewPhases,      setViewPhases]      = useState<ExercisePhase[]>([]);
+
+  // La bibliothèque proposée est celle de l'équipe de la séance, pas celle de toutes les
+  // équipes auxquelles on a accès.
+  useEffect(() => {
+    if (!selected) return;
+    exercisesApi.list(selected.team.id).then(setExercises).catch(() => {});
+  }, [selected?.team.id]);
 
   useEffect(() => {
-    exercisesApi.list().then(setExercises).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!viewExercise) { setViewExerciseImages([]); return; }
-    exercisesApi.listImages(viewExercise.id).then(setViewExerciseImages).catch(() => {});
+    if (!viewExercise) { setViewPhases([]); return; }
+    exercisePhasesApi.list(viewExercise.id).then(setViewPhases).catch(() => {});
   }, [viewExercise?.id]);
 
   function startDrag(e: React.PointerEvent<HTMLElement>, fromIndex: number) {
@@ -451,11 +454,13 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         inputStyle={inputStyle}
                         onChange={(id, ex) => {
                           setEditDrillId(id);
-                          setEditDescription(ex?.description ?? '');
+                          // Seuls les objectifs se recopient : le déroulement de l'exercice vit
+                          // dans ses phases, et la description du bloc reste ce que le coach
+                          // note pour cette séance-là.
                           if (ex) setEditForm(f => ({
                             ...f,
                             label: ex.name,
-                            consignes: ex.consignes ?? f.consignes,
+                            consignes: ex.objectifs ?? f.consignes,
                             ...(ex.categoryName ? { category: ex.categoryName } : {}),
                           }));
                         }}
@@ -661,11 +666,10 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
               inputStyle={inputStyle}
               onChange={(id, ex) => {
                 setFormDrillId(id);
-                setFormDescription(ex?.description ?? '');
                 if (ex) setForm(f => ({
                   ...f,
                   label: ex.name,
-                  consignes: ex.consignes ?? f.consignes,
+                  consignes: ex.objectifs ?? f.consignes,
                   ...(ex.categoryName ? { category: ex.categoryName } : {}),
                 }));
               }}
@@ -744,89 +748,34 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
         )
       )}
 
-      {/* Modal détail exercice — même format que la fiche exercice */}
+      {/* Fiche exercice — exactement la vue de la page dédiée, phases comprises */}
       {viewExercise && (
-        <div
-          onClick={() => setViewExercise(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', zIndex: LAYER.modal, padding: 16 }}>
-          <style>{`
-            .ex-view-desc { color:#94A3B8; font-size:0.88rem; line-height:1.6; }
-            .ex-view-desc p { margin:0 0 8px; }
-            .ex-view-desc p:last-child { margin:0; }
-            .ex-view-desc ul { margin:4px 0; padding-left:18px; list-style-type:disc; }
-            .ex-view-desc ol { margin:4px 0; padding-left:18px; list-style-type:decimal; }
-            .ex-view-desc li { display:list-item; margin:2px 0; }
-            .ex-view-desc strong { color:#F1F5F9; }
-          `}</style>
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ position: 'relative', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 24, maxWidth: 720, width: '100%', maxHeight: '85vh', overflowY: 'auto', margin: 'auto' }}>
-            <button onClick={() => setViewExercise(null)}
-              style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
-              <X size={18} />
-            </button>
-
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16, paddingRight: 28 }}>
-              <h1 style={{ color: '#F1F5F9', margin: 0 }}>{viewExercise.name}</h1>
+        <Modal maxWidth={760} style={{ padding: 24 }} onClose={() => setViewExercise(null)} closeOnBackdropClick>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ color: '#F1F5F9', margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 700 }}>{viewExercise.name}</h2>
+              <Link to={`/exercices/${viewExercise.id}`} style={{ color: '#475569', fontSize: '0.75rem', textDecoration: 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#00E5A0')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                Ouvrir la fiche complète
+              </Link>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               {viewExercise.categoryName && (
                 <Badge color={viewExercise.categoryColor ?? CATEGORY_FALLBACK_COLOR} label={viewExercise.categoryName}
-                  style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', flexShrink: 0 }} />
+                  style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px' }} />
               )}
+              <button onClick={() => setViewExercise(null)}
+                style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, display: 'flex' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                <X size={18} />
+              </button>
             </div>
-
-            {/* Description / Consignes par défaut */}
-            <div className="grid grid-cols-1 md:grid-cols-2" style={{ borderTop: '1px solid #2A2F3A', paddingTop: 16, gap: 16 }}>
-              <div>
-                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Déroulement</p>
-                {viewExercise.description && viewExercise.description !== '<p></p>' ? (
-                  <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewExercise.description) }} />
-                ) : (
-                  <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun déroulement.</span>
-                )}
-              </div>
-              <div>
-                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Objectifs</p>
-                {viewExercise.consignes && viewExercise.consignes !== '<p></p>' ? (
-                  <div className="ex-view-desc" dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewExercise.consignes) }} />
-                ) : (
-                  <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun objectif.</span>
-                )}
-              </div>
-            </div>
-
-            {/* Images */}
-            {viewExerciseImages.length > 0 && (
-              <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
-                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Images</p>
-                <ExerciseImageGallery images={viewExerciseImages} alt={viewExercise.name} />
-              </div>
-            )}
-
-            {/* Document */}
-            {viewExercise.documentUrl && (
-              <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
-                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Document</p>
-                <a href={viewExercise.documentUrl} target="_blank" rel="noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#F1F5F9', fontSize: '0.85rem', textDecoration: 'none' }}>
-                  <FileText size={15} color="#00E5A0" />
-                  {viewExercise.documentName || 'Document PDF'}
-                  <ExternalLink size={13} color="#475569" />
-                </a>
-              </div>
-            )}
-
-            {/* Vidéo */}
-            {viewExercise.videoUrl && detectSocialPlatform(viewExercise.videoUrl) && (
-              <div style={{ marginTop: 20, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
-                <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 10px' }}>Vidéo</p>
-                <SocialVideoEmbed url={viewExercise.videoUrl} />
-              </div>
-            )}
           </div>
-        </div>
+
+          <ExerciseView exercise={viewExercise} phases={viewPhases} />
+        </Modal>
       )}
     </div>
   );
@@ -1663,10 +1612,7 @@ export default function TrainingSessionDetailPage() {
         {!teamsCollapsed && canEditTeamData && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
             {teamsError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{teamsError}</span>}
-            <button type="button" onClick={addBlock}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem' }}>
-              <Plus size={13} /><span className="hidden sm:inline">Ajouter un groupe</span>
-            </button>
+            <AddButton label="Ajouter un groupe" variant="soft" onClick={addBlock} />
             <button type="button" onClick={handleSaveTeams} disabled={teamsSaving}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: teamsSaved ? '#1E2229' : teamsSaving ? '#1E2229' : '#00E5A0', border: teamsSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: teamsSaved ? '#00E5A0' : teamsSaving ? '#475569' : '#0D0F14', cursor: teamsSaving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
               {teamsSaved ? <><Check size={13} /> Enregistré</> : <><Save size={13} /> {teamsSaving ? 'Enregistrement…' : 'Enregistrer'}</>}

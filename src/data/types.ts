@@ -399,19 +399,24 @@ export interface SessionDocument {
   createdAt: string;
 }
 
+/**
+ * Un exercice = un en-tête + une séquence de phases (voir `ExercisePhase`). Il ne porte que
+ * ses objectifs : le déroulement, lui, vit phase par phase.
+ */
 export interface Exercise {
   id: string;
   name: string;
-  teamId?: string;
-  description?: string;
-  consignes?: string;
+  teamId: string;
+  /** Le « pourquoi » de l'exercice — recopié dans le bloc de séance à l'ajout. */
+  objectifs?: string;
   categoryId?: string;
   categoryName?: string;
   categoryColor?: string;
-  documentUrl?: string;
-  documentName?: string;
   videoUrl?: string;
-  imageCount?: number;
+  /** Nombre de phases, pour les écrans qui n'ont pas besoin de leur contenu. */
+  phaseCount: number;
+  /** Scène de la première phase — la vignette de l'exercice dans la liste. */
+  coverScene?: DiagramScene;
   createdAt: string;
 }
 
@@ -423,13 +428,21 @@ export interface ExerciseCategory {
   position: number;
 }
 
-export interface ExerciseImage {
+/**
+ * Une phase d'exercice : un schéma de terrain et son texte, dans l'ordre `position`.
+ *
+ * `scene` est la source de vérité et se rend en SVG partout — aucun fichier n'est produit.
+ * Une scène sans élément est légitime : la phase n'est alors que du texte.
+ */
+export interface ExercisePhase {
   id: string;
   exerciseId: string;
-  url: string;
   position: number;
-  /** Renseigné si l'image a été dessinée dans l'éditeur de schéma : la scène rouvrable. */
-  diagram?: DiagramScene;
+  title?: string;
+  text?: string;
+  scene: DiagramScene;
+  /** Raster réservé à un futur export PDF de séance — jamais renseigné aujourd'hui. */
+  thumbUrl?: string;
   createdAt: string;
 }
 

@@ -2,6 +2,9 @@ import type { PlayerStatus, ActionCategory, ActionPriority, ObjectiveImportance,
 
 export const CURRENT_DATE = '2026-01-15';
 
+/** Plafond de phases par exercice — une règle d'usage, pas une contrainte de la base. */
+export const MAX_EXERCISE_PHASES = 8;
+
 export const statusConfig: Record<PlayerStatus, { label: string; color: string; bg: string }> = {
   active:      { label: 'Actif',        color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'  },
   injured:     { label: 'Blessé',       color: '#EF4444', bg: 'rgba(239,68,68,0.12)'  },

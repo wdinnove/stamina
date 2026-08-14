@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, X, AlertCircle, Clock, ChevronRight } from 'lucide-react';
+import { X, AlertCircle, Clock, ChevronRight } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
-import { Modal, DropzoneEmptyState, EmptyState } from '../components';
+import { Modal, DropzoneEmptyState, EmptyState, AddButton } from '../components';
 import { MONTHS_ABBR3, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { StaffMeeting } from '../data/types';
 
@@ -80,12 +80,7 @@ export default function MeetingsPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Réunions</h1>
         {selected && canEditTeamData && (
-          <button
-            onClick={() => setShowMeetForm(true)}
-            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Plus size={16} /><span className="hidden md:inline">Planifier</span>
-          </button>
+          <AddButton label="Ajouter une réunion" onClick={() => setShowMeetForm(true)} />
         )}
       </div>
 

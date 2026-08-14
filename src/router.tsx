@@ -95,8 +95,14 @@ export const router = createBrowserRouter([
           { path: 'presences',      lazy: () => import('./pages/AttendancePage').then(m => ({ Component: m.default })) },
           { path: 'seances',        lazy: () => import('./pages/TrainingSessionsPage').then(m => ({ Component: m.default })) },
           { path: 'seances/:id',    lazy: () => import('./pages/TrainingSessionDetailPage').then(m => ({ Component: m.default })) },
-          { path: 'exercices',       lazy: () => import('./pages/ExercisesPage').then(m => ({ Component: m.default })) },
-          { path: 'exercices/:id',   lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'exercices',           lazy: () => import('./pages/ExercisesPage').then(m => ({ Component: m.default })) },
+          // Création et édition ont leur URL : le formulaire porte des phases entières, et un
+          // schéma dessiné ne doit pas dépendre d'une modale qu'un clic à côté referme. Les
+          // phases, elles, n'ont pas d'URL : elles s'éditent dans la page, en brouillon, pour
+          // partir avec le même enregistrement que le reste.
+          { path: 'exercices/nouveau',   lazy: () => import('./pages/ExerciseFormPage').then(m => ({ Component: m.default })) },
+          { path: 'exercices/:id',       lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'exercices/:id/modifier', lazy: () => import('./pages/ExerciseFormPage').then(m => ({ Component: m.default })) },
           { path: 'aide',            lazy: () => import('./pages/HelpPage').then(m => ({ Component: m.default })) },
           { path: 'aide/:section',   lazy: () => import('./pages/HelpPage').then(m => ({ Component: m.default })) },
           { path: 'profil',          lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },

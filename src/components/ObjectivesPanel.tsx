@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { FormEvent } from 'react';
-import { Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Target, AlertTriangle, CopyPlus } from 'lucide-react';
+import { Trash2, Pencil, X, CheckCircle2, XCircle, Target, AlertTriangle, CopyPlus } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
@@ -15,6 +15,7 @@ import { importanceConfig, comparatorConfig } from '../data/config';
 import { DOMAIN_LABELS, indicatorByKey, buildTacticalIndicators, type CrossScope } from '../data/crossAnalysis';
 import type { Objective, ObjectiveImportance, ObjectiveComparator } from '../data/types';
 import { LAYER } from '../styles/layers';
+import { AddButton } from './AddButton';
 
 interface ObjectivesPanelProps {
   playerId?: string;
@@ -184,9 +185,7 @@ export function ObjectivesPanel({ playerId, teamId, scope, seasonStart, seasonEn
                 <CopyPlus size={14} /><span>{copying ? 'Report…' : 'Reprendre la saison passée'}</span>
               </button>
             )}
-            <button onClick={openCreate} style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={16} /><span>Ajouter un objectif</span>
-            </button>
+            <AddButton label="Ajouter un objectif" onClick={openCreate} />
           </div>
           )
         }>

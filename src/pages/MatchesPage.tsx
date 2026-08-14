@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus } from 'lucide-react';
+import {  } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { Modal, DropzoneEmptyState, MatchFormModal, EmptyState } from '../components';
+import { Modal, DropzoneEmptyState, MatchFormModal, EmptyState, AddButton } from '../components';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { Match } from '../data/types';
 import { notify } from '../api/notifications';
@@ -104,12 +104,7 @@ export default function MatchesPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Matchs</h1>
         {selected && canEditTeamData && (
-          <button
-            onClick={openAdd}
-            style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Plus size={15} /><span className="hidden sm:inline">Nouveau match</span>
-          </button>
+          <AddButton label="Ajouter un match" onClick={openAdd} />
         )}
       </div>
 

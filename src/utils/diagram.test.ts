@@ -3,7 +3,7 @@ import {
   HALF, COURT_SIZE, MARKER,
   createScene, convertCourt, clampToCourt, spawnPoint,
   quadPoint, quadTangent, defaultCtrl, renderAction, arrowPoints, barSegment,
-  hitTest, ctrlHandle, ctrlFromHandle, moveEndpoint,
+  hitTest, ctrlHandle, ctrlFromHandle, moveEndpoint, nextPhaseScene,
   type DiagramScene, type DiagramElement, type ActionElement, type Pt,
 } from './diagram';
 
@@ -263,5 +263,74 @@ describe('hitTest', () => {
     const s = scene([player('p', 5, 5)]);
     const justOutside = MARKER.playerR + MARKER.hitPad + 0.05;
     expect(hitTest(s, { x: 5 + justOutside, y: 5 })).toBeNull();
+  });
+});
+
+describe('nextPhaseScene', () => {
+  /** L'aide `action` ci-dessus fixe l'id : ici il faut pouvoir en distinguer plusieurs. */
+  const move = (id: string, kind: ActionElement['kind'], from: Pt, to: Pt): ActionElement =>
+    ({ ...action(kind, from, to), id });
+
+  it('emmène le joueur au bout de son dribble', () => {
+    const s = scene([player('p', 5, 5), move('m', 'dribble', { x: 5, y: 5 }, { x: 8, y: 6 })]);
+    const [p] = nextPhaseScene(s).elements as [DiagramElement & { x: number; y: number }];
+    expect([p.x, p.y]).toEqual([8, 6]);
+  });
+
+  it('laisse en place celui qui passe ou qui tire — seul le ballon part', () => {
+    const s = scene([
+      player('p', 5, 5),
+      move('m1', 'pass', { x: 5, y: 5 }, { x: 12, y: 5 }),
+      move('m2', 'shot', { x: 5, y: 5 }, { x: 7.5, y: 1.5 }),
+    ]);
+    const [p] = nextPhaseScene(s).elements as [DiagramElement & { x: number; y: number }];
+    expect([p.x, p.y]).toEqual([5, 5]);
+  });
+
+  it('enchaîne les tracés successifs d\'un même joueur', () => {
+    const s = scene([
+      player('p', 5, 5),
+      move('m1', 'dribble', { x: 5, y: 5 }, { x: 8, y: 5 }),
+      move('m2', 'screen', { x: 8, y: 5 }, { x: 10, y: 7 }),
+    ]);
+    const [p] = nextPhaseScene(s).elements as [DiagramElement & { x: number; y: number }];
+    expect([p.x, p.y]).toEqual([10, 7]);
+  });
+
+  it('ne consomme un tracé qu\'une fois, même si deux joueurs en partent', () => {
+    const s = scene([
+      player('a', 5, 5),
+      player('b', 5, 5),
+      move('m', 'cut', { x: 5, y: 5 }, { x: 9, y: 9 }),
+    ]);
+    const [a, b] = nextPhaseScene(s).elements as (DiagramElement & { x: number; y: number })[];
+    expect([a.x, a.y]).toEqual([9, 9]);
+    expect([b.x, b.y]).toEqual([5, 5]);
+  });
+
+  it('ne garde que les joueurs, et garde le format du terrain', () => {
+    const s = scene([
+      player('p', 5, 5),
+      { id: 'ball', type: 'ball', x: 5, y: 5 },
+      { id: 'cone', type: 'cone', x: 2, y: 2 },
+      { id: 'txt',  type: 'text', text: 'Ici', x: 3, y: 3 },
+      move('m', 'pass', { x: 5, y: 5 }, { x: 10, y: 5 }),
+    ], 'full');
+    const next = nextPhaseScene(s);
+    expect(next.elements.map(el => el.id)).toEqual(['p']);
+    expect(next.court).toBe('full');
+  });
+
+  it('ramène dans le terrain un tracé qui en sort', () => {
+    const s = scene([player('p', 5, 5), move('m', 'cut', { x: 5, y: 5 }, { x: 40, y: 40 })]);
+    const [p] = nextPhaseScene(s).elements as [DiagramElement & { x: number; y: number }];
+    expect(p.x).toBeCloseTo(COURT_SIZE.half.w - 0.3, 5);
+    expect(p.y).toBeCloseTo(COURT_SIZE.half.h - 0.3, 5);
+  });
+
+  it('ne modifie pas la scène d\'origine', () => {
+    const s = scene([player('p', 5, 5), move('m', 'dribble', { x: 5, y: 5 }, { x: 8, y: 6 })]);
+    nextPhaseScene(s);
+    expect(s.elements[0]).toMatchObject({ x: 5, y: 5 });
   });
 });

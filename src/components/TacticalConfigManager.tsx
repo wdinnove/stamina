@@ -83,8 +83,8 @@ function ConfirmableDeleteButton({ onDelete, itemLabel }: { onDelete: () => void
   );
 }
 
-/** Champ + bouton "Ajouter" auto-contenu — réutilisé pour catégorie/dimension/option. */
-function AddItemRow({ placeholder, onAdd }: { placeholder: string; onAdd: (label: string) => void }) {
+/** Champ + bouton "Ajouter …" auto-contenu — réutilisé pour catégorie/dimension/option. */
+function AddItemRow({ placeholder, addLabel, onAdd }: { placeholder: string; addLabel: string; onAdd: (label: string) => void }) {
   const [value, setValue] = useState('');
 
   function handleAdd() {
@@ -103,7 +103,7 @@ function AddItemRow({ placeholder, onAdd }: { placeholder: string; onAdd: (label
         style={{ padding: '3px 6px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#F1F5F9', fontSize: '0.76rem', flex: 1, maxWidth: 220 }}
       />
       <button onClick={handleAdd} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: '#00E5A0', cursor: 'pointer', padding: 2, fontSize: '0.76rem' }}>
-        <Plus size={12} /> Ajouter
+        <Plus size={12} /> {addLabel}
       </button>
     </div>
   );
@@ -222,7 +222,7 @@ function OptionsEditor({ dimensionId, options, onAdd, onAddMany, onRename, onMov
           </div>
         ))}
         {sorted.length === 0 && <span style={{ color: '#334155', fontSize: '0.74rem' }}>Aucune — toute valeur du CSV sera acceptée sans avertissement.</span>}
-        <AddItemRow placeholder="Nouvelle option…" onAdd={onAdd} />
+        <AddItemRow placeholder="Nouvelle option…" addLabel="Ajouter une option" onAdd={onAdd} />
         <BulkPasteOptions onAddMany={onAddMany} />
       </div>
     </div>
@@ -617,7 +617,7 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
                     </div>
                   ))}
                   {catDimensions.length === 0 && <span style={{ color: '#475569', fontSize: '0.78rem' }}>Aucune dimension.</span>}
-                  <AddItemRow placeholder="Nouvelle dimension…" onAdd={name => handleAddDimension(cat.id, name)} />
+                  <AddItemRow placeholder="Nouvelle dimension…" addLabel="Ajouter une dimension" onAdd={name => handleAddDimension(cat.id, name)} />
                 </div>
               </div>
             )}
@@ -627,7 +627,7 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
 
       {!loading && !bulkMode && (
         <div style={{ marginTop: 8 }}>
-          <AddItemRow placeholder="Nouvelle catégorie…" onAdd={handleAddCategory} />
+          <AddItemRow placeholder="Nouvelle catégorie…" addLabel="Ajouter une catégorie" onAdd={handleAddCategory} />
         </div>
       )}
     </ConfigCard>

@@ -123,6 +123,53 @@ export function spawnPoint(scene: DiagramScene): Pt {
   return { x: w / 2, y: h / 2 };
 }
 
+/* ── Phase suivante ───────────────────────────────────────────────────────── */
+
+/**
+ * Tracés qui déplacent le joueur qui les initie. Une passe ou un tir n'envoient que le ballon :
+ * le joueur, lui, reste où il est.
+ */
+export const MOVING_ACTIONS: ActionKind[] = ['dribble', 'cut', 'screen', 'handoff'];
+
+/**
+ * Distance en deçà de laquelle le départ d'un tracé est considéré comme parti d'un joueur —
+ * la même tolérance que l'aimant de l'éditeur, qui colle déjà les extrémités aux marqueurs.
+ */
+const LINK_R = MARKER.playerR + 0.35;
+
+/**
+ * Scène de départ de la phase suivante : les joueurs de `scene`, posés là où ses tracés les
+ * envoient.
+ *
+ * Un joueur peut enchaîner (dribbler puis poser un écran) : on suit la chaîne tant qu'un tracé
+ * encore libre part de là où il vient d'arriver. Chaque tracé n'est consommé qu'une fois, sinon
+ * deux joueurs partis du même point s'y renverraient l'un l'autre indéfiniment.
+ *
+ * Tout le reste — ballon, plots, textes et les tracés eux-mêmes — repart de zéro : la phase
+ * suivante décrit un autre mouvement, pas la copie du précédent.
+ */
+export function nextPhaseScene(scene: DiagramScene): DiagramScene {
+  const players = scene.elements.filter((el): el is PlayerElement => el.type === 'player').map(p => ({ ...p }));
+  const moves   = scene.elements.filter(
+    (el): el is ActionElement => el.type === 'action' && MOVING_ACTIONS.includes(el.kind),
+  );
+  const used = new Set<string>();
+
+  for (const player of players) {
+    for (let step = 0; step < moves.length; step++) {
+      const move = moves.find(a => !used.has(a.id) && Math.hypot(a.from.x - player.x, a.from.y - player.y) <= LINK_R);
+      if (!move) break;
+      used.add(move.id);
+      // Le bout d'un tracé peut mordre hors du terrain : un joueur, non.
+      const at = clampToCourt(move.to, scene.court);
+      player.x = at.x;
+      player.y = at.y;
+    }
+  }
+
+  return { ...scene, elements: players };
+}
+
 /* ── Courbe de Bézier quadratique ─────────────────────────────────────────── */
 
 export function quadPoint(p0: Pt, p1: Pt, p2: Pt, t: number): Pt {

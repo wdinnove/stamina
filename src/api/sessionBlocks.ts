@@ -1,6 +1,14 @@
 import { supabase } from './client';
 import type { SessionBlock } from '../data/types';
 
+/** Une utilisation d'un exercice dans une séance, vue depuis l'exercice. */
+export interface DrillUsage {
+  blockId: string;
+  blockLabel: string;
+  sessionId: string;
+  date: string;
+}
+
 function toBlock(row: Record<string, unknown>): SessionBlock {
   return {
     id:        row.id as string,
@@ -91,5 +99,29 @@ export const sessionBlocksApi = {
   async remove(id: string): Promise<void> {
     const { error } = await supabase.from('session_blocks').delete().eq('id', id);
     if (error) throw error;
+  },
+
+  /**
+   * Séances qui utilisent un exercice de la bibliothèque — le « Utilisé dans » de la fiche
+   * exercice. Le lien existait déjà par `drill_id` mais ne se lisait que dans un sens.
+   */
+  async listUsage(drillId: string): Promise<DrillUsage[]> {
+    const { data, error } = await supabase
+      .from('session_blocks')
+      .select('id, label, session_id, training_sessions(date)')
+      .eq('drill_id', drillId);
+    if (error) throw error;
+    return (data ?? [])
+      .map(row => {
+        const r = row as Record<string, unknown>;
+        const session = r.training_sessions as { date: string } | null;
+        return {
+          blockId:    r.id as string,
+          blockLabel: r.label as string,
+          sessionId:  r.session_id as string,
+          date:       session?.date ?? '',
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
   },
 };

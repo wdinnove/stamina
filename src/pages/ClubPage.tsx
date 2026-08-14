@@ -93,7 +93,7 @@ function TeamsTab() {
       title="Équipes"
       action={
         <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
-          Nouvelle équipe
+          Ajouter une équipe
         </ConfigAction>
       }>
       <div style={{ position: 'relative', marginBottom: 16 }}>
@@ -289,7 +289,7 @@ function PlayersTab() {
       title="Joueurs"
       action={
         <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
-          Nouveau joueur
+          Ajouter un joueur
         </ConfigAction>
       }>
       <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16 }}>

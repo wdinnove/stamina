@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Search } from 'lucide-react';
+import { X, Search } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
@@ -19,6 +19,7 @@ import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { MedicalRecord, Player } from '../data/types';
 import { LAYER } from '../styles/layers';
+import { AddButton } from './AddButton';
 
 const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
@@ -32,7 +33,7 @@ interface TeamMedicalOverviewProps {
   /** Effectif de l'équipe/saison courante */
   players: Player[];
   onUpdated?: () => void;
-  /** Bouton "Nouvelle entrée" — masqué sur Performance collective (consultation seule), visible sur la page Médicale */
+  /** Bouton "Ajouter une entrée" — masqué sur Performance collective (consultation seule), visible sur la page Médicale */
   showAddButton?: boolean;
 }
 
@@ -177,9 +178,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
 
       {showAddButton && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Plus size={14} /> Nouvelle entrée
-          </button>
+          <AddButton label="Ajouter une entrée" onClick={() => openForm()} />
         </div>
       )}
 

@@ -6,13 +6,13 @@ import {
 } from '../utils/diagram';
 
 /**
- * Rendu d'un schéma — sans aucune interaction. Sert à la fois de zone de dessin sous
- * l'éditeur, de vignette dans la fiche exercice et de source pour l'export PNG : un seul
- * rendu, donc aucune divergence possible entre ce que le coach dessine et l'image produite.
+ * Rendu d'un schéma — sans aucune interaction. Sert de zone de dessin sous l'éditeur comme de
+ * vignette partout ailleurs (liste, fiche, séance) : un seul rendu, donc un schéma identique à
+ * lui-même à toutes les tailles, sans image intermédiaire.
  *
- * La police est une pile système explicite : lors de l'export, le SVG est rasterisé dans un
- * contexte isolé qui n'a pas accès aux @font-face du document — une police maison y
- * retomberait silencieusement sur un fallback et décalerait tous les numéros.
+ * La police est une pile système explicite : un futur export PNG rasteriserait ce SVG dans un
+ * contexte isolé, sans accès aux @font-face du document — une police maison y retomberait
+ * silencieusement sur un fallback et décalerait tous les numéros.
  */
 
 const FONT = 'Arial, Helvetica, sans-serif';
@@ -117,8 +117,8 @@ export function DiagramElementView({ el }: { el: DiagramElement }) {
 }
 
 /**
- * Halo de sélection. Marqué `data-editor-only` : c'est une aide à l'édition, l'export PNG
- * retire ces nœuds avant de rasteriser (voir utils/diagramExport.ts).
+ * Halo de sélection. Marqué `data-editor-only` : c'est une aide à l'édition, qu'un export
+ * d'image devra retirer avant de rasteriser — la vue au repos, elle, n'en produit jamais.
  */
 function Selection({ el }: { el: DiagramElement }) {
   const common = { fill: 'none', stroke: ELEMENT_COLORS.selection, strokeWidth: 0.12, strokeDasharray: '0.3 0.24' } as const;
@@ -130,6 +130,40 @@ function Selection({ el }: { el: DiagramElement }) {
         {...common}
       />;
   return <g data-editor-only="">{shape}</g>;
+}
+
+/* ── Vignette ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Un schéma au repos : le rendu SVG dans un cadre. Un seul endroit décide de l'allure d'un
+ * schéma affiché — liste, fiche, séance, séquence de phases.
+ *
+ * Par défaut le cadre prend le ratio de la scène, au plus juste. `height` impose au contraire
+ * une hauteur fixe et le schéma se pose dedans, centré, avec des marges là où son format ne
+ * remplit pas — c'est ce qu'il faut dans une liste, où une ligne ne doit pas changer de taille
+ * selon qu'elle montre un demi-terrain ou un terrain entier.
+ */
+export function DiagramThumb({ scene, radius = 8, height, style, className }: {
+  scene: DiagramScene;
+  radius?: number;
+  height?: number;
+  style?: CSSProperties;
+  className?: string;
+}) {
+  return (
+    <div
+      className={className}
+      style={{
+        width: '100%',
+        ...(height === undefined ? { aspectRatio: String(sceneAspect(scene)) } : { height }),
+        borderRadius: radius, overflow: 'hidden', border: '1px solid #2A2F3A',
+        backgroundColor: ELEMENT_COLORS.outside, flexShrink: 0,
+        ...style,
+      }}
+    >
+      <DiagramSceneView scene={scene} />
+    </div>
+  );
 }
 
 /* ── Vue ──────────────────────────────────────────────────────────────────── */

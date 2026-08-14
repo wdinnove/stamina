@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
-import { EmptyState, Modal, DropzoneEmptyState } from '../components';
+import { X, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { EmptyState, Modal, DropzoneEmptyState, AddButton } from '../components';
 import { attendanceApi, playersApi, rpeApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
@@ -311,12 +311,7 @@ export default function AttendancePage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0, gap: 12 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Présences</h1>
         {selected && canEditTeamData && (
-          <button
-            onClick={() => setShowAddForm(true)}
-            style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
-          >
-            <Plus size={16} /><span className="hidden md:inline">Ajouter une séance</span>
-          </button>
+          <AddButton label="Ajouter une séance" onClick={() => setShowAddForm(true)} />
         )}
       </div>
 

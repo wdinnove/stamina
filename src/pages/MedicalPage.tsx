@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Search, Pill, Ambulance, Users } from 'lucide-react';
+import { X, Search, Pill, Ambulance, Users } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalOverview, InjuryRecordCard, MedicalRecordDetailModal, MedicalRecordFormModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel } from '../components';
+import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalOverview, InjuryRecordCard, MedicalRecordDetailModal, MedicalRecordFormModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel, AddButton } from '../components';
 import type { PlayerMedicalViewHandle } from '../components';
 import { rtpDaysLeft, sumInjuryDays } from '../utils/medical';
 import { fmtDate } from '../utils/dateFormat';
@@ -240,21 +240,15 @@ export default function MedicalPage() {
         )}
 
         {activeTab === 'infirmary' && canEditTeamData && (
-          <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
-          </button>
+          <AddButton label="Ajouter une entrée" onClick={() => openForm()} />
         )}
 
         {activeTab === 'record' && selectedPlayerId && canEditTeamData && (
-          <button onClick={() => playerMedicalViewRef.current?.openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
-          </button>
+          <AddButton label="Ajouter une entrée" onClick={() => playerMedicalViewRef.current?.openForm()} />
         )}
 
         {activeTab === 'team' && canEditTeamData && (
-          <button onClick={() => openForm()} style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <Plus size={14} /><span className="hidden sm:inline">Nouvelle entrée</span>
-          </button>
+          <AddButton label="Ajouter une entrée" onClick={() => openForm()} />
         )}
       </div>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, X, Clock, CheckCircle, Circle, AlertCircle, Search, Trash2 } from 'lucide-react';
+import { X, Clock, CheckCircle, Circle, AlertCircle, Search, Trash2 } from 'lucide-react';
 import RichTextEditor from '../components/RichTextEditor';
 import { actionsApi } from '../api/actions';
 import { playersApi } from '../api/players';
@@ -9,7 +9,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useLocation, useNavigate } from 'react-router';
 import { categoryConfig, priorityConfig } from '../data/config';
 import { sanitizeHtml } from '../utils/sanitize';
-import { PlayerAvatar, Modal, Badge } from '../components';
+import { PlayerAvatar, Modal, Badge, AddButton } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { Action, ActionStatus, ActionCategory, ActionPriority, Player, StaffMember } from '../data/types';
 import { LAYER } from '../styles/layers';
@@ -294,12 +294,7 @@ export default function ActionsPage() {
           <span className="sm:hidden">Tâches</span>
         </h1>
         {canEditTeamData && (
-          <button
-            onClick={() => setShowForm(true)}
-            style={{ padding: '8px 14px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
-          >
-            <Plus size={16} /><span className="hidden sm:inline">Nouvelle tâche</span>
-          </button>
+          <AddButton label="Ajouter une tâche" onClick={() => setShowForm(true)} />
         )}
       </div>
 
@@ -455,7 +450,7 @@ export default function ActionsPage() {
             }
           `}</style>
             <div className="px-4 sm:px-7" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 20, paddingBottom: 16, borderBottom: '1px solid #2A2F3A' }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Nouvelle tâche</h2>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Ajouter une tâche</h2>
               <button onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
             </div>
 

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Plus, Search, Users, Edit, X, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
+import { Search, Users, Edit, X, AlertCircle, Calendar, CheckCircle } from 'lucide-react';
 import { teamsApi, seasonsApi } from '../api';
 import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { Breadcrumb, EmptyState, Modal, AccessRestricted } from '../components';
+import { Breadcrumb, EmptyState, Modal, AccessRestricted, AddButton } from '../components';
 import type { Team, Season } from '../data/types';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -165,10 +165,7 @@ function TeamDetail({ teamId }: { teamId: string }) {
           <h3 style={{ color: '#F1F5F9', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
             <Calendar size={16} style={{ color: '#94A3B8' }} /> Saisons
           </h3>
-          <button onClick={() => setShowSeasonForm(v => !v)}
-            style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Plus size={13} /><span className="hidden sm:inline">Nouvelle saison</span>
-          </button>
+          <AddButton label="Ajouter une saison" onClick={() => setShowSeasonForm(v => !v)} />
         </div>
 
         {seasonError && (
@@ -347,10 +344,7 @@ function TeamsList() {
     <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Équipes</h1>
-        <button onClick={() => setShowForm(true)}
-          style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={16} /><span className="hidden md:inline">Nouvelle équipe</span>
-        </button>
+        <AddButton label="Ajouter une équipe" onClick={() => setShowForm(true)} />
       </div>
 
       {fetchError && (
@@ -406,7 +400,7 @@ function TeamsList() {
       {showForm && (
         <Modal onClose={() => { setShowForm(false); setFormError(''); }} maxWidth={480} overlayOpacity={0.7} style={{ padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouvelle équipe</h2>
+              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Ajouter une équipe</h2>
               <button onClick={() => { setShowForm(false); setFormError(''); }}
                 style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
             </div>

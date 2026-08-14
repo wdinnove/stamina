@@ -1,10 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import {
-  Plus, Search, X, AlertCircle,
-} from 'lucide-react';
+import { Search, X, AlertCircle } from 'lucide-react';
 import { playersApi } from '../api';
-import { StatusBadge, PlayerAvatar, EmptyState, Modal } from '../components';
+import { StatusBadge, PlayerAvatar, EmptyState, Modal, AddButton } from '../components';
 import { playerNameFull } from '../utils/playerName';
 import type { Player } from '../data/types';
 
@@ -97,10 +95,7 @@ export default function PlayersPage() {
     <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Joueurs</h1>
-        <button onClick={() => setShowForm(true)}
-          style={{ padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={16} /><span className="hidden md:inline">Nouveau joueur</span>
-        </button>
+        <AddButton label="Ajouter un joueur" onClick={() => setShowForm(true)} />
       </div>
 
       {fetchError && (
@@ -168,7 +163,7 @@ export default function PlayersPage() {
       {showForm && (
         <Modal onClose={closeForm} maxWidth={520} overlayOpacity={0.7} style={{ padding: '28px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Nouveau joueur</h2>
+              <h2 style={{ color: '#F1F5F9', margin: 0 }}>Ajouter un joueur</h2>
               <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}>
                 <X size={18} />
               </button>

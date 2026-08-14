@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, ChevronUp, ChevronDown, Settings2, AlertCircle, Pencil, Copy } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, Settings2, AlertCircle, Pencil, Copy } from 'lucide-react';
 import { tacticalDashboardApi } from '../api/tacticalDashboard';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption, TacticalDashboardWidget } from '../data/types';
@@ -7,6 +7,7 @@ import type { TacticalMatchRef } from './TacticalReport';
 import { renderTacticalWidgetContent, tacticalWidgetTitle, EmptyNote } from './tacticalWidgetRenderer';
 import type { WidgetLike } from './tacticalWidgetRenderer';
 import { TacticalWidgetEditorModal } from './TacticalWidgetEditorModal';
+import { AddButton } from './AddButton';
 
 const iconBtnStyle: React.CSSProperties = {
   background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2,
@@ -103,10 +104,7 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
 
       {editing && (
         <div style={{ marginBottom: 16 }}>
-          <button type="button" onClick={() => setEditor({ mode: 'create' })}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>
-            <Plus size={14} /> Ajouter un bloc
-          </button>
+          <AddButton label="Ajouter un bloc" onClick={() => setEditor({ mode: 'create' })} />
           {error && (
             <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
               <AlertCircle size={12} /> {error}
