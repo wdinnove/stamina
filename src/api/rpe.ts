@@ -15,7 +15,6 @@ function toSession(row: Record<string, unknown>): TrainingSession {
     sessionType:     row.session_type     as SessionType,
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
-    partnerCount:    (row.partner_count   as number) ?? 0,
     createdAt:       row.created_at       as string | undefined,
   };
 }

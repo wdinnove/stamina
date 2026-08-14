@@ -10,8 +10,6 @@ function toSession(row: Record<string, unknown>): TrainingSession {
     sessionType:     row.session_type     as SessionType,
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
-    partnerCount:    (row.partner_count   as number) ?? 0,
-    partnerNames:    (row.partner_names   as string) ?? '',
     createdAt:       row.created_at       as string,
   };
 }
@@ -22,6 +20,7 @@ function toAttendance(row: Record<string, unknown>): TrainingAttendance {
     sessionId: row.session_id as string,
     playerId:  row.player_id  as string,
     status:    row.status     as TrainingAttendance['status'],
+    sparring:  (row.sparring  as boolean) ?? false,
     createdAt: row.created_at as string,
   };
 }
@@ -97,29 +96,17 @@ export const attendanceApi = {
     return (data ?? []).map(toAttendance);
   },
 
-  async setAttendance(input: { sessionId: string; playerId: string; status: TrainingAttendance['status'] }): Promise<void> {
+  /** `sparring` est écrit à chaque fois : c'est la présence qui porte l'étiquette, et une même
+   *  joueuse peut être invitée sur une séance et titulaire sur une autre. */
+  async setAttendance(input: {
+    sessionId: string; playerId: string; status: TrainingAttendance['status']; sparring?: boolean;
+  }): Promise<void> {
     const { error } = await supabase
       .from('training_attendance')
       .upsert(
-        { session_id: input.sessionId, player_id: input.playerId, status: input.status },
+        { session_id: input.sessionId, player_id: input.playerId, status: input.status, sparring: input.sparring ?? false },
         { onConflict: 'session_id,player_id' },
       );
-    if (error) throw error;
-  },
-
-  async updatePartnerCount(sessionId: string, count: number): Promise<void> {
-    const { error } = await supabase
-      .from('training_sessions')
-      .update({ partner_count: count })
-      .eq('id', sessionId);
-    if (error) throw error;
-  },
-
-  async updatePartnerNames(sessionId: string, names: string): Promise<void> {
-    const { error } = await supabase
-      .from('training_sessions')
-      .update({ partner_names: names || null })
-      .eq('id', sessionId);
     if (error) throw error;
   },
 

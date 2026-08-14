@@ -36,7 +36,6 @@ const CELL_W = 76;
 export default function AttendancePage() {
   const { selected, canEditTeamData } = useTeamSeason();
   const popoverRef        = useRef<HTMLDivElement>(null);
-  const partnerPopoverRef = useRef<HTMLDivElement>(null);
 
   const [players,       setPlayers]       = useState<Player[]>([]);
   const [sessions,      setSessions]      = useState<TrainingSession[]>([]);
@@ -46,7 +45,14 @@ export default function AttendancePage() {
   const [error,         setError]         = useState('');
 
   const [activeCell,          setActiveCell]          = useState<{ sessionId: string; playerId: string; x: number; y: number } | null>(null);
-  const [partnerPopover,      setPartnerPopover]      = useState<{ sessionId: string; x: number; y: number } | null>(null);
+  /** Joueuses de l'organisation hors effectif, candidates à une invitation. */
+  const [orgPlayers,    setOrgPlayers]    = useState<Player[]>([]);
+  /** Invitées affichées : celles déjà pointées sur une séance, plus celles qu'on vient
+   *  d'ajouter et qui n'ont encore aucun statut — sans ça, une invitée choisie disparaîtrait
+   *  de la grille avant même qu'on ait pu la pointer. */
+  const [guestIds,      setGuestIds]      = useState<string[]>([]);
+  const [showGuestPick, setShowGuestPick] = useState(false);
+  const [confirmGuest,  setConfirmGuest]  = useState<Player | null>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<TrainingSession | null>(null);
   const [showAddForm,  setShowAddForm]  = useState(false);
   const [newDate,      setNewDate]      = useState(TODAY);
@@ -73,11 +79,14 @@ export default function AttendancePage() {
 
     const playersPromise = playersApi.listBySeason(season.id);
     const sessionsPromise = attendanceApi.listSessions(team.id, season.id);
+    // La RLS des joueuses est cadrée par organisation : cette liste est déjà celle du club.
+    const orgPromise = playersApi.list();
 
-    Promise.all([playersPromise, sessionsPromise])
-      .then(([pl, ss]) => {
+    Promise.all([playersPromise, sessionsPromise, orgPromise])
+      .then(([pl, ss, org]) => {
         setPlayers(pl);
         setSessions(ss);
+        setOrgPlayers(org);
         const ids = ss.map(s => s.id);
         return Promise.all([
           attendanceApi.listAttendance(ids),
@@ -88,6 +97,7 @@ export default function AttendancePage() {
         const map: Record<string, AttendanceStatus> = {};
         att.forEach(r => { map[`${r.sessionId}:${r.playerId}`] = r.status; });
         setAttendanceMap(map);
+        setGuestIds([...new Set(att.filter(r => r.sparring).map(r => r.playerId))]);
 
         const groups: Record<string, number[]> = {};
         rpeRows.forEach(r => { (groups[r.sessionId] ??= []).push(r.rpe); });
@@ -110,15 +120,6 @@ export default function AttendancePage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [activeCell]);
 
-  useEffect(() => {
-    if (!partnerPopover) return;
-    const handler = (e: MouseEvent) => {
-      if (partnerPopoverRef.current && !partnerPopoverRef.current.contains(e.target as Node)) setPartnerPopover(null);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [partnerPopover]);
-
   function handleCellClick(e: React.MouseEvent, sessionId: string, playerId: string) {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -130,13 +131,14 @@ export default function AttendancePage() {
   async function applyStatus(status: AttendanceStatus | null) {
     if (!activeCell) return;
     const { sessionId, playerId } = activeCell;
+    const sparring = !players.some(p => p.id === playerId);
     const key = `${sessionId}:${playerId}`;
     const prev = attendanceMap[key];
     setAttendanceMap(m => { const n = { ...m }; if (status) n[key] = status; else delete n[key]; return n; });
     setActiveCell(null);
     try {
       if (status === null) await attendanceApi.deleteAttendance(sessionId, playerId);
-      else await attendanceApi.setAttendance({ sessionId, playerId, status });
+      else await attendanceApi.setAttendance({ sessionId, playerId, status, sparring });
     } catch {
       setAttendanceMap(m => { const n = { ...m }; if (prev) n[key] = prev; else delete n[key]; return n; });
     }
@@ -190,42 +192,50 @@ export default function AttendancePage() {
     } catch { setSessions(snapshot); }
   }
 
-  function handlePartnerCellClick(e: React.MouseEvent, sessionId: string) {
-    e.stopPropagation();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const popW = 140;
-    const x = Math.max(8, Math.min(rect.left + rect.width / 2 - popW / 2, window.innerWidth - popW - 8));
-    setPartnerPopover({ sessionId, x, y: rect.bottom + 6 });
-  }
+  /** Invitées, dans l'ordre de la liste du club — jamais une joueuse de l'effectif. */
+  const guests = orgPlayers.filter(p => guestIds.includes(p.id) && !players.some(r => r.id === p.id));
+  const invitable = orgPlayers.filter(p => !players.some(r => r.id === p.id) && !guestIds.includes(p.id));
 
-  async function updatePartners(sessionId: string, delta: number) {
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) return;
-    const newCount = Math.max(0, (session.partnerCount ?? 0) + delta);
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, partnerCount: newCount } : s));
-    try {
-      await attendanceApi.updatePartnerCount(sessionId, newCount);
-    } catch {
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, partnerCount: session.partnerCount } : s));
+  /**
+   * Retire une invitée de la grille. Ses pointages sur les séances affichées partent avec
+   * elle : sans ça, elle reviendrait au rechargement, puisque c'est justement l'existence
+   * d'un pointage `sparring` qui la fait apparaître. Ses RPE, eux, restent — la séance a bien
+   * eu lieu pour elle, et sa charge n'appartient pas à cette équipe.
+   */
+  async function removeGuest(playerId: string) {
+    const marked = sessions.filter(s => attendanceMap[`${s.id}:${playerId}`]);
+    setGuestIds(prev => prev.filter(id => id !== playerId));
+    setAttendanceMap(m => {
+      const n = { ...m };
+      marked.forEach(s => delete n[`${s.id}:${playerId}`]);
+      return n;
+    });
+    setConfirmGuest(null);
+    for (const s of marked) {
+      await attendanceApi.deleteAttendance(s.id, playerId).catch(() => {});
     }
   }
 
-  async function updatePartnerNames(sessionId: string, names: string) {
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, partnerNames: names } : s));
-    try {
-      await attendanceApi.updatePartnerNames(sessionId, names);
-    } catch {
-      // silently ignore — value stays in local state
-    }
+  /** Confirmation seulement s'il y a quelque chose à perdre. */
+  function askRemoveGuest(player: Player) {
+    const marked = sessions.some(s => attendanceMap[`${s.id}:${player.id}`]);
+    if (marked) setConfirmGuest(player);
+    else removeGuest(player.id);
   }
 
+  function isPresent(sessionId: string, playerId: string): boolean {
+    const st = attendanceMap[`${sessionId}:${playerId}`];
+    return st === 'present' || st === 'late';
+  }
+
+  /**
+   * Nombre de joueuses sur le terrain : effectif et invitées confondus. Le taux de présence
+   * d'équipe, lui, ne regarde que l'effectif (cf. `sessionPct`) — une invitée n'a pas à faire
+   * bouger un chiffre qui mesure l'assiduité de l'équipe.
+   */
   function sessionTotal(sessionId: string): number {
-    const session = sessions.find(s => s.id === sessionId);
-    const presentPlayers = players.filter(p => {
-      const st = attendanceMap[`${sessionId}:${p.id}`];
-      return st === 'present' || st === 'late';
-    }).length;
-    return presentPlayers + (session?.partnerCount ?? 0);
+    return players.filter(p => isPresent(sessionId, p.id)).length
+         + guests.filter(p => isPresent(sessionId, p.id)).length;
   }
 
   function closeAddForm() {
@@ -457,38 +467,72 @@ export default function AttendancePage() {
                 </tr>
               ))}
 
-              {/* ── Ligne partenaires ── */}
-              <tr>
-                <td style={{
-                  position: 'sticky', left: 0, zIndex: 2,
-                  backgroundColor: '#13171E', borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229',
-                  padding: '0 16px', height: 44, whiteSpace: 'nowrap',
-                }}>
-                  <span style={{ color: '#94A3B8', fontSize: '0.82rem', fontWeight: 500 }}>Partenaires</span>
-                </td>
-                {sessions.map(s => {
-                  // `partner_count` est NOT NULL DEFAULT 0 en base ; le ?? 0 couvre le type optionnel côté client.
-                  const count = s.partnerCount ?? 0;
-                  return (
-                    <td
-                      key={s.id}
-                      onClick={canEditTeamData ? (e => handlePartnerCellClick(e, s.id)) : undefined}
-                      style={{
-                        borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229', borderRight: '1px solid #1E2229',
-                        backgroundColor: '#13171E', textAlign: 'center', height: 44,
-                        cursor: canEditTeamData ? 'pointer' : 'default',
-                        opacity: canEditTeamData ? 1 : 0.75,
-                      }}
-                      onMouseEnter={e => { if (canEditTeamData) (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#13171E'; }}
-                    >
-                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: count > 0 ? '#F59E0B' : '#334155' }}>
-                        {count > 0 ? count : '+'}
+              {/* ── Partenaires d'entraînement ──
+                  Même grille que l'effectif : elles se pointent séance par séance, une invitée
+                  pouvant venir un mardi et pas le suivant. Le liseré orange les distingue au
+                  premier coup d'œil de l'effectif, dont elles ne partagent aucun chiffre. */}
+              {(guests.length > 0 || canEditTeamData) && (
+                <tr>
+                  <td colSpan={sessions.length + 1} style={{
+                    backgroundColor: '#13171E', borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229',
+                    padding: '6px 16px', whiteSpace: 'nowrap',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', left: 0, width: 'fit-content' }}>
+                      <span style={{ color: '#F59E0B', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Partenaires
                       </span>
-                    </td>
-                  );
-                })}
-              </tr>
+                      {canEditTeamData && invitable.length > 0 && (
+                        <button onClick={() => setShowGuestPick(true)}
+                          style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 8px' }}>
+                          + Inviter une joueuse
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {guests.map(p => (
+                <tr key={p.id}>
+                  <td style={{
+                    position: 'sticky', left: 0, zIndex: 1,
+                    backgroundColor: '#13171E', borderBottom: '1px solid #1E2229',
+                    borderLeft: '2px solid #F59E0B',
+                    padding: '0 16px', height: 48, whiteSpace: 'nowrap',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500 }}>
+                        <span className="hidden md:inline">{playerNameFull(p)}</span>
+                        <span className="md:hidden">{playerNameShort(p)}</span>
+                      </span>
+                      {canEditTeamData && (
+                        <button onClick={() => askRemoveGuest(p)} title="Retirer des partenaires"
+                          style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', padding: 2 }}>
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  {sessions.map(s => {
+                    const status = attendanceMap[`${s.id}:${p.id}`];
+                    const cfg = status ? STATUS[status] : null;
+                    return (
+                      <td
+                        key={s.id}
+                        onClick={canEditTeamData ? (e => handleCellClick(e, s.id, p.id)) : undefined}
+                        style={{
+                          borderBottom: '1px solid #1E2229', borderRight: '1px solid #1E2229',
+                          height: 48, textAlign: 'center', cursor: canEditTeamData ? 'pointer' : 'default',
+                          backgroundColor: cfg ? cfg.bg : 'transparent',
+                          opacity: canEditTeamData ? 1 : 0.75,
+                        }}
+                      >
+                        {cfg && <cfg.Icon size={16} style={{ color: cfg.color, display: 'block', margin: '0 auto' }} />}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
 
               {/* ── Ligne stats présence ── */}
               <tr>
@@ -559,55 +603,49 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* ── Popover partenaires ── */}
-      {partnerPopover && (() => {
-        const session = sessions.find(s => s.id === partnerPopover.sessionId);
-        const count = session?.partnerCount ?? 0;
-        return (
-          <div
-            ref={partnerPopoverRef}
-            style={{
-              position: 'fixed', left: partnerPopover.x, top: partnerPopover.y, zIndex: LAYER.dropdown,
-              backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 10,
-              padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.6)', minWidth: 200,
-            }}
-          >
-            {/* Compteur */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
-              <button
-                onClick={() => updatePartners(partnerPopover.sessionId, -1)}
-                disabled={count === 0}
-                style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: count === 0 ? '#334155' : '#94A3B8', cursor: count === 0 ? 'not-allowed' : 'pointer', width: 28, height: 28, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >−</button>
-              <span style={{ color: '#F1F5F9', fontSize: '1.1rem', fontWeight: 800, minWidth: 24, textAlign: 'center' }}>{count}</span>
-              <button
-                onClick={() => updatePartners(partnerPopover.sessionId, +1)}
-                style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', width: 28, height: 28, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; (e.currentTarget as HTMLElement).style.color = '#F59E0B'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; (e.currentTarget as HTMLElement).style.color = '#94A3B8'; }}
-              >+</button>
-            </div>
-            {/* Noms */}
-            <div>
-              <p style={{ color: '#475569', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 4px', fontWeight: 600 }}>Noms</p>
-              <textarea
-                rows={2}
-                placeholder="Marie D., Léa T., …"
-                value={session?.partnerNames ?? ''}
-                onChange={e => setSessions(prev => prev.map(s => s.id === partnerPopover.sessionId ? { ...s, partnerNames: e.target.value } : s))}
-                onBlur={e => updatePartnerNames(partnerPopover.sessionId, e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); updatePartnerNames(partnerPopover.sessionId, (session?.partnerNames ?? '')); (e.target as HTMLTextAreaElement).blur(); } }}
+      {/* ── Choix d'une partenaire ── */}
+      {showGuestPick && (
+        <Modal maxWidth={420} scrollOverlay={false} style={{ padding: 20 }} onClose={() => setShowGuestPick(false)} closeOnBackdropClick>
+          <h3 style={{ color: '#F1F5F9', margin: '0 0 6px', fontSize: '0.98rem' }}>Inviter une joueuse</h3>
+          <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 14px', lineHeight: 1.5 }}>
+            Une partenaire d'entraînement occupe le terrain et peut porter un RPE, qui compte dans
+            sa charge à elle. Elle n'entre dans aucune statistique de cette équipe.
+          </p>
+          <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {invitable.map(p => (
+              <button key={p.id} onClick={() => { setGuestIds(prev => [...prev, p.id]); setShowGuestPick(false); }}
                 style={{
-                  width: '100%', resize: 'none', backgroundColor: '#13171E', border: '1px solid #2A2F3A',
-                  borderRadius: 6, color: '#F1F5F9', fontSize: '0.78rem', padding: '6px 8px',
-                  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
-                }}
-              />
-            </div>
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', textAlign: 'left',
+                  backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6,
+                  color: '#F1F5F9', cursor: 'pointer', fontSize: '0.84rem',
+                }}>
+                {playerNameFull(p)}
+              </button>
+            ))}
           </div>
-        );
-      })()}
+        </Modal>
+      )}
+
+      {/* ── Confirmation retrait d'une partenaire ── */}
+      {confirmGuest && (
+        <Modal maxWidth={380} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmGuest(null)}>
+          <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Retirer {playerNameFull(confirmGuest)} ?</h3>
+          <p style={{ color: '#94A3B8', fontSize: '0.84rem', margin: '0 0 16px', lineHeight: 1.5 }}>
+            Ses pointages sur les séances affichées seront effacés. Ses RPE déjà saisis restent
+            dans sa charge.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setConfirmGuest(null)}
+              style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
+              Annuler
+            </button>
+            <button onClick={() => removeGuest(confirmGuest.id)} className="btn-danger"
+              style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>
+              Retirer
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* ── Modal confirmation suppression séance ── */}
       {confirmDeleteSession && (

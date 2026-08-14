@@ -88,8 +88,12 @@ export default function TrainingSessionsPage() {
           sessionBlocksApi.listBySessions(ids),
         ]);
 
+        // Présentes et retards comptent tout le monde, partenaires d'entraînement comprises :
+        // ce sont des nombres de personnes, pas des taux. Une partenaire qui ne vient pas n'est
+        // en revanche pas une absence — elle n'était pas attendue.
         const counts: Record<string, { present: number; absent: number; late: number }> = {};
         for (const a of attendance) {
+          if (a.sparring && a.status === 'absent') continue;
           if (!counts[a.sessionId]) counts[a.sessionId] = { present: 0, absent: 0, late: 0 };
           counts[a.sessionId][a.status]++;
         }

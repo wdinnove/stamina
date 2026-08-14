@@ -55,7 +55,7 @@ function toDraft(phase: ExercisePhase): DraftPhase {
 }
 
 /** Ce qui est comparé pour savoir si la page a des modifications non enregistrées. */
-function snapshot(header: { name: string; categoryId: string; objectifs: string; videoUrl: string }, phases: DraftPhase[]): string {
+function snapshot(header: { name: string; categoryId: string; deroulement: string; objectifs: string; videoUrl: string }, phases: DraftPhase[]): string {
   return JSON.stringify([header, phases.map(p => [p.id ?? null, p.title, p.text, p.scene])]);
 }
 
@@ -75,6 +75,7 @@ export default function ExerciseFormPage() {
 
   const [name,       setName]       = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [deroulement, setDeroulement] = useState('');
   const [objectifs,  setObjectifs]  = useState('');
   const [videoUrl,   setVideoUrl]   = useState('');
 
@@ -91,7 +92,7 @@ export default function ExerciseFormPage() {
   const [error,  setError]  = useState('');
 
   /** État de référence, pour ne parler de « modifications » qu'à bon escient. */
-  const [baseline, setBaseline] = useState(() => snapshot({ name: '', categoryId: '', objectifs: '', videoUrl: '' }, []));
+  const [baseline, setBaseline] = useState(() => snapshot({ name: '', categoryId: '', deroulement: '', objectifs: '', videoUrl: '' }, []));
 
   /** Laisse passer notre propre navigation, celle qui suit un enregistrement réussi. */
   const leaving = useRef(false);
@@ -116,6 +117,7 @@ export default function ExerciseFormPage() {
         setExercise(ex);
         setName(ex.name);
         setCategoryId(ex.categoryId ?? '');
+        setDeroulement(ex.deroulement ?? '');
         setObjectifs(ex.objectifs ?? '');
         setVideoUrl(ex.videoUrl ?? '');
         setPhases(drafts);
@@ -123,7 +125,8 @@ export default function ExerciseFormPage() {
         // La colonne d'édition ne reste jamais vide quand il y a des phases : on ouvre la première.
         setEditingKey(drafts[0]?.key ?? null);
         setBaseline(snapshot({
-          name: ex.name, categoryId: ex.categoryId ?? '', objectifs: ex.objectifs ?? '', videoUrl: ex.videoUrl ?? '',
+          name: ex.name, categoryId: ex.categoryId ?? '', deroulement: ex.deroulement ?? '',
+          objectifs: ex.objectifs ?? '', videoUrl: ex.videoUrl ?? '',
         }, drafts));
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Erreur'))
@@ -135,8 +138,8 @@ export default function ExerciseFormPage() {
   }, [exercise, selected?.team.id]);
 
   const dirty = useMemo(
-    () => snapshot({ name, categoryId, objectifs, videoUrl }, phases) !== baseline,
-    [name, categoryId, objectifs, videoUrl, phases, baseline],
+    () => snapshot({ name, categoryId, deroulement, objectifs, videoUrl }, phases) !== baseline,
+    [name, categoryId, deroulement, objectifs, videoUrl, phases, baseline],
   );
 
   /* ── Garde-fou de sortie ─────────────────────────────────────────────────
@@ -238,8 +241,9 @@ export default function ExerciseFormPage() {
     setSaving(true);
     setError('');
     const header = {
-      name:       name.trim(),
-      objectifs:  plain(objectifs) ? objectifs : '',
+      name:        name.trim(),
+      deroulement: plain(deroulement) ? deroulement : '',
+      objectifs:   plain(objectifs) ? objectifs : '',
       categoryId: categoryId || undefined,
       videoUrl:   videoUrl.trim(),
     };
@@ -354,10 +358,23 @@ export default function ExerciseFormPage() {
               </div>
             </div>
 
-            <div>
-              <label style={labelStyle}>Objectifs</label>
-              <RichTextEditor value={objectifs} onChange={setObjectifs}
-                placeholder="Ce que l'exercice doit développer…" minHeight={100} />
+            {/* Les deux textes de l'exercice, côte à côte : ce sont exactement les deux
+                champs que le bloc de séance pré-remplit à l'ajout. */}
+            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14, alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <label style={labelStyle}>Déroulement</label>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <RichTextEditor value={deroulement} onChange={setDeroulement}
+                    placeholder="Comment l'exercice se déroule…" minHeight={100} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <label style={labelStyle}>Objectifs</label>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <RichTextEditor value={objectifs} onChange={setObjectifs}
+                    placeholder="Ce que l'exercice doit développer…" minHeight={100} />
+                </div>
+              </div>
             </div>
 
             <div>

@@ -368,8 +368,6 @@ export interface TrainingSession {
   sessionType: SessionType;
   plannedDuration: number;
   notes?: string;
-  partnerCount?: number;
-  partnerNames?: string;
   createdAt?: string;
 }
 
@@ -407,6 +405,8 @@ export interface Exercise {
   id: string;
   name: string;
   teamId: string;
+  /** Le « comment » de l'exercice, en un texte d'ensemble — recopié dans le bloc de séance. */
+  deroulement?: string;
   /** Le « pourquoi » de l'exercice — recopié dans le bloc de séance à l'ajout. */
   objectifs?: string;
   categoryId?: string;
@@ -468,6 +468,12 @@ export interface TrainingAttendance {
   sessionId: string;
   playerId: string;
   status: 'present' | 'absent' | 'late';
+  /**
+   * Partenaire d'entraînement : joueuse de l'organisation invitée sur cette séance-là, hors
+   * effectif de l'équipe. Elle ne compte dans aucune statistique de l'équipe qui l'invite,
+   * mais son RPE entre dans SA charge. L'étiquette qualifie la présence, pas la joueuse.
+   */
+  sparring: boolean;
   createdAt: string;
 }
 

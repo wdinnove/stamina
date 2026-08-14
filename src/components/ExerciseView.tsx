@@ -1,4 +1,4 @@
-import { Target, Video, ListOrdered } from 'lucide-react';
+import { Target, Video, ListOrdered, ClipboardList } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { DiagramThumb, sceneAspect } from './DiagramSceneView';
 import { SocialVideoEmbed } from './SocialVideoEmbed';
@@ -8,9 +8,9 @@ import { detectSocialPlatform } from '../utils/socialVideo';
 import type { Exercise, ExercisePhase } from '../data/types';
 
 /**
- * La lecture d'un exercice : ses objectifs, sa séquence de phases, sa vidéo. Servie telle
- * quelle par la fiche exercice et par la séance — c'est le même exercice qu'on lit, il n'y a
- * aucune raison qu'il s'affiche différemment selon l'écran.
+ * La lecture d'un exercice : son déroulement, ses objectifs, sa séquence de phases, sa vidéo.
+ * Servie telle quelle par la fiche exercice et par la séance — c'est le même exercice qu'on
+ * lit, il n'y a aucune raison qu'il s'affiche différemment selon l'écran.
  *
  * Entièrement en lecture : tout se modifie sur la page d'édition, d'un seul enregistrement.
  */
@@ -28,16 +28,18 @@ function RichHtml({ html }: { html: string }) {
   );
 }
 
-/* ── Objectifs ────────────────────────────────────────────────────────────── */
+/* ── Déroulement et objectifs ─────────────────────────────────────────────── */
 
-/** En lecture seule : les objectifs s'écrivent sur la page d'édition, avec le reste. */
-function ObjectifsCard({ exercise }: { exercise: Exercise }) {
+/** En lecture seule : les deux textes s'écrivent sur la page d'édition, avec le reste. */
+function TextCard({ icon, title, html, empty }: {
+  icon: React.ReactNode; title: string; html?: string; empty: string;
+}) {
   return (
     <Card style={{ padding: 16 }}>
-      <CardTitle icon={<Target size={13} color="#00E5A0" />}>Objectifs</CardTitle>
-      {hasHtml(exercise.objectifs)
-        ? <RichHtml html={exercise.objectifs!} />
-        : <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun objectif.</span>}
+      <CardTitle icon={icon}>{title}</CardTitle>
+      {hasHtml(html)
+        ? <RichHtml html={html!} />
+        : <span style={{ color: '#475569', fontSize: '0.85rem' }}>{empty}</span>}
     </Card>
   );
 }
@@ -104,14 +106,21 @@ export function ExerciseView({ exercise, phases }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <ObjectifsCard exercise={exercise} />
+      {/* Les deux textes se lisent côte à côte, comme ils s'écrivent et comme ils se
+          retrouvent dans le bloc de séance. */}
+      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16, alignItems: 'start' }}>
+        <TextCard icon={<ClipboardList size={13} color="#00E5A0" />} title="Déroulement"
+          html={exercise.deroulement} empty="Aucun déroulement." />
+        <TextCard icon={<Target size={13} color="#00E5A0" />} title="Objectifs"
+          html={exercise.objectifs} empty="Aucun objectif." />
+      </div>
 
       <Card style={{ padding: 16 }}>
         <CardTitle
           icon={<ListOrdered size={13} color="#00E5A0" />}
           info={phases.length > 0 ? `${phases.length} phase${phases.length > 1 ? 's' : ''}` : undefined}
         >
-          Déroulement
+          Phases
         </CardTitle>
         {phases.length === 0 ? (
           <EmptyState message="Aucune phase. Un exercice se raconte phase par phase : un schéma, son texte." />

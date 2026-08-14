@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { getWeekTier } from '../utils/weeklyLoad';
 import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, SESSION_TYPES } from '../utils/rpe';
@@ -22,8 +22,8 @@ import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
-import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { Player, RPEEntry, SessionType } from '../data/types';
+import { playerNameFull } from '../utils/playerName';
+import type { Player, RPEEntry, SessionType, TrainingAttendance } from '../data/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +92,9 @@ export default function RPEPage() {
 
   // ── Roster
   const [roster, setRoster]               = useState<Player[]>([]);
+  /** Joueuses du club hors effectif : une partenaire invitée sur la séance en fait partie. */
+  const [orgPlayers,   setOrgPlayers]     = useState<Player[]>([]);
+  const [sessionAtt,   setSessionAtt]     = useState<TrainingAttendance[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
 
   // ── Collective tab state
@@ -123,6 +126,20 @@ export default function RPEPage() {
   const [teamRpeView, setTeamRpeView]           = useState<'session' | 'week'>('week');
   const [teamComboView, setTeamComboView]       = useState<'session' | 'week'>('week');
   const [teamDisplay, setTeamDisplay]           = useState<TeamDisplayMode>('chart');
+
+  // La liste du club sert à nommer les partenaires pointées sur la séance.
+  useEffect(() => {
+    playersApi.list().then(setOrgPlayers).catch(() => {});
+  }, [selected?.team.id]);
+
+  /**
+   * Présences de la séance choisie : la saisie se limite aux joueuses qui étaient là.
+   * Tant qu'aucune séance n'est choisie (saisie manuelle), il n'y a rien à filtrer.
+   */
+  useEffect(() => {
+    if (!existingSessionId) { setSessionAtt([]); return; }
+    attendanceApi.listAttendance([existingSessionId]).then(setSessionAtt).catch(() => setSessionAtt([]));
+  }, [existingSessionId]);
 
   // ── Load roster when season changes
   useEffect(() => {
@@ -193,8 +210,33 @@ export default function RPEPage() {
     teamAcwrAvg, teamFreshAvg, teamHistoryShort,
   } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster);
 
+  /**
+   * Joueuses à saisir. Sur une séance existante, celles qui y étaient — effectif et partenaires
+   * d'entraînement confondues, une partenaire ayant elle aussi une charge à porter.
+   *
+   * Le repli sur l'effectif complet quand aucune présence n'est pointée est délibéré : beaucoup
+   * de séances n'ont pas d'appel, et une grille vide empêcherait purement et simplement de
+   * saisir le RPE.
+   */
+  const gridPlayers = useMemo(() => {
+    const present = new Set(
+      sessionAtt.filter(a => a.status === 'present' || a.status === 'late').map(a => a.playerId),
+    );
+    if (present.size === 0) return roster;
+    const guests = orgPlayers.filter(p => !roster.some(r => r.id === p.id));
+    return [...roster, ...guests].filter(p => present.has(p.id));
+  }, [roster, orgPlayers, sessionAtt]);
+
+  const guestIds = useMemo(
+    () => new Set(sessionAtt.filter(a => a.sparring).map(a => a.playerId)),
+    [sessionAtt],
+  );
+
   // ── Derived (collective tab)
-  const activeEntries = Object.entries(rpeValues).filter(([, v]) => v !== null) as [string, number][];
+  // Bornées à la grille : une valeur laissée par une joueuse finalement absente ne doit pas
+  // repartir à l'enregistrement.
+  const activeEntries = Object.entries(rpeValues)
+    .filter(([id, v]) => v !== null && gridPlayers.some(p => p.id === id)) as [string, number][];
   // Estimation à la saisie : une seule séance, une entrée par joueuse — moyenne simple.
   const avgRpe        = roundedAvg(activeEntries.map(([, v]) => v)) ?? 0;
   const estimatedLoad = Math.round(avgRpe * duration);
@@ -510,7 +552,7 @@ export default function RPEPage() {
             {(existingSessionId || manualMode) && (
               loadingRoster ? (
                 <EmptyState message="Chargement de l'effectif…" />
-              ) : roster.length === 0 ? (
+              ) : gridPlayers.length === 0 ? (
                 <EmptyState message="Aucun joueur dans l'effectif pour cette saison." />
               ) : (
                 <>
@@ -525,11 +567,11 @@ export default function RPEPage() {
                   `}</style>
                   <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8, overflow: 'hidden' }}>
                     <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', display: 'flex', gap: 12 }}>
-                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 220, flexShrink: 0 }}>Joueur</span>
+                      <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 280, flexShrink: 0 }}>Joueur</span>
                       <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>RPE</span>
                       <span style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', width: 130, textAlign: 'right', flexShrink: 0 }}>Valeur</span>
                     </div>
-                    {roster.map(player => {
+                    {gridPlayers.map(player => {
                       const val = rpeValues[player.id] ?? null;
                       const rpeBtn = (v: number) => (
                         <button key={v}
@@ -540,11 +582,16 @@ export default function RPEPage() {
                       );
                       return (
                         <div key={player.id} className="rpe-row" style={{ borderBottom: '1px solid #1E2229', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
-                          <div className="rpe-player-col" style={{ display: 'flex', alignItems: 'center', gap: 8, width: 220, flexShrink: 0 }}>
+                          <div className="rpe-player-col" style={{ display: 'flex', alignItems: 'center', gap: 8, width: 280, flexShrink: 0 }}>
                             <PlayerAvatar player={player} size={26} />
                             <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playerNameShort(player)}</span>
-                              <StatusBadge status={player.status} size="sm" />
+                              <span style={{ color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playerNameFull(player)}</span>
+                              {guestIds.has(player.id)
+                                ? <span title="Partenaire d'entraînement — hors effectif"
+                                    style={{ color: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.12)', fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                                    Partenaire
+                                  </span>
+                                : <StatusBadge status={player.status} size="sm" />}
                             </div>
                           </div>
                           <div className="rpe-buttons" style={{ flex: 1, display: 'flex', gap: 4, minWidth: 0, overflow: 'hidden' }}>

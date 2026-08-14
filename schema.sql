@@ -337,8 +337,6 @@ CREATE TABLE training_sessions (
   session_type     session_type NOT NULL,
   planned_duration SMALLINT     NOT NULL CHECK (planned_duration BETWEEN 1 AND 300),
   notes            TEXT,
-  partner_count    SMALLINT     NOT NULL DEFAULT 0,
-  partner_names    TEXT,
   created_by       UUID         REFERENCES profiles(id) ON DELETE SET NULL,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
@@ -869,11 +867,20 @@ CREATE TABLE staff_meetings (
 -- 20. TRAINING ATTENDANCE
 -- ────────────────────────────────────────────────────────────────
 
+-- `sparring` distingue une partenaire d'entraînement d'une joueuse de l'effectif. Elle vient
+-- de l'organisation sans appartenir à l'équipe de la séance : elle occupe le terrain et peut
+-- porter un RPE — qui compte dans SA charge — mais n'entre dans aucune statistique de l'équipe
+-- qui l'invite (taux de présence, moyennes, analyses).
+--
+-- L'étiquette porte sur la PRÉSENCE, jamais sur la joueuse : la même joueuse est titulaire dans
+-- son équipe, où elle doit compter normalement, et partenaire ici. Un statut porté par la
+-- joueuse fausserait les statistiques de sa propre équipe.
 CREATE TABLE training_attendance (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-  player_id  UUID NOT NULL REFERENCES players(id)           ON DELETE CASCADE,
-  status     TEXT NOT NULL CHECK (status IN ('present', 'absent', 'late')),
+  id         UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID    NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  player_id  UUID    NOT NULL REFERENCES players(id)           ON DELETE CASCADE,
+  status     TEXT    NOT NULL CHECK (status IN ('present', 'absent', 'late')),
+  sparring   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   UNIQUE (session_id, player_id)
@@ -948,11 +955,17 @@ CREATE INDEX ON exercise_categories (team_id);
 -- `team_id` est obligatoire : un exercice appartient toujours à une équipe. Une ligne sans
 -- équipe serait de toute façon invisible pour tout le monde — la policy de lecture compare
 -- `team_id IN (…)`, et `NULL IN (…)` ne vaut jamais vrai.
+-- `deroulement` et `objectifs` sont les deux textes de l'exercice, tous deux recopiés dans le
+-- bloc de séance à l'ajout (modifiables ensuite sans impacter la bibliothèque) : le bloc a
+-- exactement ces deux champs, et le coach doit les retrouver remplis sans les ressaisir.
+-- `deroulement` est le récit d'ensemble ; les phases, elles, racontent le détail schéma par
+-- schéma — les deux se lisent, ils ne se remplacent pas.
 CREATE TABLE exercises (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
-  objectifs   TEXT,  -- le « pourquoi » de l'exercice, recopié dans le bloc de séance à l'ajout (modifiable ensuite sans impacter la bibliothèque)
+  deroulement TEXT,  -- le « comment » de l'exercice
+  objectifs   TEXT,  -- le « pourquoi » de l'exercice
   category_id UUID REFERENCES exercise_categories(id) ON DELETE SET NULL,
   video_url   TEXT,  -- option : lien réseau social, si le coach en a un
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -3554,3 +3567,34 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- DROP POLICY IF EXISTS "exercises_storage_insert" ON storage.objects;
 -- DROP POLICY IF EXISTS "exercises_storage_update" ON storage.objects;
 -- DROP POLICY IF EXISTS "exercises_storage_delete" ON storage.objects;
+
+-- Exercices : le déroulement redevient un champ de l'exercice
+--
+-- La refonte en phases avait fait descendre le déroulement au niveau de la phase. Il remonte
+-- ici en texte d'ensemble, à côté des objectifs — sans rien retirer aux phases, qui gardent
+-- leur texte : le bloc de séance a exactement ces deux champs (Déroulement, Objectifs) et les
+-- pré-remplit depuis l'exercice à l'ajout, ce qu'une séquence de phases ne sait pas faire.
+--
+-- ALTER TABLE exercises ADD COLUMN IF NOT EXISTS deroulement TEXT;
+
+-- Présences : partenaires d'entraînement
+--
+-- Une partenaire est une joueuse de l'ORGANISATION invitée sur une séance d'une équipe dont
+-- elle ne fait pas partie. Elle remplace le couple `partner_count` / `partner_names`, qui ne
+-- retenait qu'un nombre et du texte libre : impossible de lui attacher un RPE, donc impossible
+-- de compter la séance dans sa charge.
+--
+-- Rien à filtrer ailleurs : les analyses partent toutes de l'effectif (`player_season`), et la
+-- RLS de `rpe_entries` est cadrée par organisation, pas par équipe — son RPE lui revient sans
+-- aménagement.
+--
+-- ALTER TABLE training_attendance ADD COLUMN IF NOT EXISTS sparring BOOLEAN NOT NULL DEFAULT FALSE;
+--
+-- Les anciens partenaires ne sont pas repris : un nombre et des noms libres ne désignent
+-- aucune joueuse. Relever `partner_names` avant de supprimer les colonnes, le texte est perdu
+-- ensuite :
+--   SELECT id, date, partner_count, partner_names
+--     FROM training_sessions WHERE partner_count > 0 OR partner_names IS NOT NULL;
+--
+-- ALTER TABLE training_sessions DROP COLUMN IF EXISTS partner_count;
+-- ALTER TABLE training_sessions DROP COLUMN IF EXISTS partner_names;

@@ -454,15 +454,17 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         inputStyle={inputStyle}
                         onChange={(id, ex) => {
                           setEditDrillId(id);
-                          // Seuls les objectifs se recopient : le déroulement de l'exercice vit
-                          // dans ses phases, et la description du bloc reste ce que le coach
-                          // note pour cette séance-là.
-                          if (ex) setEditForm(f => ({
+                          if (!ex) return;
+                          // Déroulement et objectifs se recopient tous les deux : ce sont les
+                          // deux champs du bloc, et les retrouver vides obligerait à les
+                          // ressaisir alors qu'ils existent dans la bibliothèque.
+                          setEditForm(f => ({
                             ...f,
                             label: ex.name,
                             consignes: ex.objectifs ?? f.consignes,
                             ...(ex.categoryName ? { category: ex.categoryName } : {}),
                           }));
+                          if (ex.deroulement) setEditDescription(ex.deroulement);
                         }}
                       />
                     )}
@@ -666,12 +668,16 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
               inputStyle={inputStyle}
               onChange={(id, ex) => {
                 setFormDrillId(id);
-                if (ex) setForm(f => ({
+                if (!ex) return;
+                // Les deux textes de l'exercice remplissent les deux champs du bloc, qui reste
+                // ensuite modifiable pour cette séance-là sans toucher à la bibliothèque.
+                setForm(f => ({
                   ...f,
                   label: ex.name,
                   consignes: ex.objectifs ?? f.consignes,
                   ...(ex.categoryName ? { category: ex.categoryName } : {}),
                 }));
+                if (ex.deroulement) setFormDescription(ex.deroulement);
               }}
             />
           )}
@@ -1077,10 +1083,11 @@ export default function TrainingSessionDetailPage() {
         await attendanceApi.deleteAttendance(session.id, playerId);
         setAttendance(prev => prev.filter(a => a.playerId !== playerId));
       } else {
+        // Cette page ne pointe que l'effectif : une partenaire s'invite depuis les présences.
         await attendanceApi.setAttendance({ sessionId: session.id, playerId, status });
         setAttendance(prev => [
           ...prev.filter(a => a.playerId !== playerId),
-          { id: `${session.id}:${playerId}`, sessionId: session.id, playerId, status, createdAt: new Date().toISOString() },
+          { id: `${session.id}:${playerId}`, sessionId: session.id, playerId, status, sparring: false, createdAt: new Date().toISOString() },
         ]);
       }
     } catch (err: unknown) {
@@ -1190,6 +1197,10 @@ export default function TrainingSessionDetailPage() {
   const attMap  = Object.fromEntries(attendance.map(a => [a.playerId, a.status]));
   const rpeMap  = Object.fromEntries(rpeEntries.map(e => [e.playerId, e]));
 
+  /** Partenaires d'entraînement effectivement venues — comptées à part, jamais avec l'effectif. */
+  const sparringCount = attendance.filter(a => a.sparring && (a.status === 'present' || a.status === 'late')).length;
+  const sparringIds   = new Set(attendance.filter(a => a.sparring).map(a => a.playerId));
+
   const knownIds = new Set([...attendance.map(a => a.playerId), ...rpeEntries.map(e => e.playerId)]);
   const relevantPlayers = players
     .filter(p => knownIds.has(p.id))
@@ -1211,6 +1222,12 @@ export default function TrainingSessionDetailPage() {
           <span className="hidden md:inline">{playerNameFull(player)}</span>
           <span className="md:hidden">{playerNameShort(player)}</span>
         </span>
+        {sparringIds.has(player.id) && (
+          <span title="Partenaire d'entraînement — hors effectif"
+            style={{ color: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.12)', fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+            Partenaire
+          </span>
+        )}
         {statusCfg && (
           <span style={{ color: statusCfg.color, backgroundColor: statusCfg.bg, fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
             {statusCfg.label}
@@ -1220,9 +1237,13 @@ export default function TrainingSessionDetailPage() {
     );
   }
 
+  // Un nombre de personnes compte tout le monde : une partenaire était bien là. Seuls les
+  // POURCENTAGES de présence se limitent à l'effectif — c'est l'assiduité de l'équipe qu'ils
+  // mesurent, et une invitée n'y a pas sa place.
   const presentCount    = attendance.filter(a => a.status === 'present').length;
-  const absentCount     = attendance.filter(a => a.status === 'absent').length;
   const lateCount       = attendance.filter(a => a.status === 'late').length;
+  // Exception : une partenaire qui ne vient pas n'est pas une absence, elle n'était pas attendue.
+  const absentCount     = attendance.filter(a => !a.sparring && a.status === 'absent').length;
   const rpeValues       = rpeEntries.map(e => e.rpe);
   // Moyenne d'UNE séance : une seule entrée par joueuse, donc moyenne simple.
   const avgRpe          = roundedAvg(rpeValues);
@@ -1276,8 +1297,10 @@ export default function TrainingSessionDetailPage() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', fontWeight: 600, fontSize: '0.75rem', padding: '3px 10px' }}>
               <Clock size={13} /> {session.plannedDuration} min
             </span>
-            {(session.partnerCount ?? 0) > 0 && (
-              <span style={{ color: '#475569', fontSize: '0.78rem' }}>{session.partnerCount} partenaire{(session.partnerCount ?? 0) > 1 ? 's' : ''}</span>
+            {sparringCount > 0 && (
+              <span style={{ color: '#F59E0B', fontSize: '0.78rem' }}>
+                {sparringCount} partenaire{sparringCount > 1 ? 's' : ''}
+              </span>
             )}
           </div>
         </div>

@@ -23,6 +23,7 @@ function toExercise(row: Record<string, unknown>): Exercise {
     id:            row.id as string,
     name:          row.name as string,
     teamId:        row.team_id as string,
+    deroulement:   (row.deroulement as string | null) ?? undefined,
     objectifs:     (row.objectifs as string | null) ?? undefined,
     categoryId:    cat?.id,
     categoryName:  cat?.name,
@@ -49,13 +50,14 @@ export const exercisesApi = {
   },
 
   async create(input: {
-    name: string; teamId: string; objectifs?: string; categoryId?: string; videoUrl?: string;
+    name: string; teamId: string; deroulement?: string; objectifs?: string; categoryId?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const { data, error } = await supabase
       .from('exercises')
       .insert({
         name:        input.name,
         team_id:     input.teamId,
+        deroulement: input.deroulement || null,
         objectifs:   input.objectifs || null,
         category_id: input.categoryId || null,
         video_url:   input.videoUrl || null,
@@ -67,10 +69,11 @@ export const exercisesApi = {
   },
 
   async update(id: string, patch: {
-    name?: string; objectifs?: string; categoryId?: string; videoUrl?: string;
+    name?: string; deroulement?: string; objectifs?: string; categoryId?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const payload: Record<string, unknown> = {};
     if (patch.name       !== undefined) payload.name        = patch.name;
+    if (patch.deroulement !== undefined) payload.deroulement = patch.deroulement || null;
     if (patch.objectifs  !== undefined) payload.objectifs   = patch.objectifs || null;
     if (patch.categoryId !== undefined) payload.category_id = patch.categoryId || null;
     if (patch.videoUrl   !== undefined) payload.video_url   = patch.videoUrl || null;
