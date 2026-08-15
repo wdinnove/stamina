@@ -24,7 +24,10 @@ export const PLAYER_LINK_TEMPLATE_ID = 'jpzkmgq5vqng059v'
 export async function sendMail(payload) {
   const apiKey    = process.env.MAILERSEND_API_KEY
   const fromEmail = process.env.MAILERSEND_FROM_EMAIL
-  const fromName  = process.env.MAILERSEND_FROM_NAME ?? 'Player App'
+  // `||` et non `??` : une variable définie mais vide — cas courant d'un champ laissé
+  // blanc dans l'interface Vercel — passait un nom vide à MailerSend, et le client mail
+  // affichait alors l'adresse brute au lieu du nom.
+  const fromName  = process.env.MAILERSEND_FROM_NAME?.trim() || 'Stamina'
   const replyTo   = payload.reply_to ?? (process.env.MAIL_REPLY_TO
     ? { email: process.env.MAIL_REPLY_TO }
     : null)
