@@ -79,5 +79,8 @@ export { ObjectivesPanel } from './ObjectivesPanel';
 export { MatchObjectivesRecap } from './MatchObjectivesRecap';
 export { PlayerArchetypesPanel } from './PlayerArchetypesPanel';
 export { TeamArchetypesPanel } from './TeamArchetypesPanel';
+export { MbtiPlayerPanel } from './MbtiPlayerPanel';
+export { MbtiTeamPanel } from './MbtiTeamPanel';
+export { PlayerNotesPanel } from './PlayerNotesPanel';
 export { ArchetypeSelect } from './ArchetypeSelect';
 export { ChannelToggle } from './ChannelToggle';

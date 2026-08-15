@@ -17,8 +17,10 @@
 --   11. Session Blocks
 --   12. RPE Entries
 --   13. Wellness Entries
+--   13b. MBTI Responses (questionnaire de personnalité)
 --   14. Medical Records  (+ vue medical_records_full)
 --   15. Player Actions
+--   15b. Player Notes (suivi mental)
 --   16. Matches
 --   17. Match Stats
 --   17b. Opponent Match Stats
@@ -53,6 +55,9 @@ CREATE TYPE action_category     AS ENUM (
   'medical', 'physical', 'mental', 'tactical',
   'administrative', 'interview', 'video', 'discussion'
 );
+-- Catégories d'une note de suivi mental — volontairement courtes : une note se classe
+-- d'un geste, sinon on ne la classe pas.
+CREATE TYPE note_category       AS ENUM ('entretien', 'comportement', 'perso', 'match', 'autre');
 CREATE TYPE home_away           AS ENUM ('home', 'away');
 CREATE TYPE match_result        AS ENUM ('win', 'loss');
 
@@ -484,6 +489,29 @@ CREATE INDEX ON wellness_entries (player_id, date DESC);
 
 
 -- ────────────────────────────────────────────────────────────────
+-- 13b. MBTI RESPONSES — questionnaire de personnalité
+--      24 affirmations notées de 1 à 5, remplies UNE SEULE FOIS par
+--      le joueur via un lien public (cf. submit_mbti_public).
+--
+--      On stocke les réponses brutes, jamais le type à 4 lettres :
+--      le profil est recalculé à la volée côté client (src/data/mbti),
+--      donc une évolution du dépouillement n'a pas à migrer de données.
+--      UNIQUE (player_id) porte la règle « une seule passation » ;
+--      le staff peut réinitialiser en supprimant la ligne.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE mbti_responses (
+  id           UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id    UUID  NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
+  -- { "1": 1..5, ..., "24": 1..5 } — clés = MBTI_QUESTIONS[].id, validées par submit_mbti_public
+  answers      JSONB NOT NULL,
+  -- NULL = soumis par le joueur via le lien public (même convention que wellness_entries)
+  created_by   UUID  REFERENCES profiles(id) ON DELETE SET NULL,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ────────────────────────────────────────────────────────────────
 -- 14. MEDICAL RECORDS
 --     resolved_date remplace days_absent (calculable : resolved_date - date)
 --     Contrainte : un dossier resolved doit avoir une resolved_date
@@ -579,6 +607,41 @@ $$;
 CREATE TRIGGER trg_action_completed_at
   BEFORE UPDATE ON player_actions
   FOR EACH ROW EXECUTE FUNCTION set_action_completed_at();
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 15b. PLAYER NOTES — suivi mental
+--      Une phrase après un entraînement ou le compte rendu d'un
+--      entretien : du texte libre daté, sans échéance ni statut.
+--      C'est ce qui la distingue de player_actions, dont due_date
+--      et status NOT NULL ne veulent rien dire pour un compte rendu.
+--
+--      created_by a DEFAULT auth.uid() : ailleurs dans ce schéma la
+--      colonne existe mais n'est jamais renseignée par le front et
+--      reste NULL. Ici l'auteur est l'information utile (« qui a mené
+--      l'entretien ») — le défaut la garantit sans dépendre de l'appelant.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE player_notes (
+  id         UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id  UUID          NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+  team_id    UUID          NOT NULL REFERENCES teams(id)    ON DELETE CASCADE,
+  season_id  UUID          NOT NULL REFERENCES seasons(id)  ON DELETE CASCADE,
+  -- Date de l'échange ou de l'observation, pas celle de la saisie (created_at la porte déjà)
+  date       DATE          NOT NULL DEFAULT CURRENT_DATE,
+  category   note_category NOT NULL DEFAULT 'entretien',
+  content    TEXT          NOT NULL,   -- HTML de l'éditeur riche, comme staff_meetings.notes
+  created_by UUID          REFERENCES profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
+  created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON player_notes (season_id, date DESC);
+CREATE INDEX ON player_notes (player_id, date DESC);
+
+CREATE TRIGGER trg_player_notes_updated_at
+  BEFORE UPDATE ON player_notes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -1054,8 +1117,10 @@ ALTER TABLE session_team_players  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_documents     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rpe_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wellness_entries      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mbti_responses        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE medical_records       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_actions        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_notes          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE objectives            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_stats           ENABLE ROW LEVEL SECURITY;
@@ -1292,6 +1357,22 @@ CREATE POLICY "wellness_access" ON wellness_entries
     )
   );
 
+-- Questionnaire de personnalité (MBTI) — même portée organisation que le bien-être.
+-- L'écriture par le joueur lui-même ne passe PAS par ici : elle est anonyme et va
+-- exclusivement par submit_mbti_public (SECURITY DEFINER, §23). Aucun accès `anon` à la table.
+CREATE POLICY "mbti_access" ON mbti_responses
+  FOR ALL TO authenticated
+  USING (
+    player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    )
+  );
+
 -- Dossiers médicaux
 CREATE POLICY "medical_access" ON medical_records
   FOR ALL TO authenticated
@@ -1333,6 +1414,18 @@ CREATE POLICY "action_write" ON player_actions
     ))
     OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
   );
+
+-- Notes de suivi mental — portée équipe stricte, sans la double branche de player_actions :
+-- team_id est obligatoire ici, donc une seule condition suffit. Données sensibles, lues par
+-- le staff ayant accès à l'équipe et écrites par ses éditeurs, comme les dossiers médicaux.
+CREATE POLICY "player_notes_select" ON player_notes
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "player_notes_write" ON player_notes
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
 -- Objectifs (player_id et team_id sont tous deux optionnels, même logique que player_actions)
 CREATE POLICY "objective_select" ON objectives
@@ -1797,6 +1890,70 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT, INT, INT, TEXT) TO anon;
+
+
+-- Questionnaire de personnalité — état du lien public (sans authentification)
+-- Fonction distincte de get_player_public_info pour ne pas coupler le formulaire
+-- bien-être à ce module. Ne divulgue que le nom et le fait d'avoir déjà répondu.
+CREATE OR REPLACE FUNCTION get_mbti_public_info(p_player_id UUID)
+RETURNS TABLE(first_name TEXT, last_name TEXT, already_answered BOOLEAN)
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT p.first_name, p.last_name, EXISTS (SELECT 1 FROM mbti_responses m WHERE m.player_id = p.id)
+  FROM players p
+  WHERE p.id = p_player_id;
+$$;
+GRANT EXECUTE ON FUNCTION get_mbti_public_info(UUID) TO anon;
+
+-- Soumission du questionnaire de personnalité sans auth, UNE SEULE FOIS par joueur.
+-- Pas de limite de débit ici : l'unicité de player_id suffit à borner l'écriture, et la
+-- contrainte UNIQUE reste le dernier rempart si deux envois partaient en même temps.
+-- Tout est revalidé côté serveur : rien de ce que poste le navigateur n'est cru sur parole.
+CREATE OR REPLACE FUNCTION submit_mbti_public(
+  p_player_id UUID,
+  p_answers   JSONB
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_key   TEXT;
+  v_value JSONB;
+  v_count INT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM players WHERE id = p_player_id) THEN
+    RAISE EXCEPTION 'Joueur introuvable';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM mbti_responses WHERE player_id = p_player_id) THEN
+    RAISE EXCEPTION 'Questionnaire déjà rempli';
+  END IF;
+
+  IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN
+    RAISE EXCEPTION 'Réponses invalides';
+  END IF;
+
+  SELECT COUNT(*) INTO v_count FROM jsonb_object_keys(p_answers);
+  IF v_count <> 24 THEN
+    RAISE EXCEPTION 'Questionnaire incomplet : 24 réponses attendues, % reçues', v_count;
+  END IF;
+
+  -- Clés attendues : '1' à '24' ; valeurs : entiers de 1 à 5.
+  -- Les tests sont imbriqués et non chaînés par OR : Postgres ne garantit pas l'ordre
+  -- d'évaluation d'un booléen, et le cast ::NUMERIC échouerait sur une valeur non numérique.
+  FOR v_key, v_value IN SELECT * FROM jsonb_each(p_answers) LOOP
+    IF v_key !~ '^([1-9]|1[0-9]|2[0-4])$' THEN
+      RAISE EXCEPTION 'Question inconnue : %', v_key;
+    END IF;
+    IF jsonb_typeof(v_value) <> 'number' THEN
+      RAISE EXCEPTION 'Réponse invalide à la question % : attendu un entier de 1 à 5', v_key;
+    END IF;
+    IF (v_value)::NUMERIC NOT IN (1, 2, 3, 4, 5) THEN
+      RAISE EXCEPTION 'Réponse invalide à la question % : attendu un entier de 1 à 5', v_key;
+    END IF;
+  END LOOP;
+
+  INSERT INTO mbti_responses (player_id, answers) VALUES (p_player_id, p_answers);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION submit_mbti_public(UUID, JSONB) TO anon;
 
 
 -- ================================================================
@@ -3598,3 +3755,91 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --
 -- ALTER TABLE training_sessions DROP COLUMN IF EXISTS partner_count;
 -- ALTER TABLE training_sessions DROP COLUMN IF EXISTS partner_names;
+
+-- Questionnaire de personnalité (MBTI)
+--
+-- Un joueur répond une seule fois, sans compte, via /joueur/<id>/mbti. Les 24 réponses
+-- brutes sont stockées telles quelles : le type à 4 lettres est recalculé à l'affichage
+-- (src/data/mbti/scoring.ts), donc faire évoluer le dépouillement ne demande aucune migration.
+--
+-- L'unicité de player_id EST la règle « une seule passation ». Réinitialiser = supprimer la
+-- ligne (bouton du staff dans l'onglet Personnalité), ce qui rouvre le lien public.
+--
+-- CREATE TABLE IF NOT EXISTS mbti_responses (
+--   id           UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+--   player_id    UUID  NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
+--   answers      JSONB NOT NULL,
+--   created_by   UUID  REFERENCES profiles(id) ON DELETE SET NULL,
+--   submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+--
+-- ALTER TABLE mbti_responses ENABLE ROW LEVEL SECURITY;
+--
+-- DROP POLICY IF EXISTS "mbti_access" ON mbti_responses;
+-- CREATE POLICY "mbti_access" ON mbti_responses
+--   FOR ALL TO authenticated
+--   USING (
+--     player_id IN (
+--       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+--     )
+--   )
+--   WITH CHECK (
+--     player_id IN (
+--       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+--     )
+--   );
+--
+-- Puis exécuter les deux fonctions de la §23 (get_mbti_public_info, submit_mbti_public) avec
+-- leurs GRANT à anon : ce sont les seuls chemins d'accès public, la table reste fermée.
+--
+-- Vérifications :
+--   SELECT has_function_privilege('anon', 'submit_mbti_public(uuid,jsonb)', 'EXECUTE');  -- true
+--   SELECT has_function_privilege('anon', 'get_mbti_public_info(uuid)',     'EXECUTE');  -- true
+--   SELECT has_table_privilege('anon', 'mbti_responses', 'SELECT');                      -- false
+
+-- Suivi mental — notes par joueur
+--
+-- Du texte libre daté, écrit par le staff : une phrase après un entraînement, le compte rendu
+-- d'un entretien. Ni échéance ni statut — c'est ce qui la distingue d'une tâche player_actions,
+-- où due_date et status NOT NULL n'ont pas de sens pour un compte rendu.
+--
+-- Portée saison, comme les objectifs et les tâches : une note reste attachée à la saison où
+-- elle a été écrite, sans report.
+--
+-- CREATE TYPE note_category AS ENUM ('entretien', 'comportement', 'perso', 'match', 'autre');
+--
+-- CREATE TABLE IF NOT EXISTS player_notes (
+--   id         UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+--   player_id  UUID          NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+--   team_id    UUID          NOT NULL REFERENCES teams(id)    ON DELETE CASCADE,
+--   season_id  UUID          NOT NULL REFERENCES seasons(id)  ON DELETE CASCADE,
+--   date       DATE          NOT NULL DEFAULT CURRENT_DATE,
+--   category   note_category NOT NULL DEFAULT 'entretien',
+--   content    TEXT          NOT NULL,
+--   created_by UUID          REFERENCES profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
+--   created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+--   updated_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS player_notes_season_date_idx ON player_notes (season_id, date DESC);
+-- CREATE INDEX IF NOT EXISTS player_notes_player_date_idx ON player_notes (player_id, date DESC);
+--
+-- CREATE TRIGGER trg_player_notes_updated_at
+--   BEFORE UPDATE ON player_notes
+--   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+--
+-- ALTER TABLE player_notes ENABLE ROW LEVEL SECURITY;
+--
+-- DROP POLICY IF EXISTS "player_notes_select" ON player_notes;
+-- CREATE POLICY "player_notes_select" ON player_notes
+--   FOR SELECT TO authenticated
+--   USING (team_id IN (SELECT * FROM accessible_team_ids()));
+--
+-- DROP POLICY IF EXISTS "player_notes_write" ON player_notes;
+-- CREATE POLICY "player_notes_write" ON player_notes
+--   FOR ALL TO authenticated
+--   USING      (team_id IN (SELECT * FROM writable_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+--
+-- Vérification — l'auteur doit être rempli tout seul :
+--   SELECT column_default FROM information_schema.columns
+--    WHERE table_name = 'player_notes' AND column_name = 'created_by';   -- auth.uid()

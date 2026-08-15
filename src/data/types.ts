@@ -11,6 +11,7 @@ export type ActionPriority    = 'low' | 'normal' | 'high' | 'critical';
 export type ActionCategory    =
   | 'medical' | 'physical' | 'mental' | 'tactical'
   | 'administrative' | 'interview' | 'video' | 'discussion';
+export type NoteCategory      = 'entretien' | 'comportement' | 'perso' | 'match' | 'autre';
 export type ObjectiveImportance = 'major' | 'normal' | 'minor';
 export type ObjectiveComparator = 'gte' | 'lte' | 'eq';
 
@@ -154,6 +155,16 @@ export interface WellnessEntry {
   notes?: string;
 }
 
+/** Questionnaire de personnalité — réponses brutes d'un joueur (une seule passation).
+ *  Le type à 4 lettres n'est pas stocké : il se recalcule depuis `answers` (src/data/mbti). */
+export interface MbtiResponse {
+  id: string;
+  playerId: string;
+  /** Clés = identifiants des 24 questions, valeurs 1–5. */
+  answers: Record<number, number>;
+  submittedAt: string;
+}
+
 export interface MedicalRecord {
   id: string;
   playerId: string;
@@ -170,6 +181,25 @@ export interface MedicalRecord {
   /** `null` explicite = effacer le champ en base (cf. `toRow` dans api/medical.ts), à distinguer
    *  de `undefined` = champ non modifié par cette mise à jour partielle. */
   treatment?: string | null;
+}
+
+/** Note de suivi mental — texte libre daté écrit par le staff sur un joueur.
+ *  Ni échéance ni statut : c'est ce qui la distingue d'une `Action`. */
+export interface PlayerNote {
+  id: string;
+  playerId: string;
+  teamId: string;
+  /** Saison de rattachement — une note reste dans la saison où elle a été écrite. */
+  seasonId: string;
+  /** Date de l'échange ou de l'observation, pas celle de la saisie. */
+  date: string;
+  category: NoteCategory;
+  /** HTML de l'éditeur riche — à assainir (`sanitizeHtml`) avant tout affichage. */
+  content: string;
+  createdBy?: string;
+  /** Nom de l'auteur, joint depuis `profiles` — absent si la note n'a pas d'auteur connu. */
+  authorName?: string;
+  createdAt?: string;
 }
 
 export interface Action {

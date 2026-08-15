@@ -85,6 +85,25 @@ describe('aucun envoi d\'email générique', () => {
     expect(src).not.toMatch(/x-forwarded-host|headers\.host/)
     expect(src).toMatch(/APP_ORIGIN/)
   })
+
+  it('le second envoi (questionnaire de personnalité) suit les mêmes règles', () => {
+    // Deux endroits envoient un email à un joueur : ils doivent être aussi fermés l'un que
+    // l'autre, sinon la règle « aucun contact non déclenché à la main » cesse d'être structurelle.
+    const src = readFileSync(join(API, 'send-mbti-links.js'), 'utf8')
+    expect(src).toContain('hasTeamWriteAccess')
+    expect(src).toContain('withinRateLimit')
+    expect(src).toMatch(/from\('player_season'\)/)
+    expect(src).not.toMatch(/req\.body[^\n]*\bto\b/)
+    expect(src).not.toMatch(/x-forwarded-host|headers\.host/)
+    expect(src).toMatch(/APP_ORIGIN|appOrigin/)
+  })
+
+  it('le client n\'expose que les deux envois à template fixe', () => {
+    const email = readFileSync(join(SRC, 'api', 'email.ts'), 'utf8')
+    expect(email).toContain('/api/send-mbti-links')
+    // Aucune fonction ne prend un destinataire ou un contenu en paramètre.
+    expect(email).not.toMatch(/\b(subject|html|body|to)\s*:\s*string/)
+  })
 })
 
 // Le comportement de /api/notify est couvert par api/notify.test.js, qui appelle
