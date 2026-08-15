@@ -10,7 +10,8 @@ import {
   Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, MiniStatCard, Badge,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
-  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel, PlayerArchetypesPanel, LoadingSteps
+  CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel, PlayerArchetypesPanel, LoadingSteps,
+  MbtiPlayerPanel
 } from '../components';
 import { sumInjuryDays } from '../utils/medical';
 import { FilterField, filterControlStyle } from '../components/FilterField';
@@ -37,7 +38,7 @@ const avg = (vals: number[]): number | null =>
   vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null;
 
 type Tab = 'overview' | 'stats-basic' | 'stats-advanced' | 'dynamic' | 'compare-match' | 'compare-season' | 'compare-player'
-         | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations' | 'objectives' | 'archetypes';
+         | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations' | 'objectives' | 'archetypes' | 'mbti';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':           'overview',
@@ -58,6 +59,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'medical':                'medical',
   'objectifs':              'objectives',
   'archetypes':             'archetypes',
+  'personnalite':           'mbti',
   'risque-blessure':        'load', // ancien onglet, absorbé dans "Charge physique" — conservé pour ne pas casser les liens existants
 };
 const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: string }[] }[] = [
@@ -76,6 +78,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     { key: 'objectives',   slug: 'objectifs',    label: 'Objectifs' },
     { key: 'correlations', slug: 'correlations', label: 'Corrélations' },
     { key: 'archetypes',   slug: 'archetypes',   label: 'Archétypes (bêta)' },
+    { key: 'mbti',         slug: 'personnalite', label: 'Personnalité' },
   ] },
   { label: 'Comparer', tabs: [
     { key: 'dynamic',         slug: 'par-periode', label: 'Par période' },
@@ -93,7 +96,7 @@ const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'stats-basic': 'saison', 'stats-advanced': 'saison',
   dynamic: 'saison', 'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
-  archetypes: 'saison',
+  archetypes: 'saison', mbti: 'saison',
 };
 
 export default function PerformanceIndividuellePage() {
@@ -288,6 +291,7 @@ export default function PerformanceIndividuellePage() {
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
           {activeTab !== 'dynamic' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes'
+            && activeTab !== 'mbti'
             && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
@@ -441,6 +445,11 @@ export default function PerformanceIndividuellePage() {
       {/* ══ ARCHÉTYPES (BÊTA) ═══════════════════════════════════════════════ */}
       {activeTab === 'archetypes' && (
         <PlayerArchetypesPanel playerId={pd.player.id} reports={archetypeReports} loading={archetypesLoading} error={archetypesError} />
+      )}
+
+      {/* ══ PERSONNALITÉ (questionnaire MBTI) ═══════════════════════════════ */}
+      {activeTab === 'mbti' && (
+        <MbtiPlayerPanel key={pd.player.id} player={pd.player} teamId={selected?.team.id} />
       )}
 
       {/* ══ MÉDICAL ══════════════════════════════════════════════════════════ */}

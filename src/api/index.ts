@@ -5,6 +5,7 @@ export { teamsApi }    from './teams';
 export { teamRolesApi } from './teamRoles';
 export { seasonsApi }  from './seasons';
 export { wellnessApi } from './wellness';
+export { mbtiApi }     from './mbti';
 export { rpeApi }      from './rpe';
 export { medicalApi }  from './medical';
 export { actionsApi }  from './actions';

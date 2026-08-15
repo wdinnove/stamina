@@ -154,6 +154,16 @@ export interface WellnessEntry {
   notes?: string;
 }
 
+/** Questionnaire de personnalité — réponses brutes d'une joueuse (une seule passation).
+ *  Le type à 4 lettres n'est pas stocké : il se recalcule depuis `answers` (src/data/mbti). */
+export interface MbtiResponse {
+  id: string;
+  playerId: string;
+  /** Clés = identifiants des 24 questions, valeurs 1–5. */
+  answers: Record<number, number>;
+  submittedAt: string;
+}
+
 export interface MedicalRecord {
   id: string;
   playerId: string;

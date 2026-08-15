@@ -133,7 +133,8 @@ stamina/
 │   │   ├── mailer.js         → MailerSend
 │   │   ├── push.js           → Web Push
 │   │   └── notify.js         → règles de destinataires
-│   ├── send-email.js
+│   ├── send-wellness-links.js → lien du formulaire bien-être (template fixe)
+│   ├── send-mbti-links.js     → lien du questionnaire de personnalité (template fixe)
 │   ├── push/{subscribe,unsubscribe,send}.js
 │   └── cron/notifications.js → appelé par Vercel Cron à 18h UTC
 │
@@ -170,7 +171,13 @@ Tout ce qui commence par `VITE_` finit dans le navigateur. C'est la règle mémo
    `/api/send-email` serait un relais d'envoi ouvert sur le compte MailerSend.
 4. **Le cron refuse de tourner sans `CRON_SECRET`.** Défaut fermé, pas défaut ouvert.
 5. **Aucun email/push automatique vers une joueuse** (données de santé, RGPD) — voir
-   le commentaire en tête de `api/cron/notifications.js`.
+   le commentaire en tête de `api/cron/notifications.js`. Deux endpoints seulement
+   peuvent écrire à une joueuse (`send-wellness-links`, `send-mbti-links`) : contenu
+   figé par un template, destinataires relus en base, droit d'écriture sur l'équipe
+   exigé, déclenchement manuel. Un test de `api/_lib/guards.test.js` le vérifie.
+6. **Les pages publiques** (`/joueur/:id/bien-etre`, `/joueur/:id/mbti`) n'ont aucun
+   accès direct aux tables : elles passent par des fonctions `SECURITY DEFINER`
+   accordées à `anon`, qui revalident tout côté serveur.
 
 ---
 

@@ -653,6 +653,52 @@ Un profil est un jeu d'indicateurs pondérés ; son libellé ne doit rien promet
 
 ---
 
+## 12bis. Questionnaire de personnalité (MBTI)
+
+Fichiers source : [`src/data/mbti/`](../src/data/mbti/) — `scoring.ts` (dépouillement), `friction.ts` (lecture d'équipe)
+
+⚠️ **Outil indicatif, pas un instrument de mesure.** Il rapporte des préférences déclarées un jour donné, sur 24 affirmations. Ce n'est ni un diagnostic psychologique ni une donnée de performance : rien ici ne justifie une décision sportive. La mention est affichée dans l'app, elle n'est pas décorative.
+
+### 12bis.1 Dépouillement
+
+24 affirmations notées de 1 (pas du tout d'accord) à 5 (tout à fait d'accord), 3 par pôle :
+
+```
+score_pôle = somme des 3 réponses de ce pôle          — de 3 à 15
+part_a     = score_a / (score_a + score_b)            — en %, arrondi à l'entier
+lettre     = pôle au score le plus élevé sur l'axe
+```
+
+Les 4 axes : E/I (énergie), S/N (information), T/F (décision), J/P (organisation).
+
+**Les réponses brutes sont stockées, le type ne l'est pas** (`mbti_responses.answers`, JSONB). Le code à 4 lettres est recalculé à chaque affichage : faire évoluer le dépouillement ne demande alors aucune migration, et il n'existe pas deux versions du même profil en base.
+
+### 12bis.2 Égalité stricte : on ne tranche pas
+
+Avec 3 questions par pôle, l'égalité est un résultat fréquent, pas un cas limite. Elle est affichée telle quelle (« T/F à égalité ») :
+
+- l'axe concerné porte un `X` dans le code (`ISXP`) ;
+- `candidates` liste les types compatibles (×2 par axe à égalité) et l'app propose les fiches correspondantes.
+
+Trancher au hasard donnerait un profil faux avec l'assurance d'un profil juste — c'est le même principe que le § 14.
+
+Un questionnaire incomplet ne produit pas de profil partiel : `computeMbtiResult` lève, `safeComputeMbtiResult` renvoie `null`. Le verrou est aussi côté base (`submit_mbti_public` exige les 24 réponses).
+
+### 12bis.3 Frictions d'équipe (bêta)
+
+Deux joueuses ne sont signalées comme opposées sur un axe que si **elles portent des lettres différentes ET que l'écart entre leurs positions dépasse `FRICTION_MIN_GAP` = 25 points de pourcentage**. Sans ce seuil, deux profils voisins du milieu (52 % / 48 %) apparaîtraient en opposition alors que rien ne les sépare dans les faits.
+
+```
+intensité_paire = somme des écarts sur les axes réellement opposés
+paire signalée si intensité ≥ FRICTION_ALERT_SCORE (60)
+```
+
+Une joueuse à égalité sur un axe ne s'oppose à personne sur cet axe : elle est au milieu. Même logique dans la répartition d'équipe, où les égalités sont comptées à part et jamais reversées d'un côté.
+
+Ce que le calcul ne fait pas : mesurer une entente réelle. Il propose des hypothèses de lecture à partir de préférences déclarées, sans rien savoir de l'historique du groupe.
+
+---
+
 ## 13. Documentation des indicateurs (page /aide)
 
 Fichiers source : [`src/data/crossAnalysis.ts`](../src/data/crossAnalysis.ts) (`INDICATOR_DOCS`), [`src/data/pca.ts`](../src/data/pca.ts) (`VARIABLES`), [`src/data/faq.ts`](../src/data/faq.ts)

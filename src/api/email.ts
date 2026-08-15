@@ -30,3 +30,26 @@ export async function sendWellnessLinks(
   }
   return res.json()
 }
+
+/**
+ * Envoie le lien du questionnaire de personnalité aux joueuses sélectionnées.
+ *
+ * Mêmes règles que ci-dessus, et pour la même raison : ni contenu ni adresses ne transitent par
+ * le client. Les joueuses ayant déjà répondu reviennent dans `skipped` — leur lien n'ouvrirait
+ * qu'un écran « déjà rempli ».
+ */
+export async function sendMbtiLinks(
+  teamId: string,
+  playerIds: string[],
+): Promise<WellnessLinksResult> {
+  const res = await fetch('/api/send-mbti-links', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ teamId, playerIds }),
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    throw new Error(detail?.error ?? "Échec de l'envoi des liens")
+  }
+  return res.json()
+}

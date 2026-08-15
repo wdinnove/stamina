@@ -14,7 +14,7 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
@@ -97,7 +97,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
-         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'tactical-brutes' | 'tactical-dashboard'
          | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
@@ -113,6 +113,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'acp':                     'pca',
   'classement-joueurs':      'ranking',
   'archetypes':              'archetypes',
+  'personnalite':            'mbti',
   'charge-physique':         'load',
   'rpe':                     'rpe',
   'bien-etre':               'wellness',
@@ -155,6 +156,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     { key: 'objectives',   slug: 'objectifs',          label: 'Objectifs' },
     { key: 'ranking',      slug: 'classement-joueurs', label: 'Classement joueurs' },
     { key: 'archetypes',   slug: 'archetypes',   label: 'Archétypes (bêta)' },
+    { key: 'mbti',         slug: 'personnalite', label: 'Personnalité' },
     { key: 'impact',       slug: 'impact',       label: 'Impact joueurs' },
     { key: 'pca',          slug: 'acp',          label: 'Facteurs de victoire' },
     { key: 'matches-quarters', slug: 'qt-par-qt', label: 'QT par QT' },
@@ -175,7 +177,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
 const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
-  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', dynamic: 'saison',
+  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', mbti: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
@@ -719,7 +721,7 @@ export default function PerformanceCollectivePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && (
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && activeTab !== 'mbti' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
@@ -1248,6 +1250,11 @@ export default function PerformanceCollectivePage() {
             rankingRows={rankingRows} normalized25={normalize25} onOpenPlayer={openPlayer}
           />
         </Card>
+      )}
+
+      {/* ══ PERSONNALITÉ (questionnaire MBTI) ═══════════════════════════════ */}
+      {activeTab === 'mbti' && (
+        <MbtiTeamPanel roster={players} teamId={selected?.team.id} />
       )}
 
       {/* ══ CHARGE PHYSIQUE (synthèse RPE × ACWR × Fraîcheur × Risque, alignée sur PerformanceIndividuellePage) ══ */}

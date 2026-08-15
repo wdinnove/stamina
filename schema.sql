@@ -17,6 +17,7 @@
 --   11. Session Blocks
 --   12. RPE Entries
 --   13. Wellness Entries
+--   13b. MBTI Responses (questionnaire de personnalité)
 --   14. Medical Records  (+ vue medical_records_full)
 --   15. Player Actions
 --   16. Matches
@@ -481,6 +482,29 @@ CREATE TABLE wellness_entries (
 );
 
 CREATE INDEX ON wellness_entries (player_id, date DESC);
+
+
+-- ────────────────────────────────────────────────────────────────
+-- 13b. MBTI RESPONSES — questionnaire de personnalité
+--      24 affirmations notées de 1 à 5, remplies UNE SEULE FOIS par
+--      la joueuse via un lien public (cf. submit_mbti_public).
+--
+--      On stocke les réponses brutes, jamais le type à 4 lettres :
+--      le profil est recalculé à la volée côté client (src/data/mbti),
+--      donc une évolution du dépouillement n'a pas à migrer de données.
+--      UNIQUE (player_id) porte la règle « une seule passation » ;
+--      le staff peut réinitialiser en supprimant la ligne.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE mbti_responses (
+  id           UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id    UUID  NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
+  -- { "1": 1..5, ..., "24": 1..5 } — clés = MBTI_QUESTIONS[].id, validées par submit_mbti_public
+  answers      JSONB NOT NULL,
+  -- NULL = soumis par la joueuse via le lien public (même convention que wellness_entries)
+  created_by   UUID  REFERENCES profiles(id) ON DELETE SET NULL,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -1054,6 +1078,7 @@ ALTER TABLE session_team_players  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_documents     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rpe_entries           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wellness_entries      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mbti_responses        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE medical_records       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_actions        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE objectives            ENABLE ROW LEVEL SECURITY;
@@ -1280,6 +1305,22 @@ CREATE POLICY "rpe_access" ON rpe_entries
 
 -- Wellness
 CREATE POLICY "wellness_access" ON wellness_entries
+  FOR ALL TO authenticated
+  USING (
+    player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    player_id IN (
+      SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+    )
+  );
+
+-- Questionnaire de personnalité (MBTI) — même portée organisation que le bien-être.
+-- L'écriture par la joueuse elle-même ne passe PAS par ici : elle est anonyme et va
+-- exclusivement par submit_mbti_public (SECURITY DEFINER, §23). Aucun accès `anon` à la table.
+CREATE POLICY "mbti_access" ON mbti_responses
   FOR ALL TO authenticated
   USING (
     player_id IN (
@@ -1797,6 +1838,70 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION submit_wellness_public(UUID, DATE, INT, INT, INT, INT, INT, INT, TEXT) TO anon;
+
+
+-- Questionnaire de personnalité — état du lien public (sans authentification)
+-- Fonction distincte de get_player_public_info pour ne pas coupler le formulaire
+-- bien-être à ce module. Ne divulgue que le nom et le fait d'avoir déjà répondu.
+CREATE OR REPLACE FUNCTION get_mbti_public_info(p_player_id UUID)
+RETURNS TABLE(first_name TEXT, last_name TEXT, already_answered BOOLEAN)
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT p.first_name, p.last_name, EXISTS (SELECT 1 FROM mbti_responses m WHERE m.player_id = p.id)
+  FROM players p
+  WHERE p.id = p_player_id;
+$$;
+GRANT EXECUTE ON FUNCTION get_mbti_public_info(UUID) TO anon;
+
+-- Soumission du questionnaire de personnalité sans auth, UNE SEULE FOIS par joueuse.
+-- Pas de limite de débit ici : l'unicité de player_id suffit à borner l'écriture, et la
+-- contrainte UNIQUE reste le dernier rempart si deux envois partaient en même temps.
+-- Tout est revalidé côté serveur : rien de ce que poste le navigateur n'est cru sur parole.
+CREATE OR REPLACE FUNCTION submit_mbti_public(
+  p_player_id UUID,
+  p_answers   JSONB
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_key   TEXT;
+  v_value JSONB;
+  v_count INT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM players WHERE id = p_player_id) THEN
+    RAISE EXCEPTION 'Joueur introuvable';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM mbti_responses WHERE player_id = p_player_id) THEN
+    RAISE EXCEPTION 'Questionnaire déjà rempli';
+  END IF;
+
+  IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN
+    RAISE EXCEPTION 'Réponses invalides';
+  END IF;
+
+  SELECT COUNT(*) INTO v_count FROM jsonb_object_keys(p_answers);
+  IF v_count <> 24 THEN
+    RAISE EXCEPTION 'Questionnaire incomplet : 24 réponses attendues, % reçues', v_count;
+  END IF;
+
+  -- Clés attendues : '1' à '24' ; valeurs : entiers de 1 à 5.
+  -- Les tests sont imbriqués et non chaînés par OR : Postgres ne garantit pas l'ordre
+  -- d'évaluation d'un booléen, et le cast ::NUMERIC échouerait sur une valeur non numérique.
+  FOR v_key, v_value IN SELECT * FROM jsonb_each(p_answers) LOOP
+    IF v_key !~ '^([1-9]|1[0-9]|2[0-4])$' THEN
+      RAISE EXCEPTION 'Question inconnue : %', v_key;
+    END IF;
+    IF jsonb_typeof(v_value) <> 'number' THEN
+      RAISE EXCEPTION 'Réponse invalide à la question % : attendu un entier de 1 à 5', v_key;
+    END IF;
+    IF (v_value)::NUMERIC NOT IN (1, 2, 3, 4, 5) THEN
+      RAISE EXCEPTION 'Réponse invalide à la question % : attendu un entier de 1 à 5', v_key;
+    END IF;
+  END LOOP;
+
+  INSERT INTO mbti_responses (player_id, answers) VALUES (p_player_id, p_answers);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION submit_mbti_public(UUID, JSONB) TO anon;
 
 
 -- ================================================================
@@ -3598,3 +3703,44 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --
 -- ALTER TABLE training_sessions DROP COLUMN IF EXISTS partner_count;
 -- ALTER TABLE training_sessions DROP COLUMN IF EXISTS partner_names;
+
+-- Questionnaire de personnalité (MBTI)
+--
+-- Une joueuse répond une seule fois, sans compte, via /joueur/<id>/mbti. Les 24 réponses
+-- brutes sont stockées telles quelles : le type à 4 lettres est recalculé à l'affichage
+-- (src/data/mbti/scoring.ts), donc faire évoluer le dépouillement ne demande aucune migration.
+--
+-- L'unicité de player_id EST la règle « une seule passation ». Réinitialiser = supprimer la
+-- ligne (bouton du staff dans l'onglet Personnalité), ce qui rouvre le lien public.
+--
+-- CREATE TABLE IF NOT EXISTS mbti_responses (
+--   id           UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+--   player_id    UUID  NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
+--   answers      JSONB NOT NULL,
+--   created_by   UUID  REFERENCES profiles(id) ON DELETE SET NULL,
+--   submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+--
+-- ALTER TABLE mbti_responses ENABLE ROW LEVEL SECURITY;
+--
+-- DROP POLICY IF EXISTS "mbti_access" ON mbti_responses;
+-- CREATE POLICY "mbti_access" ON mbti_responses
+--   FOR ALL TO authenticated
+--   USING (
+--     player_id IN (
+--       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+--     )
+--   )
+--   WITH CHECK (
+--     player_id IN (
+--       SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())
+--     )
+--   );
+--
+-- Puis exécuter les deux fonctions de la §23 (get_mbti_public_info, submit_mbti_public) avec
+-- leurs GRANT à anon : ce sont les seuls chemins d'accès public, la table reste fermée.
+--
+-- Vérifications :
+--   SELECT has_function_privilege('anon', 'submit_mbti_public(uuid,jsonb)', 'EXECUTE');  -- true
+--   SELECT has_function_privilege('anon', 'get_mbti_public_info(uuid)',     'EXECUTE');  -- true
+--   SELECT has_table_privilege('anon', 'mbti_responses', 'SELECT');                      -- false
