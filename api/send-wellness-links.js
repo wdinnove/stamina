@@ -94,7 +94,11 @@ export default async function handler(req, res) {
         })
         sent.push(name)
       } catch (err) {
-        console.error('[send-wellness-links] échec', player.id, err.message)
+        // `details` porte la réponse du fournisseur, seule à dire POURQUOI l'envoi est refusé
+        // (domaine non vérifié, compte d'essai, variable de template manquante…). Sans elle,
+        // le journal ne disait que « MailerSend error » et un échec restait indiagnosticable.
+        // Côté client la réponse reste muette à dessein : elle passe par le navigateur.
+        console.error('[send-wellness-links] échec', player.id, err.status ?? '', err.message, err.details ?? '')
         failed.push(name)
       }
     }
