@@ -97,7 +97,7 @@ export const attendanceApi = {
   },
 
   /** `sparring` est écrit à chaque fois : c'est la présence qui porte l'étiquette, et une même
-   *  joueuse peut être invitée sur une séance et titulaire sur une autre. */
+   *  joueur peut être invité sur une séance et titulaire sur une autre. */
   async setAttendance(input: {
     sessionId: string; playerId: string; status: TrainingAttendance['status']; sparring?: boolean;
   }): Promise<void> {

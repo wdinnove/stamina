@@ -3,13 +3,13 @@ import { teamWellnessAvg, aggregateTeamWellnessDaily } from './wellness';
 import { roundedAvg } from './avg';
 import type { WellnessEntry } from '../data/types';
 
-/** Entrée minimale : seules la date, la joueuse et les métriques comptent pour ces tests. */
+/** Entrée minimale : seules la date, le joueur et les métriques comptent pour ces tests. */
 const entry = (playerId: string, date: string, score: number, fatigue = 5): WellnessEntry => ({
   id: `${playerId}-${date}-${score}`, playerId, date, score,
   fatigue, mood: 5, stress: 5, motivation: 5, sleep: 5, soreness: 5,
 } as WellnessEntry);
 
-describe('teamWellnessAvg — une voix par joueuse', () => {
+describe('teamWellnessAvg — une voix par joueur', () => {
   it('ne laisse pas la fréquence de saisie pondérer le score d\'équipe', () => {
     // Alice saisit tous les jours et va bien ; Bea saisit une fois et va mal.
     const entries = [
@@ -31,7 +31,7 @@ describe('teamWellnessAvg — une voix par joueuse', () => {
     expect(teamWellnessAvg(entries, 'fatigue')).toEqual({ value: 6, players: 2 });
   });
 
-  it('vaut la moyenne personnelle quand le périmètre ne contient qu\'une joueuse', () => {
+  it('vaut la moyenne personnelle quand le périmètre ne contient qu\'un joueur', () => {
     const entries = [entry('alice', '2026-01-05', 6), entry('alice', '2026-01-06', 8)];
     expect(teamWellnessAvg(entries)).toEqual({ value: 7, players: 1 });
   });
@@ -42,7 +42,7 @@ describe('teamWellnessAvg — une voix par joueuse', () => {
 });
 
 describe('aggregateTeamWellnessDaily', () => {
-  it('ne compte pas double une joueuse ayant saisi deux fois le même jour', () => {
+  it('ne compte pas double un joueur ayant saisi deux fois le même jour', () => {
     const entries = [
       entry('alice', '2026-01-05', 4), entry('alice', '2026-01-05', 6), // sa journée : 5
       entry('bea', '2026-01-05', 9),

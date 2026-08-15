@@ -169,7 +169,7 @@ Tout ce qui commence par `VITE_` finit dans le navigateur. C'est la règle mémo
 3. **Chaque fonction `api/` vérifie l'appelant** via `getAuthedUser(req)`. Sans ça,
    `/api/send-email` serait un relais d'envoi ouvert sur le compte MailerSend.
 4. **Le cron refuse de tourner sans `CRON_SECRET`.** Défaut fermé, pas défaut ouvert.
-5. **Aucun email/push automatique vers une joueuse** (données de santé, RGPD) — voir
+5. **Aucun email/push automatique vers un joueur** (données de santé, RGPD) — voir
    le commentaire en tête de `api/cron/notifications.js`.
 
 ---

@@ -1083,7 +1083,7 @@ export default function TrainingSessionDetailPage() {
         await attendanceApi.deleteAttendance(session.id, playerId);
         setAttendance(prev => prev.filter(a => a.playerId !== playerId));
       } else {
-        // Cette page ne pointe que l'effectif : une partenaire s'invite depuis les présences.
+        // Cette page ne pointe que l'effectif : un partenaire s'invite depuis les présences.
         await attendanceApi.setAttendance({ sessionId: session.id, playerId, status });
         setAttendance(prev => [
           ...prev.filter(a => a.playerId !== playerId),
@@ -1197,7 +1197,7 @@ export default function TrainingSessionDetailPage() {
   const attMap  = Object.fromEntries(attendance.map(a => [a.playerId, a.status]));
   const rpeMap  = Object.fromEntries(rpeEntries.map(e => [e.playerId, e]));
 
-  /** Partenaires d'entraînement effectivement venues — comptées à part, jamais avec l'effectif. */
+  /** Partenaires d'entraînement effectivement venus — comptés à part, jamais avec l'effectif. */
   const sparringCount = attendance.filter(a => a.sparring && (a.status === 'present' || a.status === 'late')).length;
   const sparringIds   = new Set(attendance.filter(a => a.sparring).map(a => a.playerId));
 
@@ -1237,15 +1237,15 @@ export default function TrainingSessionDetailPage() {
     );
   }
 
-  // Un nombre de personnes compte tout le monde : une partenaire était bien là. Seuls les
+  // Un nombre de personnes compte tout le monde : un partenaire était bien là. Seuls les
   // POURCENTAGES de présence se limitent à l'effectif — c'est l'assiduité de l'équipe qu'ils
-  // mesurent, et une invitée n'y a pas sa place.
+  // mesurent, et un invité n'y a pas sa place.
   const presentCount    = attendance.filter(a => a.status === 'present').length;
   const lateCount       = attendance.filter(a => a.status === 'late').length;
-  // Exception : une partenaire qui ne vient pas n'est pas une absence, elle n'était pas attendue.
+  // Exception : un partenaire qui ne vient pas n'est pas une absence, il n'était pas attendu.
   const absentCount     = attendance.filter(a => !a.sparring && a.status === 'absent').length;
   const rpeValues       = rpeEntries.map(e => e.rpe);
-  // Moyenne d'UNE séance : une seule entrée par joueuse, donc moyenne simple.
+  // Moyenne d'UNE séance : une seule entrée par joueur, donc moyenne simple.
   const avgRpe          = roundedAvg(rpeValues);
   const totalLoad       = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
   const blockDuration   = blocks.reduce((s, b) => s + b.duration, 0);

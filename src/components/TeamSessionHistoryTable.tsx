@@ -55,8 +55,8 @@ export function TeamSessionHistoryTable({
       const avgPlayers = Math.round(totalPlayers / count);
       return {
         dateFrom: sorted[0], dateTo: sorted[sorted.length - 1],
-        // Une semaine couvre plusieurs séances auxquelles les joueuses n'ont pas toutes participé :
-        // règle d'équipe (moyenne par joueuse puis moyenne des joueuses), et non la moyenne des
+        // Une semaine couvre plusieurs séances auxquelles les joueurs n'ont pas tous participé :
+        // règle d'équipe (moyenne par joueur puis moyenne des joueurs), et non la moyenne des
         // moyennes de séance, qui pondérait chaque séance par son effectif présent.
         rpe:      teamAvgRpe(entries),
         // Charge/joueur ramenée à l'effectif DISTINCT de la semaine (pas la moyenne d'effectif par séance)
@@ -147,7 +147,7 @@ export function TeamSessionHistoryTable({
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.totalDur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
                     <td style={{ padding: '8px 14px' }}>
                       <span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{fmt1(w.rpe.value)}</span>
-                      {/* Le n rend la moyenne non pondérée lisible : sur peu de joueuses, une saisie isolée pèse lourd. */}
+                      {/* Le n rend la moyenne non pondérée lisible : sur peu de joueurs, une saisie isolée pèse lourd. */}
                       <span style={{ color: '#475569', fontSize: '0.68rem', marginLeft: 5 }}>· {w.rpe.players}</span>
                     </td>
                     <td style={{ padding: '8px 14px', color: cfg.color, fontWeight: 700, fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace' }}>{w.avgUa.toLocaleString('fr')}</td>

@@ -12,8 +12,8 @@ import type { Player, SessionType, TeamSessionRow, PlayerRank } from '../data/ty
 export interface TeamChartDay {
   label: string;
   date: string;
-  /** Moyenne du jour : chaque joueuse n'a qu'une entrée ce jour-là, donc la moyenne à plat est
-   *  déjà une voix par joueuse — pas besoin d'agrégation en deux étapes ici. */
+  /** Moyenne du jour : chaque joueur n'a qu'une entrée ce jour-là, donc la moyenne à plat est
+   *  déjà une voix par joueur — pas besoin d'agrégation en deux étapes ici. */
   avg: number;
   max: number | null;
   min: number | null;
@@ -21,8 +21,8 @@ export interface TeamChartDay {
 
 export interface TeamKpis {
   sessions: number;
-  /** RPE moyen de la période — règle d'équipe (moyenne par joueuse puis moyenne des joueuses),
-   *  car la période couvre plusieurs séances auxquelles les joueuses n'ont pas toutes participé. */
+  /** RPE moyen de la période — règle d'équipe (moyenne par joueur puis moyenne des joueurs),
+   *  car la période couvre plusieurs séances auxquelles les joueurs n'ont pas tous participé. */
   avg: TeamAverage;
   max: number;
   min: number;
@@ -162,7 +162,7 @@ export function useTeamRpeHistory(
             duration:   s.plannedDuration,
             nbPlayers:  vals.length,
             entries:    entries.map(e => ({ playerId: e.playerId, rpe: e.rpe })),
-            // Une seule séance ⇒ une seule entrée par joueuse : moyenne à plat = une voix par joueuse.
+            // Une seule séance ⇒ une seule entrée par joueur : moyenne à plat = une voix par joueur.
             avg:        roundedAvg(vals) ?? 0,
             max:        Math.max(...vals),
             min:        Math.min(...vals),
@@ -204,7 +204,7 @@ export function useTeamRpeHistory(
           rpe:  teamAvgRpe(w.entries),
         })));
 
-      // Charge hebdo moyenne de la PÉRIODE — une voix par joueuse, donc calculée sur les lignes
+      // Charge hebdo moyenne de la PÉRIODE — une voix par joueur, donc calculée sur les lignes
       // brutes (et non en moyennant les valeurs hebdo ci-dessus, qui donnerait une voix par semaine).
       setTeamPeriodAvgWeeklyLoad(teamAvgWeeklyLoad(rpeRows.map(r => ({
         date: sessionMap.get(r.sessionId)?.date ?? '',
@@ -229,7 +229,7 @@ export function useTeamRpeHistory(
         return {
           label: fmtDateShort(dateStr),
           date:  dateStr,
-          // Un seul jour ⇒ une seule entrée par joueuse : moyenne à plat = une voix par joueuse.
+          // Un seul jour ⇒ une seule entrée par joueur : moyenne à plat = une voix par joueur.
           avg:   roundedAvg(vals) ?? 0,
           max:   vals.length ? Math.max(...vals) : null,
           min:   vals.length ? Math.min(...vals) : null,
@@ -267,7 +267,7 @@ export function useTeamRpeHistory(
       const statsRaw: PlayerStatsRaw[] = Array.from(playerMap.entries()).map(([playerId, data]) => ({
         playerId,
         nbSessions: data.sessions.size,
-        // Valeurs d'UNE joueuse : moyenne simple de ses propres saisies (c'est précisément la
+        // Valeurs d'UN joueur : moyenne simple de ses propres saisies (c'est précisément la
         // valeur individuelle que la moyenne d'équipe agrège ensuite sans pondération).
         avgRpe:     roundedAvg(data.rpes) ?? 0,
         maxRpe:     Math.max(...data.rpes),
@@ -294,7 +294,7 @@ export function useTeamRpeHistory(
         if (!rows.length) { setTeamSeasonAvgRpe(EMPTY_TEAM_AVERAGE); setTeamSeasonAvgWeeklyLoad(EMPTY_TEAM_AVERAGE); return; }
         setTeamSeasonAvgRpe(teamAvgRpe(rows));
 
-        // Règle d'équipe : charge hebdo moyenne par joueuse puis moyenne des joueuses — même
+        // Règle d'équipe : charge hebdo moyenne par joueur puis moyenne des joueurs — même
         // fonction que la moyenne de période, pour que le delta « vs saison » compare deux
         // chiffres calculés à l'identique.
         setTeamSeasonAvgWeeklyLoad(teamAvgWeeklyLoad(rows.map(r => ({

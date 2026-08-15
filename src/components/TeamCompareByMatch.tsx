@@ -12,7 +12,7 @@ import { LAYER } from '../styles/layers';
 interface Props {
   /** Matchs de l'équipe sur la saison sélectionnée (pool sélectionnable pour les groupes A/B) */
   teamStats: TeamMatchStat[];
-  /** Stats joueurs (toutes joueuses confondues) sur la même saison — pour la moyenne d'évaluation par groupe */
+  /** Stats joueurs (tous joueurs confondus) sur la même saison — pour la moyenne d'évaluation par groupe */
   allStats: MatchStat[];
   allRpe: RPEEntry[];
   allWellness: WellnessEntry[];
@@ -139,7 +139,7 @@ export function TeamCompareByMatch({ teamStats, allStats, allRpe, allWellness, s
 
   const rpeInRange = (range: { from: string; to: string } | null) => range ? allRpe.filter(e => e.date >= range.from && e.date <= range.to) : [];
   const wellnessInRange = (range: { from: string; to: string } | null) => range ? allWellness.filter(w => w.date >= range.from && w.date <= range.to) : [];
-  // Règle d'équipe (§ 0) : moyenne par joueuse puis moyenne non pondérée des joueuses — les deux
+  // Règle d'équipe (§ 0) : moyenne par joueur puis moyenne non pondérée des joueurs — les deux
   // groupes de matchs comparés n'ont pas le même effectif présent.
   const evalAvgOf = (ids: Set<string>) =>
     teamAverageOfField(

@@ -79,7 +79,7 @@ describe('aucun envoi d\'email générique', () => {
     expect(src).not.toMatch(/req\.body[^\n]*\bto\b/)
   })
 
-  it('le lien envoyé aux joueuses ne vient pas des en-têtes de la requête', () => {
+  it('le lien envoyé aux joueurs ne vient pas des en-têtes de la requête', () => {
     // Un Host falsifié enverrait un lien vers un domaine ressemblant.
     const src = readFileSync(join(API, 'send-wellness-links.js'), 'utf8')
     expect(src).not.toMatch(/x-forwarded-host|headers\.host/)

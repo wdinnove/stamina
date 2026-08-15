@@ -307,8 +307,8 @@ CREATE TRIGGER trg_players_updated_at
 
 -- ────────────────────────────────────────────────────────────────
 -- 9. PLAYER SEASON
---    Inscription d'une joueuse à une saison
---    Contrainte d'unicité : une joueuse par saison max
+--    Inscription d'un joueur à une saison
+--    Contrainte d'unicité : un joueur par saison max
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE player_season (
@@ -326,7 +326,7 @@ CREATE INDEX ON player_season (season_id);
 -- ────────────────────────────────────────────────────────────────
 -- 10. TRAINING SESSIONS
 --     Entité centrale du RPE : le coach crée UNE session,
---     chaque joueuse y soumet son RPE individuellement
+--     chaque joueur y soumet son RPE individuellement
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE training_sessions (
@@ -427,7 +427,7 @@ CREATE INDEX ON session_team_players (session_team_id);
 
 -- ────────────────────────────────────────────────────────────────
 -- 12. RPE ENTRIES
---     UNIQUE (session_id, player_id) : une entrée par joueuse par session
+--     UNIQUE (session_id, player_id) : une entrée par joueur par session
 --     Absence = absence de ligne (pas de valeur NULL)
 -- ────────────────────────────────────────────────────────────────
 
@@ -675,7 +675,7 @@ CREATE TRIGGER trg_match_stats_updated_at
 
 -- ────────────────────────────────────────────────────────────────
 -- 17b. OPPONENT MATCH STATS (statistiques adverses individuelles)
---      Saisie manuelle des stats des joueuses adverses par match
+--      Saisie manuelle des stats des joueurs adverses par match
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE opponent_match_stats (
@@ -867,14 +867,14 @@ CREATE TABLE staff_meetings (
 -- 20. TRAINING ATTENDANCE
 -- ────────────────────────────────────────────────────────────────
 
--- `sparring` distingue une partenaire d'entraînement d'une joueuse de l'effectif. Elle vient
--- de l'organisation sans appartenir à l'équipe de la séance : elle occupe le terrain et peut
+-- `sparring` distingue un partenaire d'entraînement d'un joueur de l'effectif. Il vient
+-- de l'organisation sans appartenir à l'équipe de la séance : il occupe le terrain et peut
 -- porter un RPE — qui compte dans SA charge — mais n'entre dans aucune statistique de l'équipe
 -- qui l'invite (taux de présence, moyennes, analyses).
 --
--- L'étiquette porte sur la PRÉSENCE, jamais sur la joueuse : la même joueuse est titulaire dans
--- son équipe, où elle doit compter normalement, et partenaire ici. Un statut porté par la
--- joueuse fausserait les statistiques de sa propre équipe.
+-- L'étiquette porte sur la PRÉSENCE, jamais sur le joueur : le même joueur est titulaire dans
+-- son équipe, où il doit compter normalement, et partenaire ici. Un statut porté par le
+-- joueur fausserait les statistiques de sa propre équipe.
 CREATE TABLE training_attendance (
   id         UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID    NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
@@ -1146,13 +1146,13 @@ CREATE POLICY "season_write" ON seasons
   USING      (team_id IN (SELECT * FROM admin_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
 
--- Joueuses : cloisonnement par organisation (traitement par équipe : cf. plan, phase 8)
+-- Joueurs : cloisonnement par organisation (traitement par équipe : cf. plan, phase 8)
 CREATE POLICY "player_access" ON players
   FOR ALL TO authenticated
   USING    (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()))
   WITH CHECK (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
 
--- Inscription joueuse/saison : lecture = équipes accessibles, écriture = editor+
+-- Inscription joueur/saison : lecture = équipes accessibles, écriture = editor+
 CREATE POLICY "player_season_select" ON player_season
   FOR SELECT TO authenticated
   USING (
@@ -3182,9 +3182,9 @@ BEGIN
   END IF;
 
   -- Effectif rattaché à l'équipe par N'IMPORTE QUEL chemin de données, et pas
-  -- seulement par player_season : une joueuse peut porter un RPE ou une feuille
+  -- seulement par player_season : un joueur peut porter un RPE ou une feuille
   -- de match sur l'équipe sans inscription en saison (import, désinscription en
-  -- cours de saison). S'appuyer sur player_season seul laisserait ces joueuses
+  -- cours de saison). S'appuyer sur player_season seul laisserait ces joueurs
   -- derrière, avec des stats d'équipe amputées et sans nom.
   SELECT array_agg(DISTINCT u.pid) INTO v_players FROM (
     SELECT ps.player_id AS pid
@@ -3216,10 +3216,10 @@ BEGIN
 
   v_players := COALESCE(v_players, ARRAY[]::UUID[]);
 
-  -- Garde-fou : une joueuse inscrite à la saison d'une AUTRE équipe est partagée.
+  -- Garde-fou : un joueur inscrit à la saison d'une AUTRE équipe est partagé.
   -- La déplacer la ferait sortir de l'organisation de cette autre équipe, dont
   -- elle disparaîtrait (player_access). Ces cas demandent une duplication de la
-  -- fiche joueuse, pas un déplacement — d'où l'arrêt plutôt qu'un choix implicite.
+  -- fiche joueur, pas un déplacement — d'où l'arrêt plutôt qu'un choix implicite.
   SELECT string_agg(pl.last_name || ' ' || pl.first_name, ', ' ORDER BY pl.last_name)
     INTO v_shared
     FROM players pl
@@ -3230,7 +3230,7 @@ BEGIN
      );
 
   IF v_shared IS NOT NULL AND NOT p_allow_shared THEN
-    RAISE EXCEPTION 'Joueuses partagées avec une autre équipe : %. '
+    RAISE EXCEPTION 'Joueurs partagés avec une autre équipe : %. '
                     'Dupliquez-les puis relancez, ou forcez avec p_allow_shared => TRUE.', v_shared;
   END IF;
 
@@ -3253,7 +3253,7 @@ BEGIN
   END IF;
   etape  := 'players.organization_id';
   lignes := v_n;
-  action := format('%s joueuse(s) rattachée(s) à l''équipe, dont %s à déplacer',
+  action := format('%s joueur(s) rattaché(s) à l''équipe, dont %s à déplacer',
                    cardinality(v_players), v_n);
   RETURN NEXT;
 
@@ -3383,9 +3383,9 @@ UPDATE objectives o
    AND o.team_id   = s.team_id
    AND o.created_at::date BETWEEN s.start_date AND s.end_date;
 
--- ── Backfill : lignes rattachées à une JOUEUSE sans équipe ──────────────────
+-- ── Backfill : lignes rattachées à un JOUEUR sans équipe ──────────────────
 -- L'équipe est alors indirecte (player_season → seasons) : on prend la saison de
--- la joueuse qui couvre la date.
+-- le joueur qui couvre la date.
 UPDATE player_actions a
    SET season_id = ps.season_id
   FROM player_season ps
@@ -3406,7 +3406,7 @@ UPDATE objectives o
 
 -- ── Orphelines : aucune saison ne couvre la date ────────────────────────────
 -- (tâche datée hors saison, objectif créé pendant l'intersaison…) → saison
--- courante de l'équipe, ou de la seule équipe de la joueuse le cas échéant.
+-- courante de l'équipe, ou de la seule équipe du joueur le cas échéant.
 UPDATE player_actions a
    SET season_id = s.id
   FROM seasons s
@@ -3444,7 +3444,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
   ON objectives (season_id) WHERE active;
 
 -- RLS : inchangée. Les policies existantes cloisonnent déjà par équipe
--- (writable_team_ids / accessible_team_ids) ou par organisation via la joueuse ;
+-- (writable_team_ids / accessible_team_ids) ou par organisation via le joueur ;
 -- une saison appartenant toujours à une équipe, season_id n'ouvre aucun accès.
 
 -- ── Contrôle avant de passer en NOT NULL ────────────────────────────────────
@@ -3579,7 +3579,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 
 -- Présences : partenaires d'entraînement
 --
--- Une partenaire est une joueuse de l'ORGANISATION invitée sur une séance d'une équipe dont
+-- Un partenaire est un joueur de l'ORGANISATION invité sur une séance d'une équipe dont
 -- elle ne fait pas partie. Elle remplace le couple `partner_count` / `partner_names`, qui ne
 -- retenait qu'un nombre et du texte libre : impossible de lui attacher un RPE, donc impossible
 -- de compter la séance dans sa charge.
@@ -3591,7 +3591,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- ALTER TABLE training_attendance ADD COLUMN IF NOT EXISTS sparring BOOLEAN NOT NULL DEFAULT FALSE;
 --
 -- Les anciens partenaires ne sont pas repris : un nombre et des noms libres ne désignent
--- aucune joueuse. Relever `partner_names` avant de supprimer les colonnes, le texte est perdu
+-- aucun joueur. Relever `partner_names` avant de supprimer les colonnes, le texte est perdu
 -- ensuite :
 --   SELECT id, date, partner_count, partner_names
 --     FROM training_sessions WHERE partner_count > 0 OR partner_names IS NOT NULL;

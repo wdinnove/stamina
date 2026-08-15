@@ -92,7 +92,7 @@ export default function RPEPage() {
 
   // ── Roster
   const [roster, setRoster]               = useState<Player[]>([]);
-  /** Joueuses du club hors effectif : une partenaire invitée sur la séance en fait partie. */
+  /** Joueurs du club hors effectif : un partenaire invité sur la séance en fait partie. */
   const [orgPlayers,   setOrgPlayers]     = useState<Player[]>([]);
   const [sessionAtt,   setSessionAtt]     = useState<TrainingAttendance[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -127,13 +127,13 @@ export default function RPEPage() {
   const [teamComboView, setTeamComboView]       = useState<'session' | 'week'>('week');
   const [teamDisplay, setTeamDisplay]           = useState<TeamDisplayMode>('chart');
 
-  // La liste du club sert à nommer les partenaires pointées sur la séance.
+  // La liste du club sert à nommer les partenaires pointés sur la séance.
   useEffect(() => {
     playersApi.list().then(setOrgPlayers).catch(() => {});
   }, [selected?.team.id]);
 
   /**
-   * Présences de la séance choisie : la saisie se limite aux joueuses qui étaient là.
+   * Présences de la séance choisie : la saisie se limite aux joueurs qui étaient là.
    * Tant qu'aucune séance n'est choisie (saisie manuelle), il n'y a rien à filtrer.
    */
   useEffect(() => {
@@ -211,8 +211,8 @@ export default function RPEPage() {
   } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster);
 
   /**
-   * Joueuses à saisir. Sur une séance existante, celles qui y étaient — effectif et partenaires
-   * d'entraînement confondues, une partenaire ayant elle aussi une charge à porter.
+   * Joueurs à saisir. Sur une séance existante, ceux qui y étaient — effectif et partenaires
+   * d'entraînement confondus, un partenaire ayant lui aussi une charge à porter.
    *
    * Le repli sur l'effectif complet quand aucune présence n'est pointée est délibéré : beaucoup
    * de séances n'ont pas d'appel, et une grille vide empêcherait purement et simplement de
@@ -233,11 +233,11 @@ export default function RPEPage() {
   );
 
   // ── Derived (collective tab)
-  // Bornées à la grille : une valeur laissée par une joueuse finalement absente ne doit pas
+  // Bornées à la grille : une valeur laissée par un joueur finalement absent ne doit pas
   // repartir à l'enregistrement.
   const activeEntries = Object.entries(rpeValues)
     .filter(([id, v]) => v !== null && gridPlayers.some(p => p.id === id)) as [string, number][];
-  // Estimation à la saisie : une seule séance, une entrée par joueuse — moyenne simple.
+  // Estimation à la saisie : une seule séance, une entrée par joueur — moyenne simple.
   const avgRpe        = roundedAvg(activeEntries.map(([, v]) => v)) ?? 0;
   const estimatedLoad = Math.round(avgRpe * duration);
 
@@ -267,9 +267,9 @@ export default function RPEPage() {
   const teamWeeklyRpeData = teamWeekRows
     .filter(w => w.rpe.value !== null)
     .map(w => ({ date: fmtDateShort(w.week), rpe: w.rpe.value! }));
-  // Charge hebdo moyenne de la période — règle d'équipe (une voix par joueuse), calculée par le
+  // Charge hebdo moyenne de la période — règle d'équipe (une voix par joueur), calculée par le
   // hook sur les lignes brutes. Moyenner les valeurs hebdo ci-dessus donnerait une voix par
-  // SEMAINE : une joueuse active 1 semaine sur 4 n'y pèserait qu'un quart.
+  // SEMAINE : un joueur actif 1 semaine sur 4 n'y pèserait qu'un quart.
   const avgWeeklyLoadTeam = teamPeriodAvgWeeklyLoad.value ?? 0;
   const tierTeam = getWeekTier(avgWeeklyLoadTeam, thresholds.lightMax, thresholds.normalMax);
   const teamShowSeasonDiff = dateRange.preset !== 'saison';

@@ -4,7 +4,7 @@ import type { TrainingAttendance } from '../data/types';
 /** Seul le statut est nécessaire pour un taux de présence — la date est filtrée par l'appelant. */
 type AttendanceRow = { status: TrainingAttendance['status'] };
 
-/** Une joueuse en retard a bien participé à la séance : elle compte comme présente. */
+/** Un joueur en retard a bien participé à la séance : il compte comme présent. */
 const isPresent = (a: AttendanceRow) => a.status === 'present' || a.status === 'late';
 
 /**
@@ -19,13 +19,13 @@ function rawPresenceRate(rows: AttendanceRow[]): number | null {
   return rows.filter(isPresent).length / rows.length * 100;
 }
 
-/** Taux de présence d'UNE joueuse, en %, sur les séances où elle était attendue (arrondi à l'entier pour l'affichage). */
+/** Taux de présence d'UN joueur, en %, sur les séances où il était attendu (arrondi à l'entier pour l'affichage). */
 export function presenceRate(rows: AttendanceRow[]): number | null {
   const raw = rawPresenceRate(rows);
   return raw === null ? null : Math.round(raw);
 }
 
-/** Seuils de coloration d'un taux de présence, identiques joueuse et équipe (≥ 85 % / ≥ 70 %). */
+/** Seuils de coloration d'un taux de présence, identiques joueur et équipe (≥ 85 % / ≥ 70 %). */
 export function presenceColor(pct: number | null): string {
   if (pct === null) return '#475569';
   return pct >= 85 ? '#00E5A0' : pct >= 70 ? '#F59E0B' : '#EF4444';
@@ -35,9 +35,9 @@ export function presenceColor(pct: number | null): string {
  * Taux de présence d'ÉQUIPE — règle de l'app (cf. `teamAverage`) : moyenne NON PONDÉRÉE des taux
  * individuels.
  *
- * Et non `Σ présences / Σ attendus`, qui pondère par le nombre de séances attendues : une joueuse
- * arrivée en cours de saison, ou absente de longue durée, y pèse mécaniquement moins qu'une
- * présente depuis le premier jour. « La joueuse type est présente à 82 % » est ce que le staff
+ * Et non `Σ présences / Σ attendus`, qui pondère par le nombre de séances attendues : un joueur
+ * arrivé en cours de saison, ou absent de longue durée, y pèse mécaniquement moins qu'un
+ * présent depuis le premier jour. « Le joueur type est présent à 82 % » est ce que le staff
  * veut lire, pas « 82 % des présences attendues ont eu lieu ».
  *
  * `attendance` doit déjà être filtré sur la période voulue.

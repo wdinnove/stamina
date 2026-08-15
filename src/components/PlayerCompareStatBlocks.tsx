@@ -88,7 +88,7 @@ function threePtRate(ms: MatchStat[]): number | null {
 
 /** FT Rate : un RATIO (0,28 = 28 lancers tentés pour 100 tirs), pas un pourcentage — même forme
  *  qu'en base (`ft_rate NUMERIC(4,2)`), que le boxscore avancé et que la fiche match. Cette
- *  surface l'affichait ×100 avec un suffixe « % », si bien que la même joueuse lisait 0,28 dans un
+ *  surface l'affichait ×100 avec un suffixe « % », si bien que le même joueur lisait 0,28 dans un
  *  onglet et 28 % dans l'autre. */
 function ftRate(ms: MatchStat[]): number | null {
   const fga = ms.reduce((s, m) => s + m.fg2a + m.fg3a, 0);

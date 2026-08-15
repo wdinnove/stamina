@@ -11,7 +11,7 @@ import type { RPEEntry, WellnessEntry, TeamMatchStat, MatchStat } from '../data/
 interface Props {
   /** Matchs d'équipe de la saison sélectionnée (pool filtrable par période) */
   teamStats: TeamMatchStat[];
-  /** Stats joueurs (toutes joueuses confondues) sur la même saison — pour la moyenne d'évaluation par période */
+  /** Stats joueurs (tous joueurs confondus) sur la même saison — pour la moyenne d'évaluation par période */
   allStats: MatchStat[];
   allRpe: RPEEntry[];
   allWellness: WellnessEntry[];
@@ -48,8 +48,8 @@ export function TeamCompareByPeriod({ teamStats, allStats, allRpe, allWellness, 
   const inRangeA = (iso: string) => iso >= rangeA.from && iso <= rangeA.to;
   const inRangeB = (iso: string) => iso >= rangeB.from && iso <= rangeB.to;
 
-  // Règle d'équipe (§ 0) : moyenne par joueuse puis moyenne non pondérée des joueuses. Les deux
-  // périodes comparées ne couvrent pas le même nombre de matchs par joueuse ; une moyenne à plat
+  // Règle d'équipe (§ 0) : moyenne par joueur puis moyenne non pondérée des joueurs. Les deux
+  // périodes comparées ne couvrent pas le même nombre de matchs par joueur ; une moyenne à plat
   // des lignes d'éval y pondérerait l'écart par la disponibilité.
   const evalAvgOf = (inRange: (iso: string) => boolean) =>
     teamAverageOfField(

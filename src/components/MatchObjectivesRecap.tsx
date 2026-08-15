@@ -60,7 +60,7 @@ function ObjectiveLine({ row }: { row: Row }) {
 /* ── Composant ───────────────────────────────────────────────────────────── */
 
 /**
- * Récapitulatif des objectifs sur CE match — collectifs, puis par joueuse.
+ * Récapitulatif des objectifs sur CE match — collectifs, puis par joueur.
  *
  * Volontairement en lecture seule, et pas une réutilisation d'`ObjectivesPanel` : sur une fiche
  * match, la question n'est pas de gérer les objectifs mais de savoir lesquels ont été tenus ce
@@ -79,7 +79,7 @@ export function MatchObjectivesRecap({ match, teamStats, individualStats, player
     setLoading(true);
     Promise.all([
       objectivesApi.list({ teamId: match.teamId, seasonId: match.seasonId, active: true }),
-      // Objectifs de joueuses de la saison : une requête, filtrée ensuite par joueuse présente.
+      // Objectifs de joueurs de la saison : une requête, filtrée ensuite par joueur présent.
       objectivesApi.list({ seasonId: match.seasonId, active: true }),
     ])
       .then(([team, all]) => {
@@ -103,7 +103,7 @@ export function MatchObjectivesRecap({ match, teamStats, individualStats, player
     });
   }, [teamObjectives, teamStats, match.date]);
 
-  /** Idem par joueuse, depuis sa ligne de stats du match. */
+  /** Idem par joueur, depuis sa ligne de stats du match. */
   const playerGroups = useMemo(() => {
     const statByPlayer = new Map(individualStats.map(s => [s.playerId, s]));
     const teamStatsByMatchId = new Map(teamStats?.matchId ? [[teamStats.matchId, teamStats]] : []);

@@ -146,7 +146,7 @@ describe('calcPlayerAdvancedForMatch', () => {
 });
 
 describe('calcPlayerAdvancedForPeriod', () => {
-  /** 3 matchs normaux + une entrée de 2 min où la joueuse rentre son unique tir, un 3 points. */
+  /** 3 matchs normaux + une entrée de 2 min où le joueur rentre son unique tir, un 3 points. */
   const m = (matchId: string, o: Partial<PlayerAdvancedInput>): PlayerAdvancedPeriodInput => ({
     fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, fta: 0, bp: 0, pts: 0, pd: 0, ro: 0, rd: 0, min: 30,
     matchId, ...o,

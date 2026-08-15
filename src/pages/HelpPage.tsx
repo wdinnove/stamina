@@ -25,7 +25,7 @@ const SENSE_LABEL = {
   context: { text: 'Contexte',          color: '#64748B' },
 } as const;
 
-/** Tous les indicateurs documentés, dédoublonnés (un même indicateur sert joueuse et équipe). */
+/** Tous les indicateurs documentés, dédoublonnés (un même indicateur sert joueur et équipe). */
 function allIndicators(): IndicatorDef[] {
   const byKey = new Map<string, IndicatorDef>();
   for (const def of [...playerAttributeIndicators(), ...teamIndicators()]) {
@@ -179,9 +179,9 @@ function ArchetypesSection() {
         <CardTitle mb={10}>Comment lire un score d'archétype</CardTitle>
         <div style={{ color: '#94A3B8', fontSize: '0.82rem', lineHeight: 1.65, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <p style={{ margin: 0 }}>
-            Un score n'est pas une note absolue : il situe la joueuse <strong style={{ color: '#F1F5F9' }}>par rapport
-            aux autres joueuses de son groupe de postes</strong>, sur les indicateurs du profil. 50 % = au milieu
-            du groupe, 90 % = parmi les plus marquées.
+            Un score n'est pas une note absolue : il situe le joueur <strong style={{ color: '#F1F5F9' }}>par rapport
+            aux autres joueurs de son groupe de postes</strong>, sur les indicateurs du profil. 50 % = au milieu
+            du groupe, 90 % = parmi les plus marqués.
           </p>
           <p style={{ margin: 0 }}>
             Deux mentions accompagnent un score, et elles ne disent pas la même chose :
@@ -189,13 +189,13 @@ function ArchetypesSection() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 2 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <Badge color="#F59E0B" label="?" size="sm" />
-              <span><strong style={{ color: '#F1F5F9' }}>Fiabilité</strong> — dépend de la joueuse : trop peu de
+              <span><strong style={{ color: '#F1F5F9' }}>Fiabilité</strong> — dépend du joueur : trop peu de
               matchs ou de minutes pour que le score soit significatif. Il est alors rapproché de la moyenne.</span>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <Badge color="#F59E0B" label="Estimation" size="sm" />
-              <span><strong style={{ color: '#F1F5F9' }}>Limite de méthode</strong> — dépend du profil, jamais de la
-              joueuse : certains rôles ne sont pas entièrement mesurables avec les données saisies (pas de types
+              <span><strong style={{ color: '#F1F5F9' }}>Limite de méthode</strong> — dépend du profil, jamais du
+              joueur : certains rôles ne sont pas entièrement mesurables avec les données saisies (pas de types
               d'action, pas de déviations, pas de zones de tir).</span>
             </div>
           </div>

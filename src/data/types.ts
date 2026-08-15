@@ -469,16 +469,16 @@ export interface TrainingAttendance {
   playerId: string;
   status: 'present' | 'absent' | 'late';
   /**
-   * Partenaire d'entraînement : joueuse de l'organisation invitée sur cette séance-là, hors
+   * Partenaire d'entraînement : joueur de l'organisation invité sur cette séance-là, hors
    * effectif de l'équipe. Elle ne compte dans aucune statistique de l'équipe qui l'invite,
-   * mais son RPE entre dans SA charge. L'étiquette qualifie la présence, pas la joueuse.
+   * mais son RPE entre dans SA charge. L'étiquette qualifie la présence, pas le joueur.
    */
   sparring: boolean;
   createdAt: string;
 }
 
-/** Une saisie RPE d'une joueuse sur une séance — le grain minimal qui permet d'appliquer la règle
- *  de moyenne d'équipe (moyenne par joueuse puis moyenne des joueuses) sur plusieurs séances. */
+/** Une saisie RPE d'un joueur sur une séance — le grain minimal qui permet d'appliquer la règle
+ *  de moyenne d'équipe (moyenne par joueur puis moyenne des joueurs) sur plusieurs séances. */
 export interface SessionRpeEntry {
   playerId: string;
   rpe: number;
@@ -490,7 +490,7 @@ export interface TeamSessionRow {
   type: SessionType;
   duration: number;
   nbPlayers: number;
-  /** Saisies RPE de la séance, par joueuse. Porte le `playerId` (effectif distinct réellement
+  /** Saisies RPE de la séance, par joueur. Porte le `playerId` (effectif distinct réellement
    *  actif sur une semaine, pas une moyenne par séance) ET la valeur, indispensable pour agréger
    *  plusieurs séances sans pondérer par l'assiduité. */
   entries: SessionRpeEntry[];

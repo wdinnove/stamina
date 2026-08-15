@@ -91,7 +91,7 @@ describe('periodValueOf — tous les indicateurs de match ont une valeur de pér
   });
 });
 
-describe('teamPeriodValue — le périmètre équipe agrège comme le périmètre joueuse', () => {
+describe('teamPeriodValue — le périmètre équipe agrège comme le périmètre joueur', () => {
   it('un ratio d\'équipe est le ratio des sommes, pas la moyenne des ratios par match', () => {
     // Cas de l'audit : trois matchs à 3 points — 1/1, 2/10, 3/12.
     // Moyenne des ratios : (100 + 20 + 25) / 3 = 48,3 %  → au-dessus d'un objectif à 32 %

@@ -41,10 +41,10 @@ export interface WeeklyLoadBucket {
   load: number;
   players: number;
   /**
-   * ⚠️ Moyenne À PLAT des RPE de la semaine, toutes joueuses et toutes séances confondues —
+   * ⚠️ Moyenne À PLAT des RPE de la semaine, tous joueurs et toutes séances confondus —
    * contrairement à `load`, qui est bien ramené à l'effectif distinct.
    *
-   * Valable uniquement sur un périmètre MONO-JOUEUSE (les deux appelants actuels le sont :
+   * Valable uniquement sur un périmètre MONO-JOUEUR (les deux appelants actuels le sont :
    * `PlayerLoadPanel` et `PerformanceIndividuellePage`). Sur un périmètre d'équipe couvrant
    * plusieurs séances, ce chiffre pondérerait le RPE par l'assiduité : utiliser `teamAvgRpe`
    * (utils/rpe), comme le fait la vue « Semaine » d'équipe dans `useTeamRpeHistory`.
@@ -75,19 +75,19 @@ export function weeklyLoadBuckets(rows: WeeklyLoadRow[]): WeeklyLoadBucket[] {
 }
 
 /**
- * Charge hebdomadaire moyenne d'UNE joueuse — moyenne uniquement sur ses semaines actives
+ * Charge hebdomadaire moyenne d'UN joueur — moyenne uniquement sur ses semaines actives
  * (≥1 séance) : les semaines creuses (blessure, trêve) sont exclues du dénominateur, sinon elles
  * font chuter la moyenne artificiellement.
  *
- * Réservé aux périmètres mono-joueuse. Pour l'équipe, utiliser `teamAvgWeeklyLoad` : appliquée à
- * plusieurs joueuses, cette fonction donnerait une voix par SEMAINE et non une voix par joueuse.
+ * Réservé aux périmètres mono-joueur. Pour l'équipe, utiliser `teamAvgWeeklyLoad` : appliquée à
+ * plusieurs joueurs, cette fonction donnerait une voix par SEMAINE et non une voix par joueur.
  */
 export function averageWeeklyLoad(rows: WeeklyLoadRow[]): number | null {
   const buckets = weeklyLoadBuckets(rows);
   return buckets.length ? Math.round(buckets.reduce((a, b) => a + b.load, 0) / buckets.length) : null;
 }
 
-/** Charge hebdo d'une joueuse, semaine par semaine (clé = lundi ISO) — brique de `teamAvgWeeklyLoad`. */
+/** Charge hebdo d'un joueur, semaine par semaine (clé = lundi ISO) — brique de `teamAvgWeeklyLoad`. */
 function weeklyLoadsOfPlayer(rows: WeeklyLoadRow[]): number[] {
   const byWeek = new Map<string, number>();
   for (const r of rows) {
@@ -99,15 +99,15 @@ function weeklyLoadsOfPlayer(rows: WeeklyLoadRow[]): number[] {
 
 /**
  * Charge hebdomadaire moyenne d'ÉQUIPE — règle de l'app (cf. `teamAverage` et docs/CALCULS.md § 0) :
- * charge hebdo moyenne de chaque joueuse sur SES semaines actives, puis moyenne non pondérée des
- * joueuses. Une voix par joueuse, pas une voix par semaine : sinon une joueuse active une seule
+ * charge hebdo moyenne de chaque joueur sur SES semaines actives, puis moyenne non pondérée des
+ * joueurs. Une voix par joueur, pas une voix par semaine : sinon un joueur actif une seule
  * semaine sur quatre ne pèse qu'un quart, et l'assiduité pondère la charge affichée.
  *
- * Les semaines sans séance d'une joueuse ne comptent PAS comme des zéros : ce serait mélanger la
+ * Les semaines sans séance d'un joueur ne comptent PAS comme des zéros : ce serait mélanger la
  * charge absorbée et la disponibilité, laquelle est suivie séparément (thème Présences).
  *
  * Note : la valeur de CHAQUE semaine (`weeklyLoadBuckets`) est déjà conforme à la règle —
- * `charge totale / joueuses distinctes` est exactement la moyenne non pondérée des charges hebdo
+ * `charge totale / joueurs distincts` est exactement la moyenne non pondérée des charges hebdo
  * individuelles. Seule l'agrégation de plusieurs semaines nécessitait cette fonction.
  */
 export function teamAvgWeeklyLoad(rows: WeeklyLoadRow[]): TeamAverage {

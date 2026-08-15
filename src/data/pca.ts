@@ -56,7 +56,7 @@ export interface TeamVariable {
    * une période en sommant les deux puis en divisant (§ 4 de docs/CALCULS.md) — et non en moyennant
    * les pourcentages de chaque match, ce qui donnait le même poids à un match à 3 tirs qu'à un
    * match à 60. C'est ce qui manquait pour que les objectifs d'ÉQUIPE portant sur un ratio soient
-   * évalués comme ceux d'une joueuse.
+   * évalués comme ceux d'un joueur.
    *
    * Absent = la variable est un volume (rebonds, passes, contres…), qui se moyenne match par match.
    */

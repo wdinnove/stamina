@@ -105,7 +105,7 @@ function ArchetypeCard({ result }: { result: ArchetypeResult }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
         <span style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.92rem', flex: 1, minWidth: 0 }}>{result.label}</span>
         {/* Deux informations distinctes, deux badges. « Estimation » dit comment le profil est
-            construit (limite permanente de la méthode) ; « ? » dit si le score de CETTE joueuse
+            construit (limite permanente de la méthode) ; « ? » dit si le score de CE joueur
             repose sur assez de données. Les fondre dans un seul tooltip empêchait de savoir
             laquelle des deux on lisait. */}
         {result.confidence !== 'high' && (
@@ -170,7 +170,7 @@ function DimensionRow({ dim, result }: { dim: DimensionDefinition; result?: Styl
         {score}
       </span>
       {/* Même séparation que pour les profils : `*` + tooltip du libellé = limite de méthode,
-          `?` = fiabilité de l'échantillon de cette joueuse. */}
+          `?` = fiabilité de l'échantillon de ce joueur. */}
       <span style={{ width: 14, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {result.confidence !== 'high' && (
           <span title={confidenceNote(result.confidence, result.sampleSize) ?? undefined} style={{ cursor: 'help' }}>

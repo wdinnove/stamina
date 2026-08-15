@@ -7,7 +7,7 @@ export interface WellnessLinksResult {
 }
 
 /**
- * Envoie le lien du formulaire bien-être aux joueuses sélectionnées.
+ * Envoie le lien du formulaire bien-être aux joueurs sélectionnés.
  *
  * Volontairement le SEUL envoi d'email pilotable depuis le client : ni le contenu ni
  * les adresses ne sont transmis, le serveur relit l'effectif de l'équipe et utilise un

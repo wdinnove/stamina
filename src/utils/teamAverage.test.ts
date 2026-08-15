@@ -16,14 +16,14 @@ describe('teamAverage — invariant de la règle', () => {
       e('bea', 5), e('bea', 3), e('bea', 8),
       e('gaby', 9),
     ];
-    // Valeurs individuelles telles qu'elles apparaissent dans la colonne joueuses
+    // Valeurs individuelles telles qu'elles apparaissent dans la colonne joueurs
     const perPlayer = [mean([6, 3, 9])!, mean([5, 3, 8])!, 9];
 
     expect(teamRpe(entries).value).toBe(roundedAvg(perPlayer));
     expect(teamRpe(entries).players).toBe(3);
   });
 
-  it('coïncide avec la moyenne à plat quand toutes les joueuses ont le même nombre de saisies', () => {
+  it('coïncide avec la moyenne à plat quand tous les joueurs ont le même nombre de saisies', () => {
     const entries = [
       e('alice', 6), e('alice', 8),
       e('bea', 4), e('bea', 5),
@@ -68,8 +68,8 @@ describe('teamAverage — invariant de la règle', () => {
   });
 });
 
-describe('teamAverage — joueuses sans valeur', () => {
-  it('exclut du calcul ET du décompte une joueuse dont la valeur est null', () => {
+describe('teamAverage — joueurs sans valeur', () => {
+  it('exclut du calcul ET du décompte un joueur dont la valeur est null', () => {
     const rows = [
       { playerId: 'alice', v: 4 },
       { playerId: 'bea', v: 8 },
@@ -82,7 +82,7 @@ describe('teamAverage — joueuses sans valeur', () => {
     expect(res).toEqual({ value: 6, players: 2 });
   });
 
-  it('ne compte qu\'une fois une joueuse ayant plusieurs lignes', () => {
+  it('ne compte qu\'une fois un joueur ayant plusieurs lignes', () => {
     const entries = [e('alice', 5), e('alice', 5), e('alice', 5), e('bea', 9)];
     expect(teamRpe(entries).players).toBe(2);
     expect(teamRpe(entries).value).toBe(7);
@@ -95,7 +95,7 @@ describe('teamAverage — joueuses sans valeur', () => {
 
 describe('teamAverage — arrondis', () => {
   it('n\'arrondit pas la valeur individuelle avant la moyenne d\'équipe', () => {
-    // Cas discriminant : arrondir chaque joueuse d'abord donnerait (0,3+0,3+0,3+0,2)/4 = 0,275
+    // Cas discriminant : arrondir chaque joueur d'abord donnerait (0,3+0,3+0,3+0,2)/4 = 0,275
     // → 0,3, alors que la vraie moyenne est 0,2475 → 0,2. Un double arrondi ferait donc échouer
     // ce test, c'est tout son intérêt.
     const rows = [
