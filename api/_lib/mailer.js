@@ -8,6 +8,19 @@
  * plutôt qu'à chaque appelant, pour qu'aucun email ne puisse partir sans issue de
  * retour. Non configuré, le comportement reste celui d'avant.
  */
+
+/**
+ * Le seul template MailerSend envoyable à un joueur — « bonjour {{name}}, voici ton
+ * lien {{url}} ». Bien-être et questionnaire de personnalité partagent la même mise
+ * en page et ne diffèrent que par l'url passée en variable : un second template
+ * n'aurait fait que dupliquer le premier, avec le risque de le laisser dériver.
+ *
+ * Codé en dur plutôt que lu dans l'environnement : ce n'est ni un secret ni une
+ * valeur qui change d'un déploiement à l'autre, et l'environnement peut manquer —
+ * l'envoi échouait alors en 503 là où le contenu était en réalité connu.
+ */
+export const PLAYER_LINK_TEMPLATE_ID = 'jpzkmgq5vqng059v'
+
 export async function sendMail(payload) {
   const apiKey    = process.env.MAILERSEND_API_KEY
   const fromEmail = process.env.MAILERSEND_FROM_EMAIL

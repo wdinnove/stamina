@@ -1,9 +1,6 @@
 import { getAuthedUser, getSupabaseAdmin } from './_lib/supabaseAdmin.js'
-import { sendMail } from './_lib/mailer.js'
+import { sendMail, PLAYER_LINK_TEMPLATE_ID } from './_lib/mailer.js'
 import { hasTeamWriteAccess, withinRateLimit } from './_lib/guards.js'
-
-/** Template MailerSend du formulaire bien-être — le seul contenu envoyable à un joueur. */
-const WELLNESS_TEMPLATE_ID = 'jpzkmgq5vqng059v'
 
 /** Garde-fou de volume : un envoi manuel couvre un effectif, pas une liste de diffusion. */
 const MAX_RECIPIENTS = 60
@@ -86,7 +83,7 @@ export default async function handler(req, res) {
         await sendMail({
           to: [{ email: player.email, name }],
           subject: 'Formulaire bien-être',
-          template_id: WELLNESS_TEMPLATE_ID,
+          template_id: PLAYER_LINK_TEMPLATE_ID,
           personalization: [{
             email: player.email,
             data: { name: player.first_name, url: `${origin}/joueur/${player.id}/bien-etre` },

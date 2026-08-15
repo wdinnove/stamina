@@ -1,5 +1,5 @@
 import { getAuthedUser, getSupabaseAdmin } from './_lib/supabaseAdmin.js'
-import { sendMail } from './_lib/mailer.js'
+import { sendMail, PLAYER_LINK_TEMPLATE_ID } from './_lib/mailer.js'
 import { hasTeamWriteAccess, withinRateLimit } from './_lib/guards.js'
 import { appOrigin } from './send-wellness-links.js'
 
@@ -15,9 +15,8 @@ const MAX_RECIPIENTS = 60
  * relues en base parmi les joueurs de l'équipe visée, droit d'écriture exigé sur cette équipe,
  * déclenchement manuel. Rien ici ne s'envoie tout seul.
  *
- * Le template MailerSend est lu dans l'environnement plutôt que codé en dur : il doit être créé
- * côté MailerSend avec les variables `name` et `url`. Sans lui, l'endpoint refuse de répondre
- * plutôt que d'envoyer un message vide.
+ * Le template est celui du formulaire bien-être (`PLAYER_LINK_TEMPLATE_ID`) : les deux messages
+ * ont la même mise en page et ne diffèrent que par l'url passée en variable.
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -34,12 +33,6 @@ export default async function handler(req, res) {
   }
   if (playerIds.length > MAX_RECIPIENTS) {
     return res.status(400).json({ error: `Maximum ${MAX_RECIPIENTS} destinataires par envoi` })
-  }
-
-  const templateId = process.env.MAILERSEND_MBTI_TEMPLATE_ID
-  if (!templateId) {
-    console.error('[send-mbti-links] MAILERSEND_MBTI_TEMPLATE_ID non configuré')
-    return res.status(503).json({ error: 'Template du questionnaire non configuré côté serveur' })
   }
 
   const origin = appOrigin()
@@ -99,7 +92,7 @@ export default async function handler(req, res) {
         await sendMail({
           to: [{ email: player.email, name }],
           subject: 'Questionnaire de personnalité',
-          template_id: templateId,
+          template_id: PLAYER_LINK_TEMPLATE_ID,
           personalization: [{
             email: player.email,
             data: { name: player.first_name, url: `${origin}/joueur/${player.id}/mbti` },
