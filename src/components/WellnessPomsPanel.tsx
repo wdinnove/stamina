@@ -35,9 +35,9 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 
 interface WellnessPomsPanelProps {
   /**
-   * Saisies BRUTES du périmètre (une ligne par joueuse et par saisie), déjà filtrées sur la
+   * Saisies BRUTES du périmètre (une ligne par joueur et par saisie), déjà filtrées sur la
    * période — base de toutes les MOYENNES affichées. En vue équipe, ne jamais passer l'agrégat
-   * quotidien : la règle de l'app veut une voix par joueuse, pas une voix par jour.
+   * quotidien : la règle de l'app veut une voix par joueur, pas une voix par jour.
    */
   entries: WellnessEntry[];
   /**
@@ -65,7 +65,7 @@ export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDi
   const historyAsc = [...(series ?? entries)].sort((a, b) => a.date.localeCompare(b.date));
 
   // Moyennes : toujours sur les saisies brutes, via la règle d'équipe. `teamWellnessAvg` groupe par
-  // joueuse — en vue joueur il n'y a qu'un groupe, donc c'est exactement sa moyenne personnelle.
+  // joueur — en vue joueur il n'y a qu'un groupe, donc c'est exactement sa moyenne personnelle.
   const avgOf = (metric: WellnessMetric) => teamWellnessAvg(entries, metric).value;
   const nPlayers = teamWellnessAvg(entries).players;
 

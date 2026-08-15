@@ -3,7 +3,7 @@ import { objectivesApi } from '../api';
 import type { Objective } from '../data/types';
 
 /**
- * Objectifs d'un sujet (joueuse ou équipe) POUR UNE SAISON. `seasonId` n'est pas optionnel par
+ * Objectifs d'un sujet (joueur ou équipe) POUR UNE SAISON. `seasonId` n'est pas optionnel par
  * confort : sans lui, un objectif défini la saison passée restait affiché et évalué sur les matchs
  * de la saison courante.
  */

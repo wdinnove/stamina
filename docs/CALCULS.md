@@ -8,13 +8,13 @@ Documentation de référence de tous les calculs statistiques/sportifs utilisés
 
 Fichier source : [`src/utils/teamAverage.ts`](../src/utils/teamAverage.ts)
 
-> **Tout chiffre d'équipe est la moyenne NON PONDÉRÉE des valeurs individuelles des joueuses du périmètre affiché.**
+> **Tout chiffre d'équipe est la moyenne NON PONDÉRÉE des valeurs individuelles des joueurs du périmètre affiché.**
 
-On agrège en deux étapes : d'abord la valeur de chaque joueuse, **puis** la moyenne des joueuses. Jamais une moyenne à plat des lignes brutes.
+On agrège en deux étapes : d'abord la valeur de chaque joueur, **puis** la moyenne des joueurs. Jamais une moyenne à plat des lignes brutes.
 
 ```
-valeur_joueuse = moyenne de ses propres saisies
-chiffre_équipe = moyenne non pondérée des valeur_joueuse
+valeur_joueur = moyenne de ses propres saisies
+chiffre_équipe = moyenne non pondérée des valeur_joueur
 ```
 
 ### Pourquoi
@@ -22,18 +22,18 @@ chiffre_équipe = moyenne non pondérée des valeur_joueuse
 Une moyenne à plat des saisies revient à pondérer par l'assiduité :
 
 ```
-moyenne_à_plat = Σ (n_joueuse × moyenne_joueuse) / Σ n_joueuse
+moyenne_à_plat = Σ (n_joueur × moyenne_joueur) / Σ n_joueur
 ```
 
-Deux blessées qui arrêtent de loguer feraient donc **monter** le RPE moyen d'équipe sans que personne se soit entraîné plus dur ; des joueuses qui vont mal et saisissent moins feraient **monter** le score de bien-être. Comme l'assiduité est suivie comme un indicateur à part entière, la laisser pondérer les autres mélange deux signaux et en compte un deux fois.
+Deux blessés qui arrêtent de loguer feraient donc **monter** le RPE moyen d'équipe sans que personne se soit entraîné plus dur ; des joueurs qui vont mal et saisissent moins feraient **monter** le score de bien-être. Comme l'assiduité est suivie comme un indicateur à part entière, la laisser pondérer les autres mélange deux signaux et en compte un deux fois.
 
 L'écart entre les deux méthodes vaut exactement :
 
 ```
-moyenne_à_plat − moyenne_équipe = Cov(n_joueuse, moyenne_joueuse) / n̄
+moyenne_à_plat − moyenne_équipe = Cov(n_joueur, moyenne_joueur) / n̄
 ```
 
-Les deux coïncident donc au centième dès que toutes les joueuses ont le même nombre de saisies — l'écart mesure précisément l'hétérogénéité de l'assiduité.
+Les deux coïncident donc au centième dès que tous les joueurs ont le même nombre de saisies — l'écart mesure précisément l'hétérogénéité de l'assiduité.
 
 ### Deux corollaires
 
@@ -47,15 +47,15 @@ Les deux coïncident donc au centième dès que toutes les joueuses ont le même
 | Bea | 10 | — | 10 |
 | **moyenne de la semaine** | **8** | **6** | |
 
-Par joueuse : `(6 + 10) / 2` = **8**. Par semaine : `(8 + 6) / 2` = **7**. L'app choisit l'axe **joueuse**.
+Par joueur : `(6 + 10) / 2` = **8**. Par semaine : `(8 + 6) / 2` = **7**. L'app choisit l'axe **joueur**.
 
 ### Cas où la moyenne simple suffit
 
-Sur **une seule séance** ou **un seul jour**, chaque joueuse n'a qu'une saisie : la moyenne à plat est déjà une voix par joueuse. Ces lignes utilisent donc `roundedAvg` directement (colonne RPE du tableau des séances, points de la timeline quotidienne). De même pour toute valeur mono-joueuse (historique d'une joueuse, comparaisons individuelles).
+Sur **une seule séance** ou **un seul jour**, chaque joueur n'a qu'une saisie : la moyenne à plat est déjà une voix par joueur. Ces lignes utilisent donc `roundedAvg` directement (colonne RPE du tableau des séances, points de la timeline quotidienne). De même pour toute valeur mono-joueur (historique d'un joueur, comparaisons individuelles).
 
 ### Le `n` doit être affiché
 
-Une moyenne non pondérée est nerveuse sur petit échantillon : une joueuse ayant une seule saisie pèse autant qu'une en ayant dix. `TeamAverage` transporte donc `players` à côté de `value`, et l'interface l'affiche systématiquement (« 6,2 · 8 joueurs »).
+Une moyenne non pondérée est nerveuse sur petit échantillon : un joueur ayant une seule saisie pèse autant qu'un en ayant dix. `TeamAverage` transporte donc `players` à côté de `value`, et l'interface l'affiche systématiquement (« 6,2 · 8 joueurs »).
 
 ### La règle vaut aussi pour l'évaluation
 
@@ -79,7 +79,7 @@ Si aucune durée réelle n'est saisie, on retombe sur la durée planifiée (`act
 
 ### 1.2 RPE moyen
 
-Pour **une joueuse**, une **séance** ou un **jour** — une seule saisie par joueuse, donc moyenne simple ([`roundedAvg`](../src/utils/avg.ts)) :
+Pour **un joueur**, une **séance** ou un **jour** — une seule saisie par joueur, donc moyenne simple ([`roundedAvg`](../src/utils/avg.ts)) :
 
 ```
 RPE_moyen = (Σ RPE) / n     — arrondi à 1 décimale
@@ -88,8 +88,8 @@ RPE_moyen = (Σ RPE) / n     — arrondi à 1 décimale
 Pour **l'équipe sur plusieurs séances** (période, semaine, saison) — règle du § 0, via [`teamAvgRpe`](../src/utils/rpe.ts) :
 
 ```
-RPE_joueuse = (Σ ses RPE) / ses n saisies
-RPE_équipe  = (Σ RPE_joueuse) / nb joueuses ayant saisi
+RPE_joueur = (Σ ses RPE) / ses n saisies
+RPE_équipe  = (Σ RPE_joueur) / nb joueurs ayant saisi
 ```
 
 Surfaces concernées : KPI de période et de saison (page RPE, Performance collective, Dashboard), vue « Semaine » du tableau d'historique, graphiques hebdo, lignes « RPE moyen » des comparaisons de groupes.
@@ -166,36 +166,36 @@ Le seuil « par séance » affiché en config = `seuil_hebdo / nb_séances_par_s
 
 ### 1.6 Charge hebdomadaire moyenne
 
-**Une joueuse** ([`averageWeeklyLoad`](../src/utils/weeklyLoad.ts)) : moyenne **uniquement sur ses semaines actives** (≥ 1 séance) — une semaine creuse (blessure, trêve) n'entre pas dans le dénominateur, sinon la moyenne chute artificiellement.
+**Un joueur** ([`averageWeeklyLoad`](../src/utils/weeklyLoad.ts)) : moyenne **uniquement sur ses semaines actives** (≥ 1 séance) — une semaine creuse (blessure, trêve) n'entre pas dans le dénominateur, sinon la moyenne chute artificiellement.
 
 **L'équipe** ([`teamAvgWeeklyLoad`](../src/utils/weeklyLoad.ts)) : règle du § 0, en deux étapes.
 
 ```
-charge_hebdo_joueuse = moyenne de ses charges hebdo, sur SES semaines actives
-charge_hebdo_équipe  = moyenne non pondérée des charge_hebdo_joueuse
+charge_hebdo_joueur = moyenne de ses charges hebdo, sur SES semaines actives
+charge_hebdo_équipe  = moyenne non pondérée des charge_hebdo_joueur
 ```
 
-Une semaine sans séance d'une joueuse ne compte **pas** comme un zéro : ce serait mélanger la charge absorbée et la disponibilité, suivie séparément (§ 3, Assiduité).
+Une semaine sans séance d'un joueur ne compte **pas** comme un zéro : ce serait mélanger la charge absorbée et la disponibilité, suivie séparément (§ 3, Assiduité).
 
-À noter : la charge d'**une** semaine (`weeklyLoadBuckets`, § 1.5) était déjà conforme à la règle — `charge totale ÷ joueuses distinctes` est exactement la moyenne non pondérée des charges hebdo individuelles. Seule l'agrégation de **plusieurs** semaines nécessitait une fonction dédiée.
+À noter : la charge d'**une** semaine (`weeklyLoadBuckets`, § 1.5) était déjà conforme à la règle — `charge totale ÷ joueurs distincts` est exactement la moyenne non pondérée des charges hebdo individuelles. Seule l'agrégation de **plusieurs** semaines nécessitait une fonction dédiée.
 
-#### Exemple — pourquoi une voix par joueuse et pas une voix par semaine
+#### Exemple — pourquoi une voix par joueur et pas une voix par semaine
 
 4 semaines. Alice et Bea s'entraînent les 4 ; Chloé revient de blessure en semaine 4 (2 séances allégées).
 
-| Joueuse | S1 | S2 | S3 | S4 | sa moyenne |
+| Joueur | S1 | S2 | S3 | S4 | sa moyenne |
 |---|---|---|---|---|---|
 | Alice | 3100 | 3100 | 3100 | 3100 | 3100 |
 | Bea | 2890 | 2890 | 2890 | 2890 | 2890 |
 | Chloé | — | — | — | 740 | 740 |
-| **charge/joueuse de la semaine** | 2995 | 2995 | 2995 | 2243 | |
+| **charge/joueur de la semaine** | 2995 | 2995 | 2995 | 2243 | |
 
 - Une voix par **semaine** : `(2995 × 3 + 2243) / 4` = **2807 UA** → zone *Soutenue*
-- Une voix par **joueuse** : `(3100 + 2890 + 740) / 3` = **2243 UA** → zone *Normale*
+- Une voix par **joueur** : `(3100 + 2890 + 740) / 3` = **2243 UA** → zone *Normale*
 
 Chloé n'est active qu'une semaine sur quatre : la première méthode dilue son effet à un quart, la seconde lui donne une voix entière. Cet exemple est encodé dans [`weeklyLoad.test.ts`](../src/utils/weeklyLoad.test.ts).
 
-**Inchangé par ce choix** : le compteur « Semaines surcharge » (il lit les valeurs hebdo, identiques dans les deux méthodes) et les zones de surcharge **par joueuse** du classement, qui constituent la véritable détection de surcharge et ne passent par aucune moyenne d'équipe.
+**Inchangé par ce choix** : le compteur « Semaines surcharge » (il lit les valeurs hebdo, identiques dans les deux méthodes) et les zones de surcharge **par joueur** du classement, qui constituent la véritable détection de surcharge et ne passent par aucune moyenne d'équipe.
 
 ---
 
@@ -248,13 +248,13 @@ Deux calculs distincts, à ne pas confondre.
 **Un chiffre agrégé sur plusieurs jours** (KPI de période, de saison, comparaisons de groupes, radar POMS en vue équipe) — règle du § 0, via [`teamWellnessAvg`](../src/utils/wellness.ts) :
 
 ```
-score_joueuse = moyenne de ses saisies sur la période
-score_équipe  = moyenne non pondérée des score_joueuse
+score_joueur = moyenne de ses saisies sur la période
+score_équipe  = moyenne non pondérée des score_joueur
 ```
 
 C'est essentiel sur un indicateur d'alerte : avec une moyenne à plat des saisies, un groupe qui saisit **moins** quand il va mal voit son score d'équipe **remonter** mécaniquement. Exemple ([`wellness.test.ts`](../src/utils/wellness.test.ts)) — Alice saisit 4 fois à 8/10, Bea une fois à 3/10 : moyenne à plat **7,0** (Bea est presque effacée) contre **5,5** avec la règle.
 
-**Un point de série quotidienne** (graphiques d'évolution, corrélations) — [`aggregateTeamWellnessDaily`](../src/utils/wellness.ts) : une entrée synthétique par jour, chaque dimension étant la moyenne d'équipe des joueuses ayant saisi ce jour-là. Pas de report d'une saisie manquante. Cette fonction applique elle aussi la règle par joueuse, pour qu'une joueuse saisissant deux fois le même jour ne compte pas double.
+**Un point de série quotidienne** (graphiques d'évolution, corrélations) — [`aggregateTeamWellnessDaily`](../src/utils/wellness.ts) : une entrée synthétique par jour, chaque dimension étant la moyenne d'équipe des joueurs ayant saisi ce jour-là. Pas de report d'une saisie manquante. Cette fonction applique elle aussi la règle par joueur, pour qu'un joueur saisissant deux fois le même jour ne compte pas double.
 
 ⚠️ En vue équipe, ne jamais calculer une moyenne de période **à partir de la série quotidienne** : cela donnerait une voix par jour. `WellnessPomsPanel` reçoit donc deux jeux de données — `entries` (saisies brutes, pour les moyennes) et `series` (agrégat quotidien, pour les courbes).
 
@@ -268,29 +268,29 @@ Sur un ensemble d'entrées, l'axe (ressenti) le plus bas parmi tous les joueurs/
 
 Fichier source : [`src/utils/attendance.ts`](../src/utils/attendance.ts)
 
-Une joueuse **en retard compte comme présente** : elle a participé à la séance.
+Un joueur **en retard compte comme présent** : il a participé à la séance.
 
-**Une joueuse** (`presenceRate`) :
+**Un joueur** (`presenceRate`) :
 
 ```
-taux_joueuse = présences / séances où elle était attendue     — en %, arrondi à l'entier
+taux_joueur = présences / séances où il était attendu     — en %, arrondi à l'entier
 ```
 
 **L'équipe** (`teamPresenceRate`) — règle du § 0 :
 
 ```
-taux_équipe = moyenne non pondérée des taux_joueuse
+taux_équipe = moyenne non pondérée des taux_joueur
 ```
 
-Et non `Σ présences / Σ attendus`, qui pondère par le nombre de séances attendues de chaque joueuse. Exemple ([`attendance.test.ts`](../src/utils/attendance.test.ts)) — Alice présente à 20/20 séances, Bea arrivée en cours de saison absente à 0/2 : la somme des ratios donne **91 %** (Bea disparaît), la règle donne **50 %**.
+Et non `Σ présences / Σ attendus`, qui pondère par le nombre de séances attendues de chaque joueur. Exemple ([`attendance.test.ts`](../src/utils/attendance.test.ts)) — Alice présente à 20/20 séances, Bea arrivée en cours de saison absente à 0/2 : la somme des ratios donne **91 %** (Bea disparaît), la règle donne **50 %**.
 
-« La joueuse type est présente à 82 % » est ce que le staff veut lire, pas « 82 % des présences attendues ont eu lieu ».
+« Le joueur type est présent à 82 % » est ce que le staff veut lire, pas « 82 % des présences attendues ont eu lieu ».
 
-Seuils de couleur, identiques joueuse et équipe : ≥ 85 % vert, ≥ 70 % orange, sinon rouge.
+Seuils de couleur, identiques joueur et équipe : ≥ 85 % vert, ≥ 70 % orange, sinon rouge.
 
 Le taux **individuel** est arrondi à l'entier pour l'affichage, mais c'est le taux **brut** qui entre dans la moyenne d'équipe (`rawPresenceRate`) : la règle de `teamAverage` est de n'arrondir qu'une fois, sur le chiffre final. Moyenner des pourcentages déjà arrondis pouvait faire basculer le résultat d'un côté ou de l'autre d'un seuil de couleur pile.
 
-Le **% de présence sur 28 jours glissants** utilisé par les corrélations et les objectifs reste un calcul par joueuse (`presenceSeries`, [`crossAnalysis.ts`](../src/data/crossAnalysis.ts)).
+Le **% de présence sur 28 jours glissants** utilisé par les corrélations et les objectifs reste un calcul par joueur (`presenceSeries`, [`crossAnalysis.ts`](../src/data/crossAnalysis.ts)).
 
 ---
 
@@ -387,7 +387,7 @@ actions_effectif (dénominateur du %USG)
   = fga + ballons_perdus + 0,44 × LF_tentés          ← sans retirer les rebonds offensifs
 ```
 
-Les deux sont justes pour leur usage, et il ne faut surtout pas les unifier. La raison est vérifiable : avec `actions_effectif`, la somme des %USG de toutes les joueuses vaut **exactement 100 %**, puisque leurs actions individuelles somment au total de l'effectif. Avec le comptage « rythme », elle dépasserait 100 % (de la valeur des rebonds offensifs) et la colonne ne voudrait plus rien dire.
+Les deux sont justes pour leur usage, et il ne faut surtout pas les unifier. La raison est vérifiable : avec `actions_effectif`, la somme des %USG de tous les joueurs vaut **exactement 100 %**, puisque leurs actions individuelles somment au total de l'effectif. Avec le comptage « rythme », elle dépasserait 100 % (de la valeur des rebonds offensifs) et la colonne ne voudrait plus rien dire.
 
 C'était un piège de lecture, pas un bug : la doc appelait « possessions_équipe » un chiffre différent de la colonne « Possessions », si bien qu'un staff vérifiant à la main tombait sur un écart et concluait que le %USG était faux. `computePossessions` (formule du rythme) est désormais défini une seule fois, avec l'avertissement en regard, et une entrée de FAQ couvre la question.
 
@@ -403,7 +403,7 @@ Fichier source : [`calcPlayerAdvancedForPeriod`](../src/data/playerAdvanced.ts)
 eFG%_période = (Σ tirs_réussis + 0,5 × Σ 3pts_réussis) / Σ tirs_tentés × 100
 ```
 
-Moyenner les eFG% match par match donnerait le même poids à un match à 1 tir qu'à un match à 20 tirs. Sur 4 matchs dont une entrée de 2 minutes où la joueuse rentre son unique tir, un 3 points :
+Moyenner les eFG% match par match donnerait le même poids à un match à 1 tir qu'à un match à 20 tirs. Sur 4 matchs dont une entrée de 2 minutes où le joueur rentre son unique tir, un 3 points :
 
 | Match | Réussis | 3pts | Tentés | eFG% du match |
 |---|---|---|---|---|
@@ -445,7 +445,7 @@ Les tableaux de stats avancées affichent les deux lectures de l'usage côte à 
 | Boxscore avancé, classement joueurs, comparaisons, objectifs, corrélations | les deux, sélectionnables (`adv_usagePctRaw` et `adv_usagePct`) |
 | Archétypes (`featureRegistry`) | `%USG/min` uniquement — un profil doit décrire un comportement de jeu, pas un volume de temps de jeu |
 
-⚠️ Ne jamais nommer une de ces colonnes « USG% » tout court : c'est l'ambiguïté qui a fait ressortir une joueuse à faible temps de jeu en tête du classement d'usage.
+⚠️ Ne jamais nommer une de ces colonnes « USG% » tout court : c'est l'ambiguïté qui a fait ressortir un joueur à faible temps de jeu en tête du classement d'usage.
 
 ---
 
@@ -528,7 +528,7 @@ Deux pieds de tableau portent le même libellé et répondent à deux questions 
 
 | Tableau | Une ligne = | Agrégation d'un ratio |
 |---|---|---|
-| Statistiques **joueurs** | une joueuse | moyenne non pondérée des valeurs individuelles (§ 0) |
+| Statistiques **joueurs** | un joueur | moyenne non pondérée des valeurs individuelles (§ 0) |
 | Statistiques **matchs** | un match | ratio des sommes (§ 4) |
 
 Les pieds des tableaux par match moyennaient les pourcentages match par match, ce qui donnait le même poids à un match à 3 tirs qu'à un match à 60. Même correction dans les blocs de comparaison d'équipe, où quatre ratios (% BP, FT Rate, % DREB, % OREB) moyennaient encore les valeurs déjà agrégées à côté de six qui sommaient correctement — dix lignes d'apparence homogène, deux méthodes.
@@ -567,13 +567,13 @@ atteint = comparateur(valeur_fenêtre, seuil)
 
 Fenêtres : **dernier match**, **3 derniers matchs**, **saison complète**. `null` si aucune donnée sur la fenêtre (pas de verdict plutôt qu'un faux « non atteint »).
 
-La valeur d'une fenêtre passe par [`periodValueOf`](../src/data/crossAnalysis.ts) côté joueuse et par `def.teamPeriodValue` côté équipe : ratio de sommes pour les ratios, moyenne sur les matchs pour les volumes (cf. § 4). **Les deux périmètres agrègent de la même façon.**
+La valeur d'une fenêtre passe par [`periodValueOf`](../src/data/crossAnalysis.ts) côté joueur et par `def.teamPeriodValue` côté équipe : ratio de sommes pour les ratios, moyenne sur les matchs pour les volumes (cf. § 4). **Les deux périmètres agrègent de la même façon.**
 
 Le périmètre équipe retombait auparavant sur la moyenne de la série, c'est-à-dire la moyenne des pourcentages match par match — alors que le sélecteur propose `team_fg3Pct`, `team_efgPct`, `team_toPct`, `team_orebPct`… tous des ratios. Sur trois matchs à 3 points de 1/1, 2/10 et 3/12, un objectif « ≥ 32 % » ressortait **atteint** (moyenne des ratios : 48,3 %) alors qu'il ne l'est pas (ratio des sommes : 6/23 = 26,1 %). Le verdict binaire affiché au staff s'inversait.
 
 L'agrégation d'équipe se dérive du champ `sums` de [`TeamVariable`](../src/data/pca.ts) (numérateur et dénominateur bruts), et non d'une liste parallèle : sur les 21 variables collectives, 13 sont des ratios et 8 des volumes. Un test vérifie que les **27** indicateurs d'équipe du domaine match définissent bien un `teamPeriodValue`.
 
-**« 3 derniers matchs » se découpe sur la liste des matchs, pas en bornes de dates.** Une fenêtre exprimée en dates ne peut pas séparer deux matchs joués le même jour : sur un plateau, elle ramenait la date du 2ᵉ match de la journée et en couvrait donc 4. Le périmètre est restreint aux k dernières lignes, puis passé à l'agrégateur. Cette correction valait pour les deux périmètres — le côté joueuse avait le même défaut.
+**« 3 derniers matchs » se découpe sur la liste des matchs, pas en bornes de dates.** Une fenêtre exprimée en dates ne peut pas séparer deux matchs joués le même jour : sur un plateau, elle ramenait la date du 2ᵉ match de la journée et en couvrait donc 4. Le périmètre est restreint aux k dernières lignes, puis passé à l'agrégateur. Cette correction valait pour les deux périmètres — le côté joueur avait le même défaut.
 
 ### 10.1 Rattachement à une saison
 
@@ -607,7 +607,7 @@ Cumulé sur la saison via `sumInjuryDays`, qui renvoie `{ days, undated }` : les
 
 `resolved_date` est écrit par les trois surfaces de clôture et affiché dans la fiche détail, mais aucun compteur ne le lisait : une blessure clôturée avec deux semaines d'avance comptait quand même sa durée prévue. Pour une entorse du 5 janvier avec retour prévu le 30 et clôture le 12, le KPI affichait **25 jours** pendant que la bande du graphique de charge (qui lit bien `resolved_date`, cf. `injuryEpisodes`) en dessinait **7**. Deux définitions de la fin d'un même épisode.
 
-Second trou, plus net : une blessure sans `rtp_date` **ni** clôture comptait **0 jour** — le `: 0` d'un ternaire — même si la joueuse était restée absente un mois.
+Second trou, plus net : une blessure sans `rtp_date` **ni** clôture comptait **0 jour** — le `: 0` d'un ternaire — même si le joueur était resté absent un mois.
 
 Les deux fonctions `injuryDaysActive` et `injuryDaysSeason` de la page Médicale avaient des commentaires distincts pour un corps identique : la distinction annoncée n'existait pas. Elle vit maintenant dans `injuryDays`, et une seule fonction suffit. `daysBetween`, jusque-là recopié à l'identique dans trois fichiers, est également unique.
 
@@ -635,8 +635,8 @@ Deux informations distinctes accompagnent un score d'archétype. Elles étaient 
 
 | Information | Porté par | Dépend de | Affichage |
 |---|---|---|---|
-| **Fiabilité** du score | `confidenceNote(confidence, sampleSize)` | la joueuse (matchs et minutes jouées) | badge `?`, une ligne sur deux |
-| **Limite de méthode** du profil | `caveat` de la définition | le profil, jamais la joueuse | badge « Estimation » sur la fiche, note sous le tableau d'équipe |
+| **Fiabilité** du score | `confidenceNote(confidence, sampleSize)` | le joueur (matchs et minutes jouées) | badge `?`, une ligne sur deux |
+| **Limite de méthode** du profil | `caveat` de la définition | le profil, jamais le joueur | badge « Estimation » sur la fiche, note sous le tableau d'équipe |
 
 Le message de fiabilité annonce explicitement le manque de données et le décompte (« Trop peu de données pour que ce score soit significatif (3 matchs, 24 min jouées) »). Un test vérifie qu'il ne parle jamais de méthode.
 
@@ -686,16 +686,28 @@ Un questionnaire incomplet ne produit pas de profil partiel : `computeMbtiResult
 
 ### 12bis.3 Frictions d'équipe (bêta)
 
-Deux joueuses ne sont signalées comme opposées sur un axe que si **elles portent des lettres différentes ET que l'écart entre leurs positions dépasse `FRICTION_MIN_GAP` = 25 points de pourcentage**. Sans ce seuil, deux profils voisins du milieu (52 % / 48 %) apparaîtraient en opposition alors que rien ne les sépare dans les faits.
+Deux joueurs ne sont signalés comme opposés sur un axe que si **les deux portent des lettres différentes ET que l'écart entre leurs positions dépasse `FRICTION_MIN_GAP` = 25 points de pourcentage**. Sans ce seuil, deux profils voisins du milieu (52 % / 48 %) apparaîtraient en opposition alors que rien ne les sépare dans les faits.
 
 ```
 intensité_paire = somme des écarts sur les axes réellement opposés
 paire signalée si intensité ≥ FRICTION_ALERT_SCORE (60)
 ```
 
-Une joueuse à égalité sur un axe ne s'oppose à personne sur cet axe : elle est au milieu. Même logique dans la répartition d'équipe, où les égalités sont comptées à part et jamais reversées d'un côté.
+Un joueur à égalité sur un axe ne s'oppose à personne sur cet axe : il est au milieu. Même logique dans la répartition d'équipe, où les égalités sont comptées à part et jamais reversées d'un côté.
 
 Ce que le calcul ne fait pas : mesurer une entente réelle. Il propose des hypothèses de lecture à partir de préférences déclarées, sans rien savoir de l'historique du groupe.
+
+### 12bis.4 Le suivi mental, à côté — et sans calcul
+
+L'onglet voisin (« Mental → Suivi », table `player_notes`, [`src/utils/notes.ts`](../src/utils/notes.ts)) ne calcule rien : ce sont des notes libres datées, écrites par le staff. Rien n'est agrégé, scoré ni moyenné — un compte rendu d'entretien n'est pas une mesure, et le §0 ne s'y applique pas.
+
+Trois règles quand même :
+
+- **Portée saison.** Une note reste dans la saison où elle a été écrite, sans report — contrairement aux objectifs (§10). Un compte rendu daté ne se recopie pas.
+- **Recherche sur le texte, pas sur le balisage.** `notePlainText` retire les balises avant de comparer, sinon chercher « strong » remonterait toute note en gras. Comparaison insensible à la casse et aux accents.
+- **Tri.** Date décroissante, départagée par heure de saisie : deux notes du même jour gardent l'ordre dans lequel elles ont été écrites.
+
+La personnalité dit comment un joueur fonctionne, le suivi ce qui s'est passé. Les deux vivent dans la même section parce qu'ils se lisent ensemble, pas parce qu'ils se combinent : aucun calcul ne croise une note et un profil.
 
 ---
 
@@ -782,4 +794,4 @@ Corollaire d'écriture : dans un mapper, distinguer deux lecteurs — `n()` pour
 | Normalisation stats | pour 25 min jouées | comparaison équitable |
 | PCA — couverture minimale d'une variable | 80 % des matchs | garde-fou données complètes |
 | Σ minutes effectif — fourchette plausible | 150–300 par match | repli %USG/min → %USG |
-| %USG/min — minutes joueuse minimales | 5 min | repli %USG/min → %USG |
+| %USG/min — minutes joueur minimales | 5 min | repli %USG/min → %USG |

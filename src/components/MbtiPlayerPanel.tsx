@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Copy, Check, Mail, RotateCcw, Sparkles, AlertTriangle, X } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Badge } from './Badge';
-import { EmptyState } from './EmptyState';
 import { Modal } from './Modal';
 import { mbtiApi } from '../api/mbti';
 import { sendMbtiLinks } from '../api/email';
@@ -75,13 +74,12 @@ export function MbtiPlayerPanel({ player, teamId }: MbtiPlayerPanelProps) {
       <div>
         <Disclaimer />
         <Card>
-          <CardTitle icon={<Sparkles size={14} color={ACCENT} />}>Questionnaire de personnalité</CardTitle>
-          <EmptyState message={`${playerNameFull(player)} n'a pas encore rempli le questionnaire.`} />
-          <p style={{ color: '#64748B', fontSize: '0.78rem', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.6 }}>
-            Transmets-lui le lien : 24 affirmations, environ 5 minutes, sans compte à créer.
-            Il ne fonctionne qu'une fois.
-          </p>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <CardTitle icon={<Sparkles size={14} color={ACCENT} />} mb={0}>Questionnaire de personnalité</CardTitle>
+          {/* Tant que le questionnaire n'est pas rempli, la carte ne dit rien de plus que ses
+              deux actions : l'absence de profil se voit d'elle-même. Marges verticales égales
+              (padding sur le conteneur, pas de marge sur les boutons) pour ne pas retomber sur
+              un bloc décalé vers le haut. */}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', padding: '18px 0' }}>
             <button onClick={handleCopy} style={btn(copied ? '#00E5A0' : ACCENT)}>
               {copied ? <Check size={14} /> : <Copy size={14} />}
               {copied ? 'Lien copié' : 'Copier le lien'}
@@ -91,7 +89,7 @@ export function MbtiPlayerPanel({ player, teamId }: MbtiPlayerPanelProps) {
               {sending ? 'Envoi…' : player.email ? 'Envoyer par email' : 'Pas d\'email renseigné'}
             </button>
           </div>
-          {sendMsg && <p style={{ color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center', margin: '12px 0 0' }}>{sendMsg}</p>}
+          {sendMsg && <p style={{ color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center', margin: '0 0 6px' }}>{sendMsg}</p>}
         </Card>
       </div>
     );
@@ -188,12 +186,12 @@ export function MbtiPlayerPanel({ player, teamId }: MbtiPlayerPanelProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 14 }}>
         <ListCard title="Forces" color="#00E5A0" items={profile.forces} />
         <ListCard title="Points de vigilance" color="#F59E0B" items={profile.vigilances} />
-        <ListCard title="Ce qui la stresse" color="#EF4444" items={profile.stress} />
-        <ListCard title="Ce qui la motive" color="#3B82F6" items={profile.motiv} />
+        <ListCard title="Ce qui le stresse" color="#EF4444" items={profile.stress} />
+        <ListCard title="Ce qui le motive" color="#3B82F6" items={profile.motiv} />
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <ListCard title="Comment communiquer avec elle" color={ACCENT} items={profile.comm} />
+        <ListCard title="Comment communiquer avec lui" color={ACCENT} items={profile.comm} />
       </div>
 
       {confirmReset && (
@@ -248,7 +246,7 @@ export function Disclaimer() {
       <p style={{ margin: 0, fontSize: '0.78rem', color: '#94A3B8', lineHeight: 1.6 }}>
         Outil <strong style={{ color: '#CBD5E1' }}>indicatif</strong>, pas un diagnostic psychologique :
         il reflète des préférences déclarées un jour donné. À utiliser pour ajuster la communication,
-        jamais pour juger une joueuse ni décider d'un temps de jeu.
+        jamais pour juger un joueur ni décider d'un temps de jeu.
       </p>
     </div>
   );

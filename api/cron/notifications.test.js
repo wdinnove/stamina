@@ -13,23 +13,23 @@ const cronSource = readFileSync(join(here, 'notifications.js'), 'utf8')
   .replace(/(^|\s)\/\/.*$/gm, '$1')
 
 /**
- * Règle produit explicite : aucune joueuse ne doit jamais recevoir d'email ni de push
+ * Règle produit explicite : aucun joueur ne doit jamais recevoir d'email ni de push
  * automatique. Elles ne sont contactées que sur action manuelle du staff depuis
  * l'interface (bouton d'envoi des liens de WellnessPage).
  *
  * Ces tests gardent la règle au niveau de la source, parce qu'une régression ici
  * serait invisible côté code (l'envoi « marcherait ») et visible seulement par les
- * joueuses qui recevraient un email non désiré.
+ * joueurs qui recevraient un email non désiré.
  */
-describe('aucun contact automatique des joueuses', () => {
-  it('le cron ne lit jamais l\'email d\'une joueuse', () => {
+describe('aucun contact automatique des joueurs', () => {
+  it('le cron ne lit jamais l\'email d\'un joueur', () => {
     expect(cronSource).not.toMatch(/players?\s*\([^)]*email/i)
     expect(cronSource).not.toMatch(/\bplayer\.email\b/)
     expect(cronSource).not.toMatch(/\bplayers\.email\b/)
   })
 
   it('le cron n\'utilise pas le template MailerSend du formulaire bien-être', () => {
-    // Ce template s'adresse aux joueuses : sa seule utilisation légitime est l'envoi
+    // Ce template s'adresse aux joueurs : sa seule utilisation légitime est l'envoi
     // manuel depuis WellnessPage.
     expect(cronSource).not.toContain('jpzkmgq5vqng059v')
     expect(cronSource).not.toMatch(/template_id/)
@@ -48,14 +48,14 @@ describe('aucun contact automatique des joueuses', () => {
   })
 
   it('staffEmails ne provient que de comptes app du staff', () => {
-    // resolveEmails part de profiles + auth.users : une joueuse n'y figure pas.
+    // resolveEmails part de profiles + auth.users : un joueur n'y figure pas.
     expect(cronSource).toMatch(/staffEmails\s*=\s*await\s+resolveEmails\(/)
     expect(cronSource).toMatch(/resolveEmails\(admin,\s*recipients\.filter\(r => r\.email\)/)
   })
 
   it('aucun type de notification ne cible une audience hors staff', () => {
     // 'team' = comptes staff ayant accès à l'équipe · 'assignee' = un compte staff précis.
-    // Toute autre valeur ouvrirait la porte à une diffusion vers les joueuses.
+    // Toute autre valeur ouvrirait la porte à une diffusion vers les joueurs.
     for (const type of NOTIFICATION_TYPES) {
       expect(['team', 'assignee'], type.key).toContain(type.audience)
     }

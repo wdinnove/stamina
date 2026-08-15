@@ -4,11 +4,11 @@ import type { TeamAverage } from '../utils/teamAverage';
 import { Badge } from './Badge';
 
 /**
- * Sous-titre d'un RPE moyen d'ÉQUIPE : zone de charge + nombre de joueuses.
+ * Sous-titre d'un RPE moyen d'ÉQUIPE : zone de charge + nombre de joueurs.
  *
- * Le `n` n'est pas décoratif. La moyenne d'équipe est non pondérée (une voix par joueuse), donc
+ * Le `n` n'est pas décoratif. La moyenne d'équipe est non pondérée (une voix par joueur), donc
  * une seule saisie isolée pèse autant que dix — le seul moyen honnête de rendre le chiffre
- * interprétable est d'afficher sur combien de joueuses il repose. Mutualisé pour que les deux
+ * interprétable est d'afficher sur combien de joueurs il repose. Mutualisé pour que les deux
  * pages qui affichent ce KPI (RPE, Performance collective) ne divergent pas.
  */
 export function TeamRpeSub({ avg }: { avg: TeamAverage }) {

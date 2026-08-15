@@ -6,7 +6,7 @@ const A = { status: 'absent' as const };
 const L = { status: 'late' as const };
 
 describe('presenceRate', () => {
-  it('compte une joueuse en retard comme présente — elle a participé', () => {
+  it('compte un joueur en retard comme présent — il a participé', () => {
     expect(presenceRate([P, L, A, A])).toBe(50);
   });
 
@@ -26,7 +26,7 @@ describe('teamPresenceRate — moyenne non pondérée des taux individuels', () 
     expect(teamPresenceRate(players)).toEqual({ value: 50, players: 2 });
   });
 
-  it('exclut du calcul et du décompte une joueuse sans séance attendue', () => {
+  it('exclut du calcul et du décompte un joueur sans séance attendue', () => {
     const players = [
       { playerId: 'alice', attendance: [P, P, A, A] },   // 50 %
       { playerId: 'bea',   attendance: [P, P, P, A] },   // 75 %
@@ -41,7 +41,7 @@ describe('teamPresenceRate — moyenne non pondérée des taux individuels', () 
 });
 
 describe('presenceColor', () => {
-  it('applique les mêmes seuils pour une joueuse et pour l\'équipe', () => {
+  it('applique les mêmes seuils pour un joueur et pour l\'équipe', () => {
     expect(presenceColor(85)).toBe('#00E5A0');
     expect(presenceColor(84)).toBe('#F59E0B');
     expect(presenceColor(70)).toBe('#F59E0B');

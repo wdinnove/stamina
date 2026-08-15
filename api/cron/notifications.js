@@ -3,8 +3,8 @@ import { dispatch, teamRecipients, claimDispatch, pruneDispatchLog } from '../_l
 import { sendMail } from '../_lib/mailer.js'
 
 /**
- * RÈGLE ABSOLUE — aucun email ni push automatique ne part vers une joueuse.
- * Les joueuses ne sont contactées que sur action manuelle du staff depuis
+ * RÈGLE ABSOLUE — aucun email ni push automatique ne part vers un joueur.
+ * Les joueurs ne sont contactés que sur action manuelle du staff depuis
  * l'interface (bouton d'envoi des liens bien-être, cf. WellnessPage).
  * Ce cron ne s'adresse donc QU'aux membres du staff ayant un compte app.
  * Ne pas ajouter ici d'envoi utilisant players.email.
@@ -138,7 +138,7 @@ async function notifyRtpUpcoming(admin, team, rosterIds, roster, today) {
       teamId: team.id,
       orgId: team.organization_id,
       type: 'rtp_upcoming',
-      title: `Retour au jeu prévu — ${player ? fullName(player) : 'joueuse'}`,
+      title: `Retour au jeu prévu — ${player ? fullName(player) : 'joueur'}`,
       body: `Date de reprise : ${record.rtp_date}`,
       entityType: 'medical_record',
       entityId: record.id,
@@ -171,7 +171,7 @@ async function notifySessionGaps(admin, team, seasonId, rosterIds, roster, today
         teamId: team.id,
         orgId: team.organization_id,
         type: 'rpe_missing',
-        title: `RPE manquant — ${missing.length} joueuse${missing.length > 1 ? 's' : ''}`,
+        title: `RPE manquant — ${missing.length} joueur${missing.length > 1 ? 's' : ''}`,
         body: `Séance du ${session.date} : ${missing.map(fullName).join(', ')}`,
         entityType: 'session',
         entityId: session.id,
@@ -185,7 +185,7 @@ async function notifySessionGaps(admin, team, seasonId, rosterIds, roster, today
         orgId: team.organization_id,
         type: 'attendance_missing',
         title: 'Présence incomplète',
-        body: `Séance du ${session.date} : ${attendance?.length ?? 0}/${rosterIds.length} joueuses renseignées`,
+        body: `Séance du ${session.date} : ${attendance?.length ?? 0}/${rosterIds.length} joueurs renseignés`,
         entityType: 'session',
         entityId: session.id,
       })
@@ -248,9 +248,9 @@ async function notifyTasksDue(admin, team, today) {
 }
 
 /**
- * Bilan du vendredi : joueuses sans aucune saisie depuis lundi.
+ * Bilan du vendredi : joueurs sans aucune saisie depuis lundi.
  * Uniquement à destination du staff — récap in-app/push, et email de bilan pour
- * ceux qui l'ont activé. Les joueuses ne sont PAS contactées (cf. règle en tête
+ * ceux qui l'ont activé. Les joueurs ne sont PAS contactés (cf. règle en tête
  * de fichier) : c'est au staff de déclencher la relance depuis l'interface.
  */
 async function notifyWeeklyWellness(admin, team, roster, rosterIds, today) {
@@ -275,7 +275,7 @@ async function notifyWeeklyWellness(admin, team, roster, rosterIds, today) {
     teamId: team.id,
     orgId: team.organization_id,
     type: 'wellness_weekly_reminder',
-    title: `${missing.length} joueuse${missing.length > 1 ? 's' : ''} sans bien-être cette semaine`,
+    title: `${missing.length} joueur${missing.length > 1 ? 's' : ''} sans bien-être cette semaine`,
     body: `${names} — aucun rappel automatique envoyé, à relancer manuellement si besoin`,
     recipients,
   })
@@ -285,7 +285,7 @@ async function notifyWeeklyWellness(admin, team, roster, rosterIds, today) {
     await safeMail({
       to: staffEmails,
       subject: `Bilan bien-être — ${team.name}`,
-      text: `Depuis le ${weekStart}, ${missing.length} joueuse(s) n'ont rempli aucun questionnaire bien-être : ${names}.\n\n`
+      text: `Depuis le ${weekStart}, ${missing.length} joueur(s) n'ont rempli aucun questionnaire bien-être : ${names}.\n\n`
           + `Aucun rappel ne leur a été envoyé automatiquement : utilisez le bouton d'envoi des liens depuis la page Bien-être.`,
     })
   }

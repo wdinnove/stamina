@@ -17,13 +17,13 @@ export interface LoadEntry {
 }
 
 /**
- * RPE moyen d'ÉQUIPE — applique la règle unique de l'app : moyenne par joueuse, puis moyenne
- * non pondérée des joueuses (cf. `teamAverage`). À utiliser dès que le périmètre couvre
- * PLUSIEURS séances, car les joueuses n'en font pas le même nombre : une moyenne à plat des
+ * RPE moyen d'ÉQUIPE — applique la règle unique de l'app : moyenne par joueur, puis moyenne
+ * non pondérée des joueurs (cf. `teamAverage`). À utiliser dès que le périmètre couvre
+ * PLUSIEURS séances, car les joueurs n'en font pas le même nombre : une moyenne à plat des
  * entrées pondérerait alors le RPE par l'assiduité.
  *
- * Sur une seule séance (ou un seul jour), chaque joueuse n'a qu'une entrée : la moyenne à plat
- * est déjà une voix par joueuse, et `roundedAvg` suffit.
+ * Sur une seule séance (ou un seul jour), chaque joueur n'a qu'une entrée : la moyenne à plat
+ * est déjà une voix par joueur, et `roundedAvg` suffit.
  */
 export function teamAvgRpe(entries: Array<{ playerId: string; rpe: number }>): TeamAverage {
   return teamAverageOfField(entries, e => e.playerId, e => e.rpe);

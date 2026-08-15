@@ -79,7 +79,7 @@ describe('aucun envoi d\'email générique', () => {
     expect(src).not.toMatch(/req\.body[^\n]*\bto\b/)
   })
 
-  it('le lien envoyé aux joueuses ne vient pas des en-têtes de la requête', () => {
+  it('le lien envoyé aux joueurs ne vient pas des en-têtes de la requête', () => {
     // Un Host falsifié enverrait un lien vers un domaine ressemblant.
     const src = readFileSync(join(API, 'send-wellness-links.js'), 'utf8')
     expect(src).not.toMatch(/x-forwarded-host|headers\.host/)
@@ -87,7 +87,7 @@ describe('aucun envoi d\'email générique', () => {
   })
 
   it('le second envoi (questionnaire de personnalité) suit les mêmes règles', () => {
-    // Deux endroits envoient un email à une joueuse : ils doivent être aussi fermés l'un que
+    // Deux endroits envoient un email à un joueur : ils doivent être aussi fermés l'un que
     // l'autre, sinon la règle « aucun contact non déclenché à la main » cesse d'être structurelle.
     const src = readFileSync(join(API, 'send-mbti-links.js'), 'utf8')
     expect(src).toContain('hasTeamWriteAccess')

@@ -27,7 +27,7 @@ export const MBTI_SCALE_LABELS: { value: number; label: string; short: string }[
  *  migration des réponses déjà collectées. */
 export const MBTI_QUESTIONS: MbtiQuestion[] = [
   { id: 1,  pole: 'E', text: "J'adore être avec plein de monde, ça me donne de l'énergie." },
-  { id: 2,  pole: 'I', text: "J'ai besoin de moments seule pour me ressourcer." },
+  { id: 2,  pole: 'I', text: "J'ai besoin de moments seul pour me ressourcer." },
   { id: 3,  pole: 'E', text: 'Je réfléchis souvent en parlant à voix haute.' },
   { id: 4,  pole: 'I', text: 'Dans un groupe, je préfère écouter avant de parler.' },
   { id: 5,  pole: 'E', text: "Rencontrer des gens nouveaux me donne de l'énergie plutôt que ça me fatigue." },
@@ -40,7 +40,7 @@ export const MBTI_QUESTIONS: MbtiQuestion[] = [
   { id: 12, pole: 'N', text: "J'aime imaginer plusieurs façons dont l'avenir pourrait se passer." },
   { id: 13, pole: 'T', text: 'Je décide surtout avec la logique, pas avec mes émotions.' },
   { id: 14, pole: 'F', text: 'Ce que ressentent les gens compte souvent plus pour moi que la logique pure.' },
-  { id: 15, pole: 'T', text: 'On me trouve parfois trop directe, trop franche.' },
+  { id: 15, pole: 'T', text: 'On me trouve parfois trop direct, trop franc.' },
   { id: 16, pole: 'F', text: "L'ambiance du groupe compte beaucoup pour moi, même si je dois faire des compromis." },
   { id: 17, pole: 'T', text: "Je critique facilement une idée si les arguments ne sont pas solides." },
   { id: 18, pole: 'F', text: 'Avant de décider, je pense à ce que ressentent les autres.' },

@@ -38,7 +38,7 @@ export function evaluateObjectiveAt(
   if (!def || def.domain !== 'match') return null;
 
   // Fenêtre réduite au jour du match, avec la même agrégation qu'ailleurs des deux côtés :
-  // `periodValueOf` côté joueuse, `teamPeriodValue` côté équipe. Sur un seul match les deux
+  // `periodValueOf` côté joueur, `teamPeriodValue` côté équipe. Sur un seul match les deux
   // coïncident avec la valeur du match — sauf plateau/tournoi, où la série fusionnerait les deux
   // matchs du jour en un point moyenné alors que le ratio de sommes les additionne correctement.
   const value = scope.player
@@ -68,7 +68,7 @@ export function evaluateObjectiveWindows(
   const vals = series.map(p => p.value);
 
   // Les deux périmètres agrègent désormais de la même façon — ratio de sommes pour un ratio,
-  // moyenne sur les MATCHS pour un volume (§ 4) — via `periodValueOf` côté joueuse et
+  // moyenne sur les MATCHS pour un volume (§ 4) — via `periodValueOf` côté joueur et
   // `def.teamPeriodValue` côté équipe. Le périmètre équipe retombait auparavant sur la moyenne de
   // la série, c'est-à-dire la moyenne des pourcentages match par match : un objectif « 3 pts ≥ 32 % »
   // évalué sur 1/1, 2/10 et 3/12 donnait 48,3 % (atteint) au lieu de 26,1 % (non atteint).

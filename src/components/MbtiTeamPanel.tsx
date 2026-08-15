@@ -97,7 +97,7 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
   if (loading) return <div style={{ color: '#64748B', fontSize: '0.85rem' }}>Chargement…</div>;
 
   if (!roster.length) {
-    return <Card><EmptyState message="Aucune joueuse dans l'effectif de cette saison." /></Card>;
+    return <Card><EmptyState message="Aucun joueur dans l'effectif de cette saison." /></Card>;
   }
 
   return (
@@ -121,7 +121,7 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
             <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ color: '#64748B' }}>
-                  {['Joueuse', 'Poste', 'Type', 'Profil', 'Passation'].map(h => (
+                  {['Joueur', 'Poste', 'Type', 'Profil', 'Passation'].map(h => (
                     <th key={h} style={th}>{h}</th>
                   ))}
                 </tr>
@@ -152,12 +152,12 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
         )}
       </div>
 
-      {/* ── Non-répondantes ───────────────────────────────────────────────── */}
+      {/* ── Non-répondants ────────────────────────────────────────────────── */}
       {pending.length > 0 && (
         <Card style={{ marginBottom: 14 }}>
           <CardTitle
             icon={<Mail size={14} color="#F59E0B" />}
-            info={`${pending.length} joueuse${pending.length > 1 ? 's' : ''}`}
+            info={`${pending.length} joueur${pending.length > 1 ? 's' : ''}`}
             right={
               <button onClick={openLinkModal} disabled={!teamId} style={btn(ACCENT, '#0D0F14', !teamId)}>
                 <Mail size={13} /> Envoyer les liens
@@ -225,7 +225,7 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
             Pistes de friction
           </CardTitle>
           <p style={{ color: '#94A3B8', fontSize: '0.78rem', lineHeight: 1.6, margin: '0 0 14px' }}>
-            Deux joueuses ne sont signalées que si elles penchent chacune d'un côté d'un axe
+            Deux joueurs ne sont signalés que s'ils penchent chacun d'un côté d'un axe
             <em> et</em> que l'écart est net — des lettres différentes autour du milieu ne changent rien
             au quotidien. Ce sont des hypothèses de lecture, pas des conflits constatés.
           </p>
@@ -305,7 +305,7 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>
-                  {linkSelected.size} joueuse{linkSelected.size > 1 ? 's' : ''} sélectionnée{linkSelected.size > 1 ? 's' : ''}
+                  {linkSelected.size} joueur{linkSelected.size > 1 ? 's' : ''} sélectionné{linkSelected.size > 1 ? 's' : ''}
                 </span>
                 <button onClick={() => {
                   const withEmail = pending.filter(p => p.email).map(p => p.id);

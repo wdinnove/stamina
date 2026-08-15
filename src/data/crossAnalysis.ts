@@ -455,13 +455,13 @@ export function buildTacticalIndicators(tactical: TeamTacticalCrossData | undefi
  */
 const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense: IndicatorSense }> = {
   // ── Contexte ──
-  starter:  { explain: 'La joueuse était-elle dans le cinq de départ. Sert de filtre de contexte, pas de mesure de performance.', sense: 'context' },
+  starter:  { explain: 'Le joueur était-il dans le cinq de départ. Sert de filtre de contexte, pas de mesure de performance.', sense: 'context' },
   homeAway: { explain: 'Match à domicile ou à l\'extérieur. Utile pour croiser une performance avec le lieu.', sense: 'context' },
   result:   { explain: 'Victoire ou défaite. Encodé 1/0 pour pouvoir être corrélé aux autres indicateurs.', sense: 'context' },
 
   // ── Match — brutes ──
   eval:      { explain: 'Évaluation officielle de la feuille de match : une note synthétique qui additionne les actions positives et retire les négatives.', sense: 'higher' },
-  plusMinus: { explain: "Différence de score pendant que la joueuse est sur le terrain. Dépend fortement des coéquipières présentes : à lire sur beaucoup de matchs.", formula: 'points_équipe − points_adversaire, sur son temps de jeu', sense: 'higher' },
+  plusMinus: { explain: "Différence de score pendant que le joueur est sur le terrain. Dépend fortement des coéquipiers présents : à lire sur beaucoup de matchs.", formula: 'points_équipe − points_adversaire, sur son temps de jeu', sense: 'higher' },
   min:       { explain: 'Temps de jeu. À regarder avant tout indicateur de volume : 12 points en 10 minutes et en 35 minutes ne disent pas la même chose.', sense: 'context' },
   pts:       { explain: 'Points marqués sur le match.', sense: 'higher' },
   fg2Pct:    { explain: 'Part des tirs à 2 points réussis.', formula: 'Σ réussis / Σ tentés sur la période (jamais la moyenne des % par match)', sense: 'higher' },
@@ -475,10 +475,10 @@ const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense:
   intercepts:{ explain: "Ballons volés à l'adversaire. Défense active, mais un excès peut signaler des prises de risque.", sense: 'higher' },
   bp:        { explain: 'Possessions perdues sans tir. À rapporter au rythme de jeu via %BP.', sense: 'lower' },
   fte:       { explain: "Fautes subies : autant d'occasions de lancers francs et de fautes accumulées côté adverse.", sense: 'higher' },
-  fpr:       { explain: "Fautes sifflées contre la joueuse. Trop de fautes l'expose à sortir et envoie l'adversaire sur la ligne.", sense: 'lower' },
+  fpr:       { explain: "Fautes sifflées contre le joueur. Trop de fautes l'expose à sortir et envoie l'adversaire sur la ligne.", sense: 'lower' },
 
   // ── Match — avancées ──
-  adv_offRating:   { explain: "Points produits pour 100 possessions utilisées par la joueuse. Mesure l'efficacité, pas le volume.", formula: 'points × 100 / possessions utilisées', sense: 'higher' },
+  adv_offRating:   { explain: "Points produits pour 100 possessions utilisées par le joueur. Mesure l'efficacité, pas le volume.", formula: 'points × 100 / possessions utilisées', sense: 'higher' },
   adv_efgPct:      { explain: "Réussite au tir en tenant compte du fait qu'un 3 points vaut plus qu'un 2 points. Meilleure mesure d'adresse qu'un pourcentage brut.", formula: '(tirs réussis + 0,5 × 3 pts réussis) / tirs tentés × 100', sense: 'higher' },
   adv_ftRate:      { explain: "Lancers francs obtenus pour chaque tir tenté. Mesure l'agressivité vers le cercle.", formula: 'lancers tentés / tirs tentés', sense: 'higher' },
   // ⚠️ Le dénominateur nommé ici « actions terminées par l'effectif » n'est PAS la colonne
@@ -486,13 +486,13 @@ const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense:
   // celui-là non. C'est ce qui fait que la somme des %USG de l'effectif vaut exactement 100 % — avec
   // l'autre comptage elle dépasserait 100. Les deux formules sont justes ; c'est le nom commun de
   // « possessions » qui rendait le %USG non réconciliable à la main. Cf. docs/CALCULS.md § 4.
-  adv_usagePctRaw: { explain: "Part des actions offensives de l'équipe que la joueuse a conclues. Dépend mécaniquement de son temps de jeu : une remplaçante très sollicitée sur 8 minutes reste basse.", formula: 'actions terminées par la joueuse / actions terminées par l\'effectif × 100 — « action terminée » = tir tenté + ballon perdu + 0,44 × lancer tenté, sans retirer les rebonds offensifs (contrairement à la colonne Possessions, qui mesure le rythme)', sense: 'context' },
-  adv_usagePct:    { explain: "La même part, mais rapportée aux minutes réellement jouées : « quand elle est sur le terrain, combien d'actions conclut-elle ? ». C'est cette colonne qui répond à la question du volume de jeu, pas %USG.", formula: 'actions de la joueuse × (minutes équipe / 5) / (minutes joueuse × actions de l\'effectif) × 100', sense: 'context' },
-  adv_astPct:      { explain: "Part des paniers de l'équipe que la joueuse a créés par une passe, hors ses propres paniers.", formula: 'passes décisives / (paniers équipe − ses paniers) × 100', sense: 'higher' },
+  adv_usagePctRaw: { explain: "Part des actions offensives de l'équipe que le joueur a conclues. Dépend mécaniquement de son temps de jeu : un remplaçant très sollicité sur 8 minutes reste bas.", formula: 'actions terminées par le joueur / actions terminées par l\'effectif × 100 — « action terminée » = tir tenté + ballon perdu + 0,44 × lancer tenté, sans retirer les rebonds offensifs (contrairement à la colonne Possessions, qui mesure le rythme)', sense: 'context' },
+  adv_usagePct:    { explain: "La même part, mais rapportée aux minutes réellement jouées : « quand il est sur le terrain, combien d'actions conclut-il ? ». C'est cette colonne qui répond à la question du volume de jeu, pas %USG.", formula: 'actions du joueur × (minutes équipe / 5) / (minutes joueur × actions de l\'effectif) × 100', sense: 'context' },
+  adv_astPct:      { explain: "Part des paniers de l'équipe que le joueur a créés par une passe, hors ses propres paniers.", formula: 'passes décisives / (paniers équipe − ses paniers) × 100', sense: 'higher' },
   adv_tovPct:      { explain: 'Part de ses possessions terminées par une perte de balle. Plus juste que le total brut, qui grandit avec le volume de jeu.', formula: 'ballons perdus / possessions utilisées × 100', sense: 'lower' },
-  adv_trebPct:     { explain: 'Part des rebonds disponibles pendant son temps de jeu qu\'elle a captés.', sense: 'higher' },
-  adv_orebPct:     { explain: 'Part des rebonds offensifs disponibles qu\'elle a captés. Indépendant du nombre de tirs manqués, contrairement au total de RO.', sense: 'higher' },
-  adv_drebPct:     { explain: 'Part des rebonds défensifs disponibles qu\'elle a captés.', sense: 'higher' },
+  adv_trebPct:     { explain: 'Part des rebonds disponibles pendant son temps de jeu qu\'il a captés.', sense: 'higher' },
+  adv_orebPct:     { explain: 'Part des rebonds offensifs disponibles qu\'il a captés. Indépendant du nombre de tirs manqués, contrairement au total de RO.', sense: 'higher' },
+  adv_drebPct:     { explain: 'Part des rebonds défensifs disponibles qu\'il a captés.', sense: 'higher' },
   adv_ptsProd:     { explain: 'Points marqués plus ceux créés par ses passes décisives. Donne le crédit de la création, pas seulement de la finition.', formula: 'points + passes × (points au tir équipe / paniers équipe)', sense: 'higher' },
 
   // ── Match — équipe (les autres héritent de VARIABLES) ──
@@ -505,15 +505,15 @@ const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense:
 
   // ── Charge ──
   loadUa: { explain: "Charge d'une séance selon la méthode de Foster : l'effort ressenti multiplié par la durée. En unités arbitraires (UA), l'unité standard de la méthode.", formula: 'RPE (0-10) × durée réelle en minutes', sense: 'context' },
-  rpe:    { explain: "Effort ressenti déclaré par la joueuse après la séance, de 0 à 10. Subjectif par construction — c'est ce qui en fait un bon indicateur de vécu.", sense: 'context' },
+  rpe:    { explain: "Effort ressenti déclaré par le joueur après la séance, de 0 à 10. Subjectif par construction — c'est ce qui en fait un bon indicateur de vécu.", sense: 'context' },
   acwr:   { explain: "Charge des 7 derniers jours comparée à celle des 28 derniers. Autour de 1, la charge est habituelle ; nettement au-dessus, elle a augmenté vite — c'est ce que la littérature associe à un risque accru de blessure.", formula: 'charge aiguë (7 j) / charge chronique (28 j)', sense: 'context' },
   tsb:    { explain: "Fraîcheur : écart entre la forme construite sur le long terme et la fatigue accumulée récemment. Positif = frais, très négatif = surmené.", formula: 'CTL (forme, 42 j) − ATL (fatigue, 7 j)', sense: 'context' },
 
   // ── Bien-être ──
-  well_score: { explain: "Moyenne des 6 axes de bien-être, tous redressés dans le sens « plus haut = mieux ». Un seul chiffre pour repérer une joueuse à surveiller.", formula: '((11 − fatigue) + humeur + (11 − stress) + motivation + sommeil + (11 − douleurs)) / 6', sense: 'higher' },
+  well_score: { explain: "Moyenne des 6 axes de bien-être, tous redressés dans le sens « plus haut = mieux ». Un seul chiffre pour repérer un joueur à surveiller.", formula: '((11 − fatigue) + humeur + (11 − stress) + motivation + sommeil + (11 − douleurs)) / 6', sense: 'higher' },
 
   // ── Assiduité ──
-  presence: { explain: 'Part des séances où la joueuse était présente, sur les 28 derniers jours. Une joueuse en retard compte comme présente.', formula: 'présences / séances attendues × 100', sense: 'higher' },
+  presence: { explain: 'Part des séances où le joueur était présent, sur les 28 derniers jours. Un joueur en retard compte comme présent.', formula: 'présences / séances attendues × 100', sense: 'higher' },
 };
 
 /** Attache sa documentation à un indicateur, sans écraser celle qu'il porte déjà. */

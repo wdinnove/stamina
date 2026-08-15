@@ -1,4 +1,4 @@
-/** Liens publics partagés aux joueuses (formulaires sans compte).
+/** Liens publics partagés aux joueurs (formulaires sans compte).
  *
  *  Côté navigateur l'origine est celle de la page ; côté serveur (emails) elle vient de
  *  APP_ORIGIN et n'est jamais dérivée des en-têtes — cf. api/send-wellness-links.js. */

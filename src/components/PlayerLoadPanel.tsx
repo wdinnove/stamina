@@ -44,7 +44,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
     <>
       {/* KPIs joueur */}
       {(() => {
-        // Périmètre mono-joueuse : moyenne sur SES semaines actives (les semaines sans séance
+        // Périmètre mono-joueur : moyenne sur SES semaines actives (les semaines sans séance
         // sont exclues du dénominateur, sinon trêve et blessure font chuter la moyenne).
         const avgWeeklyLoad = averageWeeklyLoad(filtered.map(toWeeklyRow)) ?? 0;
         const tier          = avgWeeklyLoad > 0 ? getWeekTier(avgWeeklyLoad, thresholds.lightMax, thresholds.normalMax) : null;

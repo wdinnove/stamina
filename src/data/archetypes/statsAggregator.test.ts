@@ -47,7 +47,7 @@ describe('aggregateRawStats', () => {
 
   it('applique réellement la correction usage% par les minutes quand Σmin de l\'effectif est plausible (chemin corrigé exercé, pas juste le repli)', () => {
     const teamStatsByMatchId = new Map();
-    // 2 matchs, chacun avec p1 + 4 coéquipières, Σmin par match dans la fourchette plausible
+    // 2 matchs, chacun avec p1 + 4 coéquipiers, Σmin par match dans la fourchette plausible
     // (~150-300) — contrairement au test de scoping ci-dessus qui reste sous le seuil et
     // n'exerce donc jamais la formule corrigée elle-même.
     const teammates = (matchId: string, eachMin: number) =>

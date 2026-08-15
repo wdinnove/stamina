@@ -14,7 +14,7 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel, PlayerNotesPanel
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
@@ -97,7 +97,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
-         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'notes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'tactical-brutes' | 'tactical-dashboard'
          | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
@@ -114,6 +114,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'classement-joueurs':      'ranking',
   'archetypes':              'archetypes',
   'personnalite':            'mbti',
+  'suivi-mental':            'notes',
   'charge-physique':         'load',
   'rpe':                     'rpe',
   'bien-etre':               'wellness',
@@ -140,6 +141,10 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     { key: 'wellness',  slug: 'bien-etre',       label: 'Bien-être' },
     { key: 'medical',   slug: 'medical',         label: 'Médical' },
   ] },
+  { label: 'Mental', tabs: [
+    { key: 'mbti',  slug: 'personnalite', label: 'Personnalité' },
+    { key: 'notes', slug: 'suivi-mental', label: 'Suivi' },
+  ] },
   { label: 'Statistiques joueurs', tabs: [
     { key: 'players-basic',    slug: 'stats-joueurs',          label: 'Brutes' },
     { key: 'players-advanced', slug: 'stats-joueurs-avancees', label: 'Avancées' },
@@ -156,7 +161,6 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     { key: 'objectives',   slug: 'objectifs',          label: 'Objectifs' },
     { key: 'ranking',      slug: 'classement-joueurs', label: 'Classement joueurs' },
     { key: 'archetypes',   slug: 'archetypes',   label: 'Archétypes (bêta)' },
-    { key: 'mbti',         slug: 'personnalite', label: 'Personnalité' },
     { key: 'impact',       slug: 'impact',       label: 'Impact joueurs' },
     { key: 'pca',          slug: 'acp',          label: 'Facteurs de victoire' },
     { key: 'matches-quarters', slug: 'qt-par-qt', label: 'QT par QT' },
@@ -177,7 +181,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
 const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
-  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', mbti: 'saison', dynamic: 'saison',
+  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', mbti: 'saison', notes: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
@@ -246,14 +250,14 @@ export default function PerformanceCollectivePage() {
   const allWellness = allPd.flatMap(p => p.wellness);
   const allMatchStats = allPd.flatMap(p => p.matchStats);
   const allAttendance = allPd.flatMap(p => p.attendance);
-  // RPE moyen d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses.
+  // RPE moyen d'équipe : règle de l'app — moyenne par joueur puis moyenne des joueurs.
   const rpeAvgP   = teamAvgRpe(allRpe.filter(e => inRangeTeam(e.date)));
-  // Règle d'équipe : moyenne par joueuse puis moyenne des joueuses — directement sur les saisies
+  // Règle d'équipe : moyenne par joueur puis moyenne des joueurs — directement sur les saisies
   // brutes, et non via l'agrégat quotidien (qui donnait une voix par jour).
   const wellAvgP   = teamWellnessAvg(allWellness.filter(w => inRangeTeam(w.date)));
-  // Règle d'équipe (§ 0), comme les trois cartes voisines : moyenne de chaque joueuse, puis moyenne
-  // non pondérée des joueuses. Une moyenne à plat des lignes d'éval pondérait par le nombre de
-  // matchs joués, donc par la disponibilité — une joueuse à 20 matchs y pesait 7 fois une joueuse
+  // Règle d'équipe (§ 0), comme les trois cartes voisines : moyenne de chaque joueur, puis moyenne
+  // non pondérée des joueurs. Une moyenne à plat des lignes d'éval pondérait par le nombre de
+  // matchs joués, donc par la disponibilité — un joueur à 20 matchs y pesait 7 fois un joueur
   // revenue de blessure sur 3 matchs.
   const evalAvgP   = teamAverageOfField(
     allMatchStats.filter(m => m.eval !== null && inRangeTeam(m.date)),
@@ -396,7 +400,7 @@ export default function PerformanceCollectivePage() {
       fg2Pct:        t.fg2a > 0 ? Math.round(t.fg2m / t.fg2a * 100) : null,
       fg3Pct:        t.fg3a > 0 ? Math.round(t.fg3m / t.fg3a * 100) : null,
       ftPct:         t.fta  > 0 ? Math.round(t.ftm  / t.fta  * 100) : null,
-      // Moyenne d'éval par joueuse sur ce match (pas un total d'équipe) — comparable à la
+      // Moyenne d'éval par joueur sur ce match (pas un total d'équipe) — comparable à la
       // colonne "Éval" de l'onglet Statistiques joueurs, et cohérente avec sa propre couleur.
       evalTeamAvg:   evalStats && evalStats.count > 0 ? Math.round(evalStats.sum / evalStats.count * 10) / 10 : null,
     };
@@ -522,8 +526,8 @@ export default function PerformanceCollectivePage() {
    * numérateur et dénominateur (§ 4) — et non en moyennant les pourcentages de chaque match, ce
    * qui donnait le même poids à un match à 3 tirs qu'à un match à 60.
    *
-   * ⚠️ À ne pas aligner sur les pieds des tableaux PAR JOUEUSE (`pjFooter`/`pjAdvFooter`) : là,
-   * chaque ligne est une joueuse, et la moyenne non pondérée des valeurs individuelles est
+   * ⚠️ À ne pas aligner sur les pieds des tableaux PAR JOUEUR (`pjFooter`/`pjAdvFooter`) : là,
+   * chaque ligne est un joueur, et la moyenne non pondérée des valeurs individuelles est
    * précisément la règle voulue (§ 0). Les deux pieds portent le même libellé « Moyenne » mais
    * répondent à deux questions différentes.
    */
@@ -609,7 +613,7 @@ export default function PerformanceCollectivePage() {
     .filter(w => w.rpe.value !== null)
     .map(w => ({ date: fmtDateWithDay(w.week), load: w.load, rpe: w.rpe.value! })),
   [teamWeekRows]);
-  // Règle d'équipe : une voix par joueuse — fourni par le hook, calculé sur les lignes brutes.
+  // Règle d'équipe : une voix par joueur — fourni par le hook, calculé sur les lignes brutes.
   // Moyenner les valeurs de `weekCombo` donnerait une voix par SEMAINE.
   const avgWeeklyLoad = teamPeriodAvgWeeklyLoad.value;
   const weekTier = avgWeeklyLoad !== null && avgWeeklyLoad > 0
@@ -640,7 +644,7 @@ export default function PerformanceCollectivePage() {
     () => data ? aggregateTeamWellnessDaily(data.players.flatMap(p => p.wellness)) : [],
     [data],
   );
-  // Saisies BRUTES pour les moyennes du panneau POMS (règle d'équipe : une voix par joueuse) —
+  // Saisies BRUTES pour les moyennes du panneau POMS (règle d'équipe : une voix par joueur) —
   // la série quotidienne `teamWellnessDaily` ne sert qu'aux courbes d'évolution, sinon les
   // moyennes affichées seraient « une voix par jour ».
   const wellnessRaw = useMemo(() => data ? data.players.flatMap(p => p.wellness) : [], [data]);
@@ -721,7 +725,7 @@ export default function PerformanceCollectivePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && activeTab !== 'mbti' && (
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && activeTab !== 'mbti' && activeTab !== 'notes' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
@@ -759,7 +763,7 @@ export default function PerformanceCollectivePage() {
             value={evalAvgP.value !== null ? fmt1(evalAvgP.value) : '—'}
             valueColor={evalAvgP.value !== null ? evalColor(evalAvgP.value, statThresholds) : '#475569'}
             // Le `n` accompagne le chiffre, comme sur Présences / RPE / Bien-être : une moyenne non
-            // pondérée est nerveuse quand peu de joueuses la composent.
+            // pondérée est nerveuse quand peu de joueurs la composent.
             subtitle={`${ptsAvgP ?? 0} pts / match${evalAvgP.players > 0 ? ` · ${evalAvgP.players} joueur${evalAvgP.players > 1 ? 's' : ''}` : ''}`}
             borderColor={evalAvgP.value !== null ? evalColor(evalAvgP.value, statThresholds) : '#475569'}
             onOpen={() => setActiveTab('stats-joueurs')}
@@ -929,8 +933,8 @@ export default function PerformanceCollectivePage() {
                     </tr>
                     <tr>
                       <th onClick={() => setS2(p => tog(p, 'pts'))}   style={{ ...TH, ...SEP, color: thC('pts', s2) }}>Pts{si('pts', s2)}</th>
-                      <th onClick={() => setS2(p => tog(p, 'usg'))}    title="% des possessions de l'équipe utilisées par la joueuse sur l'ensemble du match" style={{ ...TH, color: thC('usg', s2) }}>%USG{si('usg', s2)}</th>
-                      <th onClick={() => setS2(p => tog(p, 'usgmin'))} title="% USG rapporté aux minutes réellement jouées — usage quand la joueuse est sur le terrain" style={{ ...TH, color: thC('usgmin', s2) }}>%USG/min{si('usgmin', s2)}</th>
+                      <th onClick={() => setS2(p => tog(p, 'usg'))}    title="% des possessions de l'équipe utilisées par le joueur sur l'ensemble du match" style={{ ...TH, color: thC('usg', s2) }}>%USG{si('usg', s2)}</th>
+                      <th onClick={() => setS2(p => tog(p, 'usgmin'))} title="% USG rapporté aux minutes réellement jouées — usage quand le joueur est sur le terrain" style={{ ...TH, color: thC('usgmin', s2) }}>%USG/min{si('usgmin', s2)}</th>
                       <th onClick={() => setS2(p => tog(p, 'ortg'))}  style={{ ...TH, color: thC('ortg', s2) }}>ORtg{si('ortg', s2)}</th>
                       <th onClick={() => setS2(p => tog(p, 'efg'))}   style={{ ...TH, color: thC('efg', s2) }}>eFG%{si('efg', s2)}</th>
                       <th onClick={() => setS2(p => tog(p, 'ftr'))}   style={{ ...TH, color: thC('ftr', s2) }}>FT Rate{si('ftr', s2)}</th>
@@ -1255,6 +1259,11 @@ export default function PerformanceCollectivePage() {
       {/* ══ PERSONNALITÉ (questionnaire MBTI) ═══════════════════════════════ */}
       {activeTab === 'mbti' && (
         <MbtiTeamPanel roster={players} teamId={selected?.team.id} />
+      )}
+
+      {/* ══ SUIVI MENTAL (notes du staff, tout l'effectif) ══════════════════ */}
+      {activeTab === 'notes' && (
+        <PlayerNotesPanel roster={players} teamId={selected?.team.id} seasonId={selected?.season.id} />
       )}
 
       {/* ══ CHARGE PHYSIQUE (synthèse RPE × ACWR × Fraîcheur × Risque, alignée sur PerformanceIndividuellePage) ══ */}

@@ -167,8 +167,8 @@ export default function WellnessPage() {
   const isTeamView = activeTab === 'team';
 
   // Saisies BRUTES du périmètre : base des moyennes. En vue équipe, la règle de l'app veut une
-  // voix par joueuse — il faut donc les saisies individuelles, pas l'agrégat quotidien (qui
-  // donnerait une voix par jour et sur-pondérerait les joueuses saisissant le plus souvent).
+  // voix par joueur — il faut donc les saisies individuelles, pas l'agrégat quotidien (qui
+  // donnerait une voix par jour et sur-pondérerait les joueurs saisissant le plus souvent).
   const rawHistory = isTeamView ? teamHistory : history;
 
   const historyInRange = rawHistory.filter(e =>

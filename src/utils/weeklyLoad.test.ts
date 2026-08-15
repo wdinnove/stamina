@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { weeklyLoadBuckets, averageWeeklyLoad, teamAvgWeeklyLoad, type WeeklyLoadRow } from './weeklyLoad';
 
-/** Une séance d'une joueuse. Les lundis choisis sont bien des lundis (semaines ISO distinctes). */
+/** Une séance d'un joueur. Les lundis choisis sont bien des lundis (semaines ISO distinctes). */
 const row = (date: string, playerId: string, rpe: number, plannedDuration: number): WeeklyLoadRow =>
   ({ date, playerId, rpe, plannedDuration });
 
@@ -57,13 +57,13 @@ describe('weeklyLoadBuckets — la charge de chaque semaine est déjà conforme 
   });
 });
 
-describe('teamAvgWeeklyLoad — une voix par joueuse', () => {
-  it('moyenne les joueuses, pas les semaines', () => {
+describe('teamAvgWeeklyLoad — une voix par joueur', () => {
+  it('moyenne les joueurs, pas les semaines', () => {
     // Alice 3100 (4 semaines) · Bea 2890 (4 semaines) · Chloé 740 (1 seule semaine active)
     expect(teamAvgWeeklyLoad(SEASON)).toEqual({ value: 2243, players: 3 });
   });
 
-  it('diverge de la moyenne par semaine, qui dilue une joueuse peu présente', () => {
+  it('diverge de la moyenne par semaine, qui dilue un joueur peu présent', () => {
     // Une voix par semaine : (2995 + 2995 + 2995 + 2243) / 4 — Chloé ne pèse que sur S4
     expect(averageWeeklyLoad(SEASON)).toBe(2807);
     expect(teamAvgWeeklyLoad(SEASON).value).toBe(2243);
@@ -75,7 +75,7 @@ describe('teamAvgWeeklyLoad — une voix par joueuse', () => {
     expect(teamAvgWeeklyLoad(chloeOnly)).toEqual({ value: 740, players: 1 });
   });
 
-  it('coïncide avec la moyenne par semaine quand toutes les joueuses font toutes les semaines', () => {
+  it('coïncide avec la moyenne par semaine quand tous les joueurs font toutes les semaines', () => {
     const noReturn = [...regularWeek(WEEKS[0]), ...regularWeek(WEEKS[1])];
     expect(teamAvgWeeklyLoad(noReturn).value).toBe(averageWeeklyLoad(noReturn));
   });

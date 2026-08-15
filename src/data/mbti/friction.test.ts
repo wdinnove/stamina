@@ -26,7 +26,7 @@ describe('axisSpread', () => {
     const ei = axisSpread(squad).find(a => a.key === 'EI')!;
     expect(ei.countA).toBe(2);   // deux E
     expect(ei.countB).toBe(0);
-    expect(ei.tied).toBe(1);     // la joueuse au centre n'est reversée d'aucun côté
+    expect(ei.tied).toBe(1);     // le joueur au centre n'est reversé d'aucun côté
     expect(ei.percentA).toBe(100);
   });
 
@@ -53,7 +53,7 @@ describe('teamPairs', () => {
     expect(pair.frictionScore).toBe(0);
   });
 
-  it('ignore un axe où l\'une des deux est à égalité — elle est au milieu, elle ne s\'oppose à personne', () => {
+  it('ignore un axe où l\'un des deux est à égalité — il est au milieu, il ne s\'oppose à personne', () => {
     const centered = { playerId: 'c', result: computeMbtiResult(Object.fromEntries(MBTI_QUESTIONS.map(q => [q.id, 3]))) };
     const [pair] = teamPairs([player('a', ['E', 'S', 'T', 'J']), centered]);
     expect(pair.oppositions).toEqual([]);

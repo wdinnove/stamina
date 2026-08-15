@@ -50,10 +50,10 @@ export type WellnessMetric = 'score' | WellnessDimension['key'];
 
 /**
  * Moyenne bien-être d'ÉQUIPE — règle de l'app (cf. `teamAverage`) : moyenne des saisies de chaque
- * joueuse, puis moyenne non pondérée des joueuses.
+ * joueur, puis moyenne non pondérée des joueurs.
  *
  * Remplace l'ancienne convention « agrégat quotidien puis moyenne des jours » sur les périmètres
- * couvrant plusieurs jours : celle-ci donnait une voix par JOUR, si bien qu'une joueuse saisissant
+ * couvrant plusieurs jours : celle-ci donnait une voix par JOUR, si bien qu'un joueur saisissant
  * tous les jours pesait plus lourd qu'une saisissant deux fois par semaine — et qu'un groupe qui
  * saisit moins quand il va mal voyait son score d'équipe remonter mécaniquement.
  */
@@ -82,10 +82,10 @@ export function worstWellnessAxis(entries: WellnessEntry[], threshold = 5): Well
 
 /**
  * Agrégat quotidien de l'équipe : une entrée synthétique par jour, chaque dimension étant la
- * moyonne d'équipe des joueuses ayant saisi ce jour-là.
+ * moyonne d'équipe des joueurs ayant saisi ce jour-là.
  *
- * Passe par `teamWellnessAvg` plutôt que par une moyenne à plat des saisies du jour : une joueuse
- * qui saisit deux fois le même jour ne doit pas compter double face à celles qui saisissent une
+ * Passe par `teamWellnessAvg` plutôt que par une moyenne à plat des saisies du jour : un joueur
+ * qui saisit deux fois le même jour ne doit pas compter double face à ceux qui saisissent une
  * fois. Sert aux séries quotidiennes (graphiques, corrélations) — pour un chiffre agrégé sur
  * plusieurs jours, appeler directement `teamWellnessAvg` sur les saisies brutes.
  */

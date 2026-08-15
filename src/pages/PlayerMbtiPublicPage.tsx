@@ -73,8 +73,8 @@ export default function PlayerMbtiPublicPage() {
         <div style={card}>
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <AlertCircle size={40} style={{ color: '#EF4444', marginBottom: 12 }} />
-            <p style={{ color: '#F1F5F9', fontWeight: 600, margin: '0 0 8px' }}>Joueuse introuvable</p>
-            <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Ce lien n'est pas valide ou la joueuse n'existe plus.</p>
+            <p style={{ color: '#F1F5F9', fontWeight: 600, margin: '0 0 8px' }}>Joueur introuvable</p>
+            <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Ce lien n'est pas valide ou le joueur n'existe plus.</p>
           </div>
         </div>
       </Page>
@@ -105,7 +105,7 @@ export default function PlayerMbtiPublicPage() {
             <Lock size={40} style={{ color: ACCENT, marginBottom: 12 }} />
             <p style={{ color: '#F1F5F9', fontWeight: 600, margin: '0 0 8px' }}>Questionnaire déjà rempli</p>
             <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>
-              Il ne se remplit qu'une fois. Si tu penses t'être trompée, demande à ton staff de le réinitialiser.
+              Il ne se remplit qu'une fois. Si tu penses t'être trompé, demande à ton staff de le réinitialiser.
             </p>
           </div>
         </div>

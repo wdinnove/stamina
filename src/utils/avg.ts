@@ -1,5 +1,5 @@
 /** Moyenne brute, non arrondie — à utiliser pour les calculs intermédiaires (ex. valeur d'une
- * joueuse avant la moyenne d'équipe), afin de ne jamais arrondir deux fois de suite. */
+ * joueur avant la moyenne d'équipe), afin de ne jamais arrondir deux fois de suite. */
 export function mean(values: number[]): number | null {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }

@@ -4,7 +4,7 @@ import type { MbtiAxisDef, MbtiPole, MbtiResult } from './types';
 /**
  * Pistes de friction entre profils — lecture indicative, pas un verdict.
  *
- * Deux joueuses ne « s'opposent » sur un axe que si elles penchent chacune d'un côté ET que l'écart
+ * Deux joueurs ne « s'opposent » sur un axe que s'ils penchent chacun d'un côté ET que l'écart
  * entre leurs positions est net : deux profils proches du milieu portent des lettres différentes
  * sans que ça change quoi que ce soit au quotidien. D'où le seuil ci-dessous, exprimé en points de
  * pourcentage sur l'axe (0–100), qui est le seul paramètre du calcul.
@@ -22,7 +22,7 @@ export interface MbtiPlayerResult {
 export interface AxisOpposition {
   key: MbtiAxisDef['key'];
   label: string;
-  /** Pôle de chacune des deux joueuses sur cet axe. */
+  /** Pôle de chacun des deux joueurs sur cet axe. */
   poleA: MbtiPole;
   poleB: MbtiPole;
   /** Écart en points de pourcentage entre leurs positions sur l'axe. */
@@ -37,7 +37,7 @@ export interface MbtiPair {
   /** Somme des écarts sur les axes réellement opposés (0 = aucune opposition marquée). */
   frictionScore: number;
   oppositions: AxisOpposition[];
-  /** Axes où les deux joueuses penchent du même côté. */
+  /** Axes où les deux joueurs penchent du même côté. */
   sharedPoles: MbtiPole[];
 }
 
@@ -46,11 +46,11 @@ export interface AxisSpread {
   label: string;
   a: MbtiPole;
   b: MbtiPole;
-  /** Nombre de joueuses de chaque côté ; `tied` = celles à égalité stricte sur cet axe. */
+  /** Nombre de joueurs de chaque côté ; `tied` = ceux à égalité stricte sur cet axe. */
   countA: number;
   countB: number;
   tied: number;
-  /** Part du pôle a parmi les joueuses tranchées, en pourcentage entier (null si aucune). */
+  /** Part du pôle a parmi les joueurs tranchés, en pourcentage entier (null si aucune). */
   percentA: number | null;
 }
 
@@ -94,7 +94,7 @@ export function teamPairs(players: MbtiPlayerResult[]): MbtiPair[] {
         const axA = pa.result.axes.find(x => x.key === axis.key);
         const axB = pb.result.axes.find(x => x.key === axis.key);
         if (!axA || !axB) continue;
-        // Une joueuse à égalité sur l'axe ne s'oppose à personne : elle est au milieu.
+        // Un joueur à égalité sur l'axe ne s'oppose à personne : il est au milieu.
         if (axA.winner === null || axB.winner === null) continue;
 
         if (axA.winner === axB.winner) { sharedPoles.push(axA.winner); continue; }

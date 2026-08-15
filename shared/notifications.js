@@ -11,6 +11,7 @@ export const NOTIFICATION_CATEGORIES = [
   { key: 'training', label: 'Entraînement',  color: '#06B6D4' },
   { key: 'meetings', label: 'Réunions',      color: '#F97316' },
   { key: 'tasks',    label: 'Tâches',        color: '#8B5CF6' },
+  { key: 'mental',   label: 'Mental',        color: '#A78BFA' },
   { key: 'matches',  label: 'Matchs',        color: '#F59E0B' },
   { key: 'tactical', label: 'Tactique',      color: '#10B981' },
   { key: 'season',   label: 'Saison',        color: '#94A3B8' },
@@ -47,6 +48,10 @@ export const NOTIFICATION_TYPES = [
 
   { key: 'action_added',             category: 'tasks',    audience: 'assignee', label: 'Tâche assignée',                   inApp: true,  push: true,  email: false, timing: 'immediate' },
   { key: 'task_due_soon',            category: 'tasks',    audience: 'assignee', label: 'Échéance de tâche',                inApp: true,  push: true,  email: false, timing: 'daily_cron' },
+
+  // Le contenu de la note ne sort JAMAIS d'ici : la notification ne porte que le nom du joueur
+  // et la catégorie. Un compte rendu d'entretien n'a pas à s'afficher dans une bannière push.
+  { key: 'note_added',               category: 'mental',   audience: 'team',     label: 'Note de suivi ajoutée',            inApp: true,  push: false, email: false, timing: 'immediate' },
 
   { key: 'match_added',              category: 'matches',  audience: 'team',     label: 'Match planifié',                   inApp: true,  push: true,  email: false, timing: 'immediate' },
   { key: 'match_stats_added',        category: 'matches',  audience: 'team',     label: 'Statistiques de match ajoutées',   inApp: true,  push: true,  email: false, timing: 'immediate' },
@@ -137,6 +142,10 @@ export function urlFor(type, entityId) {
     case 'action_added':
     case 'task_due_soon':
       return '/taches';
+
+    // `entityId` = joueur concerné → son onglet de suivi mental, pas la vue d'équipe.
+    case 'note_added':
+      return entityId ? `/performance-individuelle/${entityId}/suivi-mental` : '/performance-collective/suivi-mental';
 
     case 'match_added':
       return entityId ? `/matchs/${entityId}` : '/matchs';

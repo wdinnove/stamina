@@ -4,7 +4,7 @@ import type { MbtiResponse } from '../data/types';
 export interface MbtiPublicInfo {
   firstName: string;
   lastName: string;
-  /** Vrai si la joueuse a déjà rempli le questionnaire — le lien n'est alors plus utilisable. */
+  /** Vrai si le joueur a déjà rempli le questionnaire — le lien n'est alors plus utilisable. */
   alreadyAnswered: boolean;
 }
 

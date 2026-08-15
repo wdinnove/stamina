@@ -68,7 +68,7 @@ export const router = createBrowserRouter([
   { path: '/player/:playerId/wellness', element: <PlayerWellnessLegacyRedirect /> },
   {
     // Questionnaire de personnalité — public comme le formulaire bien-être, et pour la même
-    // raison : la joueuse n'a pas de compte. Doit rester AU-DESSUS de RequireAuth, dont le
+    // raison : le joueur n'a pas de compte. Doit rester AU-DESSUS de RequireAuth, dont le
     // catch-all `*` renverrait sinon vers /connexion.
     path: '/joueur/:playerId/mbti',
     lazy: () => import('./pages/PlayerMbtiPublicPage').then(m => ({ Component: m.default })),

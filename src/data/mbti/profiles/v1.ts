@@ -6,7 +6,7 @@ import type { MbtiProfile, MbtiType } from '../types';
 export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   ISTJ: {
     nick: 'Le gardien rigoureux',
-    essence: "ISTJ s'appuie sur les faits, l'expérience et un sens aigu du devoir. C'est une personne sur qui on peut compter : elle respecte ses engagements et préfère la méthode à l'improvisation.",
+    essence: "ISTJ s'appuie sur les faits, l'expérience et un sens aigu du devoir. C'est quelqu'un sur qui on peut compter : il respecte ses engagements et préfère la méthode à l'improvisation.",
     forces: [
       'Fiabilité à toute épreuve',
       "Sens de l'organisation et de la rigueur",
@@ -16,12 +16,12 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     vigilances: [
       "Peut manquer de flexibilité face à l'imprévu",
       'Difficulté à lâcher une méthode qui a fait ses preuves, même si le contexte change',
-      'Peut sembler froide ou distante en apparence',
+      'Peut sembler froid ou distant en apparence',
     ],
     stress: [
       'Changements de dernière minute sans préavis',
       'Désordre ou manque de clarté dans les rôles',
-      'Sentiment de ne pas être prise au sérieux dans son expertise',
+      'Sentiment de ne pas être pris au sérieux dans son expertise',
       'Incohérence entre les décisions et les règles annoncées',
     ],
     motiv: [
@@ -39,7 +39,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ISFJ: {
     nick: 'Le protecteur discret',
-    essence: "ISFJ conjugue sens du service et attachement aux repères éprouvés. Discrète et loyale, cette personne veille à ce que chacun se sente bien, souvent en arrière-plan.",
+    essence: "ISFJ conjugue sens du service et attachement aux repères éprouvés. Discret et loyal, il veille à ce que chacun se sente bien, souvent en arrière-plan.",
     forces: [
       'Dévouement et fiabilité',
       "Sens du détail et de l'organisation",
@@ -54,11 +54,11 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     stress: [
       'Conflits ouverts ou tensions non réglées',
       'Critique vécue comme un rejet personnel',
-      "Sentiment de ne pas être valorisée pour ce qu'elle apporte",
+      "Sentiment de ne pas être valorisé pour ce qu'il apporte",
       'Désorganisation soudaine du cadre habituel',
     ],
     motiv: [
-      'Se sentir utile et appréciée',
+      'Se sentir utile et apprécié',
       'Un climat de confiance et de bienveillance',
       'La stabilité du groupe et des repères',
       'Une reconnaissance sincère, exprimée en privé',
@@ -66,28 +66,28 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     comm: [
       'Privilégier un ton chaleureux et personnel',
       'Donner le feedback correctif en tête-à-tête, jamais devant le groupe',
-      "Prendre le temps de demander comment elle va, pas seulement ce qu'elle fait",
+      "Prendre le temps de demander comment il va, pas seulement ce qu'il fait",
       'Éviter la confrontation frontale, préférer le dialogue posé',
     ],
   },
   INFJ: {
     nick: 'Le visionnaire discret',
-    essence: "INFJ associe intuition et profondeur de valeurs. Réservée en apparence, cette personne a souvent une vision claire de ce qui a du sens, et cherche la cohérence entre ce qu'elle fait et ce qu'elle croit.",
+    essence: "INFJ associe intuition et profondeur de valeurs. Réservé en apparence, il a souvent une vision claire de ce qui a du sens, et cherche la cohérence entre ce qu'il fait et ce qu'il croit.",
     forces: [
       'Vision à long terme',
       'Grande empathie et écoute fine',
       'Capacité à fédérer autour d\'une idée porteuse de sens',
-      'Exigence envers elle-même',
+      'Exigence envers lui-même',
     ],
     vigilances: [
-      "Peut se replier si elle se sent incomprise",
+      "Peut se replier s'il se sent incompris",
       'Tend à idéaliser puis se déçoit si la réalité ne suit pas',
       'Difficulté à exprimer un désaccord de façon directe',
     ],
     stress: [
       'Superficialité ou manque de sens dans les tâches',
       'Conflits de valeurs non résolus',
-      "Sentiment d'être incomprise ou pas écoutée",
+      "Sentiment d'être incompris ou pas écouté",
       'Environnement trop bruyant ou trop exposé socialement',
     ],
     motiv: [
@@ -105,7 +105,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   INTJ: {
     nick: 'Le stratège',
-    essence: "INTJ pense en systèmes et en scénarios à long terme. Indépendante et exigeante, cette personne cherche à comprendre en profondeur avant d'agir, et préfère l'efficacité à l'agitation.",
+    essence: "INTJ pense en systèmes et en scénarios à long terme. Indépendant et exigeant, il cherche à comprendre en profondeur avant d'agir, et préfère l'efficacité à l'agitation.",
     forces: [
       'Vision stratégique claire',
       'Capacité à structurer des idées complexes',
@@ -113,7 +113,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Détermination une fois la décision prise',
     ],
     vigilances: [
-      'Peut sembler distante ou trop critique',
+      'Peut sembler distant ou trop critique',
       'Impatience face à ce qui lui semble inefficace ou irrationnel',
       'Difficulté à exprimer les émotions, les siennes comme celles des autres',
     ],
@@ -121,7 +121,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Incompétence non corrigée dans son environnement',
       'Décisions arbitraires prises sans logique',
       'Absence de vision ou de direction claire',
-      'Devoir justifier sans cesse des évidences pour elle',
+      'Devoir justifier sans cesse des évidences pour lui',
     ],
     motiv: [
       'Maîtriser un sujet en profondeur',
@@ -138,7 +138,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ISTP: {
     nick: "L'artisan pragmatique",
-    essence: "ISTP aime comprendre comment les choses fonctionnent, en testant plutôt qu'en théorisant. Calme sous pression, cette personne agit avec efficacité quand la situation l'exige.",
+    essence: "ISTP aime comprendre comment les choses fonctionnent, en testant plutôt qu'en théorisant. Calme sous pression, il agit avec efficacité quand la situation l'exige.",
     forces: [
       "Sang-froid dans l'urgence",
       'Sens pratique et habileté technique',
@@ -146,13 +146,13 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Discrétion, pas de besoin de mise en avant',
     ],
     vigilances: [
-      'Peut sembler détachée ou peu impliquée émotionnellement',
-      "Résiste aux règles qu'elle juge arbitraires",
+      'Peut sembler détaché ou peu impliqué émotionnellement',
+      "Résiste aux règles qu'il juge arbitraires",
       'Communique peu spontanément ses ressentis',
     ],
     stress: [
       'Règles rigides imposées sans justification',
-      'Être surveillée de près ou micromanagée',
+      'Être surveillé de près ou micromanagé',
       'Trop de réunions, pas assez d\'action concrète',
     ],
     motiv: [
@@ -163,14 +163,14 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     ],
     comm: [
       'Rester court et concret, éviter les longs discours',
-      "Lui laisser de l'espace, ne pas insister si elle se referme",
+      "Lui laisser de l'espace, ne pas insister s'il se referme",
       'Préférer montrer plutôt qu\'expliquer longuement',
       "Respecter son besoin d'autonomie dans l'exécution",
     ],
   },
   ISFP: {
     nick: "L'artisan discret",
-    essence: "ISFP agit avec authenticité, guidée par ses valeurs et son ressenti plus que par les conventions. Ancrée dans le concret et le moment présent, cette personne exprime peu ses émotions par les mots mais beaucoup par l'action.",
+    essence: "ISFP agit avec authenticité, guidé par ses valeurs et son ressenti plus que par les conventions. Ancré dans le concret et le moment présent, il exprime peu ses émotions par les mots mais beaucoup par l'action.",
     forces: [
       'Authenticité et sincérité',
       'Sens esthétique et souci du détail',
@@ -183,7 +183,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Difficulté à se projeter sur le très long terme',
     ],
     stress: [
-      'Être mise en avant publiquement ou devoir « performer » devant un public',
+      'Être mis en avant publiquement ou devoir « performer » devant un public',
       'Critique perçue comme une attaque personnelle',
       "Cadre trop rigide, sans place pour l'ajustement",
       'Conflit non résolu qui traîne',
@@ -203,7 +203,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   INFP: {
     nick: "L'idéaliste",
-    essence: "INFP vit en cohérence avec ses valeurs profondes, avec une grande sensibilité et une forte créativité intérieure. Cette personne s'engage pleinement dès qu'elle trouve du sens à ce qu'elle fait.",
+    essence: "INFP vit en cohérence avec ses valeurs profondes, avec une grande sensibilité et une forte créativité intérieure. Il s'engage pleinement dès qu'il trouve du sens à ce qu'il fait.",
     forces: [
       'Créativité et originalité',
       'Fidélité à ses valeurs',
@@ -219,7 +219,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Conflits de valeurs non résolus',
       'Critiques dures ou jugement rapide',
       'Pression de conformité au groupe',
-      'Sentiment de trahir ce en quoi elle croit',
+      'Sentiment de trahir ce en quoi il croit',
     ],
     motiv: [
       'Cohérence entre valeurs et actions',
@@ -236,7 +236,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   INTP: {
     nick: 'Le penseur',
-    essence: "INTP explore les idées et les systèmes par curiosité intellectuelle pure. Indépendante d'esprit, cette personne aime comprendre en profondeur avant de conclure, et se méfie des évidences non démontrées.",
+    essence: "INTP explore les idées et les systèmes par curiosité intellectuelle pure. Indépendant d'esprit, il aime comprendre en profondeur avant de conclure, et se méfie des évidences non démontrées.",
     forces: [
       "Capacité d'analyse fine",
       'Créativité conceptuelle',
@@ -267,8 +267,8 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     ],
   },
   ESTP: {
-    nick: "La femme d'action",
-    essence: "ESTP vit dans l'instant et privilégie l'action à la réflexion prolongée. Énergique et pragmatique, cette personne excelle quand il faut réagir vite et concrètement.",
+    nick: "L'homme d'action",
+    essence: "ESTP vit dans l'instant et privilégie l'action à la réflexion prolongée. Énergique et pragmatique, il excelle quand il faut réagir vite et concrètement.",
     forces: [
       'Efficacité sous pression',
       "Sens pratique et rapidité d'exécution",
@@ -283,7 +283,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     stress: [
       "Trop de théorie, pas assez d'action concrète",
       'Lenteur ou processus qui traînent',
-      "Sentiment d'être bridée dans son autonomie",
+      "Sentiment d'être bridé dans son autonomie",
     ],
     motiv: [
       'Résultats rapides et visibles',
@@ -300,7 +300,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ESFP: {
     nick: 'Le showman',
-    essence: "ESFP apporte de l'énergie et de la spontanéité au groupe. Chaleureuse et sociable, cette personne vit pleinement le moment présent et aime que les autres se sentent bien autour d'elle.",
+    essence: "ESFP apporte de l'énergie et de la spontanéité au groupe. Chaleureux et sociable, il vit pleinement le moment présent et aime que les autres se sentent bien autour de lui.",
     forces: [
       'Enthousiasme communicatif',
       'Grande aisance relationnelle',
@@ -332,7 +332,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ENFP: {
     nick: "L'enthousiaste",
-    essence: "ENFP se nourrit de nouvelles idées et de connexions humaines authentiques. Curieuse et inspirante, cette personne voit du potentiel presque partout et communique facilement son enthousiasme.",
+    essence: "ENFP se nourrit de nouvelles idées et de connexions humaines authentiques. Curieux et inspirant, il voit du potentiel presque partout et communique facilement son enthousiasme.",
     forces: [
       'Créativité et vision des possibles',
       'Capacité à motiver et fédérer',
@@ -364,7 +364,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ENTP: {
     nick: 'Le débatteur',
-    essence: "ENTP aime challenger les idées et explorer des angles nouveaux. Vive d'esprit et à l'aise dans la contradiction, cette personne stimule le groupe par ses questions et ses remises en cause.",
+    essence: "ENTP aime challenger les idées et explorer des angles nouveaux. Vif d'esprit et à l'aise dans la contradiction, il stimule le groupe par ses questions et ses remises en cause.",
     forces: [
       "Créativité et esprit d'innovation",
       "Aisance dans le débat d'idées",
@@ -373,7 +373,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     ],
     vigilances: [
       "Peut challenger au point d'épuiser le groupe",
-      "Se lasse vite une fois l'idée explorée, moins motivée par l'exécution",
+      "Se lasse vite une fois l'idée explorée, moins motivé par l'exécution",
       'Peut froisser sans le vouloir en cherchant simplement à débattre',
     ],
     stress: [
@@ -396,7 +396,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ESTJ: {
     nick: "L'organisateur",
-    essence: "ESTJ structure, décide et avance vers les résultats sans détour. Cette personne aime que les rôles soient clairs et que chacun tienne ses engagements.",
+    essence: "ESTJ structure, décide et avance vers les résultats sans détour. Il aime que les rôles soient clairs et que chacun tienne ses engagements.",
     forces: [
       "Sens de l'organisation",
       'Leadership naturel et décisif',
@@ -404,7 +404,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Capacité à faire avancer les choses concrètement',
     ],
     vigilances: [
-      'Peut sembler autoritaire ou trop directive',
+      'Peut sembler autoritaire ou trop directif',
       'Impatience face à ce qui lui semble inefficace',
       'Difficulté à intégrer des approches différentes de la sienne',
     ],
@@ -423,12 +423,12 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       'Être direct, structuré et factuel',
       "Aller à l'essentiel, éviter le flou",
       'Présenter les choses avec un plan clair',
-      "Respecter la chaîne de décision qu'elle a mise en place",
+      "Respecter la chaîne de décision qu'il a mise en place",
     ],
   },
   ESFJ: {
     nick: 'Le rassembleur',
-    essence: "ESFJ veille à la cohésion et au bien-être du groupe. Chaleureuse et organisée, cette personne aime que chacun se sente inclus et que l'ambiance reste positive.",
+    essence: "ESFJ veille à la cohésion et au bien-être du groupe. Chaleureux et organisé, il aime que chacun se sente inclus et que l'ambiance reste positive.",
     forces: [
       "Sens du collectif et de l'organisation",
       'Loyauté et fiabilité',
@@ -447,7 +447,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     ],
     motiv: [
       'Harmonie et bonne ambiance du groupe',
-      'Se sentir utile et appréciée',
+      'Se sentir utile et apprécié',
       'Reconnaissance sociale de ses efforts',
       'Repères clairs et stables',
     ],
@@ -460,7 +460,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
   },
   ENFJ: {
     nick: 'Le mobilisateur',
-    essence: "ENFJ fédère et fait grandir les autres avec un charisme naturel. Empathique et engagée, cette personne perçoit vite les dynamiques du groupe et cherche à en tirer le meilleur pour chacun.",
+    essence: "ENFJ fédère et fait grandir les autres avec un charisme naturel. Empathique et engagé, il perçoit vite les dynamiques du groupe et cherche à en tirer le meilleur pour chacun.",
     forces: [
       'Charisme et capacité à fédérer',
       'Grande empathie',
@@ -470,7 +470,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     vigilances: [
       "Peut s'oublier au profit du groupe",
       'Sensible aux tensions et aux non-dits',
-      'Peut idéaliser les autres puis être déçue si la réalité ne suit pas',
+      'Peut idéaliser les autres puis être déçu si la réalité ne suit pas',
     ],
     stress: [
       'Conflits de valeurs dans le groupe',
@@ -486,13 +486,13 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     comm: [
       "Miser sur l'authenticité avant tout",
       'Donner un feedback constructif avec bienveillance',
-      "L'impliquer dans les décisions qui la concernent",
+      "L'impliquer dans les décisions qui le concernent",
       'Reconnaître son investissement, pas seulement les résultats',
     ],
   },
   ENTJ: {
     nick: 'Le commandant',
-    essence: "ENTJ structure vite une situation complexe et avance avec détermination vers ses objectifs. Stratège et décisive, cette personne aime diriger et voir les choses progresser.",
+    essence: "ENTJ structure vite une situation complexe et avance avec détermination vers ses objectifs. Stratège et décisif, il aime diriger et voir les choses progresser.",
     forces: [
       'Leadership naturel et vision stratégique',
       'Capacité à structurer rapidement le chaos',
@@ -500,8 +500,8 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
       "Compétence reconnue dans l'action",
     ],
     vigilances: [
-      'Peut sembler dominante ou impatiente',
-      "Peu tolérante face à l'inefficacité perçue",
+      'Peut sembler dominant ou impatient',
+      "Peu tolérant face à l'inefficacité perçue",
       'Peut sous-estimer l\'impact émotionnel de ses décisions',
     ],
     stress: [
@@ -512,7 +512,7 @@ export const MBTI_PROFILES_V1: Record<MbtiType, MbtiProfile> = {
     motiv: [
       'Atteindre des objectifs ambitieux',
       'Structurer et diriger',
-      'Compétence reconnue autour d\'elle',
+      'Compétence reconnue autour de lui',
       'Progrès visible et mesurable',
     ],
     comm: [

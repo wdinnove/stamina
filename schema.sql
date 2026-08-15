@@ -20,6 +20,7 @@
 --   13b. MBTI Responses (questionnaire de personnalité)
 --   14. Medical Records  (+ vue medical_records_full)
 --   15. Player Actions
+--   15b. Player Notes (suivi mental)
 --   16. Matches
 --   17. Match Stats
 --   17b. Opponent Match Stats
@@ -54,6 +55,9 @@ CREATE TYPE action_category     AS ENUM (
   'medical', 'physical', 'mental', 'tactical',
   'administrative', 'interview', 'video', 'discussion'
 );
+-- Catégories d'une note de suivi mental — volontairement courtes : une note se classe
+-- d'un geste, sinon on ne la classe pas.
+CREATE TYPE note_category       AS ENUM ('entretien', 'comportement', 'perso', 'match', 'autre');
 CREATE TYPE home_away           AS ENUM ('home', 'away');
 CREATE TYPE match_result        AS ENUM ('win', 'loss');
 
@@ -308,8 +312,8 @@ CREATE TRIGGER trg_players_updated_at
 
 -- ────────────────────────────────────────────────────────────────
 -- 9. PLAYER SEASON
---    Inscription d'une joueuse à une saison
---    Contrainte d'unicité : une joueuse par saison max
+--    Inscription d'un joueur à une saison
+--    Contrainte d'unicité : un joueur par saison max
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE player_season (
@@ -327,7 +331,7 @@ CREATE INDEX ON player_season (season_id);
 -- ────────────────────────────────────────────────────────────────
 -- 10. TRAINING SESSIONS
 --     Entité centrale du RPE : le coach crée UNE session,
---     chaque joueuse y soumet son RPE individuellement
+--     chaque joueur y soumet son RPE individuellement
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE training_sessions (
@@ -428,7 +432,7 @@ CREATE INDEX ON session_team_players (session_team_id);
 
 -- ────────────────────────────────────────────────────────────────
 -- 12. RPE ENTRIES
---     UNIQUE (session_id, player_id) : une entrée par joueuse par session
+--     UNIQUE (session_id, player_id) : une entrée par joueur par session
 --     Absence = absence de ligne (pas de valeur NULL)
 -- ────────────────────────────────────────────────────────────────
 
@@ -487,7 +491,7 @@ CREATE INDEX ON wellness_entries (player_id, date DESC);
 -- ────────────────────────────────────────────────────────────────
 -- 13b. MBTI RESPONSES — questionnaire de personnalité
 --      24 affirmations notées de 1 à 5, remplies UNE SEULE FOIS par
---      la joueuse via un lien public (cf. submit_mbti_public).
+--      le joueur via un lien public (cf. submit_mbti_public).
 --
 --      On stocke les réponses brutes, jamais le type à 4 lettres :
 --      le profil est recalculé à la volée côté client (src/data/mbti),
@@ -501,7 +505,7 @@ CREATE TABLE mbti_responses (
   player_id    UUID  NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
   -- { "1": 1..5, ..., "24": 1..5 } — clés = MBTI_QUESTIONS[].id, validées par submit_mbti_public
   answers      JSONB NOT NULL,
-  -- NULL = soumis par la joueuse via le lien public (même convention que wellness_entries)
+  -- NULL = soumis par le joueur via le lien public (même convention que wellness_entries)
   created_by   UUID  REFERENCES profiles(id) ON DELETE SET NULL,
   submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -606,6 +610,41 @@ CREATE TRIGGER trg_action_completed_at
 
 
 -- ────────────────────────────────────────────────────────────────
+-- 15b. PLAYER NOTES — suivi mental
+--      Une phrase après un entraînement ou le compte rendu d'un
+--      entretien : du texte libre daté, sans échéance ni statut.
+--      C'est ce qui la distingue de player_actions, dont due_date
+--      et status NOT NULL ne veulent rien dire pour un compte rendu.
+--
+--      created_by a DEFAULT auth.uid() : ailleurs dans ce schéma la
+--      colonne existe mais n'est jamais renseignée par le front et
+--      reste NULL. Ici l'auteur est l'information utile (« qui a mené
+--      l'entretien ») — le défaut la garantit sans dépendre de l'appelant.
+-- ────────────────────────────────────────────────────────────────
+
+CREATE TABLE player_notes (
+  id         UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id  UUID          NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+  team_id    UUID          NOT NULL REFERENCES teams(id)    ON DELETE CASCADE,
+  season_id  UUID          NOT NULL REFERENCES seasons(id)  ON DELETE CASCADE,
+  -- Date de l'échange ou de l'observation, pas celle de la saisie (created_at la porte déjà)
+  date       DATE          NOT NULL DEFAULT CURRENT_DATE,
+  category   note_category NOT NULL DEFAULT 'entretien',
+  content    TEXT          NOT NULL,   -- HTML de l'éditeur riche, comme staff_meetings.notes
+  created_by UUID          REFERENCES profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
+  created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON player_notes (season_id, date DESC);
+CREATE INDEX ON player_notes (player_id, date DESC);
+
+CREATE TRIGGER trg_player_notes_updated_at
+  BEFORE UPDATE ON player_notes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ────────────────────────────────────────────────────────────────
 -- 16. MATCHES
 --     Source de vérité : date / adversaire / résultat / score
 --     game_number = numéro de journée (J14, J13…)
@@ -699,7 +738,7 @@ CREATE TRIGGER trg_match_stats_updated_at
 
 -- ────────────────────────────────────────────────────────────────
 -- 17b. OPPONENT MATCH STATS (statistiques adverses individuelles)
---      Saisie manuelle des stats des joueuses adverses par match
+--      Saisie manuelle des stats des joueurs adverses par match
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE opponent_match_stats (
@@ -891,14 +930,14 @@ CREATE TABLE staff_meetings (
 -- 20. TRAINING ATTENDANCE
 -- ────────────────────────────────────────────────────────────────
 
--- `sparring` distingue une partenaire d'entraînement d'une joueuse de l'effectif. Elle vient
--- de l'organisation sans appartenir à l'équipe de la séance : elle occupe le terrain et peut
+-- `sparring` distingue un partenaire d'entraînement d'un joueur de l'effectif. Il vient
+-- de l'organisation sans appartenir à l'équipe de la séance : il occupe le terrain et peut
 -- porter un RPE — qui compte dans SA charge — mais n'entre dans aucune statistique de l'équipe
 -- qui l'invite (taux de présence, moyennes, analyses).
 --
--- L'étiquette porte sur la PRÉSENCE, jamais sur la joueuse : la même joueuse est titulaire dans
--- son équipe, où elle doit compter normalement, et partenaire ici. Un statut porté par la
--- joueuse fausserait les statistiques de sa propre équipe.
+-- L'étiquette porte sur la PRÉSENCE, jamais sur le joueur : le même joueur est titulaire dans
+-- son équipe, où il doit compter normalement, et partenaire ici. Un statut porté par le
+-- joueur fausserait les statistiques de sa propre équipe.
 CREATE TABLE training_attendance (
   id         UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID    NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
@@ -1081,6 +1120,7 @@ ALTER TABLE wellness_entries      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mbti_responses        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE medical_records       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_actions        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_notes          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE objectives            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_stats           ENABLE ROW LEVEL SECURITY;
@@ -1171,13 +1211,13 @@ CREATE POLICY "season_write" ON seasons
   USING      (team_id IN (SELECT * FROM admin_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
 
--- Joueuses : cloisonnement par organisation (traitement par équipe : cf. plan, phase 8)
+-- Joueurs : cloisonnement par organisation (traitement par équipe : cf. plan, phase 8)
 CREATE POLICY "player_access" ON players
   FOR ALL TO authenticated
   USING    (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()))
   WITH CHECK (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
 
--- Inscription joueuse/saison : lecture = équipes accessibles, écriture = editor+
+-- Inscription joueur/saison : lecture = équipes accessibles, écriture = editor+
 CREATE POLICY "player_season_select" ON player_season
   FOR SELECT TO authenticated
   USING (
@@ -1318,7 +1358,7 @@ CREATE POLICY "wellness_access" ON wellness_entries
   );
 
 -- Questionnaire de personnalité (MBTI) — même portée organisation que le bien-être.
--- L'écriture par la joueuse elle-même ne passe PAS par ici : elle est anonyme et va
+-- L'écriture par le joueur lui-même ne passe PAS par ici : elle est anonyme et va
 -- exclusivement par submit_mbti_public (SECURITY DEFINER, §23). Aucun accès `anon` à la table.
 CREATE POLICY "mbti_access" ON mbti_responses
   FOR ALL TO authenticated
@@ -1374,6 +1414,18 @@ CREATE POLICY "action_write" ON player_actions
     ))
     OR (team_id IS NOT NULL AND team_id IN (SELECT * FROM writable_team_ids()))
   );
+
+-- Notes de suivi mental — portée équipe stricte, sans la double branche de player_actions :
+-- team_id est obligatoire ici, donc une seule condition suffit. Données sensibles, lues par
+-- le staff ayant accès à l'équipe et écrites par ses éditeurs, comme les dossiers médicaux.
+CREATE POLICY "player_notes_select" ON player_notes
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+CREATE POLICY "player_notes_write" ON player_notes
+  FOR ALL TO authenticated
+  USING      (team_id IN (SELECT * FROM writable_team_ids()))
+  WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
 -- Objectifs (player_id et team_id sont tous deux optionnels, même logique que player_actions)
 CREATE POLICY "objective_select" ON objectives
@@ -1852,7 +1904,7 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
 $$;
 GRANT EXECUTE ON FUNCTION get_mbti_public_info(UUID) TO anon;
 
--- Soumission du questionnaire de personnalité sans auth, UNE SEULE FOIS par joueuse.
+-- Soumission du questionnaire de personnalité sans auth, UNE SEULE FOIS par joueur.
 -- Pas de limite de débit ici : l'unicité de player_id suffit à borner l'écriture, et la
 -- contrainte UNIQUE reste le dernier rempart si deux envois partaient en même temps.
 -- Tout est revalidé côté serveur : rien de ce que poste le navigateur n'est cru sur parole.
@@ -3287,9 +3339,9 @@ BEGIN
   END IF;
 
   -- Effectif rattaché à l'équipe par N'IMPORTE QUEL chemin de données, et pas
-  -- seulement par player_season : une joueuse peut porter un RPE ou une feuille
+  -- seulement par player_season : un joueur peut porter un RPE ou une feuille
   -- de match sur l'équipe sans inscription en saison (import, désinscription en
-  -- cours de saison). S'appuyer sur player_season seul laisserait ces joueuses
+  -- cours de saison). S'appuyer sur player_season seul laisserait ces joueurs
   -- derrière, avec des stats d'équipe amputées et sans nom.
   SELECT array_agg(DISTINCT u.pid) INTO v_players FROM (
     SELECT ps.player_id AS pid
@@ -3321,10 +3373,10 @@ BEGIN
 
   v_players := COALESCE(v_players, ARRAY[]::UUID[]);
 
-  -- Garde-fou : une joueuse inscrite à la saison d'une AUTRE équipe est partagée.
+  -- Garde-fou : un joueur inscrit à la saison d'une AUTRE équipe est partagé.
   -- La déplacer la ferait sortir de l'organisation de cette autre équipe, dont
   -- elle disparaîtrait (player_access). Ces cas demandent une duplication de la
-  -- fiche joueuse, pas un déplacement — d'où l'arrêt plutôt qu'un choix implicite.
+  -- fiche joueur, pas un déplacement — d'où l'arrêt plutôt qu'un choix implicite.
   SELECT string_agg(pl.last_name || ' ' || pl.first_name, ', ' ORDER BY pl.last_name)
     INTO v_shared
     FROM players pl
@@ -3335,7 +3387,7 @@ BEGIN
      );
 
   IF v_shared IS NOT NULL AND NOT p_allow_shared THEN
-    RAISE EXCEPTION 'Joueuses partagées avec une autre équipe : %. '
+    RAISE EXCEPTION 'Joueurs partagés avec une autre équipe : %. '
                     'Dupliquez-les puis relancez, ou forcez avec p_allow_shared => TRUE.', v_shared;
   END IF;
 
@@ -3358,7 +3410,7 @@ BEGIN
   END IF;
   etape  := 'players.organization_id';
   lignes := v_n;
-  action := format('%s joueuse(s) rattachée(s) à l''équipe, dont %s à déplacer',
+  action := format('%s joueur(s) rattaché(s) à l''équipe, dont %s à déplacer',
                    cardinality(v_players), v_n);
   RETURN NEXT;
 
@@ -3488,9 +3540,9 @@ UPDATE objectives o
    AND o.team_id   = s.team_id
    AND o.created_at::date BETWEEN s.start_date AND s.end_date;
 
--- ── Backfill : lignes rattachées à une JOUEUSE sans équipe ──────────────────
+-- ── Backfill : lignes rattachées à un JOUEUR sans équipe ──────────────────
 -- L'équipe est alors indirecte (player_season → seasons) : on prend la saison de
--- la joueuse qui couvre la date.
+-- le joueur qui couvre la date.
 UPDATE player_actions a
    SET season_id = ps.season_id
   FROM player_season ps
@@ -3511,7 +3563,7 @@ UPDATE objectives o
 
 -- ── Orphelines : aucune saison ne couvre la date ────────────────────────────
 -- (tâche datée hors saison, objectif créé pendant l'intersaison…) → saison
--- courante de l'équipe, ou de la seule équipe de la joueuse le cas échéant.
+-- courante de l'équipe, ou de la seule équipe du joueur le cas échéant.
 UPDATE player_actions a
    SET season_id = s.id
   FROM seasons s
@@ -3549,7 +3601,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
   ON objectives (season_id) WHERE active;
 
 -- RLS : inchangée. Les policies existantes cloisonnent déjà par équipe
--- (writable_team_ids / accessible_team_ids) ou par organisation via la joueuse ;
+-- (writable_team_ids / accessible_team_ids) ou par organisation via le joueur ;
 -- une saison appartenant toujours à une équipe, season_id n'ouvre aucun accès.
 
 -- ── Contrôle avant de passer en NOT NULL ────────────────────────────────────
@@ -3684,7 +3736,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 
 -- Présences : partenaires d'entraînement
 --
--- Une partenaire est une joueuse de l'ORGANISATION invitée sur une séance d'une équipe dont
+-- Un partenaire est un joueur de l'ORGANISATION invité sur une séance d'une équipe dont
 -- elle ne fait pas partie. Elle remplace le couple `partner_count` / `partner_names`, qui ne
 -- retenait qu'un nombre et du texte libre : impossible de lui attacher un RPE, donc impossible
 -- de compter la séance dans sa charge.
@@ -3696,7 +3748,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- ALTER TABLE training_attendance ADD COLUMN IF NOT EXISTS sparring BOOLEAN NOT NULL DEFAULT FALSE;
 --
 -- Les anciens partenaires ne sont pas repris : un nombre et des noms libres ne désignent
--- aucune joueuse. Relever `partner_names` avant de supprimer les colonnes, le texte est perdu
+-- aucun joueur. Relever `partner_names` avant de supprimer les colonnes, le texte est perdu
 -- ensuite :
 --   SELECT id, date, partner_count, partner_names
 --     FROM training_sessions WHERE partner_count > 0 OR partner_names IS NOT NULL;
@@ -3706,7 +3758,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 
 -- Questionnaire de personnalité (MBTI)
 --
--- Une joueuse répond une seule fois, sans compte, via /joueur/<id>/mbti. Les 24 réponses
+-- Un joueur répond une seule fois, sans compte, via /joueur/<id>/mbti. Les 24 réponses
 -- brutes sont stockées telles quelles : le type à 4 lettres est recalculé à l'affichage
 -- (src/data/mbti/scoring.ts), donc faire évoluer le dépouillement ne demande aucune migration.
 --
@@ -3744,3 +3796,50 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --   SELECT has_function_privilege('anon', 'submit_mbti_public(uuid,jsonb)', 'EXECUTE');  -- true
 --   SELECT has_function_privilege('anon', 'get_mbti_public_info(uuid)',     'EXECUTE');  -- true
 --   SELECT has_table_privilege('anon', 'mbti_responses', 'SELECT');                      -- false
+
+-- Suivi mental — notes par joueur
+--
+-- Du texte libre daté, écrit par le staff : une phrase après un entraînement, le compte rendu
+-- d'un entretien. Ni échéance ni statut — c'est ce qui la distingue d'une tâche player_actions,
+-- où due_date et status NOT NULL n'ont pas de sens pour un compte rendu.
+--
+-- Portée saison, comme les objectifs et les tâches : une note reste attachée à la saison où
+-- elle a été écrite, sans report.
+--
+-- CREATE TYPE note_category AS ENUM ('entretien', 'comportement', 'perso', 'match', 'autre');
+--
+-- CREATE TABLE IF NOT EXISTS player_notes (
+--   id         UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+--   player_id  UUID          NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+--   team_id    UUID          NOT NULL REFERENCES teams(id)    ON DELETE CASCADE,
+--   season_id  UUID          NOT NULL REFERENCES seasons(id)  ON DELETE CASCADE,
+--   date       DATE          NOT NULL DEFAULT CURRENT_DATE,
+--   category   note_category NOT NULL DEFAULT 'entretien',
+--   content    TEXT          NOT NULL,
+--   created_by UUID          REFERENCES profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
+--   created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+--   updated_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS player_notes_season_date_idx ON player_notes (season_id, date DESC);
+-- CREATE INDEX IF NOT EXISTS player_notes_player_date_idx ON player_notes (player_id, date DESC);
+--
+-- CREATE TRIGGER trg_player_notes_updated_at
+--   BEFORE UPDATE ON player_notes
+--   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+--
+-- ALTER TABLE player_notes ENABLE ROW LEVEL SECURITY;
+--
+-- DROP POLICY IF EXISTS "player_notes_select" ON player_notes;
+-- CREATE POLICY "player_notes_select" ON player_notes
+--   FOR SELECT TO authenticated
+--   USING (team_id IN (SELECT * FROM accessible_team_ids()));
+--
+-- DROP POLICY IF EXISTS "player_notes_write" ON player_notes;
+-- CREATE POLICY "player_notes_write" ON player_notes
+--   FOR ALL TO authenticated
+--   USING      (team_id IN (SELECT * FROM writable_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+--
+-- Vérification — l'auteur doit être rempli tout seul :
+--   SELECT column_default FROM information_schema.columns
+--    WHERE table_name = 'player_notes' AND column_name = 'created_by';   -- auth.uid()

@@ -1,8 +1,8 @@
 /** Questionnaire de personnalité (inspiration MBTI) — types du module.
  *
- *  Outil indicatif, jamais un diagnostic : il décrit des préférences déclarées par la joueuse
+ *  Outil indicatif, jamais un diagnostic : il décrit des préférences déclarées par le joueur
  *  un jour donné, pas une caractéristique stable ni une aptitude sportive. Rien ici ne doit
- *  servir à écarter une joueuse d'un rôle — cf. la mention non-clinique affichée dans l'app. */
+ *  servir à écarter un joueur d'un rôle — cf. la mention non-clinique affichée dans l'app. */
 
 /** Les 8 pôles, groupés deux à deux en 4 axes. */
 export type MbtiPole = 'E' | 'I' | 'S' | 'N' | 'T' | 'F' | 'J' | 'P';

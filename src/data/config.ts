@@ -1,4 +1,4 @@
-import type { PlayerStatus, ActionCategory, ActionPriority, ObjectiveImportance, ObjectiveComparator } from './types';
+import type { PlayerStatus, ActionCategory, ActionPriority, NoteCategory, ObjectiveImportance, ObjectiveComparator } from './types';
 
 export const CURRENT_DATE = '2026-01-15';
 
@@ -22,6 +22,16 @@ export const categoryConfig: Record<ActionCategory, { label: string; color: stri
   interview:      { label: 'Entretien',  color: '#06b6d4' },
   video:          { label: 'Vidéo',      color: '#a78bfa' },
   discussion:     { label: 'Discussion', color: '#94A3B8' },
+};
+
+/** Catégories d'une note de suivi mental. Volontairement peu nombreuses : une note se classe
+ *  d'un geste, sinon elle ne se classe pas. Reflète l'enum `note_category` de schema.sql. */
+export const noteCategoryConfig: Record<NoteCategory, { label: string; color: string }> = {
+  entretien:    { label: 'Entretien',    color: '#06B6D4' },
+  comportement: { label: 'Comportement', color: '#F59E0B' },
+  perso:        { label: 'Personnel',    color: '#8B5CF6' },
+  match:        { label: 'Match',        color: '#3B82F6' },
+  autre:        { label: 'Autre',        color: '#94A3B8' },
 };
 
 export const priorityConfig: Record<ActionPriority, { label: string; color: string }> = {

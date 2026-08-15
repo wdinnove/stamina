@@ -11,6 +11,7 @@ export type ActionPriority    = 'low' | 'normal' | 'high' | 'critical';
 export type ActionCategory    =
   | 'medical' | 'physical' | 'mental' | 'tactical'
   | 'administrative' | 'interview' | 'video' | 'discussion';
+export type NoteCategory      = 'entretien' | 'comportement' | 'perso' | 'match' | 'autre';
 export type ObjectiveImportance = 'major' | 'normal' | 'minor';
 export type ObjectiveComparator = 'gte' | 'lte' | 'eq';
 
@@ -154,7 +155,7 @@ export interface WellnessEntry {
   notes?: string;
 }
 
-/** Questionnaire de personnalité — réponses brutes d'une joueuse (une seule passation).
+/** Questionnaire de personnalité — réponses brutes d'un joueur (une seule passation).
  *  Le type à 4 lettres n'est pas stocké : il se recalcule depuis `answers` (src/data/mbti). */
 export interface MbtiResponse {
   id: string;
@@ -180,6 +181,25 @@ export interface MedicalRecord {
   /** `null` explicite = effacer le champ en base (cf. `toRow` dans api/medical.ts), à distinguer
    *  de `undefined` = champ non modifié par cette mise à jour partielle. */
   treatment?: string | null;
+}
+
+/** Note de suivi mental — texte libre daté écrit par le staff sur un joueur.
+ *  Ni échéance ni statut : c'est ce qui la distingue d'une `Action`. */
+export interface PlayerNote {
+  id: string;
+  playerId: string;
+  teamId: string;
+  /** Saison de rattachement — une note reste dans la saison où elle a été écrite. */
+  seasonId: string;
+  /** Date de l'échange ou de l'observation, pas celle de la saisie. */
+  date: string;
+  category: NoteCategory;
+  /** HTML de l'éditeur riche — à assainir (`sanitizeHtml`) avant tout affichage. */
+  content: string;
+  createdBy?: string;
+  /** Nom de l'auteur, joint depuis `profiles` — absent si la note n'a pas d'auteur connu. */
+  authorName?: string;
+  createdAt?: string;
 }
 
 export interface Action {
@@ -479,16 +499,16 @@ export interface TrainingAttendance {
   playerId: string;
   status: 'present' | 'absent' | 'late';
   /**
-   * Partenaire d'entraînement : joueuse de l'organisation invitée sur cette séance-là, hors
+   * Partenaire d'entraînement : joueur de l'organisation invité sur cette séance-là, hors
    * effectif de l'équipe. Elle ne compte dans aucune statistique de l'équipe qui l'invite,
-   * mais son RPE entre dans SA charge. L'étiquette qualifie la présence, pas la joueuse.
+   * mais son RPE entre dans SA charge. L'étiquette qualifie la présence, pas le joueur.
    */
   sparring: boolean;
   createdAt: string;
 }
 
-/** Une saisie RPE d'une joueuse sur une séance — le grain minimal qui permet d'appliquer la règle
- *  de moyenne d'équipe (moyenne par joueuse puis moyenne des joueuses) sur plusieurs séances. */
+/** Une saisie RPE d'un joueur sur une séance — le grain minimal qui permet d'appliquer la règle
+ *  de moyenne d'équipe (moyenne par joueur puis moyenne des joueurs) sur plusieurs séances. */
 export interface SessionRpeEntry {
   playerId: string;
   rpe: number;
@@ -500,7 +520,7 @@ export interface TeamSessionRow {
   type: SessionType;
   duration: number;
   nbPlayers: number;
-  /** Saisies RPE de la séance, par joueuse. Porte le `playerId` (effectif distinct réellement
+  /** Saisies RPE de la séance, par joueur. Porte le `playerId` (effectif distinct réellement
    *  actif sur une semaine, pas une moyenne par séance) ET la valeur, indispensable pour agréger
    *  plusieurs séances sans pondérer par l'assiduité. */
   entries: SessionRpeEntry[];

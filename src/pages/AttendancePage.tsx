@@ -45,10 +45,10 @@ export default function AttendancePage() {
   const [error,         setError]         = useState('');
 
   const [activeCell,          setActiveCell]          = useState<{ sessionId: string; playerId: string; x: number; y: number } | null>(null);
-  /** Joueuses de l'organisation hors effectif, candidates à une invitation. */
+  /** Joueurs de l'organisation hors effectif, candidats à une invitation. */
   const [orgPlayers,    setOrgPlayers]    = useState<Player[]>([]);
-  /** Invitées affichées : celles déjà pointées sur une séance, plus celles qu'on vient
-   *  d'ajouter et qui n'ont encore aucun statut — sans ça, une invitée choisie disparaîtrait
+  /** Invités affichés : ceux déjà pointés sur une séance, plus ceux qu'on vient
+   *  d'ajouter et qui n'ont encore aucun statut — sans ça, un invité choisi disparaîtrait
    *  de la grille avant même qu'on ait pu la pointer. */
   const [guestIds,      setGuestIds]      = useState<string[]>([]);
   const [showGuestPick, setShowGuestPick] = useState(false);
@@ -79,7 +79,7 @@ export default function AttendancePage() {
 
     const playersPromise = playersApi.listBySeason(season.id);
     const sessionsPromise = attendanceApi.listSessions(team.id, season.id);
-    // La RLS des joueuses est cadrée par organisation : cette liste est déjà celle du club.
+    // La RLS des joueurs est cadrée par organisation : cette liste est déjà celle du club.
     const orgPromise = playersApi.list();
 
     Promise.all([playersPromise, sessionsPromise, orgPromise])
@@ -192,12 +192,12 @@ export default function AttendancePage() {
     } catch { setSessions(snapshot); }
   }
 
-  /** Invitées, dans l'ordre de la liste du club — jamais une joueuse de l'effectif. */
+  /** Invités, dans l'ordre de la liste du club — jamais un joueur de l'effectif. */
   const guests = orgPlayers.filter(p => guestIds.includes(p.id) && !players.some(r => r.id === p.id));
   const invitable = orgPlayers.filter(p => !players.some(r => r.id === p.id) && !guestIds.includes(p.id));
 
   /**
-   * Retire une invitée de la grille. Ses pointages sur les séances affichées partent avec
+   * Retire un invité de la grille. Ses pointages sur les séances affichées partent avec
    * elle : sans ça, elle reviendrait au rechargement, puisque c'est justement l'existence
    * d'un pointage `sparring` qui la fait apparaître. Ses RPE, eux, restent — la séance a bien
    * eu lieu pour elle, et sa charge n'appartient pas à cette équipe.
@@ -229,8 +229,8 @@ export default function AttendancePage() {
   }
 
   /**
-   * Nombre de joueuses sur le terrain : effectif et invitées confondus. Le taux de présence
-   * d'équipe, lui, ne regarde que l'effectif (cf. `sessionPct`) — une invitée n'a pas à faire
+   * Nombre de joueurs sur le terrain : effectif et invités confondus. Le taux de présence
+   * d'équipe, lui, ne regarde que l'effectif (cf. `sessionPct`) — un invité n'a pas à faire
    * bouger un chiffre qui mesure l'assiduité de l'équipe.
    */
   function sessionTotal(sessionId: string): number {
@@ -468,9 +468,9 @@ export default function AttendancePage() {
               ))}
 
               {/* ── Partenaires d'entraînement ──
-                  Même grille que l'effectif : elles se pointent séance par séance, une invitée
+                  Même grille que l'effectif : ils se pointent séance par séance, un invité
                   pouvant venir un mardi et pas le suivant. Le liseré orange les distingue au
-                  premier coup d'œil de l'effectif, dont elles ne partagent aucun chiffre. */}
+                  premier coup d'œil de l'effectif, dont ils ne partagent aucun chiffre. */}
               {(guests.length > 0 || canEditTeamData) && (
                 <tr>
                   <td colSpan={sessions.length + 1} style={{
@@ -484,7 +484,7 @@ export default function AttendancePage() {
                       {canEditTeamData && invitable.length > 0 && (
                         <button onClick={() => setShowGuestPick(true)}
                           style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 8px' }}>
-                          + Inviter une joueuse
+                          + Inviter un joueur
                         </button>
                       )}
                     </div>
@@ -603,13 +603,13 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* ── Choix d'une partenaire ── */}
+      {/* ── Choix d'un partenaire ── */}
       {showGuestPick && (
         <Modal maxWidth={420} scrollOverlay={false} style={{ padding: 20 }} onClose={() => setShowGuestPick(false)} closeOnBackdropClick>
-          <h3 style={{ color: '#F1F5F9', margin: '0 0 6px', fontSize: '0.98rem' }}>Inviter une joueuse</h3>
+          <h3 style={{ color: '#F1F5F9', margin: '0 0 6px', fontSize: '0.98rem' }}>Inviter un joueur</h3>
           <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '0 0 14px', lineHeight: 1.5 }}>
-            Une partenaire d'entraînement occupe le terrain et peut porter un RPE, qui compte dans
-            sa charge à elle. Elle n'entre dans aucune statistique de cette équipe.
+            Un partenaire d'entraînement occupe le terrain et peut porter un RPE, qui compte dans
+            sa charge à lui. Il n'entre dans aucune statistique de cette équipe.
           </p>
           <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {invitable.map(p => (
@@ -626,7 +626,7 @@ export default function AttendancePage() {
         </Modal>
       )}
 
-      {/* ── Confirmation retrait d'une partenaire ── */}
+      {/* ── Confirmation retrait d'un partenaire ── */}
       {confirmGuest && (
         <Modal maxWidth={380} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmGuest(null)}>
           <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Retirer {playerNameFull(confirmGuest)} ?</h3>

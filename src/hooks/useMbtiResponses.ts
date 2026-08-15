@@ -3,9 +3,9 @@ import { mbtiApi } from '../api/mbti';
 import type { MbtiResponse } from '../data/types';
 
 /**
- * Réponses au questionnaire de personnalité pour un ensemble de joueuses.
+ * Réponses au questionnaire de personnalité pour un ensemble de joueurs.
  *
- * Une seule requête pour tout l'effectif (`.in('player_id', …)`), pas une par joueuse : le panel
+ * Une seule requête pour tout l'effectif (`.in('player_id', …)`), pas une par joueur : le panel
  * collectif comme le panel individuel s'appuient dessus. `reload` sert après une réinitialisation.
  */
 export function useMbtiResponses(playerIds: string[]) {

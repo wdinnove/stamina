@@ -17,11 +17,11 @@ export const FAQ_ENTRIES: FaqEntry[] = [
   // ── Lire les chiffres ──
   {
     theme: 'Lire les chiffres',
-    question: "Pourquoi une joueuse qui joue peu ressort première au %USG ?",
+    question: "Pourquoi un joueur qui joue peu ressort premier au %USG ?",
     answer:
       "Parce qu'il y a deux colonnes différentes, et que celle qui trie n'est peut-être pas celle que vous croyez.\n\n" +
-      "• %USG = la part des possessions de l'équipe qu'elle a utilisées. Une remplaçante très sollicitée sur 8 minutes y reste basse, mécaniquement.\n" +
-      "• %USG/min = la même part rapportée aux minutes réellement jouées. Elle répond à « quand elle est sur le terrain, combien de ballons prend-elle ? ». C'est là qu'une joueuse à faible temps de jeu peut arriver en tête — et ce n'est pas une anomalie, c'est ce que la colonne mesure.\n\n" +
+      "• %USG = la part des possessions de l'équipe qu'il a utilisées. Un remplaçant très sollicité sur 8 minutes y reste bas, mécaniquement.\n" +
+      "• %USG/min = la même part rapportée aux minutes réellement jouées. Elle répond à « quand il est sur le terrain, combien de ballons prend-il ? ». C'est là qu'un joueur à faible temps de jeu peut arriver en tête — et ce n'est pas une anomalie, c'est ce que la colonne mesure.\n\n" +
       "Regardez toujours la colonne Min à côté : un %USG/min élevé sur 6 minutes ne dit pas la même chose que sur 30.",
   },
   {
@@ -31,7 +31,7 @@ export const FAQ_ENTRIES: FaqEntry[] = [
       "C'est normal : ce sont deux comptages de possessions différents, et c'est volontaire.\n\n" +
       "• La colonne « Possessions » affichée mesure le RYTHME du match : tirs tentés − rebonds offensifs + ballons perdus + 0,44 × lancers tentés. On retire les rebonds offensifs parce qu'ils prolongent la même possession.\n" +
       "• Le dénominateur du %USG compte les ACTIONS TERMINÉES par l'effectif : tirs tentés + ballons perdus + 0,44 × lancers tentés, sans retirer les rebonds offensifs.\n\n" +
-      "La raison est simple : avec le second, la somme des %USG de toutes les joueuses fait exactement 100 %. Avec le premier, elle dépasserait 100 % et la colonne ne voudrait plus rien dire. L'écart entre les deux chiffres vaut le nombre de rebonds offensifs du match.",
+      "La raison est simple : avec le second, la somme des %USG de tous les joueurs fait exactement 100 %. Avec le premier, elle dépasserait 100 % et la colonne ne voudrait plus rien dire. L'écart entre les deux chiffres vaut le nombre de rebonds offensifs du match.",
   },
   {
     theme: 'Lire les chiffres',
@@ -45,21 +45,21 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     question: "Pourquoi la moyenne d'équipe ne correspond pas à la moyenne des semaines affichées ?",
     answer:
       "C'est un choix, pas une erreur, et il est structurel.\n\n" +
-      "Un chiffre d'équipe est toujours la moyenne NON PONDÉRÉE des joueuses : chaque joueuse compte pour une, quel que soit son nombre de saisies. Sinon, deux blessées qui arrêtent de loguer feraient monter le RPE moyen sans que personne s'entraîne plus dur.\n\n" +
-      "Conséquence mathématique : la valeur d'une période n'est pas la moyenne des valeurs de ses semaines. Aucune formule ne peut offrir les deux réconciliations à la fois dès que l'assiduité varie. L'app privilégie la cohérence avec la colonne des joueuses, qui est celle qu'on vérifie à l'œil.",
+      "Un chiffre d'équipe est toujours la moyenne NON PONDÉRÉE des joueurs : chaque joueur compte pour un, quel que soit son nombre de saisies. Sinon, deux blessés qui arrêtent de loguer feraient monter le RPE moyen sans que personne s'entraîne plus dur.\n\n" +
+      "Conséquence mathématique : la valeur d'une période n'est pas la moyenne des valeurs de ses semaines. Aucune formule ne peut offrir les deux réconciliations à la fois dès que l'assiduité varie. L'app privilégie la cohérence avec la colonne des joueurs, qui est celle qu'on vérifie à l'œil.",
   },
   {
     theme: 'Lire les chiffres',
     question: "Que veut dire le « · 8 joueurs » à côté d'un chiffre d'équipe ?",
     answer:
-      "Le nombre de joueuses sur lesquelles la moyenne est calculée. Comme chaque joueuse compte pour une, une moyenne sur 3 joueuses est beaucoup plus sensible qu'une moyenne sur 12 : une seule saisie inhabituelle peut la déplacer.\n\n" +
+      "Le nombre de joueurs sur lesquels la moyenne est calculée. Comme chaque joueur compte pour un, une moyenne sur 3 joueurs est beaucoup plus sensible qu'une moyenne sur 12 : une seule saisie inhabituelle peut la déplacer.\n\n" +
       "C'est pour ça que ce nombre est affiché systématiquement — sans lui, on ne peut pas juger de la solidité du chiffre.",
   },
   {
     theme: 'Lire les chiffres',
     question: "Pourquoi un pourcentage de saison n'est pas la moyenne des pourcentages des matchs ?",
     answer:
-      "Parce que ce serait faux. Un match où une joueuse prend un seul tir et le rentre donnerait 100 %, et pèserait autant qu'un match à 20 tirs.\n\n" +
+      "Parce que ce serait faux. Un match où un joueur prend un seul tir et le rentre donnerait 100 %, et pèserait autant qu'un match à 20 tirs.\n\n" +
       "L'app additionne d'abord les tirs réussis et les tirs tentés sur toute la période, puis divise. C'est la seule méthode qui donne le vrai pourcentage.",
   },
 
@@ -85,11 +85,11 @@ export const FAQ_ENTRIES: FaqEntry[] = [
       "Parce qu'ils viennent de deux modèles distincts, tous deux standards.\n\n" +
       "• L'ACWR compare 7 jours à 28 jours (Gabbett).\n" +
       "• La Fraîcheur (TSB) compare une fatigue à 7 jours à une forme construite sur 42 jours (Banister).\n\n" +
-      "Ils ne sont donc pas censés coïncider. L'ACWR répond à « la charge a-t-elle augmenté trop vite ? », la fraîcheur à « la joueuse est-elle reposée aujourd'hui ? ».",
+      "Ils ne sont donc pas censés coïncider. L'ACWR répond à « la charge a-t-elle augmenté trop vite ? », la fraîcheur à « le joueur est-il reposé aujourd'hui ? ».",
   },
   {
     theme: 'Charge & bien-être',
-    question: "Pourquoi la fatigue affichée monte quand la joueuse va mieux ?",
+    question: "Pourquoi la fatigue affichée monte quand le joueur va mieux ?",
     answer:
       "Les six axes de bien-être sont redressés à l'affichage : partout dans l'app, 10 = au mieux. La fatigue, le stress et les douleurs sont saisis dans le sens inverse (10 = épuisée), donc retournés avant affichage.\n\n" +
       "Sans ce redressement, une moyenne des six axes n'aurait aucun sens : les axes inversés annuleraient les autres.",
@@ -121,15 +121,15 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     theme: 'Archétypes',
     question: "Un score d'archétype de 50 %, c'est bien ou pas ?",
     answer:
-      "C'est le milieu du groupe. Un score situe la joueuse par rapport aux autres joueuses de son groupe de postes, pas sur une échelle absolue : 50 % veut dire « ni marquée ni à l'opposé » sur ce profil.\n\n" +
+      "C'est le milieu du groupe. Un score situe le joueur par rapport aux autres joueurs de son groupe de postes, pas sur une échelle absolue : 50 % veut dire « ni marqué ni à l'opposé » sur ce profil.\n\n" +
       "Un score bas n'est donc pas un défaut — il dit seulement que ce n'est pas son rôle.",
   },
   {
     theme: 'Archétypes',
     question: "Quelle différence entre le badge « ? » et le badge « Estimation » ?",
     answer:
-      "• « ? » = fiabilité. Dépend de la joueuse : pas assez de matchs ou de minutes pour que son score soit significatif. Il disparaît quand l'échantillon grossit.\n" +
-      "• « Estimation » = limite de méthode. Dépend du profil, jamais de la joueuse : ce rôle n'est pas entièrement mesurable avec les données saisies. Il ne disparaîtra pas avec le temps.",
+      "• « ? » = fiabilité. Dépend du joueur : pas assez de matchs ou de minutes pour que son score soit significatif. Il disparaît quand l'échantillon grossit.\n" +
+      "• « Estimation » = limite de méthode. Dépend du profil, jamais du joueur : ce rôle n'est pas entièrement mesurable avec les données saisies. Il ne disparaîtra pas avec le temps.",
   },
   {
     theme: 'Archétypes',

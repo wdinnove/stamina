@@ -64,7 +64,7 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
     return built;
   }, [reports, roster, selection, rankingRows]);
 
-  // Le caveat est une propriété du PROFIL, pas de la joueuse : identique sur toutes les lignes.
+  // Le caveat est une propriété du PROFIL, pas du joueur : identique sur toutes les lignes.
   const methodCaveat = rows.find(r => r.caveat)?.caveat;
 
   const teamAvg = roundedAvg(rows.map(r => r.score));
@@ -142,7 +142,7 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
           ))}
         </tbody>
       </table>
-      {/* La limite méthodologique du profil ne dépend pas de la joueuse : une note sous le tableau
+      {/* La limite méthodologique du profil ne dépend pas du joueur : une note sous le tableau
           plutôt qu'un tooltip répété sur chaque ligne. */}
       {methodCaveat && (
         <p style={{ color: '#475569', fontSize: '0.7rem', lineHeight: 1.5, margin: '10px 2px 0' }}>

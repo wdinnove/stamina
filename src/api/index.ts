@@ -9,6 +9,7 @@ export { mbtiApi }     from './mbti';
 export { rpeApi }      from './rpe';
 export { medicalApi }  from './medical';
 export { actionsApi }  from './actions';
+export { notesApi }    from './notes';
 export { objectivesApi } from './objectives';
 export { attendanceApi }  from './attendance';
 export { statsApi }     from './stats';

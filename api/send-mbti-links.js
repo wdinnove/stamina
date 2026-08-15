@@ -10,9 +10,9 @@ const MAX_RECIPIENTS = 60
  * POST /api/send-mbti-links
  * Body : { teamId, playerIds: [uuid] }
  *
- * Deuxième et dernier chemin par lequel une joueuse peut recevoir un email, calqué sur
+ * Deuxième et dernier chemin par lequel un joueur peut recevoir un email, calqué sur
  * /api/send-wellness-links et soumis aux mêmes règles : contenu figé par un template, adresses
- * relues en base parmi les joueuses de l'équipe visée, droit d'écriture exigé sur cette équipe,
+ * relues en base parmi les joueurs de l'équipe visée, droit d'écriture exigé sur cette équipe,
  * déclenchement manuel. Rien ici ne s'envoie tout seul.
  *
  * Le template MailerSend est lu dans l'environnement plutôt que codé en dur : il doit être créé
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
 
   const origin = appOrigin()
   if (!origin) {
-    // Jamais dérivé des en-têtes de la requête : un Host falsifié enverrait aux joueuses un
+    // Jamais dérivé des en-têtes de la requête : un Host falsifié enverrait aux joueurs un
     // lien vers un domaine ressemblant.
     console.error('[send-mbti-links] APP_ORIGIN non configuré')
     return res.status(503).json({ error: 'APP_ORIGIN non configuré côté serveur' })
@@ -68,8 +68,8 @@ export default async function handler(req, res) {
       .maybeSingle()
     if (!season) return res.status(400).json({ error: 'Aucune saison courante sur cette équipe' })
 
-    // Les destinataires ne viennent pas du client : on ne garde que les joueuses réellement
-    // inscrites à la saison courante de cette équipe.
+    // Les destinataires ne viennent pas du client : on ne garde que les joueurs réellement
+    // inscrits à la saison courante de cette équipe.
     const { data: links, error } = await admin
       .from('player_season')
       .select('player_id, players(id, first_name, last_name, email)')

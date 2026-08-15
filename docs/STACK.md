@@ -170,14 +170,18 @@ Tout ce qui commence par `VITE_` finit dans le navigateur. C'est la règle mémo
 3. **Chaque fonction `api/` vérifie l'appelant** via `getAuthedUser(req)`. Sans ça,
    `/api/send-email` serait un relais d'envoi ouvert sur le compte MailerSend.
 4. **Le cron refuse de tourner sans `CRON_SECRET`.** Défaut fermé, pas défaut ouvert.
-5. **Aucun email/push automatique vers une joueuse** (données de santé, RGPD) — voir
+5. **Aucun email/push automatique vers un joueur** (données de santé, RGPD) — voir
    le commentaire en tête de `api/cron/notifications.js`. Deux endpoints seulement
-   peuvent écrire à une joueuse (`send-wellness-links`, `send-mbti-links`) : contenu
+   peuvent écrire à un joueur (`send-wellness-links`, `send-mbti-links`) : contenu
    figé par un template, destinataires relus en base, droit d'écriture sur l'équipe
    exigé, déclenchement manuel. Un test de `api/_lib/guards.test.js` le vérifie.
 6. **Les pages publiques** (`/joueur/:id/bien-etre`, `/joueur/:id/mbti`) n'ont aucun
    accès direct aux tables : elles passent par des fonctions `SECURITY DEFINER`
    accordées à `anon`, qui revalident tout côté serveur.
+7. **Les notes de suivi mental** (`player_notes`) sont aussi sensibles que le médical :
+   lisibles par le staff ayant accès à l'équipe, jamais exposées à une page publique.
+   Leur contenu ne part **jamais** dans une notification — le titre ne porte que le nom
+   du joueur et la catégorie.
 
 ---
 

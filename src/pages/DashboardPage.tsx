@@ -73,7 +73,7 @@ export default function DashboardPage() {
     return map;
   }, [perfData]);
 
-  // Bien-être équipe — règle de l'app : moyenne par joueuse puis moyenne des joueuses.
+  // Bien-être équipe — règle de l'app : moyenne par joueur puis moyenne des joueurs.
   const teamWellness = useMemo(
     () => perfData ? teamWellnessAvg(perfData.players.flatMap(pd => pd.wellness)) : EMPTY_TEAM_AVERAGE,
     [perfData],
@@ -174,7 +174,7 @@ export default function DashboardPage() {
         }));
 
         // Charge/RPE équipe — moyenne sur toute la saison, règle de l'app : charge hebdo moyenne
-        // par joueuse puis moyenne des joueuses (même fonction que RPEPage/Performance collective).
+        // par joueur puis moyenne des joueurs (même fonction que RPEPage/Performance collective).
         const avgLoadSeason = teamAvgWeeklyLoad(seasonRpeRows.map(r => ({
           date: dateMap2.get(r.session_id) ?? '',
           playerId: r.player_id,
@@ -182,8 +182,8 @@ export default function DashboardPage() {
           actualDuration: r.actual_duration ?? undefined,
           plannedDuration: durMap2.get(r.session_id) ?? 0,
         })).filter(r => r.date));
-        // RPE moyen d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses,
-        // sinon les joueuses les plus assidues pondèrent le chiffre de la saison.
+        // RPE moyen d'équipe : règle de l'app — moyenne par joueur puis moyenne des joueurs,
+        // sinon les joueurs les plus assidus pondèrent le chiffre de la saison.
         const avgRpeSeason = teamAvgRpe(seasonRpeRows.map(r => ({ playerId: r.player_id, rpe: r.rpe })));
 
         setKpiStats({ avgLoadSeason, avgRpeSeason });

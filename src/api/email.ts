@@ -7,7 +7,7 @@ export interface WellnessLinksResult {
 }
 
 /**
- * Envoie le lien du formulaire bien-être aux joueuses sélectionnées.
+ * Envoie le lien du formulaire bien-être aux joueurs sélectionnés.
  *
  * Volontairement le SEUL envoi d'email pilotable depuis le client : ni le contenu ni
  * les adresses ne sont transmis, le serveur relit l'effectif de l'équipe et utilise un
@@ -32,10 +32,10 @@ export async function sendWellnessLinks(
 }
 
 /**
- * Envoie le lien du questionnaire de personnalité aux joueuses sélectionnées.
+ * Envoie le lien du questionnaire de personnalité aux joueurs sélectionnés.
  *
  * Mêmes règles que ci-dessus, et pour la même raison : ni contenu ni adresses ne transitent par
- * le client. Les joueuses ayant déjà répondu reviennent dans `skipped` — leur lien n'ouvrirait
+ * le client. Les joueurs ayant déjà répondu reviennent dans `skipped` — leur lien n'ouvrirait
  * qu'un écran « déjà rempli ».
  */
 export async function sendMbtiLinks(

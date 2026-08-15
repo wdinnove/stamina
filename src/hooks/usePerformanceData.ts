@@ -92,7 +92,7 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
         players.length ? rpeApi.listRpeWithSessionByPlayerIds(players.map(p => p.id)) : Promise.resolve([]),
         // wellness_entries n'a pas de season_id : borner explicitement à la fin de saison, sinon une
         // saison passée récupère aussi les entrées des saisons suivantes jusqu'à aujourd'hui. Scopé aux
-        // joueuses de la saison (playerIds) pour ne pas remonter les autres équipes du club et rester
+        // joueurs de la saison (playerIds) pour ne pas remonter les autres équipes du club et rester
         // sous le plafond de lignes de l'API sur un effectif/historique conséquent.
         players.length
           ? wellnessApi.list({ playerIds: players.map(p => p.id), from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() })
@@ -103,7 +103,7 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
       markDone('Charge & bien-être');
       markDone('Tactique');
       const sessionDate = new Map(sessions.map(s => [s.id, s.date]));
-      // Minutes cumulées de tout l'effectif par match (5 joueuses sur le terrain en permanence
+      // Minutes cumulées de tout l'effectif par match (5 joueurs sur le terrain en permanence
       // ⇒ Σmin ≈ 5 × durée du match) — attaché à TeamMatchStat pour corriger usagePct par la
       // part de minutes jouées (calcPlayerAdvanced). Champ client-only, jamais lu depuis la DB.
       const teamMinutesByMatchId = new Map<string, number>();

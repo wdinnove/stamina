@@ -43,8 +43,8 @@ function ratio(num: number | null, den: number | null): number | null {
   if (num === null || den === null || den === 0) return null;
   return Math.round(num / den * 100) / 100;
 }
-// Règle d'équipe : moyenne par joueuse puis moyenne des joueuses (et non l'agrégat quotidien,
-// qui donnait une voix par jour et sur-pondérait les joueuses saisissant le plus souvent).
+// Règle d'équipe : moyenne par joueur puis moyenne des joueurs (et non l'agrégat quotidien,
+// qui donnait une voix par jour et sur-pondérait les joueurs saisissant le plus souvent).
 const wA = (entries: WellnessEntry[], key: WellnessMetric) => teamWellnessAvg(entries, key).value;
 
 const BH = { perf: 204, scoring: 415, play: 315, def: 174, reb: 233, rpe: 115, well: 263 } as const;
@@ -98,10 +98,10 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
   const ftRateP  = ratioFromSums(matchP, t => t.fta, fga, 1);
   const ftRateS  = ratioFromSums(matchS, t => t.fta, fga, 1);
 
-  // RPE d'équipe : règle de l'app — moyenne par joueuse puis moyenne des joueuses (les groupes
+  // RPE d'équipe : règle de l'app — moyenne par joueur puis moyenne des joueurs (les groupes
   // comparés couvrent plusieurs séances, donc une moyenne à plat pondérerait par l'assiduité).
   const rpeAvgP = teamAvgRpe(a.rpe).value, rpeAvgS = teamAvgRpe(b.rpe).value;
-  // Charge d'équipe : une voix par joueuse (cf. teamAvgWeeklyLoad), pas une voix par semaine.
+  // Charge d'équipe : une voix par joueur (cf. teamAvgWeeklyLoad), pas une voix par semaine.
   const loadWkP = teamAvgWeeklyLoad(a.rpe).value, loadWkS = teamAvgWeeklyLoad(b.rpe).value;
 
   const scoP = wA(a.wellness, 'score'),      scoS = wA(b.wellness, 'score');

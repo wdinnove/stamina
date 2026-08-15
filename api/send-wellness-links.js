@@ -2,7 +2,7 @@ import { getAuthedUser, getSupabaseAdmin } from './_lib/supabaseAdmin.js'
 import { sendMail } from './_lib/mailer.js'
 import { hasTeamWriteAccess, withinRateLimit } from './_lib/guards.js'
 
-/** Template MailerSend du formulaire bien-être — le seul contenu envoyable à une joueuse. */
+/** Template MailerSend du formulaire bien-être — le seul contenu envoyable à un joueur. */
 const WELLNESS_TEMPLATE_ID = 'jpzkmgq5vqng059v'
 
 /** Garde-fou de volume : un envoi manuel couvre un effectif, pas une liste de diffusion. */
@@ -15,10 +15,10 @@ const MAX_RECIPIENTS = 60
  * Remplace l'ancien /api/send-email, qui acceptait destinataires et contenu libres :
  * tout utilisateur connecté pouvait donc écrire à n'importe quelle adresse depuis le
  * domaine du club. Ici rien n'est libre — le contenu est un template fixe, et les
- * destinataires sont relus en base parmi les joueuses de l'équipe visée.
+ * destinataires sont relus en base parmi les joueurs de l'équipe visée.
  *
  * C'est aussi ce qui rend structurelle la règle « aucun contact automatique des
- * joueuses » : c'est le seul chemin par lequel une joueuse peut recevoir un email,
+ * joueurs » : c'est le seul chemin par lequel un joueur peut recevoir un email,
  * il exige un droit d'écriture sur son équipe, et il est déclenché à la main.
  */
 export default async function handler(req, res) {
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
   const origin = appOrigin()
   if (!origin) {
     // Jamais dérivé des en-têtes de la requête : un Host falsifié enverrait aux
-    // joueuses un lien vers un domaine ressemblant.
+    // joueurs un lien vers un domaine ressemblant.
     console.error('[send-wellness-links] APP_ORIGIN non configuré')
     return res.status(503).json({ error: 'APP_ORIGIN non configuré côté serveur' })
   }
@@ -56,8 +56,8 @@ export default async function handler(req, res) {
       return res.status(429).json({ error: 'Trop d\'envois, réessayez dans une minute' })
     }
 
-    // Les destinataires ne viennent pas du client : on ne garde que les joueuses
-    // réellement inscrites à la saison courante de cette équipe.
+    // Les destinataires ne viennent pas du client : on ne garde que les joueurs
+    // réellement inscrits à la saison courante de cette équipe.
     const { data: season } = await admin
       .from('seasons')
       .select('id')
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
 /**
  * Origine publique normalisée : le schéma est ajouté si absent (Vercel fournit un
  * domaine nu) et un éventuel slash final est retiré, sinon les liens envoyés aux
- * joueuses contiendraient un double slash.
+ * joueurs contiendraient un double slash.
  */
 export function appOrigin(env = process.env) {
   const url = env.APP_ORIGIN || env.VERCEL_PROJECT_PRODUCTION_URL
