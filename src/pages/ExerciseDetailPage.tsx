@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
-import { ArrowLeft, Pencil, Trash2, CalendarClock, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Copy, CalendarClock, ChevronRight } from 'lucide-react';
 import { exercisesApi } from '../api/exercises';
 import { exercisePhasesApi } from '../api/exercisePhases';
 import { sessionBlocksApi, type DrillUsage } from '../api/sessionBlocks';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import {
   Card, CardTitle, ExerciseView, Modal, Badge, CATEGORY_FALLBACK_COLOR,
-  AccessRestricted, Spinner, EmptyState,
+  AccessRestricted, Spinner, EmptyState, ExerciseCopyModal, useCopyTargetTeams,
 } from '../components';
 import { fmtDate } from '../utils/dateFormat';
 import { COURT_LABEL, type CourtVariant } from '../utils/diagram';
@@ -44,6 +44,11 @@ export default function ExerciseDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleting,   setDeleting]   = useState(false);
   const [delError,   setDelError]   = useState('');
+  const [showCopy,   setShowCopy]   = useState(false);
+
+  // Copier ne demande rien sur l'équipe courante, seulement le droit d'écrire ailleurs :
+  // un simple lecteur ici peut emporter l'exercice dans une équipe où il est éditeur.
+  const copyTargets = useCopyTargetTeams(exercise?.teamId);
 
   useEffect(() => {
     if (!id) return;
@@ -104,18 +109,26 @@ export default function ExerciseDetailPage() {
           onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
           <ArrowLeft size={15} /> Exercices
         </button>
-        {canEditTeamData && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => navigate(`/exercices/${exercise.id}/modifier`)}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {copyTargets.length > 0 && (
+            <button onClick={() => setShowCopy(true)}
               style={{ padding: '7px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Pencil size={13} /> Modifier
+              <Copy size={13} /> Copier vers…
             </button>
-            <button onClick={() => { setDelError(''); setShowDelete(true); }}
-              style={{ padding: '7px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Trash2 size={13} /> Supprimer
-            </button>
-          </div>
-        )}
+          )}
+          {canEditTeamData && (
+            <>
+              <button onClick={() => navigate(`/exercices/${exercise.id}/modifier`)}
+                style={{ padding: '7px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Pencil size={13} /> Modifier
+              </button>
+              <button onClick={() => { setDelError(''); setShowDelete(true); }}
+                style={{ padding: '7px 14px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Trash2 size={13} /> Supprimer
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Hero */}
@@ -173,6 +186,11 @@ export default function ExerciseDetailPage() {
           )}
         </Card>
       </div>
+
+      {/* Copie vers une autre équipe */}
+      {showCopy && (
+        <ExerciseCopyModal exercise={exercise} phaseCount={phases.length} onClose={() => setShowCopy(false)} />
+      )}
 
       {/* Confirmation suppression */}
       {showDelete && (

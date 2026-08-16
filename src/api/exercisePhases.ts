@@ -44,6 +44,25 @@ export const exercisePhasesApi = {
     return toPhase(data as Record<string, unknown>);
   },
 
+  /** Insertion en lot — sert à la copie d'un exercice, où les phases arrivent toutes ensemble. */
+  async createMany(exerciseId: string, inputs: {
+    position: number; scene: DiagramScene; title?: string; text?: string;
+  }[]): Promise<ExercisePhase[]> {
+    if (inputs.length === 0) return [];
+    const { data, error } = await supabase
+      .from('exercise_phases')
+      .insert(inputs.map(p => ({
+        exercise_id: exerciseId,
+        position:    p.position,
+        scene:       p.scene,
+        title:       p.title || null,
+        text:        p.text || null,
+      })))
+      .select();
+    if (error) throw error;
+    return (data ?? []).map(toPhase);
+  },
+
   async update(id: string, patch: {
     title?: string; text?: string; scene?: DiagramScene; position?: number;
   }): Promise<ExercisePhase> {

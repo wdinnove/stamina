@@ -1,4 +1,6 @@
 import { supabase } from './client';
+import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from './exerciseCategories';
+import { exercisePhasesApi } from './exercisePhases';
 import type { Exercise } from '../data/types';
 import type { DiagramScene } from '../utils/diagram';
 
@@ -80,6 +82,53 @@ export const exercisesApi = {
     const { data, error } = await supabase.from('exercises').update(payload).eq('id', id).select(SELECT).single();
     if (error) throw error;
     return toExercise(data as Record<string, unknown>);
+  },
+
+  /**
+   * Recopie un exercice (en-tête + phases) dans une autre équipe, où l'utilisateur doit avoir
+   * le droit d'écrire — la RLS refuse l'insertion sinon.
+   *
+   * La copie est indépendante de l'original : plus aucun lien après coup, chaque équipe fait
+   * ensuite vivre son exercice comme elle l'entend.
+   *
+   * Les catégories étant propres à chaque équipe, celle de l'original est retrouvée par son nom
+   * dans l'équipe cible, et créée avec la même couleur si elle n'y existe pas encore.
+   */
+  async copyToTeam(id: string, targetTeamId: string): Promise<Exercise> {
+    const source = await exercisesApi.getById(id);
+    if (!source) throw new Error("Cet exercice n'existe plus.");
+    const phases = await exercisePhasesApi.list(id);
+
+    let categoryId: string | undefined;
+    if (source.categoryName) {
+      const existing = await exerciseCategoriesApi.list(targetTeamId);
+      const match = existing.find(c => c.name.toLowerCase() === source.categoryName!.toLowerCase());
+      categoryId = match
+        ? match.id
+        : (await exerciseCategoriesApi.create(targetTeamId, source.categoryName, source.categoryColor ?? NEW_CATEGORY_PALETTE[existing.length % NEW_CATEGORY_PALETTE.length])).id;
+    }
+
+    const copy = await exercisesApi.create({
+      name:        source.name,
+      teamId:      targetTeamId,
+      deroulement: source.deroulement,
+      objectifs:   source.objectifs,
+      categoryId,
+      videoUrl:    source.videoUrl,
+    });
+
+    // Les phases suivent l'en-tête : si leur insertion échoue, on ne laisse pas une coquille
+    // vide derrière nous dans l'équipe cible.
+    try {
+      await exercisePhasesApi.createMany(copy.id, phases.map(p => ({
+        position: p.position, scene: p.scene, title: p.title, text: p.text,
+      })));
+    } catch (err) {
+      await exercisesApi.remove(copy.id).catch(() => {});
+      throw err;
+    }
+
+    return { ...copy, phaseCount: phases.length, coverScene: phases[0]?.scene };
   },
 
   /** Les phases partent avec l'exercice (ON DELETE CASCADE), et rien d'autre à nettoyer. */

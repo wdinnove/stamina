@@ -73,6 +73,7 @@ export { DiagramEditor } from './DiagramEditor';
 export { DiagramSceneView, DiagramThumb } from './DiagramSceneView';
 export { DiagramCourt } from './DiagramCourt';
 export { ExerciseView } from './ExerciseView';
+export { ExerciseCopyModal, useCopyTargetTeams } from './ExerciseCopyModal';
 export { SocialVideoEmbed } from './SocialVideoEmbed';
 export { SlideCarousel, CarouselDots, useSwipeCarousel } from './SlideCarousel';
 export { ObjectivesPanel } from './ObjectivesPanel';

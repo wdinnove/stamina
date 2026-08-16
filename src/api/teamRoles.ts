@@ -31,6 +31,20 @@ export const teamRolesApi = {
     return (data ?? []).map(toAssignment);
   },
 
+  /** Équipes sur lesquelles le profil courant peut écrire — miroir côté client de `writable_team_ids()`.
+   *  Le superadmin n'a pas de ligne `team_roles` : l'appelant lui ouvre toutes les équipes accessibles. */
+  async listMyWritableTeamIds(): Promise<string[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    const { data, error } = await supabase
+      .from('team_roles')
+      .select('team_id')
+      .eq('profile_id', user.id)
+      .in('role', ['admin', 'editor']);
+    if (error) throw error;
+    return (data ?? []).map(r => r.team_id as string);
+  },
+
   /** Tous les profils de l'organisation (utilisateurs/staffs), assignables sur n'importe quelle équipe. */
   async listAssignableProfiles(orgId: string): Promise<AssignableProfile[]> {
     const { data, error } = await supabase
