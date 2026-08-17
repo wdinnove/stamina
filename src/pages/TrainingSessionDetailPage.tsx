@@ -24,12 +24,19 @@ import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExercisePhase, WellnessEntry } from '../data/types';
+import { POSITION_GROUP, POSITION_GROUP_LABELS } from '../data/archetypes/positionGroups';
+import type { PositionGroup } from '../data/archetypes/positionGroups';
 import { notify } from '../api/notifications';
 import { LAYER } from '../styles/layers';
 
 // Noir, blanc, rouge, bleu, vert, jaune
 const TEAM_COLORS = ['#0D0F14', '#F1F5F9', '#EF4444', '#3B82F6', '#00E5A0', '#EAB308'];
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
+
+// Équipes du jour : un coach équilibre d'abord grosses/petites tailles, d'où les deux
+// sous-sections dans chaque colonne. Même découpage que les archétypes, pour que « intérieur »
+// veuille dire la même chose partout dans l'app.
+const TEAM_POSITION_GROUPS: PositionGroup[] = ['exterieurs', 'interieurs'];
 
 interface TeamDraft { localId: string; name: string; color: string; }
 interface BlockDraft { localId: string; label: string; teams: TeamDraft[]; assign: Record<string, string>; }
@@ -1582,13 +1589,13 @@ export default function TrainingSessionDetailPage() {
                     onDragOver={canEditTeamData ? (e => { e.preventDefault(); setDragOver({ block: block.localId, col: '__pool' }); }) : undefined}
                     onDragLeave={canEditTeamData ? (() => setDragOver(cur => (cur?.block === block.localId && cur.col === '__pool') ? null : cur)) : undefined}
                     onDrop={canEditTeamData ? (e => { e.preventDefault(); const pid = e.dataTransfer.getData('text/plain'); if (pid) assignPlayer(block.localId, pid, ''); setDragOver(null); }) : undefined}
-                    style={{ flex: '0 0 200px', minWidth: 200, height: 300, backgroundColor: '#1A1D24', border: `1px solid ${poolOver ? '#00E5A0' : '#2A2F3A'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
+                    style={{ flex: '0 0 200px', minWidth: 200, minHeight: 300, backgroundColor: '#1A1D24', border: `1px solid ${poolOver ? '#00E5A0' : '#2A2F3A'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                       <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.8rem' }}>Présents</span>
                       <span style={{ color: '#475569', fontSize: '0.7rem' }}>{unassigned.length}</span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                       {unassigned.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} sparring={sparringIds.has(p.id)} />)}
                       {unassigned.length === 0 && (
                         <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Tout le monde est assigné</span>
@@ -1605,7 +1612,7 @@ export default function TrainingSessionDetailPage() {
                         onDragOver={canEditTeamData ? (e => { e.preventDefault(); setDragOver({ block: block.localId, col: team.localId }); }) : undefined}
                         onDragLeave={canEditTeamData ? (() => setDragOver(cur => (cur?.block === block.localId && cur.col === team.localId) ? null : cur)) : undefined}
                         onDrop={canEditTeamData ? (e => { e.preventDefault(); const pid = e.dataTransfer.getData('text/plain'); if (pid) assignPlayer(block.localId, pid, team.localId); setDragOver(null); }) : undefined}
-                        style={{ flex: '0 0 200px', minWidth: 200, height: 300, backgroundColor: '#1A1D24', border: `1px solid ${isOver ? team.color : team.color + '40'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
+                        style={{ flex: '0 0 200px', minWidth: 200, minHeight: 300, backgroundColor: '#1A1D24', border: `1px solid ${isOver ? team.color : team.color + '40'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
                       >
                         <input value={team.name} onChange={e => renameTeam(block.localId, team.localId, e.target.value)} disabled={!canEditTeamData}
                           style={{ padding: '5px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.82rem', fontWeight: 700, outline: 'none', flexShrink: 0, opacity: canEditTeamData ? 1 : 0.6 }} />
@@ -1618,8 +1625,21 @@ export default function TrainingSessionDetailPage() {
                           </div>
                           <span style={{ color: '#475569', fontSize: '0.7rem' }}>{members.length}</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                          {members.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} sparring={sparringIds.has(p.id)} />)}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                          {TEAM_POSITION_GROUPS.map(group => {
+                            const groupMembers = members.filter(p => (POSITION_GROUP[p.position] ?? 'exterieurs') === group);
+                            return (
+                              <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                  <span style={{ color: '#64748B', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                    {POSITION_GROUP_LABELS[group]}
+                                  </span>
+                                  <span style={{ color: '#334155', fontSize: '0.68rem' }}>{groupMembers.length}</span>
+                                </div>
+                                {groupMembers.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} sparring={sparringIds.has(p.id)} />)}
+                              </div>
+                            );
+                          })}
                           {members.length === 0 && (
                             <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Déposez des joueurs ici</span>
                           )}
