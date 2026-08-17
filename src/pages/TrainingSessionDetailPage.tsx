@@ -71,7 +71,7 @@ const STATUS_CFG = {
   late:    { label: 'Retard',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
 } as const;
 
-function PlayerChip({ player, status, canEdit = true }: { player: Player; status?: TrainingAttendance['status']; canEdit?: boolean }) {
+function PlayerChip({ player, status, canEdit = true, sparring = false }: { player: Player; status?: TrainingAttendance['status']; canEdit?: boolean; sparring?: boolean }) {
   const cfg = status ? STATUS_CFG[status] : null;
   return (
     <div draggable={canEdit}
@@ -81,6 +81,12 @@ function PlayerChip({ player, status, canEdit = true }: { player: Player; status
       <span style={{ color: '#F1F5F9', fontSize: '0.8rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {playerNameShort(player)}
       </span>
+      {sparring && (
+        <span title="Partenaire d'entraînement — hors effectif"
+          style={{ color: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.12)', fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>
+          P
+        </span>
+      )}
       {cfg && <span title={cfg.label} style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: cfg.color, flexShrink: 0 }} />}
     </div>
   );
@@ -1206,8 +1212,16 @@ export default function TrainingSessionDetailPage() {
     .filter(p => knownIds.has(p.id))
     .sort((a, b) => a.lastName.localeCompare(b.lastName));
 
-  // Équipes du jour : seuls les joueurs présents ou en retard sont sélectionnables
-  const eligiblePlayers = rosterPlayers.filter(p => attMap[p.id] === 'present' || attMap[p.id] === 'late');
+  // Équipes du jour : seuls les joueurs présents ou en retard sont sélectionnables. Les
+  // partenaires d'entraînement ne sont pas dans l'effectif de la saison mais occupent bien le
+  // terrain : ils viennent de la liste du club, sinon impossible de les répartir en équipes.
+  const rosterIds = new Set(rosterPlayers.map(p => p.id));
+  const eligiblePlayers = [
+    ...rosterPlayers,
+    ...players.filter(p => sparringIds.has(p.id) && !rosterIds.has(p.id)),
+  ]
+    .filter(p => attMap[p.id] === 'present' || attMap[p.id] === 'late')
+    .sort((a, b) => a.lastName.localeCompare(b.lastName, 'fr'));
 
   function renderPlayerItem(player: Player) {
     const attStatus = attMap[player.id] as TrainingAttendance['status'] | undefined;
@@ -1529,7 +1543,7 @@ export default function TrainingSessionDetailPage() {
         {!teamsCollapsed && (
         <>
         <p style={{ color: '#475569', fontSize: '0.75rem', margin: '0 0 14px' }}>
-          Glissez-déposez les joueurs depuis « Effectif » vers les colonnes d'équipe. Un groupe = une répartition indépendante (ex. 3x3 puis 5x5).
+          Glissez-déposez les joueurs depuis « Présents » vers les colonnes d'équipe — partenaires d'entraînement compris. Un groupe = une répartition indépendante (ex. 3x3 puis 5x5).
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -1571,11 +1585,11 @@ export default function TrainingSessionDetailPage() {
                     style={{ flex: '0 0 200px', minWidth: 200, height: 300, backgroundColor: '#1A1D24', border: `1px solid ${poolOver ? '#00E5A0' : '#2A2F3A'}`, borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                      <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.8rem' }}>Effectif</span>
+                      <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.8rem' }}>Présents</span>
                       <span style={{ color: '#475569', fontSize: '0.7rem' }}>{unassigned.length}</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                      {unassigned.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} />)}
+                      {unassigned.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} sparring={sparringIds.has(p.id)} />)}
                       {unassigned.length === 0 && (
                         <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Tout le monde est assigné</span>
                       )}
@@ -1605,7 +1619,7 @@ export default function TrainingSessionDetailPage() {
                           <span style={{ color: '#475569', fontSize: '0.7rem' }}>{members.length}</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                          {members.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} />)}
+                          {members.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} sparring={sparringIds.has(p.id)} />)}
                           {members.length === 0 && (
                             <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Déposez des joueurs ici</span>
                           )}
