@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
-import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, Users, Check, Save, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, BookPlus, Users, Check, Save, ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -11,7 +11,7 @@ import { exercisesApi } from '../api/exercises';
 import { exercisePhasesApi } from '../api/exercisePhases';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, AddButton } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, AddButton, ExerciseFromBlockModal } from '../components';
 import { ExerciseView } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
@@ -295,6 +295,8 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   const [exercises,       setExercises]       = useState<Exercise[]>([]);
   const [viewExercise,    setViewExercise]    = useState<Exercise | null>(null);
   const [viewPhases,      setViewPhases]      = useState<ExercisePhase[]>([]);
+  /** Séquence en cours de promotion en exercice de bibliothèque. */
+  const [promoteBlock,    setPromoteBlock]    = useState<SessionBlock | null>(null);
 
   // La bibliothèque proposée est celle de l'équipe de la séance, pas celle de toutes les
   // équipes auxquelles on a accès.
@@ -573,12 +575,21 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         </div>
                         <span style={{ color: '#F1F5F9', fontSize: '0.92rem', fontWeight: 700, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{block.label}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          {block.drillId && (
+                          {block.drillId ? (
                             <button
                               onClick={() => { if (linkedExercise) setViewExercise(linkedExercise); }}
                               style={{ background: 'none', border: 'none', color: '#00E5A0', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2 }}
                               title="Voir l'exercice">
                               <BookOpen size={14} />
+                            </button>
+                          ) : canEditTeamData && (
+                            <button
+                              onClick={() => setPromoteBlock(block)}
+                              style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2 }}
+                              onMouseEnter={e => (e.currentTarget.style.color = '#00E5A0')}
+                              onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+                              title="Pas dans la bibliothèque — l'y ajouter">
+                              <BookPlus size={14} />
                             </button>
                           )}
                           {canEditTeamData && (
@@ -628,12 +639,21 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                       </span>
                       <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.loadUa} UA</span>
                       <div style={{ width: 1, height: 18, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
-                      {block.drillId && (
+                      {block.drillId ? (
                         <button
                           onClick={() => { if (linkedExercise) setViewExercise(linkedExercise); }}
                           style={{ background: 'none', border: 'none', color: '#00E5A0', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
                           title="Voir l'exercice">
                           <BookOpen size={14} />
+                        </button>
+                      ) : canEditTeamData && (
+                        <button
+                          onClick={() => setPromoteBlock(block)}
+                          style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#00E5A0')}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+                          title="Pas dans la bibliothèque — l'y ajouter">
+                          <BookPlus size={14} />
                         </button>
                       )}
                       {canEditTeamData && (
@@ -810,6 +830,22 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
 
           <ExerciseView exercise={viewExercise} phases={viewPhases} />
         </Modal>
+      )}
+
+      {/* Promotion d'une séquence en exercice de bibliothèque */}
+      {promoteBlock && selected && (
+        <ExerciseFromBlockModal
+          block={promoteBlock}
+          teamId={selected.team.id}
+          onClose={() => setPromoteBlock(null)}
+          onCreated={(exercise, updated) => {
+            // L'exercice rejoint la liste locale, sinon le bloc afficherait un lien vers une
+            // fiche introuvable jusqu'au prochain chargement de la page.
+            setExercises(prev => [...prev, exercise].sort((a, b) => a.name.localeCompare(b.name)));
+            onBlocksChange(blocks.map(b => b.id === updated.id ? updated : b));
+            setPromoteBlock(null);
+          }}
+        />
       )}
     </div>
   );
