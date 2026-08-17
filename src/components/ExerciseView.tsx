@@ -123,7 +123,7 @@ export function ExerciseView({ exercise, phases }: {
           Phases
         </CardTitle>
         {phases.length === 0 ? (
-          <EmptyState message="Aucune phase. Un exercice se raconte phase par phase : un schéma, son texte." />
+          <EmptyState message="Aucune phase renseignée." />
         ) : (
           // Deux phases par ligne : 1 et 2, puis 3 et 4… Dès 1024 px — c'est le bloc lui-même qui
           // s'adapte à l'étroitesse en empilant son schéma et son texte (voir `PhaseBlock`).
