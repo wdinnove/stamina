@@ -24,8 +24,6 @@ import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExercisePhase, WellnessEntry } from '../data/types';
-import { POSITION_GROUP, POSITION_GROUP_LABELS } from '../data/archetypes/positionGroups';
-import type { PositionGroup } from '../data/archetypes/positionGroups';
 import { notify } from '../api/notifications';
 import { LAYER } from '../styles/layers';
 
@@ -33,10 +31,27 @@ import { LAYER } from '../styles/layers';
 const TEAM_COLORS = ['#0D0F14', '#F1F5F9', '#EF4444', '#3B82F6', '#00E5A0', '#EAB308'];
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
 
-// Équipes du jour : un coach équilibre d'abord grosses/petites tailles, d'où les deux
-// sous-sections dans chaque colonne. Même découpage que les archétypes, pour que « intérieur »
-// veuille dire la même chose partout dans l'app.
-const TEAM_POSITION_GROUPS: PositionGroup[] = ['exterieurs', 'interieurs'];
+// Équipes du jour : un coach répartit en meneurs / extérieurs / intérieurs, chaque équipe ayant
+// besoin de son porteur de balle. C'est un découpage propre à la composition d'équipes — les
+// archétypes, eux, regroupent en 2 blocs pour garder des pools de percentile assez grands
+// (voir POSITION_GROUP), ce que trois groupes casserait.
+type TeamPositionGroup = 'meneurs' | 'exterieurs' | 'interieurs';
+
+const TEAM_POSITION_GROUPS: TeamPositionGroup[] = ['meneurs', 'exterieurs', 'interieurs'];
+
+const TEAM_POSITION_GROUP: Record<Player['position'], TeamPositionGroup> = {
+  'Meneur':      'meneurs',
+  'Arrière':     'exterieurs',
+  'Ailier':      'exterieurs',
+  'Ailier Fort': 'interieurs',
+  'Pivot':       'interieurs',
+};
+
+const TEAM_POSITION_GROUP_LABELS: Record<TeamPositionGroup, string> = {
+  meneurs:    'Meneurs',
+  exterieurs: 'Extérieurs',
+  interieurs: 'Intérieurs',
+};
 
 interface TeamDraft { localId: string; name: string; color: string; }
 interface BlockDraft { localId: string; label: string; teams: TeamDraft[]; assign: Record<string, string>; }
@@ -1625,24 +1640,26 @@ export default function TrainingSessionDetailPage() {
                           </div>
                           <span style={{ color: '#475569', fontSize: '0.7rem' }}>{members.length}</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
                           {TEAM_POSITION_GROUPS.map(group => {
-                            const groupMembers = members.filter(p => (POSITION_GROUP[p.position] ?? 'exterieurs') === group);
+                            const groupMembers = members.filter(p => (TEAM_POSITION_GROUP[p.position] ?? 'exterieurs') === group);
                             return (
                               <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                                   <span style={{ color: '#64748B', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                    {POSITION_GROUP_LABELS[group]}
+                                    {TEAM_POSITION_GROUP_LABELS[group]}
                                   </span>
                                   <span style={{ color: '#334155', fontSize: '0.68rem' }}>{groupMembers.length}</span>
                                 </div>
                                 {groupMembers.map(p => <PlayerChip key={p.id} player={p} status={attMap[p.id] as TrainingAttendance['status'] | undefined} canEdit={canEditTeamData} sparring={sparringIds.has(p.id)} />)}
+                                {groupMembers.length === 0 && (
+                                  <span style={{ color: '#334155', fontSize: '0.7rem', textAlign: 'center', padding: '10px 0', border: '1px dashed #262B35', borderRadius: 6 }}>
+                                    Déposez ici
+                                  </span>
+                                )}
                               </div>
                             );
                           })}
-                          {members.length === 0 && (
-                            <span style={{ color: '#334155', fontSize: '0.72rem', textAlign: 'center', padding: '12px 0' }}>Déposez des joueurs ici</span>
-                          )}
                         </div>
                       </div>
                     );
