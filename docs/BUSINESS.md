@@ -168,15 +168,32 @@ Or **ni Supabase ni Vercel ne sont certifiés HDS**. La certification coûte
 
 ### 🟠 5.3 « MBTI » est une marque déposée
 
-`MBTI` est une marque de The Myers-Briggs Company. Elle apparaît aujourd'hui dans
-une URL publique (`/joueur/:id/mbti`), dans des noms de tables, dans l'UI, et le
-module produit les 16 codes canoniques — **dans un produit commercial**. Risque de
-contrefaçon de marque réel et facile à éviter.
+`MBTI` est une marque de The Myers-Briggs Company. Le module produit les 16 codes
+canoniques — **dans un produit commercial**. Risque de contrefaçon de marque réel et
+facile à éviter.
 
-**Renommer avant la première vente** : « Profil de fonctionnement », « Boussole du
-joueur »… Les 4 axes et les lettres peuvent rester (usage de 16Personalities), mais
-**retirer le sigle MBTI de toute surface visible** : UI, URLs publiques, emails. En
-base, la migration peut attendre — ce n'est pas exposé.
+**État au 17 août 2026** : le sigle n'est plus visible nulle part côté utilisateur.
+Il n'apparaissait dans aucun texte d'UI ni d'email ; la dernière surface exposée
+était l'URL publique `/joueur/:id/mbti`, devenue `/joueur/:id/personnalite` (l'ancien
+chemin redirige, les liens déjà envoyés continuent d'aboutir). Restent en base la
+table `mbti_responses` et deux fonctions `SECURITY DEFINER` appelées depuis le
+navigateur — non affichées, mais lisibles dans l'onglet Réseau.
+
+**Ce qui trahit encore l'origine**, indépendamment du sigle : les 16 codes à 4
+lettres affichés en évidence (fiche joueur, tableau d'effectif, « Types présents »),
+les 8 initiales de pôle sur les barres d'axe, et les `essence` des fiches qui
+commencent toutes par le code. La note précédente disait « les lettres peuvent
+rester (usage de 16Personalities) » : vrai sur le plan de la marque, faux sur le plan
+de la perception — ce sont elles qui rendent la source reconnaissable au premier coup
+d'œil. Voir [le plan de dé-lettrisation](DELETTRISATION.md).
+
+Deux surnoms de type reprennent mot pour mot la nomenclature 16Personalities FR
+(`ENTP` « Le débatteur », `ENTJ` « Le commandant ») : seuls emprunts textuels exacts
+relevés, à réécrire.
+
+Le questionnaire lui-même n'expose rien : 24 affirmations maison en échelle d'accord,
+là où le MBTI officiel est un choix forcé A/B de 93 items. Les libellés d'axes sont
+des phrases en français courant, pas la nomenclature canonique.
 
 ### 🟠 5.4 Psychométrie et droit du travail
 
@@ -244,7 +261,8 @@ Unsplash issues de Figma Make → vérifier qu'aucune ne subsiste en production.
 
 ## 6. Feuille de route 12 mois
 
-**T1 (sept–déc)** — Renommer le module MBTI. Sortir le module médical des formules
+**T1 (sept–déc)** — Dé-lettriser le module de personnalité (le sigle, lui, est déjà
+parti de toute surface visible — cf. 5.3). Sortir le module médical des formules
 vendues. Rédiger DPA + CGV + AIPD modèle. Obtenir l'attestation employeur. Créer la
 SASU. En parallèle : faire tourner l'app sur le club actuel, filmer 3 témoignages,
 produire 5 captures d'écran vendeuses.
