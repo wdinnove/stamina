@@ -3758,7 +3758,7 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 
 -- Questionnaire de personnalité (MBTI)
 --
--- Un joueur répond une seule fois, sans compte, via /joueur/<id>/mbti. Les 24 réponses
+-- Un joueur répond une seule fois, sans compte, via /joueur/<id>/personnalite. Les 24 réponses
 -- brutes sont stockées telles quelles : le type à 4 lettres est recalculé à l'affichage
 -- (src/data/mbti/scoring.ts), donc faire évoluer le dépouillement ne demande aucune migration.
 --

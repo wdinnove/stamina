@@ -175,7 +175,7 @@ Tout ce qui commence par `VITE_` finit dans le navigateur. C'est la règle mémo
    peuvent écrire à un joueur (`send-wellness-links`, `send-mbti-links`) : contenu
    figé par un template, destinataires relus en base, droit d'écriture sur l'équipe
    exigé, déclenchement manuel. Un test de `api/_lib/guards.test.js` le vérifie.
-6. **Les pages publiques** (`/joueur/:id/bien-etre`, `/joueur/:id/mbti`) n'ont aucun
+6. **Les pages publiques** (`/joueur/:id/bien-etre`, `/joueur/:id/personnalite`) n'ont aucun
    accès direct aux tables : elles passent par des fonctions `SECURITY DEFINER`
    accordées à `anon`, qui revalident tout côté serveur.
 7. **Les notes de suivi mental** (`player_notes`) sont aussi sensibles que le médical :

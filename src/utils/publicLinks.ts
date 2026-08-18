@@ -3,8 +3,10 @@
  *  Côté navigateur l'origine est celle de la page ; côté serveur (emails) elle vient de
  *  APP_ORIGIN et n'est jamais dérivée des en-têtes — cf. api/send-wellness-links.js. */
 
+/** Le chemin dit « personnalite », jamais le nom du modèle : c'est une URL que le joueur lit
+ *  dans sa barre d'adresse. `/mbti` reste servi en redirection pour les liens déjà envoyés. */
 export function mbtiPublicUrl(playerId: string): string {
-  return `${window.location.origin}/joueur/${playerId}/mbti`;
+  return `${window.location.origin}/joueur/${playerId}/personnalite`;
 }
 
 export function wellnessPublicUrl(playerId: string): string {

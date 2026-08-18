@@ -95,7 +95,7 @@ export default async function handler(req, res) {
           template_id: PLAYER_LINK_TEMPLATE_ID,
           personalization: [{
             email: player.email,
-            data: { name: player.first_name, url: `${origin}/joueur/${player.id}/mbti` },
+            data: { name: player.first_name, url: `${origin}/joueur/${player.id}/personnalite` },
           }],
         })
         sent.push(name)

@@ -27,6 +27,12 @@ function PlayerWellnessLegacyRedirect() {
   const { playerId } = useParams<{ playerId: string }>();
   return <Navigate to={playerId ? `/joueur/${playerId}/bien-etre` : '/connexion'} replace />;
 }
+/** Ancien lien public du questionnaire de personnalité — les liens déjà envoyés par email
+ *  doivent continuer d'aboutir, un joueur n'ayant aucun moyen d'en redemander un. */
+function PlayerPersonalityLegacyRedirect() {
+  const { playerId } = useParams<{ playerId: string }>();
+  return <Navigate to={playerId ? `/joueur/${playerId}/personnalite` : '/connexion'} replace />;
+}
 /** Ancienne fiche équipe (Club) — préserve l'id */
 function TeamLegacyRedirect() {
   const { id } = useParams<{ id: string }>();
@@ -70,9 +76,10 @@ export const router = createBrowserRouter([
     // Questionnaire de personnalité — public comme le formulaire bien-être, et pour la même
     // raison : le joueur n'a pas de compte. Doit rester AU-DESSUS de RequireAuth, dont le
     // catch-all `*` renverrait sinon vers /connexion.
-    path: '/joueur/:playerId/mbti',
+    path: '/joueur/:playerId/personnalite',
     lazy: () => import('./pages/PlayerMbtiPublicPage').then(m => ({ Component: m.default })),
   },
+  { path: '/joueur/:playerId/mbti', element: <PlayerPersonalityLegacyRedirect /> },
   {
     element: <RequireAuth />,
     children: [
