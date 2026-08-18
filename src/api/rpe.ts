@@ -1,5 +1,5 @@
 import { supabase } from './client';
-import type { RPEEntry, SessionType, TrainingSession } from '../data/types';
+import type { RPEEntry, TrainingSession } from '../data/types';
 
 export interface ListRpeFilters {
   playerId?: string;
@@ -7,12 +7,15 @@ export interface ListRpeFilters {
 }
 
 function toSession(row: Record<string, unknown>): TrainingSession {
+  const cat = row.team_categories as { id: string; name: string; color: string } | null | undefined;
   return {
     id:              row.id               as string,
     teamId:          row.team_id          as string,
     seasonId:        row.season_id        as string,
     date:            row.date             as string,
-    sessionType:     row.session_type     as SessionType,
+    categoryId:      cat?.id,
+    categoryName:    cat?.name,
+    categoryColor:   cat?.color,
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
     createdAt:       row.created_at       as string | undefined,
@@ -28,17 +31,18 @@ function toEntry(row: Record<string, unknown>, session: TrainingSession): RPEEnt
     actualDuration:  row.actual_duration as number | undefined,
     notes:           row.notes           as string | undefined,
     date:            session.date,
-    sessionType:     session.sessionType,
+    categoryName:    session.categoryName,
+    categoryColor:   session.categoryColor,
     plannedDuration: session.plannedDuration,
   };
 }
 
 export const rpeApi = {
   // Séances d'une équipe/saison (colonnes minimales), optionnellement bornées par date — pour les agrégations RPEPage
-  async listTeamSessionsInRange(teamId: string, seasonId: string, from?: string, to?: string): Promise<Array<{ id: string; date: string; sessionType: SessionType; plannedDuration: number }>> {
+  async listTeamSessionsInRange(teamId: string, seasonId: string, from?: string, to?: string): Promise<Array<{ id: string; date: string; categoryName?: string; categoryColor?: string; plannedDuration: number }>> {
     let q = supabase
       .from('training_sessions')
-      .select('id, date, session_type, planned_duration')
+      .select('id, date, planned_duration, team_categories(name, color)')
       .eq('team_id', teamId)
       .eq('season_id', seasonId)
       .order('date', { ascending: true });
@@ -46,10 +50,14 @@ export const rpeApi = {
     if (to)   q = q.lte('date', to);
     const { data, error } = await q;
     if (error) throw error;
-    return (data ?? []).map(r => ({
-      id: r.id as string, date: r.date as string,
-      sessionType: r.session_type as SessionType, plannedDuration: r.planned_duration as number,
-    }));
+    return (data ?? []).map(r => {
+      const cat = (r as Record<string, unknown>).team_categories as { name: string; color: string } | null | undefined;
+      return {
+        id: r.id as string, date: r.date as string,
+        categoryName: cat?.name, categoryColor: cat?.color,
+        plannedDuration: r.planned_duration as number,
+      };
+    });
   },
 
   // RPE détaillées (rpe, durée réelle, joueur, séance) pour un lot de séances — agrégations client (moyennes, charge…)
@@ -137,7 +145,7 @@ export const rpeApi = {
     teamId: string;
     seasonId: string;
     date: string;
-    sessionType: SessionType;
+    categoryId?: string;
     plannedDuration: number;
     actualDuration?: number;
     entries: { playerId: string; rpe: number }[];
@@ -150,7 +158,7 @@ export const rpeApi = {
       const { error } = await supabase
         .from('training_sessions')
         .update({
-          session_type:     input.sessionType,
+          category_id:      input.categoryId ?? null,
           planned_duration: input.plannedDuration,
         })
         .eq('id', sessionId);
@@ -163,7 +171,7 @@ export const rpeApi = {
         team_id:          input.teamId,
         season_id:        input.seasonId,
         date:             input.date,
-        session_type:     input.sessionType,
+        category_id:      input.categoryId ?? null,
         planned_duration: input.plannedDuration,
         created_by:       user?.id ?? null,
       });
@@ -217,19 +225,22 @@ export const rpeApi = {
   async listPlayerHistory(playerId: string): Promise<RPEEntry[]> {
     const { data, error } = await supabase
       .from('rpe_entries')
-      .select('*, training_sessions!inner(id, date, session_type, planned_duration, season_id, team_id, teams(name))')
+      .select('*, training_sessions!inner(id, date, planned_duration, season_id, team_id, teams(name), team_categories(id, name, color))')
       .eq('player_id', playerId)
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(row => {
       const s = row.training_sessions as Record<string, unknown>;
       const teams = s.teams as Record<string, unknown> | null;
+      const cat = s.team_categories as { id: string; name: string; color: string } | null | undefined;
       const session: TrainingSession = {
         id:              s.id              as string,
         teamId:          s.team_id         as string,
         seasonId:        s.season_id       as string,
         date:            s.date            as string,
-        sessionType:     s.session_type    as SessionType,
+        categoryId:      cat?.id,
+        categoryName:    cat?.name,
+        categoryColor:   cat?.color,
         plannedDuration: s.planned_duration as number,
       };
       const entry = toEntry(row as Record<string, unknown>, session);

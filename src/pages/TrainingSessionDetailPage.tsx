@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
-import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, BookPlus, Users, Check, Save, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, BookPlus, Users, UserCheck, Check, Minus, Save, ChevronDown, ChevronUp, Activity, Plus } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -9,12 +9,14 @@ import { sessionBlocksApi } from '../api/sessionBlocks';
 import { sessionTeamsApi } from '../api/sessionTeams';
 import { exercisesApi } from '../api/exercises';
 import { exercisePhasesApi } from '../api/exercisePhases';
+import { teamCategoriesApi } from '../api/categories';
+import { staffApi } from '../api/staff';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, AddButton, ExerciseFromBlockModal } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, CategoryBadge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, AddButton, ExerciseFromBlockModal, ExercisePhaseList } from '../components';
 import { ExerciseView } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
-import { computeAcwr, acwrZone, rpeColor } from '../utils/rpe';
+import { computeAcwr, acwrZone, rpeColor, estimatedSessionRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { wellnessTier as sharedWellnessTier } from '../utils/wellness';
 import { getWeekTier } from '../utils/weeklyLoad';
@@ -23,7 +25,7 @@ import { roundedAvg } from '../utils/avg';
 import { fmtDateFull } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExercisePhase, WellnessEntry } from '../data/types';
+import type { TrainingSession, Player, TrainingAttendance, SessionDocument, SessionBlock, Exercise, ExercisePhase, WellnessEntry, TeamCategory, StaffMember } from '../data/types';
 import { notify } from '../api/notifications';
 import { LAYER } from '../styles/layers';
 
@@ -68,10 +70,24 @@ function defaultBlockDrafts(): BlockDraft[] {
   }];
 }
 
-const BLOCK_CATEGORIES = [
-  'Échauffement', 'Jeu réduit', 'Jeu rapide', 'Tirs', 'Technique',
-  'Physique', 'Tactique', 'Retour au calme', 'Autre',
-];
+/** Repli quand l'équipe n'a plus aucune catégorie d'exercice : `session_blocks.category` est
+ *  NOT NULL, il faut bien proposer quelque chose. */
+const BLOCK_CATEGORY_FALLBACK = 'Autre';
+
+/**
+ * Les catégories proposées pour une séquence sont celles que l'équipe s'est données pour ses
+ * exercices — c'était une liste en dur, qui doublonnait la configuration sans jamais la
+ * refléter.
+ *
+ * `current` est toujours conservé, même absent de la liste : une séquence enregistrée avant
+ * un renommage garde sa catégorie, et l'ouvrir en modification ne doit pas la changer dans son
+ * dos.
+ */
+function blockCategoryOptions(categories: TeamCategory[], current: string): string[] {
+  const names = categories.map(c => c.name);
+  if (current && !names.includes(current)) names.push(current);
+  return names.length > 0 ? names : [BLOCK_CATEGORY_FALLBACK];
+}
 
 const INTENSITY_CFG: Record<string, { label: string; color: string; bg: string }> = {
   'basse':       { label: 'Basse',       color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'   },
@@ -80,17 +96,11 @@ const INTENSITY_CFG: Record<string, { label: string; color: string; bg: string }
   'très élevée': { label: 'Très élevée', color: '#EF4444', bg: 'rgba(239,68,68,0.12)'   },
 };
 
-const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
-  training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
-  match:    { label: 'Match',        color: '#F59E0B', bg: '#F59E0B22' },
-  gym:      { label: 'Salle',        color: '#A855F7', bg: '#A855F722' },
-  rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
-};
-
 const STATUS_CFG = {
-  present: { label: 'Présent', color: '#00E5A0', bg: 'rgba(0,229,160,0.12)' },
-  absent:  { label: 'Absent',  color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
-  late:    { label: 'Retard',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  present:      { label: 'Présent',     color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'   },
+  absent:       { label: 'Absent',      color: '#EF4444', bg: 'rgba(239,68,68,0.12)'   },
+  late:         { label: 'Retard',      color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
+  not_expected: { label: 'Non attendu', color: '#64748B', bg: 'rgba(100,116,139,0.12)' },
 } as const;
 
 function PlayerChip({ player, status, canEdit = true, sparring = false }: { player: Player; status?: TrainingAttendance['status']; canEdit?: boolean; sparring?: boolean }) {
@@ -158,7 +168,7 @@ function DocIcon({ mimeType }: { mimeType?: string }) {
   return <File size={15} color="#94A3B8" />;
 }
 
-const BLANK_BLOCK = { duration: '15', category: 'Échauffement', intensity: 'moyenne' as SessionBlock['intensity'], label: '', consignes: '' };
+const BLANK_BLOCK = { duration: '15', category: '', intensity: 'moyenne' as SessionBlock['intensity'], label: '', consignes: '' };
 
 function ExercisePicker({ exercises, value, onChange, inputStyle }: {
   exercises: Exercise[];
@@ -274,27 +284,48 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
   );
 }
 
-function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
+function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
   sessionId: string;
   blocks: SessionBlock[];
   onBlocksChange: (blocks: SessionBlock[]) => void;
+  /** Groupes d'équipes du jour DÉJÀ ENREGISTRÉS — les seuls qu'une séquence peut référencer :
+   *  un groupe encore à l'écran mais absent de la base ferait échouer la clé étrangère. */
+  teamBlocks: { id: string; label: string; teamCount: number }[];
 }) {
   const { thresholds, selected, canEditTeamData } = useTeamSeason();
   const [showForm,       setShowForm]       = useState(false);
+  const [showRestForm,   setShowRestForm]   = useState(false);
+  const [restForm,       setRestForm]       = useState({ duration: '5', label: '' });
   const [saving,         setSaving]         = useState(false);
   const [blockError,     setBlockError]     = useState('');
   const [form,           setForm]           = useState(BLANK_BLOCK);
   const [formDrillId,    setFormDrillId]    = useState<string | null>(null);
   const [formDescription, setFormDescription] = useState('');
+  const [formStaffId,    setFormStaffId]    = useState<string | null>(null);
   const [editingId,      setEditingId]      = useState<string | null>(null);
   const [editForm,       setEditForm]       = useState(BLANK_BLOCK);
   const [editDrillId,    setEditDrillId]    = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
+  const [editStaffId,     setEditStaffId]     = useState<string | null>(null);
+  const [editTeamBlockId, setEditTeamBlockId] = useState<string | null>(null);
+  const [showEditOptions, setShowEditOptions] = useState(false);
   const [draggingIndex,  setDraggingIndex]  = useState<number | null>(null);
   const [overIndex,      setOverIndex]      = useState<number | null>(null);
   const [exercises,       setExercises]       = useState<Exercise[]>([]);
+  const [blockCategories, setBlockCategories] = useState<TeamCategory[]>([]);
+  const [teamStaff,       setTeamStaff]       = useState<StaffMember[]>([]);
   const [viewExercise,    setViewExercise]    = useState<Exercise | null>(null);
   const [viewPhases,      setViewPhases]      = useState<ExercisePhase[]>([]);
+  /**
+   * Schémas dépliés en ligne, séquence par séquence — repliés par défaut : une séance de dix
+   * séquences deviendrait illisible si chacune ouvrait ses terrains d'office.
+   *
+   * Les phases ne sont chargées qu'au premier dépli et mémorisées par exercice : les charger
+   * toutes à l'ouverture de la page ferait N requêtes pour un contenu que personne ne regarde.
+   */
+  const [openSchemas,     setOpenSchemas]     = useState<Record<string, boolean>>({});
+  const [phasesByExercise, setPhasesByExercise] = useState<Record<string, ExercisePhase[]>>({});
+  const [loadingPhases,   setLoadingPhases]   = useState<Record<string, boolean>>({});
   /** Séquence en cours de promotion en exercice de bibliothèque. */
   const [promoteBlock,    setPromoteBlock]    = useState<SessionBlock | null>(null);
 
@@ -303,6 +334,23 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
   useEffect(() => {
     if (!selected) return;
     exercisesApi.list(selected.team.id).then(setExercises).catch(() => {});
+  }, [selected?.team.id]);
+
+  useEffect(() => {
+    if (!selected) { setTeamStaff([]); return; }
+    staffApi.listByTeam(selected.team.id).then(setTeamStaff).catch(() => setTeamStaff([]));
+  }, [selected?.team.id]);
+
+  useEffect(() => {
+    if (!selected) { setBlockCategories([]); return; }
+    // Le formulaire doit toujours porter la valeur que le select affiche, y compris quand le
+    // chargement échoue : sinon il montre « Autre » avec un état vide, et la séquence part en
+    // base sans catégorie.
+    const seedForm = (list: TeamCategory[]) =>
+      setForm(f => f.category ? f : { ...f, category: list[0]?.name ?? BLOCK_CATEGORY_FALLBACK });
+    teamCategoriesApi.list(selected.team.id, 'exercise')
+      .then(list => { setBlockCategories(list); seedForm(list); })
+      .catch(() => { setBlockCategories([]); seedForm([]); });
   }, [selected?.team.id]);
 
   useEffect(() => {
@@ -354,6 +402,33 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
     display: 'block', marginBottom: 4,
   };
 
+  /**
+   * Un repos n'a ni catégorie ni objectif : deux champs suffisent, et la catégorie part vide
+   * plutôt que de recevoir un libellé factice qu'il faudrait ensuite filtrer partout.
+   */
+  async function handleAddRest(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setBlockError('');
+    try {
+      const next = await sessionBlocksApi.create(sessionId, {
+        position: blocks.length + 1,
+        kind:     'repos',
+        duration: parseInt(restForm.duration),
+        category: '',
+        intensity: 'moyenne',
+        label:    restForm.label.trim() || 'Repos',
+      });
+      onBlocksChange([...blocks, next]);
+      setRestForm({ duration: '5', label: '' });
+      setShowRestForm(false);
+    } catch (err: unknown) {
+      setBlockError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!form.label.trim()) return;
@@ -369,11 +444,13 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
         description: formDescription.trim() || undefined,
         consignes: form.consignes.trim() || undefined,
         drillId: formDrillId,
+        staffId: formStaffId,
       });
       onBlocksChange([...blocks, next]);
-      setForm(BLANK_BLOCK);
+      setForm({ ...BLANK_BLOCK, category: blockCategories[0]?.name ?? BLOCK_CATEGORY_FALLBACK });
       setFormDrillId(null);
       setFormDescription('');
+      setFormStaffId(null);
       setShowForm(false);
     } catch (err: unknown) {
       setBlockError(err instanceof Error ? err.message : 'Erreur');
@@ -382,26 +459,49 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
     }
   }
 
+  function toggleSchemas(blockId: string, exerciseId: string) {
+    const opening = !openSchemas[blockId];
+    setOpenSchemas(prev => ({ ...prev, [blockId]: opening }));
+    if (!opening || phasesByExercise[exerciseId] || loadingPhases[exerciseId]) return;
+    setLoadingPhases(prev => ({ ...prev, [exerciseId]: true }));
+    exercisePhasesApi.list(exerciseId)
+      .then(list => setPhasesByExercise(prev => ({ ...prev, [exerciseId]: list })))
+      .catch(() => setPhasesByExercise(prev => ({ ...prev, [exerciseId]: [] })))
+      .finally(() => setLoadingPhases(prev => ({ ...prev, [exerciseId]: false })));
+  }
+
   function openEdit(block: SessionBlock) {
     setEditingId(block.id);
     setEditForm({ duration: String(block.duration), category: block.category, intensity: block.intensity, label: block.label, consignes: block.consignes ?? '' });
     setEditDrillId(block.drillId);
     setEditDescription(block.description ?? '');
+    setEditStaffId(block.staffId);
+    setEditTeamBlockId(block.teamBlockId);
+    // Les options ne s'ouvrent d'elles-mêmes que si elles portent déjà quelque chose : sinon
+    // elles restent repliées, comme demandé.
+    setShowEditOptions(block.teamBlockId !== null);
   }
 
   async function handleEditSave(block: SessionBlock) {
     setSaving(true);
     setBlockError('');
     try {
-      const updated = await sessionBlocksApi.update(block.id, {
-        duration:    parseInt(editForm.duration),
-        category:    editForm.category,
-        intensity:   editForm.intensity,
-        label:       editForm.label.trim(),
-        description: editDescription.trim(),
-        consignes:   editForm.consignes.trim(),
-        drillId:     editDrillId,
-      });
+      // Un repos n'a que sa durée et son libellé : lui réécrire catégorie, intensité et textes
+      // reviendrait à lui inventer un contenu qu'il n'a pas.
+      const patch = block.kind === 'repos'
+        ? { duration: parseInt(editForm.duration), label: editForm.label.trim() || 'Repos' }
+        : {
+            duration:    parseInt(editForm.duration),
+            category:    editForm.category,
+            intensity:   editForm.intensity,
+            label:       editForm.label.trim(),
+            description: editDescription.trim(),
+            consignes:   editForm.consignes.trim(),
+            drillId:     editDrillId,
+            staffId:     editStaffId,
+            teamBlockId: editTeamBlockId,
+          };
+      const updated = await sessionBlocksApi.update(block.id, patch);
       onBlocksChange(blocks.map(b => b.id === block.id ? updated : b));
       setEditingId(null);
     } catch (err: unknown) {
@@ -420,7 +520,11 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
     }
   }
 
+  // La durée totale compte le repos — c'est le temps qu'occupe la séance. Le compteur de
+  // séquences, lui, ne compte que le travail : un repos n'est pas une séquence.
   const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
+  const restDuration  = blocks.reduce((s, b) => b.kind === 'repos' ? s + b.duration : s, 0);
+  const drillCount    = blocks.filter(b => b.kind !== 'repos').length;
   const totalLoadUa   = blocks.reduce((s, b) => s + b.loadUa, 0);
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
@@ -435,7 +539,10 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
         {blocks.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={headerNeutralBadge}>{totalDuration} min</span>
-            <span style={headerNeutralBadge}>{blocks.length} séquence{blocks.length > 1 ? 's' : ''}</span>
+            <span style={headerNeutralBadge}>{drillCount} séquence{drillCount > 1 ? 's' : ''}</span>
+            {restDuration > 0 && (
+              <span style={headerNeutralBadge}>dont {restDuration} min de repos</span>
+            )}
             {totalLoadTier && (
               <Badge color={totalLoadTier.color} label={`${totalLoadUa} UA`} style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px' }} />
             )}
@@ -453,6 +560,8 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
           {blocks.map((block, i) => {
             const intCfg = INTENSITY_CFG[block.intensity] ?? INTENSITY_CFG['moyenne'];
             const linkedExercise = block.drillId ? exercises.find(e => e.id === block.drillId) ?? null : null;
+            const linkedTeamBlock = block.teamBlockId ? teamBlocks.find(t => t.id === block.teamBlockId) ?? null : null;
+            const animator        = block.staffId ? teamStaff.find(m => m.id === block.staffId) ?? null : null;
             const neutralBadge: React.CSSProperties = { backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap' };
             const isEditing = editingId === block.id;
 
@@ -472,7 +581,62 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                   userSelect: 'none',
                   boxSizing: 'border-box',
                 }}>
-                {isEditing ? (
+                {block.kind === 'repos' ? (
+                  /* Repos — du temps, rien d'autre : ni catégorie, ni intensité, ni charge. */
+                  isEditing ? (
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ width: 86, flexShrink: 0 }}>
+                        <label style={labelStyle}>Durée (min)</label>
+                        <input type="number" min={1} max={180} value={editForm.duration}
+                          onChange={e => setEditForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 160 }}>
+                        <label style={labelStyle}>Libellé</label>
+                        <input type="text" placeholder="Repos" value={editForm.label}
+                          onChange={e => setEditForm(f => ({ ...f, label: e.target.value }))} style={inputStyle} />
+                      </div>
+                      <button disabled={saving} onClick={() => handleEditSave(block)}
+                        style={{ padding: '8px 14px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>
+                        {saving ? '…' : 'Enregistrer'}
+                      </button>
+                      <button onClick={() => setEditingId(null)}
+                        style={{ padding: '8px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem' }}>
+                        Annuler
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        onPointerDown={e => { if (canEditTeamData) startDrag(e, i); }}
+                        style={{ color: '#334155', flexShrink: 0, cursor: canEditTeamData ? 'grab' : 'default', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
+                        <GripVertical size={14} />
+                      </div>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: '#1E2229', border: '1px dashed #2A2F3A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ color: '#475569', fontSize: '0.65rem', fontWeight: 700 }}>{i + 1}</span>
+                      </div>
+                      <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.duration} min</span>
+                      <span style={{ color: '#475569', fontSize: '0.85rem', fontStyle: 'italic', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {block.label}
+                      </span>
+                      {canEditTeamData && (
+                        <>
+                          <button onClick={() => openEdit(block)}
+                            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                            <Edit size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(block.id)}
+                            style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )
+                ) : isEditing ? (
                   /* Édition inline */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
@@ -518,9 +682,18 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <label style={labelStyle}>Catégorie</label>
                         <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))} style={inputStyle}>
-                          {BLOCK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          {blockCategoryOptions(blockCategories, editForm.category).map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
+                      {teamStaff.length > 0 && (
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={labelStyle}>Animée par</label>
+                          <select value={editStaffId ?? ''} onChange={e => setEditStaffId(e.target.value || null)} style={inputStyle}>
+                            <option value="">Personne</option>
+                            {teamStaff.map(m => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}
+                          </select>
+                        </div>
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <label style={labelStyle}>Intensité</label>
                         <select value={editForm.intensity} onChange={e => setEditForm(f => ({ ...f, intensity: e.target.value as SessionBlock['intensity'] }))} style={inputStyle}>
@@ -545,6 +718,32 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                             placeholder="Objectifs spécifiques pour cet exercice…" minHeight={60} />
                         </div>
                       </div>
+                    </div>
+
+                    {/* Options — repliées par défaut : elles ne concernent qu'une partie des
+                        séquences, et la fiche doit rester lisible sans elles. */}
+                    <div style={{ borderTop: '1px solid #1E2229', paddingTop: 10 }}>
+                      <button type="button" onClick={() => setShowEditOptions(v => !v)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, color: '#64748B', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                        {showEditOptions ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Options
+                      </button>
+                      {showEditOptions && (
+                        <div style={{ marginTop: 8, maxWidth: 340 }}>
+                          <label style={labelStyle}>Équipes du jour</label>
+                          {teamBlocks.length === 0 ? (
+                            <p style={{ color: '#475569', fontSize: '0.74rem', margin: 0 }}>
+                              Aucun groupe enregistré. Composez et enregistrez les équipes du jour pour pouvoir en rattacher un à cette séquence.
+                            </p>
+                          ) : (
+                            <select value={editTeamBlockId ?? ''} onChange={e => setEditTeamBlockId(e.target.value || null)} style={inputStyle}>
+                              <option value="">Aucune</option>
+                              {teamBlocks.map(tb => (
+                                <option key={tb.id} value={tb.id}>{tb.label} · {tb.teamCount} équipe{tb.teamCount > 1 ? 's' : ''}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
@@ -618,6 +817,16 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                           Intensité {intCfg.label.toLowerCase()}
                         </span>
                         <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px' }}>{block.loadUa} UA</span>
+                        {linkedTeamBlock && (
+                          <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Users size={10} /> {linkedTeamBlock.label} · {linkedTeamBlock.teamCount}
+                          </span>
+                        )}
+                        {animator && (
+                          <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <UserCheck size={10} /> {animator.firstName} {animator.lastName[0]}.
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -638,6 +847,17 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         Intensité {intCfg.label.toLowerCase()}
                       </span>
                       <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.loadUa} UA</span>
+                      {linkedTeamBlock && (
+                        <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <Users size={11} /> {linkedTeamBlock.label} · {linkedTeamBlock.teamCount}
+                        </span>
+                      )}
+                      {animator && (
+                        <span title={`Animée par ${animator.firstName} ${animator.lastName}`}
+                          style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <UserCheck size={11} /> {animator.firstName} {animator.lastName[0]}.
+                        </span>
+                      )}
                       <div style={{ width: 1, height: 18, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
                       {block.drillId ? (
                         <button
@@ -695,6 +915,32 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                         )}
                       </div>
                     </div>
+
+                    {/* Schémas de l'exercice lié, en ligne — proposés seulement s'il y en a. */}
+                    {linkedExercise && linkedExercise.phaseCount > 0 && (
+                      <div style={{ paddingLeft: 30, marginTop: 8 }}>
+                        <button
+                          onClick={() => toggleSchemas(block.id, linkedExercise.id)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px',
+                            backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5,
+                            color: openSchemas[block.id] ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                          }}>
+                          {openSchemas[block.id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          Schémas ({linkedExercise.phaseCount})
+                        </button>
+
+                        {openSchemas[block.id] && (
+                          <div style={{ marginTop: 10 }}>
+                            {loadingPhases[linkedExercise.id] && !phasesByExercise[linkedExercise.id] ? (
+                              <span style={{ color: '#475569', fontSize: '0.76rem' }}>Chargement des schémas…</span>
+                            ) : (
+                              <ExercisePhaseList phases={phasesByExercise[linkedExercise.id] ?? []} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -747,7 +993,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
             <div style={{ flex: 1, minWidth: 140 }}>
               <label style={labelStyle}>Catégorie</label>
               <select required value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inputStyle}>
-                {BLOCK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {blockCategoryOptions(blockCategories, form.category).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div style={{ flex: 1, minWidth: 140 }}>
@@ -756,6 +1002,15 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
                 {Object.entries(INTENSITY_CFG).map(([val, cfg]) => <option key={val} value={val}>{cfg.label}</option>)}
               </select>
             </div>
+            {teamStaff.length > 0 && (
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <label style={labelStyle}>Animée par</label>
+                <select value={formStaffId ?? ''} onChange={e => setFormStaffId(e.target.value || null)} style={inputStyle}>
+                  <option value="">Personne</option>
+                  {teamStaff.map(m => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Description / Consignes */}
@@ -777,7 +1032,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-            <button type="button" onClick={() => { setShowForm(false); setForm(BLANK_BLOCK); setFormDrillId(null); setFormDescription(''); }}
+            <button type="button" onClick={() => { setShowForm(false); setForm({ ...BLANK_BLOCK, category: blockCategories[0]?.name ?? BLOCK_CATEGORY_FALLBACK }); setFormDrillId(null); setFormDescription(''); }}
               style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
               Annuler
             </button>
@@ -790,13 +1045,48 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange }: {
         </form>
       )}
 
-      {!showForm && (
+      {/* Formulaire de repos — deux champs, c'est tout ce qu'un repos porte. */}
+      {showRestForm && (
+        <form onSubmit={handleAddRest}
+          style={{ backgroundColor: '#161920', border: '1px dashed #2A2F3A', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ width: 86, flexShrink: 0 }}>
+            <label style={labelStyle}>Durée (min)</label>
+            <input type="number" required min={1} max={180} value={restForm.duration} autoFocus
+              onChange={e => setRestForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+          </div>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <label style={labelStyle}>Libellé</label>
+            <input type="text" placeholder="Repos, hydratation, transition…" value={restForm.label}
+              onChange={e => setRestForm(f => ({ ...f, label: e.target.value }))} style={inputStyle} />
+          </div>
+          <button type="button" onClick={() => { setShowRestForm(false); setRestForm({ duration: '5', label: '' }); }}
+            style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
+            Annuler
+          </button>
+          <button type="submit" disabled={saving}
+            style={{ padding: '8px 16px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>
+            {saving ? 'Enregistrement…' : 'Ajouter'}
+          </button>
+        </form>
+      )}
+
+      {!showForm && !showRestForm && (
         canEditTeamData ? (
-          <DropzoneEmptyState
-            label="Cliquer pour ajouter une séquence"
-            onClick={() => { setShowForm(true); setBlockError(''); }}
-            style={{ marginTop: blocks.length > 0 ? 8 : 0 }}
-          />
+          <>
+            <DropzoneEmptyState
+              label="Cliquer pour ajouter une séquence"
+              onClick={() => { setShowForm(true); setBlockError(''); }}
+              style={{ marginTop: blocks.length > 0 ? 8 : 0 }}
+            />
+            {/* Le repos n'est pas une séquence au rabais : il a son propre bouton, discret,
+                parce qu'il n'a ni contenu ni charge — juste du temps à réserver. */}
+            <button type="button" onClick={() => { setShowRestForm(true); setBlockError(''); }}
+              style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', backgroundColor: 'transparent', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#64748B', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}>
+              <Plus size={13} /> Ajouter un repos
+            </button>
+          </>
         ) : (
           blocks.length === 0 && <EmptyState message="Aucune séquence. Seuls les rôles Admin et Éditeur peuvent en ajouter." />
         )
@@ -989,7 +1279,8 @@ export default function TrainingSessionDetailPage() {
   const [showEdit,   setShowEdit]   = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError,  setEditError]  = useState('');
-  const [editForm,   setEditForm]   = useState({ date: '', sessionType: 'training', duration: '90', notes: '' });
+  const [editForm,   setEditForm]   = useState({ date: '', categoryId: '', duration: '90', notes: '' });
+  const [categories, setCategories] = useState<TeamCategory[]>([]);
 
   const [rosterPlayers,    setRosterPlayers]    = useState<Player[]>([]);
   const [showAttendance,   setShowAttendance]   = useState(false);
@@ -1005,6 +1296,9 @@ export default function TrainingSessionDetailPage() {
   const [acwrLoaded,   setAcwrLoaded]   = useState(false);
 
   const [blockDrafts, setBlockDrafts] = useState<BlockDraft[]>(defaultBlockDrafts);
+  /** Groupes d'équipes tels qu'ils existent EN BASE — pas les brouillons à l'écran. Une
+   *  séquence ne peut référencer qu'un groupe enregistré, sinon la clé étrangère refuse. */
+  const [savedTeamBlocks, setSavedTeamBlocks] = useState<{ id: string; label: string; teamCount: number }[]>([]);
   const [teamsSaving, setTeamsSaving] = useState(false);
   const [teamsSaved,  setTeamsSaved]  = useState(false);
   const [teamsError,  setTeamsError]  = useState('');
@@ -1021,11 +1315,17 @@ export default function TrainingSessionDetailPage() {
   }, [session?.seasonId]);
 
   useEffect(() => {
+    if (!selected) { setCategories([]); return; }
+    teamCategoriesApi.list(selected.team.id, 'session').then(setCategories).catch(() => setCategories([]));
+  }, [selected?.team.id]);
+
+  useEffect(() => {
     if (id) loadBlocks(id).catch(err => setTeamsError(err instanceof Error ? err.message : 'Erreur de chargement des équipes.'));
   }, [id]);
 
   async function loadBlocks(sessionId: string) {
     const { blocks, teamsByBlock, playersByTeam } = await sessionTeamsApi.list(sessionId);
+    setSavedTeamBlocks(blocks.map(b => ({ id: b.id, label: b.label, teamCount: (teamsByBlock[b.id] ?? []).length })));
     setBlockDrafts(blocks.map(b => {
       const teams = teamsByBlock[b.id] ?? [];
       const assign: Record<string, string> = {};
@@ -1110,7 +1410,7 @@ export default function TrainingSessionDetailPage() {
   );
 
   function openEdit() {
-    setEditForm({ date: session!.date, sessionType: session!.sessionType, duration: String(session!.plannedDuration), notes: session!.notes ?? '' });
+    setEditForm({ date: session!.date, categoryId: session!.categoryId ?? '', duration: String(session!.plannedDuration), notes: session!.notes ?? '' });
     setEditError('');
     setShowEdit(true);
   }
@@ -1123,7 +1423,7 @@ export default function TrainingSessionDetailPage() {
     try {
       const updated = await attendanceApi.updateSession(session.id, {
         date:            editForm.date,
-        sessionType:     editForm.sessionType,
+        categoryId:      editForm.categoryId || null,
         plannedDuration: parseInt(editForm.duration),
         notes:           editForm.notes || null,
       });
@@ -1216,9 +1516,13 @@ export default function TrainingSessionDetailPage() {
     setTeamsSaving(true);
     setTeamsError('');
     try {
+      // `localId` EST l'identifiant en base : généré ici à la création, conservé au
+      // rechargement. C'est ce qui permet à une séquence de pointer durablement vers un groupe.
       const payload = blockDrafts.map(b => ({
+        id:    b.localId,
         label: b.label,
         teams: b.teams.map(t => ({
+          id:        t.localId,
           name:      t.name,
           color:     t.color,
           playerIds: Object.entries(b.assign).filter(([, tid]) => tid === t.localId).map(([pid]) => pid),
@@ -1257,7 +1561,6 @@ export default function TrainingSessionDetailPage() {
     fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
   };
 
-  const typeCfg = SESSION_TYPES[session.sessionType] ?? SESSION_TYPES.training;
   const attMap  = Object.fromEntries(attendance.map(a => [a.playerId, a.status]));
   const rpeMap  = Object.fromEntries(rpeEntries.map(e => [e.playerId, e]));
 
@@ -1316,13 +1619,15 @@ export default function TrainingSessionDetailPage() {
   const lateCount       = attendance.filter(a => a.status === 'late').length;
   // Exception : un partenaire qui ne vient pas n'est pas une absence, il n'était pas attendu.
   const absentCount     = attendance.filter(a => !a.sparring && a.status === 'absent').length;
+  // « Non attendu » se compte à part : ce n'est ni une présence ni une absence, et le fondre
+  // dans l'un des deux ferait mentir la ligne d'en-tête.
+  const notExpectedCount = attendance.filter(a => a.status === 'not_expected').length;
   const rpeValues       = rpeEntries.map(e => e.rpe);
   // Moyenne d'UNE séance : une seule entrée par joueur, donc moyenne simple.
   const avgRpe          = roundedAvg(rpeValues);
   const totalLoad       = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
-  const blockDuration   = blocks.reduce((s, b) => s + b.duration, 0);
   const blockLoadUa     = blocks.reduce((s, b) => s + b.loadUa, 0);
-  const estimatedRpe    = blockDuration > 0 ? blockLoadUa / blockDuration : null;
+  const estimatedRpe    = estimatedSessionRpe(blocks);
   const avgLoadPerPlayer = rpeEntries.length > 0 ? totalLoad / rpeEntries.length : null;
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
@@ -1342,7 +1647,7 @@ export default function TrainingSessionDetailPage() {
         </button>
         {canEditTeamData && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => navigate('/rpe/saisie', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+          <button onClick={() => navigate('/rpe/saisie', { state: { sessionDate: session.date, categoryId: session.categoryId, duration: session.plannedDuration, sessionId: session.id } })}
             style={{ padding: '6px 12px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
             Saisir le RPE
           </button>
@@ -1363,9 +1668,8 @@ export default function TrainingSessionDetailPage() {
             )}
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 4 }}>
-              {typeCfg.label}
-            </span>
+            <CategoryBadge name={session.categoryName} color={session.categoryColor}
+              style={{ fontSize: '0.75rem', padding: '3px 10px' }} />
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 4, color: '#94A3B8', fontWeight: 600, fontSize: '0.75rem', padding: '3px 10px' }}>
               <Clock size={13} /> {session.plannedDuration} min
             </span>
@@ -1390,6 +1694,7 @@ export default function TrainingSessionDetailPage() {
               <span style={{ color: '#00E5A0', fontSize: '0.8rem', fontWeight: 600 }}>{presentCount} présent{presentCount !== 1 ? 's' : ''}</span>
               {absentCount > 0 && <span style={{ color: '#EF4444', fontSize: '0.8rem', fontWeight: 600 }}>{absentCount} absent{absentCount !== 1 ? 's' : ''}</span>}
               {lateCount > 0 && <span style={{ color: '#F59E0B', fontSize: '0.8rem', fontWeight: 600 }}>{lateCount} retard{lateCount !== 1 ? 's' : ''}</span>}
+              {notExpectedCount > 0 && <span style={{ color: '#64748B', fontSize: '0.8rem', fontWeight: 600 }}>{notExpectedCount} non attendu{notExpectedCount !== 1 ? 's' : ''}</span>}
             </div>
           </div>
           <button onClick={() => setPresencesCollapsed(v => !v)} title={presencesCollapsed ? 'Afficher' : 'Réduire'}
@@ -1402,7 +1707,7 @@ export default function TrainingSessionDetailPage() {
         ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" style={{ gap: 12 }}>
           {POSITIONS.map(pos => {
-            const posPlayers = relevantPlayers.filter(p => p.position === pos && attMap[p.id] !== 'absent');
+            const posPlayers = relevantPlayers.filter(p => p.position === pos && attMap[p.id] !== 'absent' && attMap[p.id] !== 'not_expected');
             return (
               <div key={pos} style={{ display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid #2A2F3A', borderRadius: 8, padding: 8 }}>
                 <div style={{ color: '#475569', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', paddingBottom: 6, borderBottom: '1px solid #2A2F3A' }}>
@@ -1426,6 +1731,20 @@ export default function TrainingSessionDetailPage() {
                 {absentPlayers.length === 0 ? (
                   <span style={{ color: '#334155', fontSize: '0.72rem', padding: '8px 0' }}>—</span>
                 ) : absentPlayers.map(renderPlayerItem)}
+              </div>
+            );
+          })()}
+
+          {/* Non attendus — colonne affichée seulement s'il y en a : elle ne concerne pas la
+              plupart des séances, et une colonne vide de plus ferait du bruit. */}
+          {notExpectedCount > 0 && (() => {
+            const notExpectedPlayers = relevantPlayers.filter(p => attMap[p.id] === 'not_expected');
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'rgba(100,116,139,0.06)', border: '1px solid #2A2F3A', borderRadius: 8, padding: 8 }}>
+                <div style={{ color: '#64748B', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', paddingBottom: 6, borderBottom: '1px solid #2A2F3A' }}>
+                  Non attendus
+                </div>
+                {notExpectedPlayers.map(renderPlayerItem)}
               </div>
             );
           })()}
@@ -1481,7 +1800,7 @@ export default function TrainingSessionDetailPage() {
                     {estimatedRpe !== null && avgRpe < estimatedRpe && <ArrowDown size={16} style={{ color: '#00E5A0' }} />}
                   </span>
                 ) : canEditTeamData ? (
-                  <button onClick={() => navigate('/rpe/saisie', { state: { sessionDate: session.date, sessionType: session.sessionType, duration: session.plannedDuration, sessionId: session.id } })}
+                  <button onClick={() => navigate('/rpe/saisie', { state: { sessionDate: session.date, categoryId: session.categoryId, duration: session.plannedDuration, sessionId: session.id } })}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 400, fontFamily: 'Inter, sans-serif', padding: 0 }}
                     onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
                     onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
@@ -1731,7 +2050,7 @@ export default function TrainingSessionDetailPage() {
         )}
       </div>
 
-      <SessionBlocks sessionId={session.id} blocks={blocks} onBlocksChange={setBlocks} />
+      <SessionBlocks sessionId={session.id} blocks={blocks} onBlocksChange={setBlocks} teamBlocks={savedTeamBlocks} />
 
       {/* Notes, puis Documents en dessous */}
       <div className="grid grid-cols-1" style={{ gap: 16, marginBottom: 16, alignItems: 'start' }}>
@@ -1779,12 +2098,10 @@ export default function TrainingSessionDetailPage() {
                 <input type="date" required value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
               </div>
               <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
-                <select required value={editForm.sessionType} onChange={e => setEditForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
-                  <option value="training">Entraînement</option>
-                  <option value="match">Match</option>
-                  <option value="gym">Salle</option>
-                  <option value="rest">Repos</option>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+                <select value={editForm.categoryId} onChange={e => setEditForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                  <option value="">Sans catégorie</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             </div>
@@ -1836,10 +2153,10 @@ export default function TrainingSessionDetailPage() {
                     <span className="md:hidden">{playerNameShort(p)}</span>
                   </span>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    {(['present', 'absent', 'late'] as const).map(s => {
+                    {(['present', 'absent', 'late', 'not_expected'] as const).map(s => {
                       const cfg = STATUS_CFG[s];
                       const active = status === s;
-                      const Icon = s === 'present' ? Check : s === 'absent' ? X : Clock;
+                      const Icon = s === 'present' ? Check : s === 'absent' ? X : s === 'late' ? Clock : Minus;
                       return (
                         <button key={s} type="button" title={cfg.label} disabled={attSavingId === p.id || !canEditTeamData}
                           onClick={() => toggleAttendance(p.id, s)}

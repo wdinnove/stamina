@@ -1,19 +1,12 @@
 import { useState } from 'react';
 import { ListChecks } from 'lucide-react';
-import type { TeamSessionRow, SessionRpeEntry, SessionType } from '../data/types';
+import type { TeamSessionRow, SessionRpeEntry } from '../data/types';
 import { rpeColor, teamAvgRpe } from '../utils/rpe';
 import { mondayIso as getWeekMonday, getWeekTier } from '../utils/weeklyLoad';
 import { fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
 import { CardTitle } from './Card';
-import { Badge } from './Badge';
-
-const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
-  training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
-  match:    { label: 'Match',        color: '#F59E0B', bg: '#F59E0B22' },
-  gym:      { label: 'Salle',        color: '#A855F7', bg: '#A855F722' },
-  rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
-};
+import { Badge, CategoryBadge } from './Badge';
 
 interface TeamSessionHistoryTableProps {
   rows:              TeamSessionRow[];
@@ -107,7 +100,6 @@ export function TeamSessionHistoryTable({
             <tbody>
               {rows.map(s => {
                 const rpeC    = rpeColor(s.avg);
-                const typeCfg = SESSION_TYPES[s.type as SessionType] ?? SESSION_TYPES.training;
                 const avgUaS  = s.nbPlayers > 0 ? Math.round(s.totalLoad / s.nbPlayers) : 0;
                 const cfg     = uaCfg(avgUaS);
                 return (
@@ -115,7 +107,7 @@ export function TeamSessionHistoryTable({
                     onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                     onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
                     <td style={{ padding: '8px 14px', color: '#94A3B8', fontSize: '0.78rem', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDateWithDay(s.date)}</td>
-                    <td style={{ padding: '8px 14px' }}><Badge color={typeCfg.color} bg={typeCfg.bg} label={typeCfg.label} size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
+                    <td style={{ padding: '8px 14px' }}><CategoryBadge name={s.categoryName} color={s.categoryColor} size="sm" style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} /></td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.nbPlayers}</td>
                     <td style={{ padding: '8px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{s.duration} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>
                     <td style={{ padding: '8px 14px' }}><span style={{ color: rpeC, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem' }}>{fmt1(s.avg)}</span></td>

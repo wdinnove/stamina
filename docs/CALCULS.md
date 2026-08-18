@@ -270,11 +270,18 @@ Fichier source : [`src/utils/attendance.ts`](../src/utils/attendance.ts)
 
 Un joueur **en retard compte comme présent** : il a participé à la séance.
 
+Un joueur marqué **« non attendu »** (`not_expected`) sort du calcul **des deux côtés de la fraction** : ni au numérateur, ni au dénominateur. Sélection, examens, récupération programmée — le joueur n'était pas censé venir, la séance ne lui est pas comptée. Le traiter comme une absence ferait porter à une absence *prévue* le poids d'un manquement ; le traiter comme une présence gonflerait le taux d'un joueur qui n'était pas là.
+
+La ligne existe malgré tout, plutôt que de ne rien saisir : sans elle, « pas attendu » et « le coach a oublié de pointer » deviendraient indiscernables. Les deux sortent du calcul, mais l'un est une information et l'autre un trou.
+
 **Un joueur** (`presenceRate`) :
 
 ```
 taux_joueur = présences / séances où il était attendu     — en %, arrondi à l'entier
+              (« non attendu » exclu du numérateur ET du dénominateur)
 ```
+
+Un joueur attendu à aucune séance de la période n'a pas de taux (`null`), et n'entre donc pas dans la moyenne d'équipe.
 
 **L'équipe** (`teamPresenceRate`) — règle du § 0 :
 
@@ -547,8 +554,10 @@ La brique est unique : [`ratioFromSums`](../src/utils/ratioFromSums.ts). Elle ex
 Fichier source : `src/pages/AttendancePage.tsx`, `src/data/crossAnalysis.ts`
 
 ```
-% présence = nb séances "présent" ou "en retard" / nb séances programmées × 100
+% présence = nb séances "présent" ou "en retard" / nb séances où le joueur était attendu × 100
 ```
+
+Les séances marquées **« non attendu »** ne sont pas des séances programmées pour ce joueur : elles sortent du dénominateur (cf. § 2bis).
 
 En analyse croisée, calculé en fenêtre glissante de **28 jours**. Coloration : ≥ 85 % vert, ≥ 70 % orange, sinon rouge.
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { X, Check, Clock, Minus, AlertCircle, Trash2 } from 'lucide-react';
 import { EmptyState, Modal, DropzoneEmptyState, AddButton } from '../components';
 import { attendanceApi, playersApi, rpeApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -12,9 +12,12 @@ import { LAYER } from '../styles/layers';
 type AttendanceStatus = TrainingAttendance['status'];
 
 const STATUS = {
-  present: { label: 'Présent', color: '#00E5A0', bg: 'rgba(0,229,160,0.15)', Icon: Check  },
-  absent:  { label: 'Absent',  color: '#EF4444', bg: 'rgba(239,68,68,0.15)',  Icon: X     },
-  late:    { label: 'Retard',  color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', Icon: Clock },
+  present:      { label: 'Présent',     color: '#00E5A0', bg: 'rgba(0,229,160,0.15)',   Icon: Check  },
+  absent:       { label: 'Absent',      color: '#EF4444', bg: 'rgba(239,68,68,0.15)',   Icon: X      },
+  late:         { label: 'Retard',      color: '#F59E0B', bg: 'rgba(245,158,11,0.15)',  Icon: Clock  },
+  // Gris volontaire : « non attendu » n'est pas un degré entre présent et absent, c'est une
+  // ligne hors calcul. La couleur ne doit pas le ranger sur la même échelle.
+  not_expected: { label: 'Non attendu', color: '#64748B', bg: 'rgba(100,116,139,0.15)', Icon: Minus  },
 } as const;
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -123,7 +126,7 @@ export default function AttendancePage() {
   function handleCellClick(e: React.MouseEvent, sessionId: string, playerId: string) {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const popW = 232;
+    const popW = 300;
     const x = Math.max(8, Math.min(rect.left + rect.width / 2 - popW / 2, window.innerWidth - popW - 8));
     setActiveCell({ sessionId, playerId, x, y: rect.bottom + 6 });
   }
@@ -306,13 +309,16 @@ export default function AttendancePage() {
   }
 
   // Stats présence par séance
+  /**
+   * Taux de présence de la séance, sur l'effectif ATTENDU : un joueur marqué « non attendu »
+   * sort du dénominateur. Une séance où la moitié de l'effectif était en sélection ne doit pas
+   * s'afficher à 50 %.
+   */
   function sessionPct(sessionId: string) {
-    if (!players.length) return null;
-    const present = players.filter(p => {
-      const s = attendanceMap[`${sessionId}:${p.id}`];
-      return s === 'present' || s === 'late';
-    }).length;
-    return Math.round((present / players.length) * 100);
+    const expected = players.filter(p => attendanceMap[`${sessionId}:${p.id}`] !== 'not_expected');
+    if (!expected.length) return null;
+    const present = expected.filter(p => isPresent(sessionId, p.id)).length;
+    return Math.round((present / expected.length) * 100);
   }
 
   return (
@@ -574,11 +580,11 @@ export default function AttendancePage() {
           style={{
             position: 'fixed', left: activeCell.x, top: activeCell.y, zIndex: LAYER.dropdown,
             backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 10,
-            padding: '6px', display: 'flex', gap: 4,
+            padding: '6px', display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 300,
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
           }}
         >
-          {(['present', 'absent', 'late'] as const).map(s => {
+          {(['present', 'absent', 'late', 'not_expected'] as const).map(s => {
             const cfg = STATUS[s];
             const isActive = attendanceMap[`${activeCell.sessionId}:${activeCell.playerId}`] === s;
             return (

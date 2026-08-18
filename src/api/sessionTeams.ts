@@ -22,12 +22,16 @@ function toTeam(row: Record<string, unknown>): SessionTeam {
 }
 
 interface SessionTeamWithPlayers {
+  /** Identifiant de la ligne. Fourni par l'écran, qui le génère à la création de l'équipe et
+   *  le conserve ensuite — c'est ce qui rend l'enregistrement stable. */
+  id: string;
   name: string;
   color: string;
   playerIds: string[];
 }
 
 export interface SessionTeamBlockDraft {
+  id: string;
   label: string;
   teams: SessionTeamWithPlayers[];
 }
@@ -69,47 +73,71 @@ export const sessionTeamsApi = {
     return { blocks, teamsByBlock, playersByTeam };
   },
 
-  // Remplace intégralement tous les blocs d'équipes existants pour la séance (delete + insert).
+  /**
+   * Enregistre les groupes d'équipes du jour EN CONSERVANT LES IDENTIFIANTS.
+   *
+   * L'enregistrement était un delete + insert intégral : chaque sauvegarde regénérait les
+   * identifiants des groupes. Une séquence qui pointe vers un groupe
+   * (`session_blocks.team_block_id`) aurait donc perdu son lien au premier enregistrement des
+   * équipes, sans rien dire — la clé étrangère est `ON DELETE SET NULL`.
+   *
+   * Les identifiants viennent de l'écran, qui les génère à la création et les garde tant que
+   * la ligne vit. Insérer avec un identifiant fourni est légal, et c'est ce qui permet à un
+   * groupe tout juste créé d'être déjà référençable.
+   *
+   * Les affectations de joueurs, elles, se remplacent en bloc : rien ne les référence, et les
+   * comparer ligne à ligne coûterait plus cher que de les réécrire.
+   */
   async saveBlocks(sessionId: string, blocks: SessionTeamBlockDraft[]): Promise<SessionTeamBlock[]> {
-    const { error: delErr } = await supabase.from('session_team_blocks').delete().eq('session_id', sessionId);
-    if (delErr) throw delErr;
+    const blockIds = blocks.map(b => b.id);
+    const teamIds  = blocks.flatMap(b => b.teams.map(t => t.id));
+
+    // Ce que l'écran ne renvoie plus a été supprimé par l'utilisateur. Les équipes et les
+    // joueurs des groupes retirés partent en cascade.
+    const delBlocks = supabase.from('session_team_blocks').delete().eq('session_id', sessionId);
+    const { error: delBlockErr } = await (blockIds.length
+      ? delBlocks.not('id', 'in', `(${blockIds.join(',')})`)
+      : delBlocks);
+    if (delBlockErr) throw delBlockErr;
+
     if (blocks.length === 0) return [];
 
-    const { data: insertedBlocks, error: blockErr } = await supabase
+    const delTeams = supabase.from('session_teams').delete().eq('session_id', sessionId);
+    const { error: delTeamErr } = await (teamIds.length
+      ? delTeams.not('id', 'in', `(${teamIds.join(',')})`)
+      : delTeams);
+    if (delTeamErr) throw delTeamErr;
+
+    const { data: upsertedBlocks, error: blockErr } = await supabase
       .from('session_team_blocks')
-      .insert(blocks.map((b, i) => ({ session_id: sessionId, label: b.label, position: i })))
+      .upsert(blocks.map((b, i) => ({ id: b.id, session_id: sessionId, label: b.label, position: i })))
       .select();
     if (blockErr) throw blockErr;
-    const blockRows = (insertedBlocks ?? []).map(toBlock);
 
-    const teamsToInsert = blockRows.flatMap((b, bi) =>
-      blocks[bi].teams.map((t, ti) => ({
-        block_id: b.id, session_id: sessionId, name: t.name, color: t.color, position: ti,
+    const teamsToUpsert = blocks.flatMap(b =>
+      b.teams.map((t, ti) => ({
+        id: t.id, block_id: b.id, session_id: sessionId, name: t.name, color: t.color, position: ti,
       }))
     );
-    if (teamsToInsert.length === 0) return blockRows;
+    if (teamsToUpsert.length > 0) {
+      const { error: teamErr } = await supabase.from('session_teams').upsert(teamsToUpsert);
+      if (teamErr) throw teamErr;
+    }
 
-    const { data: insertedTeams, error: teamErr } = await supabase
-      .from('session_teams')
-      .insert(teamsToInsert)
-      .select();
-    if (teamErr) throw teamErr;
-    const teamRows = (insertedTeams ?? []).map(toTeam);
+    const { error: delPlayersErr } = await supabase
+      .from('session_team_players').delete().eq('session_id', sessionId);
+    if (delPlayersErr) throw delPlayersErr;
 
-    const playerRows: { block_id: string; session_id: string; session_team_id: string; player_id: string }[] = [];
-    let cursor = 0;
-    blockRows.forEach((b, bi) => {
-      blocks[bi].teams.forEach(t => {
-        const teamRow = teamRows[cursor]; cursor++;
-        t.playerIds.forEach(playerId => {
-          playerRows.push({ block_id: b.id, session_id: sessionId, session_team_id: teamRow.id, player_id: playerId });
-        });
-      });
-    });
+    const playerRows = blocks.flatMap(b =>
+      b.teams.flatMap(t => t.playerIds.map(playerId => ({
+        block_id: b.id, session_id: sessionId, session_team_id: t.id, player_id: playerId,
+      })))
+    );
     if (playerRows.length > 0) {
       const { error: papErr } = await supabase.from('session_team_players').insert(playerRows);
       if (papErr) throw papErr;
     }
-    return blockRows;
+
+    return (upsertedBlocks ?? []).map(toBlock);
   },
 };

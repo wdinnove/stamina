@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { getWeekTier, weeklyLoadBuckets, averageWeeklyLoad } from '../utils/weeklyLoad';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, SESSION_TYPES } from '../utils/rpe';
+import { rpeColor, rpeLabel } from '../utils/rpe';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
 import { roundedAvg } from '../utils/avg';
 import { ListChecks } from 'lucide-react';
 import { RpeKpiCard } from './RpeKpiCard';
-import { Badge } from './Badge';
+import { Badge, CategoryBadge } from './Badge';
 import { CardTitle } from './Card';
 import { ChargeRpeComboChart } from './ChargeRpeComboChart';
 import type { LoadThresholds } from '../contexts/TeamSeasonContext';
@@ -198,7 +198,6 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
                       const dur     = e.actualDuration ?? e.plannedDuration;
                       const load    = e.rpe * dur;
                       const rpeC    = rpeColor(e.rpe);
-                      const typeCfg = SESSION_TYPES[e.sessionType] ?? SESSION_TYPES.training;
                       const lCfg    = loadCfgSession(load);
                       return (
                         <tr key={e.id} style={{ borderBottom: '1px solid #2A2F3A22' }}
@@ -206,7 +205,8 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
                           onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
                           <td style={{ padding: '9px 14px', color: '#94A3B8', fontSize: '0.78rem', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace' }}>{fmtDateWithDay(e.date)}</td>
                           <td style={{ padding: '9px 14px' }}>
-                            <span style={{ backgroundColor: typeCfg.bg, color: typeCfg.color, fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap' }}>{typeCfg.label}</span>
+                            <CategoryBadge name={e.categoryName} color={e.categoryColor} size="sm"
+                              style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 7px' }} />
                           </td>
                           <td style={{ padding: '9px 14px', color: '#475569', fontSize: '0.78rem' }}>{e.teamName ?? '—'}</td>
                           <td style={{ padding: '9px 14px', color: '#64748B', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>{dur} <span style={{ color: '#475569', fontSize: '0.7rem' }}>min</span></td>

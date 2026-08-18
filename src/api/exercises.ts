@@ -1,5 +1,5 @@
 import { supabase } from './client';
-import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from './exerciseCategories';
+import { teamCategoriesApi, NEW_CATEGORY_PALETTE } from './categories';
 import { exercisePhasesApi } from './exercisePhases';
 import type { Exercise } from '../data/types';
 import type { DiagramScene } from '../utils/diagram';
@@ -13,12 +13,12 @@ import type { DiagramScene } from '../utils/diagram';
  * INNER JOIN, et les exercices encore sans phase disparaîtraient de la liste. On ramène donc
  * les positions et on choisit côté client.
  */
-const SELECT = '*, exercise_categories(id, name, color), exercise_phases(position, scene)';
+const SELECT = '*, team_categories(id, name, color), exercise_phases(position, scene)';
 
 interface PhaseCover { position: number; scene: DiagramScene }
 
 function toExercise(row: Record<string, unknown>): Exercise {
-  const cat    = row.exercise_categories as { id: string; name: string; color: string } | null | undefined;
+  const cat    = row.team_categories as { id: string; name: string; color: string } | null | undefined;
   const phases = (row.exercise_phases as PhaseCover[] | undefined) ?? [];
   const cover  = phases.reduce<PhaseCover | null>((best, p) => (!best || p.position < best.position ? p : best), null);
   return {
@@ -101,11 +101,11 @@ export const exercisesApi = {
 
     let categoryId: string | undefined;
     if (source.categoryName) {
-      const existing = await exerciseCategoriesApi.list(targetTeamId);
+      const existing = await teamCategoriesApi.list(targetTeamId, 'exercise');
       const match = existing.find(c => c.name.toLowerCase() === source.categoryName!.toLowerCase());
       categoryId = match
         ? match.id
-        : (await exerciseCategoriesApi.create(targetTeamId, source.categoryName, source.categoryColor ?? NEW_CATEGORY_PALETTE[existing.length % NEW_CATEGORY_PALETTE.length])).id;
+        : (await teamCategoriesApi.create(targetTeamId, 'exercise', source.categoryName, source.categoryColor ?? NEW_CATEGORY_PALETTE[existing.length % NEW_CATEGORY_PALETTE.length])).id;
     }
 
     const copy = await exercisesApi.create({

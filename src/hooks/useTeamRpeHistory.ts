@@ -7,7 +7,7 @@ import { EMPTY_TEAM_AVERAGE, type TeamAverage } from '../utils/teamAverage';
 import { mondayIso as getWeekMonday, teamAvgWeeklyLoad } from '../utils/weeklyLoad';
 import { fmtDateShort } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { Player, SessionType, TeamSessionRow, PlayerRank } from '../data/types';
+import type { Player, TeamSessionRow, PlayerRank } from '../data/types';
 
 export interface TeamChartDay {
   label: string;
@@ -112,7 +112,7 @@ export function useTeamRpeHistory(
     }
 
     (async () => {
-      let sessions: Array<{ id: string; date: string; sessionType: SessionType; plannedDuration: number }>;
+      let sessions: Array<{ id: string; date: string; categoryName?: string; categoryColor?: string; plannedDuration: number }>;
       try {
         sessions = await rpeApi.listTeamSessionsInRange(teamId, seasonId, fromDate, toDate);
       } catch (err: unknown) {
@@ -158,7 +158,8 @@ export function useTeamRpeHistory(
           return {
             id:         s.id,
             date:       s.date,
-            type:       s.sessionType,
+            categoryName:  s.categoryName,
+            categoryColor: s.categoryColor,
             duration:   s.plannedDuration,
             nbPlayers:  vals.length,
             entries:    entries.map(e => ({ playerId: e.playerId, rpe: e.rpe })),

@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Search, Video, ListOrdered } from 'lucide-react';
 import { exercisesApi } from '../api/exercises';
-import { exerciseCategoriesApi } from '../api/exerciseCategories';
+import { teamCategoriesApi } from '../api/categories';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Badge, DropzoneEmptyState, EmptyState, DiagramThumb, Spinner, AddButton } from '../components';
-import type { Exercise, ExerciseCategory } from '../data/types';
+import type { Exercise, TeamCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -37,7 +37,7 @@ export default function ExercisesPage() {
   const { selected, canEditTeamData } = useTeamSeason();
   const navigate = useNavigate();
   const [exercises,      setExercises]      = useState<Exercise[]>([]);
-  const [categories,     setCategories]     = useState<ExerciseCategory[]>([]);
+  const [categories,     setCategories]     = useState<TeamCategory[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState('');
   const [search,         setSearch]         = useState('');
@@ -55,7 +55,7 @@ export default function ExercisesPage() {
 
   useEffect(() => {
     if (!selected) return;
-    exerciseCategoriesApi.list(selected.team.id).then(setCategories).catch(() => {});
+    teamCategoriesApi.list(selected.team.id, 'exercise').then(setCategories).catch(() => {});
   }, [selected?.team.id]);
 
   const needle = search.toLowerCase();

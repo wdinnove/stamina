@@ -1,7 +1,7 @@
 import { supabase } from './client';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { normalizeTacticalName } from '../utils/tacticalCsvParser';
-import { NEW_CATEGORY_PALETTE } from './exerciseCategories';
+import { NEW_CATEGORY_PALETTE } from './categories';
 
 export interface TacticalTeamConfig {
   categories: TacticalCategory[];

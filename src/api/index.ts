@@ -2,6 +2,7 @@ export { authApi }     from './auth';
 export { configApi }   from './config';
 export { playersApi }  from './players';
 export { teamsApi }    from './teams';
+export { teamCategoriesApi, NEW_CATEGORY_PALETTE } from './categories';
 export { teamRolesApi } from './teamRoles';
 export { seasonsApi }  from './seasons';
 export { wellnessApi } from './wellness';

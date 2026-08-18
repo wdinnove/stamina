@@ -5,7 +5,6 @@ export type OrgRole           = 'superadmin' | 'member';
 export type TeamRole          = 'admin' | 'editor' | 'viewer';
 export type PlayerStatus      = 'active' | 'injured' | 'limited' | 'suspended' | 'unavailable';
 export type BasketballPosition = 'Meneur' | 'Arrière' | 'Ailier' | 'Ailier Fort' | 'Pivot';
-export type SessionType       = 'training' | 'match' | 'gym' | 'rest';
 export type ActionStatus      = 'todo' | 'in_progress' | 'waiting' | 'done';
 export type ActionPriority    = 'low' | 'normal' | 'high' | 'critical';
 export type ActionCategory    =
@@ -52,13 +51,21 @@ export interface Match {
   quarterScores?: { us: number; them: number }[];
 }
 
+/**
+ * Une personne du staff, rattachée à l'ORGANISATION. Elle peut intervenir sur plusieurs
+ * équipes : `teamIds` porte ces rattachements quand ils ont été chargés.
+ *
+ * `role` est un métier (coach, kiné, préparateur…), pas une fonction dans une équipe donnée.
+ */
 export interface StaffMember {
   id: string;
-  teamId: string;
+  organizationId: string;
   profileId?: string;
   firstName: string;
   lastName: string;
   role: string;
+  /** Équipes de la personne — absent quand la liste a été chargée équipe par équipe. */
+  teamIds?: string[];
 }
 
 export interface TeamRoleAssignment {
@@ -73,6 +80,9 @@ export interface TeamRoleAssignment {
 export interface StaffMeeting {
   id: string;
   teamId: string;
+  categoryId?: string;
+  categoryName?: string;
+  categoryColor?: string;
   title: string;
   date: string;
   time: string;
@@ -136,7 +146,8 @@ export interface RPEEntry {
   notes?: string;
   // Enriched from training_sessions join
   date: string;
-  sessionType: SessionType;
+  categoryName?: string;
+  categoryColor?: string;
   plannedDuration: number;
   teamName?: string;
 }
@@ -395,7 +406,10 @@ export interface TrainingSession {
   teamId: string;
   seasonId: string;
   date: string;
-  sessionType: SessionType;
+  /** Catégorie d'équipe (scope 'session'). Absente si la catégorie a été supprimée depuis. */
+  categoryId?: string;
+  categoryName?: string;
+  categoryColor?: string;
   plannedDuration: number;
   notes?: string;
   createdAt?: string;
@@ -450,9 +464,16 @@ export interface Exercise {
   createdAt: string;
 }
 
-export interface ExerciseCategory {
+/** Ce qu'une catégorie d'équipe classe. Une même équipe peut avoir « Physique » en exercice
+ *  et en séance : ce sont deux lignes, elles ne se confondent pas. */
+export type CategoryScope = 'exercise' | 'meeting' | 'session';
+
+/** Un nom, une couleur, un rang — propres à une équipe. Le club se donne son vocabulaire,
+ *  l'app n'en impose que les valeurs de départ. */
+export interface TeamCategory {
   id: string;
   teamId: string;
+  scope: CategoryScope;
   name: string;
   color: string;
   position: number;
@@ -478,10 +499,14 @@ export interface ExercisePhase {
 
 type BlockIntensity = 'basse' | 'moyenne' | 'haute' | 'très élevée';
 
+/** Un repos occupe du temps et rien d'autre : ni catégorie, ni intensité, ni charge. */
+export type SessionBlockKind = 'exercice' | 'repos';
+
 export interface SessionBlock {
   id: string;
   sessionId: string;
   position: number;
+  kind: SessionBlockKind;
   duration: number;
   category: string;
   intensity: BlockIntensity;
@@ -490,6 +515,10 @@ export interface SessionBlock {
   consignes?: string;
   loadUa: number;
   drillId: string | null;
+  /** Membre du staff qui anime la séquence. */
+  staffId: string | null;
+  /** Groupe d'équipes du jour utilisé par la séquence — optionnel, masqué tant qu'il est nul. */
+  teamBlockId: string | null;
   createdAt: string;
 }
 
@@ -497,7 +526,11 @@ export interface TrainingAttendance {
   id: string;
   sessionId: string;
   playerId: string;
-  status: 'present' | 'absent' | 'late';
+  /**
+   * `not_expected` — « non attendu » : le joueur n'était pas censé venir. Ni présence ni
+   * absence, la ligne sort entièrement du taux d'assiduité (cf. `utils/attendance`).
+   */
+  status: 'present' | 'absent' | 'late' | 'not_expected';
   /**
    * Partenaire d'entraînement : joueur de l'organisation invité sur cette séance-là, hors
    * effectif de l'équipe. Elle ne compte dans aucune statistique de l'équipe qui l'invite,
@@ -517,7 +550,8 @@ export interface SessionRpeEntry {
 export interface TeamSessionRow {
   id: string;
   date: string;
-  type: SessionType;
+  categoryName?: string;
+  categoryColor?: string;
   duration: number;
   nbPlayers: number;
   /** Saisies RPE de la séance, par joueur. Porte le `playerId` (effectif distinct réellement

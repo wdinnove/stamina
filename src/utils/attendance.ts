@@ -8,6 +8,14 @@ type AttendanceRow = { status: TrainingAttendance['status'] };
 const isPresent = (a: AttendanceRow) => a.status === 'present' || a.status === 'late';
 
 /**
+ * « Non attendu » sort du calcul des deux côtés de la fraction : le joueur n'était pas censé
+ * venir, la séance ne lui était pas comptée. Le traiter comme une absence ferait porter à une
+ * absence PRÉVUE le poids d'un manquement ; le traiter comme une présence gonflerait le taux
+ * d'un joueur qui n'était pas là.
+ */
+const isExpected = (a: AttendanceRow) => a.status !== 'not_expected';
+
+/**
  * Taux brut non arrondi — brique interne de `teamPresenceRate`. La règle de `teamAverage` est de ne
  * jamais cumuler deux arrondis : seul le chiffre d'équipe final est arrondi, pas les valeurs
  * individuelles qu'il agrège. La moyenne d'équipe portait jusqu'ici sur des pourcentages déjà
@@ -15,8 +23,9 @@ const isPresent = (a: AttendanceRow) => a.status === 'present' || a.status === '
  * couleur (85 % / 70 %) pile.
  */
 function rawPresenceRate(rows: AttendanceRow[]): number | null {
-  if (!rows.length) return null;
-  return rows.filter(isPresent).length / rows.length * 100;
+  const expected = rows.filter(isExpected);
+  if (!expected.length) return null;
+  return expected.filter(isPresent).length / expected.length * 100;
 }
 
 /** Taux de présence d'UN joueur, en %, sur les séances où il était attendu (arrondi à l'entier pour l'affichage). */

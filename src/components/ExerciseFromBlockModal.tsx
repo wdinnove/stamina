@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { BookPlus } from 'lucide-react';
 import { exercisesApi } from '../api/exercises';
-import { exerciseCategoriesApi } from '../api/exerciseCategories';
+import { teamCategoriesApi } from '../api/categories';
 import { sessionBlocksApi } from '../api/sessionBlocks';
 import { Modal } from './Modal';
 import RichTextEditor from './RichTextEditor';
-import type { Exercise, ExerciseCategory, SessionBlock } from '../data/types';
+import type { Exercise, TeamCategory, SessionBlock } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -36,7 +36,7 @@ export function ExerciseFromBlockModal({ block, teamId, onClose, onCreated }: {
   onClose: () => void;
   onCreated: (exercise: Exercise, block: SessionBlock) => void;
 }) {
-  const [categories, setCategories] = useState<ExerciseCategory[]>([]);
+  const [categories, setCategories] = useState<TeamCategory[]>([]);
   const [name,        setName]        = useState(block.label);
   const [categoryId,  setCategoryId]  = useState('');
   const [deroulement, setDeroulement] = useState(block.description ?? '');
@@ -48,7 +48,7 @@ export function ExerciseFromBlockModal({ block, teamId, onClose, onCreated }: {
   // pré-sélectionne quand les noms se recouvrent (« Jeu réduit », « Technique »…), sinon on
   // laisse choisir plutôt que de deviner.
   useEffect(() => {
-    exerciseCategoriesApi.list(teamId)
+    teamCategoriesApi.list(teamId, 'exercise')
       .then(cats => {
         setCategories(cats);
         const match = cats.find(c => c.name.toLowerCase() === block.category.toLowerCase());

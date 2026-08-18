@@ -1,30 +1,75 @@
 import { supabase } from './client';
 import type { StaffMember } from '../data/types';
 
+/** Les équipes d'un membre du staff voyagent avec lui : l'écran club les affiche sans une
+ *  requête par personne. */
+const SELECT = '*, staff_team(team_id)';
+
 export const staffApi = {
+  /** Le staff rattaché à une équipe. La liaison porte le filtre, d'où le `!inner`. */
   async listByTeam(teamId: string): Promise<StaffMember[]> {
     const { data, error } = await supabase
       .from('staff')
-      .select('*')
-      .eq('team_id', teamId)
+      .select('*, staff_team!inner(team_id)')
+      .eq('staff_team.team_id', teamId)
+      .order('last_name');
+    if (error) throw error;
+    // L'embed filtré ne ramène que l'équipe demandée : on ne peut pas en déduire les autres.
+    return (data ?? []).map(row => ({ ...toStaff(row), teamIds: undefined }));
+  },
+
+  /** Tout le staff de l'organisation, avec ses rattachements — l'écran club et l'ajout
+   *  d'un membre déjà connu à une nouvelle équipe. */
+  async listByOrganization(): Promise<StaffMember[]> {
+    const { data, error } = await supabase
+      .from('staff')
+      .select(SELECT)
       .order('last_name');
     if (error) throw error;
     return (data ?? []).map(toStaff);
   },
 
-  async create(input: { teamId: string; firstName: string; lastName: string; role: string }): Promise<StaffMember> {
+  /**
+   * Crée la PERSONNE, et la rattache à une équipe si on en donne une. Les deux écritures ne
+   * sont pas atomiques : si le rattachement échoue, la personne existe quand même et se
+   * rattache depuis l'écran — c'est réparable, là où supprimer la personne perdrait sa fiche.
+   */
+  async create(input: { organizationId: string; firstName: string; lastName: string; role: string; teamId?: string }): Promise<StaffMember> {
     const { data, error } = await supabase
       .from('staff')
       .insert({
-        team_id:    input.teamId,
-        first_name: input.firstName,
-        last_name:  input.lastName,
-        role:       input.role,
+        organization_id: input.organizationId,
+        first_name:      input.firstName,
+        last_name:       input.lastName,
+        role:            input.role,
       })
       .select()
       .single();
     if (error) throw error;
-    return toStaff(data);
+    const member = toStaff(data);
+    if (input.teamId) {
+      await staffApi.assign(member.id, input.teamId);
+      return { ...member, teamIds: [input.teamId] };
+    }
+    return member;
+  },
+
+  /** Rattache une personne à une équipe. Rejouable : un rattachement déjà en place ne fait rien. */
+  async assign(staffId: string, teamId: string): Promise<void> {
+    const { error } = await supabase
+      .from('staff_team')
+      .upsert({ staff_id: staffId, team_id: teamId }, { onConflict: 'staff_id,team_id' });
+    if (error) throw error;
+  },
+
+  /** Retire une personne d'une équipe. Sa fiche, ses tâches et ses dossiers restent. */
+  async unassign(staffId: string, teamId: string): Promise<void> {
+    const { error } = await supabase
+      .from('staff_team')
+      .delete()
+      .eq('staff_id', staffId)
+      .eq('team_id', teamId);
+    if (error) throw error;
   },
 
   async linkProfile(staffId: string, profileId: string): Promise<void> {
@@ -85,12 +130,14 @@ export const staffApi = {
 };
 
 function toStaff(row: Record<string, unknown>): StaffMember {
+  const links = row.staff_team as { team_id: string }[] | undefined;
   return {
-    id:        row.id         as string,
-    teamId:    row.team_id    as string,
-    profileId: row.profile_id as string | undefined,
-    firstName: row.first_name as string,
-    lastName:  row.last_name  as string,
-    role:      row.role       as string,
+    id:             row.id              as string,
+    organizationId: row.organization_id as string,
+    profileId:      row.profile_id      as string | undefined,
+    firstName:      row.first_name      as string,
+    lastName:       row.last_name       as string,
+    role:           row.role            as string,
+    teamIds:        links?.map(l => l.team_id),
   };
 }

@@ -96,6 +96,23 @@ function PhaseBlock({ phase, rank }: { phase: ExercisePhase; rank: number }) {
   );
 }
 
+/**
+ * La séquence de phases, seule. Exportée parce que la séance l'affiche en ligne sous une
+ * séquence, sans le reste de la fiche : c'est le même exercice qu'on lit, il n'y a aucune
+ * raison que ses schémas s'affichent différemment selon l'écran.
+ *
+ * Deux phases par ligne : 1 et 2, puis 3 et 4… Dès 1024 px — c'est le bloc lui-même qui
+ * s'adapte à l'étroitesse en empilant son schéma et son texte (voir `PhaseBlock`).
+ */
+export function ExercisePhaseList({ phases }: { phases: ExercisePhase[] }) {
+  if (phases.length === 0) return <EmptyState message="Aucune phase renseignée." />;
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 14, alignItems: 'start' }}>
+      {phases.map((p, i) => <PhaseBlock key={p.id} phase={p} rank={i} />)}
+    </div>
+  );
+}
+
 /* ── Vue ──────────────────────────────────────────────────────────────────── */
 
 export function ExerciseView({ exercise, phases }: {
@@ -122,15 +139,7 @@ export function ExerciseView({ exercise, phases }: {
         >
           Phases
         </CardTitle>
-        {phases.length === 0 ? (
-          <EmptyState message="Aucune phase renseignée." />
-        ) : (
-          // Deux phases par ligne : 1 et 2, puis 3 et 4… Dès 1024 px — c'est le bloc lui-même qui
-          // s'adapte à l'étroitesse en empilant son schéma et son texte (voir `PhaseBlock`).
-          <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 14, alignItems: 'start' }}>
-            {phases.map((p, i) => <PhaseBlock key={p.id} phase={p} rank={i} />)}
-          </div>
-        )}
+        <ExercisePhaseList phases={phases} />
       </Card>
 
       {videoPlatform && (

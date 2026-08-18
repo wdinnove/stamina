@@ -2,33 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { X, AlertCircle } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
-import { Modal, DropzoneEmptyState, EmptyState, AddButton } from '../components';
+import { Modal, DropzoneEmptyState, EmptyState, AddButton, CategoryBadge } from '../components';
 import { rpeApi } from '../api/rpe';
 import { sessionBlocksApi } from '../api/sessionBlocks';
-import { playersApi } from '../api';
+import { playersApi, teamCategoriesApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { roundedAvg } from '../utils/avg';
-import type { TrainingSession, Player } from '../data/types';
-
-const SESSION_TYPE_OPTIONS = [
-  { value: 'training', label: 'Entraînement' },
-  { value: 'match',    label: 'Match' },
-  { value: 'gym',      label: 'Salle' },
-  { value: 'rest',     label: 'Repos' },
-];
+import { estimatedSessionRpe } from '../utils/rpe';
+import type { TrainingSession, Player, TeamCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
   border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
-};
-
-const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
-  training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
-  match:    { label: 'Match',        color: '#F59E0B', bg: '#F59E0B22' },
-  gym:      { label: 'Salle',        color: '#A855F7', bg: '#A855F722' },
-  rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
 };
 
 function fmtDate(dateStr: string) {
@@ -45,6 +32,11 @@ function fmtDate(dateStr: string) {
   };
 }
 
+/** Date du jour au format ISO, en heure locale — même source que le champ date du formulaire.
+ *  `toISOString()` donnerait la veille en soirée, et une séance créée pour aujourd'hui
+ *  basculerait aussitôt dans « Passées ». */
+const todayStr = () => new Date().toLocaleDateString('sv');
+
 export default function TrainingSessionsPage() {
   const { selected, canEditTeamData } = useTeamSeason();
   const navigate = useNavigate();
@@ -57,13 +49,16 @@ export default function TrainingSessionsPage() {
   const [error,            setError]            = useState('');
 
   const [players, setPlayers] = useState<Player[]>([]);
+  const [categories, setCategories] = useState<TeamCategory[]>([]);
+
+  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
 
   const [showAdd,    setShowAdd]    = useState(false);
   const [addTab,     setAddTab]     = useState<'unique' | 'recurrente'>('unique');
   const [addSaving,  setAddSaving]  = useState(false);
   const [addError,   setAddError]   = useState('');
-  const [addForm,    setAddForm]    = useState({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
-  const [recForm,    setRecForm]    = useState({ days: [] as number[], startDate: new Date().toLocaleDateString('sv'), endDate: '', duration: '90', notes: '' });
+  const [addForm,    setAddForm]    = useState({ date: new Date().toLocaleDateString('sv'), categoryId: '', duration: '90', notes: '' });
+  const [recForm,    setRecForm]    = useState({ days: [] as number[], startDate: new Date().toLocaleDateString('sv'), endDate: '', categoryId: '', duration: '90', notes: '' });
   const [recSaving,  setRecSaving]  = useState(false);
   const [recError,   setRecError]   = useState('');
 
@@ -90,9 +85,11 @@ export default function TrainingSessionsPage() {
 
         // Présents et retards comptent tout le monde, partenaires d'entraînement compris :
         // ce sont des nombres de personnes, pas des taux. Un partenaire qui ne vient pas n'est
-        // en revanche pas une absence — il n'était pas attendu.
+        // en revanche pas une absence — il n'était pas attendu. Un joueur marqué « non
+        // attendu » ne l'est pas davantage : la colonne compte les manquements, pas les absences.
         const counts: Record<string, { present: number; absent: number; late: number }> = {};
         for (const a of attendance) {
+          if (a.status === 'not_expected') continue;
           if (a.sparring && a.status === 'absent') continue;
           if (!counts[a.sessionId]) counts[a.sessionId] = { present: 0, absent: 0, late: 0 };
           counts[a.sessionId][a.status]++;
@@ -117,9 +114,8 @@ export default function TrainingSessionsPage() {
         }
         const ests: Record<string, number> = {};
         for (const [sid, blks] of Object.entries(blocksBySession)) {
-          const totalDuration = blks.reduce((s, b) => s + b.duration, 0);
-          const totalLoad     = blks.reduce((s, b) => s + (b.loadUa ?? 0), 0);
-          if (totalDuration > 0) ests[sid] = totalLoad / totalDuration;
+          const est = estimatedSessionRpe(blks);
+          if (est !== null) ests[sid] = est;
         }
         setRpeEst(ests);
       })
@@ -132,10 +128,38 @@ export default function TrainingSessionsPage() {
     playersApi.listBySeason(selected.season.id).then(setPlayers).catch(() => {});
   }, [selected?.season.id]);
 
+  // Les catégories de séance sont propres à l'équipe. La première de la liste sert de valeur
+  // par défaut aux formulaires : c'est l'ordre que le coach a réglé en configuration, pas une
+  // valeur en dur — il n'y a plus de « training » garanti.
+  useEffect(() => {
+    if (!selected) { setCategories([]); return; }
+    teamCategoriesApi.list(selected.team.id, 'session')
+      .then(list => {
+        setCategories(list);
+        const first = list[0]?.id ?? '';
+        setAddForm(f => f.categoryId ? f : { ...f, categoryId: first });
+        setRecForm(f => f.categoryId ? f : { ...f, categoryId: first });
+      })
+      .catch(() => setCategories([]));
+  }, [selected?.team.id]);
+
+  // Une séance du jour reste à faire tant que la journée n'est pas finie : « À venir » part
+  // d'aujourd'hui inclus. L'ordre s'inverse d'un onglet à l'autre — à venir, on lit la
+  // prochaine en premier ; passées, la plus récente. `sessions` est trié décroissant, donc
+  // seule la première liste se retourne.
+  const today    = todayStr();
+  const upcoming = sessions.filter(s => s.date >= today).reverse();
+  const past     = sessions.filter(s => s.date <  today);
+
+  // Saison terminée : plutôt qu'un onglet « À venir » vide, on ouvre sur l'historique. Le
+  // choix reste celui de l'utilisateur dès qu'il clique — on ne corrige que le défaut.
+  const activeTab = tab === 'upcoming' && upcoming.length === 0 && past.length > 0 ? 'past' : tab;
+  const visible   = activeTab === 'upcoming' ? upcoming : past;
+
   // Group by month
   const grouped: { monthLabel: string; sessions: TrainingSession[] }[] = [];
   const seenMonths = new Set<string>();
-  for (const s of sessions) {
+  for (const s of visible) {
     const { monthKey, monthLabel } = fmtDate(s.date);
     if (!seenMonths.has(monthKey)) {
       seenMonths.add(monthKey);
@@ -162,16 +186,14 @@ export default function TrainingSessionsPage() {
     setAddSaving(true);
     setAddError('');
     try {
-      const created = await attendanceApi.createSession({
-        teamId:   selected.team.id,
-        seasonId: selected.season.id,
-        date:     addForm.date,
-        duration: parseInt(addForm.duration),
-        notes:    addForm.notes || undefined,
+      const final = await attendanceApi.createSession({
+        teamId:     selected.team.id,
+        seasonId:   selected.season.id,
+        date:       addForm.date,
+        duration:   parseInt(addForm.duration),
+        notes:      addForm.notes || undefined,
+        categoryId: addForm.categoryId || undefined,
       });
-      const final = addForm.sessionType !== 'training'
-        ? await attendanceApi.updateSession(created.id, { sessionType: addForm.sessionType })
-        : created;
       if (players.length) {
         await attendanceApi.bulkSetPresent(players.map(p => ({ sessionId: final.id, playerId: p.id })));
       }
@@ -181,7 +203,7 @@ export default function TrainingSessionsPage() {
         [final.id]: { present: players.length, absent: 0, late: 0 },
       }));
       setShowAdd(false);
-      setAddForm({ date: new Date().toLocaleDateString('sv'), sessionType: 'training', duration: '90', notes: '' });
+      setAddForm({ date: new Date().toLocaleDateString('sv'), categoryId: categories[0]?.id ?? '', duration: '90', notes: '' });
       navigate(`/seances/${final.id}`);
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -200,7 +222,7 @@ export default function TrainingSessionsPage() {
     try {
       const dur = parseInt(recForm.duration);
       const created = await Promise.all(dates.map(({ date, notes }) =>
-        attendanceApi.createSession({ teamId: selected.team.id, seasonId: selected.season.id, date, duration: dur, notes: notes || undefined })
+        attendanceApi.createSession({ teamId: selected.team.id, seasonId: selected.season.id, date, duration: dur, notes: notes || undefined, categoryId: recForm.categoryId || undefined })
       ));
       if (players.length) {
         const entries = created.flatMap(s => players.map(p => ({ sessionId: s.id, playerId: p.id })));
@@ -213,7 +235,10 @@ export default function TrainingSessionsPage() {
         return next;
       });
       setShowAdd(false);
-      setRecForm({ days: [], startDate: new Date().toLocaleDateString('sv'), endDate: '', duration: '90', notes: '' });
+      setRecForm({ days: [], startDate: new Date().toLocaleDateString('sv'), endDate: '', categoryId: categories[0]?.id ?? '', duration: '90', notes: '' });
+      // Création en lot depuis l'historique : sans ça, les séances créées n'apparaissent nulle
+      // part à l'écran. La séance unique, elle, ouvre directement sa fiche.
+      if (dates.some(d => d.date >= todayStr())) setTab('upcoming');
     } catch (err: unknown) {
       setRecError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -248,6 +273,27 @@ export default function TrainingSessionsPage() {
           <EmptyState message="Aucune séance. Seuls les rôles Admin et Éditeur peuvent en créer." size="lg" />
         )
       ) : (
+        <>
+        <div style={{ display: 'flex', gap: 4, backgroundColor: '#1E2229', borderRadius: 8, padding: 4, marginBottom: 14, maxWidth: 320 }}>
+          {([['upcoming', 'À venir'], ['past', 'Passées']] as const).map(([key, label]) => {
+            const isActive = activeTab === key;
+            const count    = key === 'upcoming' ? upcoming.length : past.length;
+            return (
+              <button key={key} type="button" onClick={() => setTab(key)}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                  backgroundColor: isActive ? '#2A2F3A' : 'transparent',
+                  color: isActive ? '#F1F5F9' : '#475569' }}>
+                {label} <span style={{ color: isActive ? '#94A3B8' : '#334155', fontWeight: 700 }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {visible.length === 0 ? (
+          <EmptyState
+            message={activeTab === 'upcoming' ? 'Aucune séance à venir.' : 'Aucune séance passée.'}
+            size="lg" />
+        ) : (
         <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -274,11 +320,15 @@ export default function TrainingSessionsPage() {
                   </tr>
                   {group.sessions.map((session, idx) => {
                     const { dow, dayPad, monthFull } = fmtDate(session.date);
-                    const typeCfg  = SESSION_TYPES[session.sessionType] ?? SESSION_TYPES.training;
                     const counts   = attendanceCounts[session.id];
                     const avg      = rpeAvg[session.id];
                     const est      = rpeEst[session.id];
                     const isLast   = idx === group.sessions.length - 1;
+                    // La prochaine séance ouvre l'onglet « À venir » : c'est la ligne qu'on
+                    // vient chercher, elle se signale sans qu'on ait à lire les dates.
+                    const isNext   = activeTab === 'upcoming' && session === upcoming[0];
+                    const isToday  = session.date === today;
+                    const rowBg    = isNext ? 'rgba(0,229,160,0.05)' : 'transparent';
 
                     // Couleur de l'écart réel/estimé — sans rapport avec rpeColor() de utils/rpe.ts
                     // (qui colore une valeur RPE brute 1-10), volontairement renommée pour éviter la confusion.
@@ -295,19 +345,28 @@ export default function TrainingSessionsPage() {
                       <tr
                         key={session.id}
                         onClick={() => navigate(`/seances/${session.id}`)}
-                        style={{ borderBottom: isLast ? 'none' : '1px solid #1E2229', cursor: 'pointer' }}
+                        style={{ borderBottom: isLast ? 'none' : '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = rowBg; }}
                       >
                         <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, whiteSpace: 'nowrap' }}>
                           <span style={{ color: '#475569', fontSize: '0.78rem', fontWeight: 600 }}>{dow} </span>
                           <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{dayPad} </span>
                           <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>{monthFull}</span>
+                          {isNext && (
+                            <span style={{
+                              marginLeft: 8, padding: '2px 7px', borderRadius: 4, fontSize: '0.66rem', fontWeight: 700,
+                              textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
+                              color: isToday ? '#F59E0B' : '#00E5A0',
+                              backgroundColor: isToday ? 'rgba(245,158,11,0.12)' : 'rgba(0,229,160,0.12)',
+                            }}>
+                              {isToday ? "Aujourd'hui" : 'Prochaine'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
-                          <span style={{ color: typeCfg.color, backgroundColor: typeCfg.bg, fontSize: '0.71rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                            {typeCfg.label}
-                          </span>
+                          <CategoryBadge name={session.categoryName} color={session.categoryColor}
+                            style={{ fontSize: '0.71rem' }} />
                         </td>
                         <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, textAlign: 'center' }}>
                           <span style={{ color: counts?.present ? '#00E5A0' : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
@@ -352,6 +411,8 @@ export default function TrainingSessionsPage() {
             </tbody>
           </table>
         </div>
+        )}
+        </>
       )}
 
       {/* Modal nouvelle séance */}
@@ -389,9 +450,10 @@ export default function TrainingSessionsPage() {
                     <input type="date" required value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Type *</label>
-                    <select required value={addForm.sessionType} onChange={e => setAddForm(f => ({ ...f, sessionType: e.target.value }))} style={inputStyle}>
-                      {SESSION_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+                    <select value={addForm.categoryId} onChange={e => setAddForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                      <option value="">Sans catégorie</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                 </div>
@@ -444,6 +506,13 @@ export default function TrainingSessionsPage() {
                     <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Au *</label>
                     <input type="date" required value={recForm.endDate} onChange={e => setRecForm(f => ({ ...f, endDate: e.target.value }))} style={inputStyle} />
                   </div>
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+                  <select value={recForm.categoryId} onChange={e => setRecForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                    <option value="">Sans catégorie</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>

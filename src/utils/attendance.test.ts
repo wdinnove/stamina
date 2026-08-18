@@ -4,6 +4,7 @@ import { presenceRate, teamPresenceRate, presenceColor } from './attendance';
 const P = { status: 'present' as const };
 const A = { status: 'absent' as const };
 const L = { status: 'late' as const };
+const N = { status: 'not_expected' as const };
 
 describe('presenceRate', () => {
   it('compte un joueur en retard comme présent — il a participé', () => {
@@ -12,6 +13,16 @@ describe('presenceRate', () => {
 
   it('renvoie null si aucune séance attendue', () => {
     expect(presenceRate([])).toBeNull();
+  });
+
+  it('sort « non attendu » du dénominateur, pas seulement du numérateur', () => {
+    // 2 présences sur 3 séances attendues = 67 %. Compté comme une absence, ce serait 50 % ;
+    // compté comme une présence, 75 %. Une absence prévue n'est ni l'un ni l'autre.
+    expect(presenceRate([P, P, A, N])).toBe(67);
+  });
+
+  it('renvoie null quand le joueur n’était attendu à aucune séance', () => {
+    expect(presenceRate([N, N])).toBeNull();
   });
 });
 
@@ -31,6 +42,7 @@ describe('teamPresenceRate — moyenne non pondérée des taux individuels', () 
       { playerId: 'alice', attendance: [P, P, A, A] },   // 50 %
       { playerId: 'bea',   attendance: [P, P, P, A] },   // 75 %
       { playerId: 'chloe', attendance: [] },             // pas de donnée
+      { playerId: 'dina',  attendance: [N, N] },         // attendue nulle part
     ];
     expect(teamPresenceRate(players)).toEqual({ value: 62.5, players: 2 });
   });

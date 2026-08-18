@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { getWeekTier } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, SESSION_TYPES } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone } from '../utils/rpe';
 import { roundedAvg } from '../utils/avg';
 import { EMPTY_TEAM_AVERAGE } from '../utils/teamAverage';
 import type { LoadEntry } from '../utils/rpe';
@@ -15,20 +15,18 @@ import { Save, Check, Zap, Activity, Users, Calendar, AlertTriangle, ListChecks 
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
 import { notify } from '../api/notifications';
-import { attendanceApi } from '../api';
+import { attendanceApi, teamCategoriesApi } from '../api';
 import type { TrainingSession } from '../data/types';
-import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, TeamRpeSub, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, RPEPlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle, Modal, Badge, PlayerLoadPanel } from '../components';
+import { StatusBadge, PlayerAvatar, PlayerSelect, RpeKpiCard, TeamRpeSub, ChargeRpeComboChart, TeamDisplayToggle, TeamSessionHistoryTable, RPEPlayerRankingTable, EmptyState, DateRangeCard, useDateRange, CardTitle, Modal, Badge, CATEGORY_FALLBACK_COLOR, CATEGORY_MISSING_LABEL, PlayerLoadPanel } from '../components';
 import { FilterField, filterControlStyle } from '../components/FilterField';
 import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
 import { playerNameFull } from '../utils/playerName';
-import type { Player, RPEEntry, SessionType, TrainingAttendance } from '../data/types';
+import type { Player, RPEEntry, TeamCategory, TrainingAttendance } from '../data/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const SESSION_TYPE_LABELS: Record<string, string> = Object.fromEntries(Object.entries(SESSION_TYPES).map(([k, v]) => [k, v.label]));
-const SESSION_TYPE_COLORS: Record<string, string> = Object.fromEntries(Object.entries(SESSION_TYPES).map(([k, v]) => [k, v.color]));
 
 function todayStr(): string {
   return new Date().toLocaleDateString('sv');
@@ -98,9 +96,10 @@ export default function RPEPage() {
   const [loadingRoster, setLoadingRoster] = useState(false);
 
   // ── Collective tab state
-  const _navState = (location.state as { sessionDate?: string; sessionType?: string; duration?: number; sessionId?: string } | null);
+  const _navState = (location.state as { sessionDate?: string; categoryId?: string; duration?: number; sessionId?: string } | null);
   const [sessionDate, setSessionDate]     = useState(_navState?.sessionDate ?? todayStr());
-  const [sessionType, setSessionType]     = useState<SessionType>((_navState?.sessionType as SessionType) ?? 'training');
+  const [categoryId, setCategoryId]       = useState<string>(_navState?.categoryId ?? '');
+  const [categories, setCategories]       = useState<TeamCategory[]>([]);
   const [duration, setDuration]           = useState(_navState?.duration ?? 90);
   const [rpeValues, setRpeValues]         = useState<Record<string, number | null>>({});
   const [existingSessionId, setExistingSessionId] = useState<string | null>(_navState?.sessionId ?? null);
@@ -112,6 +111,9 @@ export default function RPEPage() {
   const [manualMode,          setManualMode]          = useState(false);
   const [showSessionPicker,   setShowSessionPicker]   = useState(false);
   const skipNextFindRef = useRef(false);
+  /** Miroir de `existingSessionId` lisible depuis un `setState` fonctionnel — cf. l'effet des
+   *  catégories, qui ne doit proposer un défaut que pour une séance encore à créer. */
+  const sessionIdRef = useRef<string | null>(existingSessionId);
 
   // ── Individual tab state
   const selectedPlayerId = activeTab === 'individual' ? (urlId ?? null) : null;
@@ -127,9 +129,32 @@ export default function RPEPage() {
   const [teamComboView, setTeamComboView]       = useState<'session' | 'week'>('week');
   const [teamDisplay, setTeamDisplay]           = useState<TeamDisplayMode>('chart');
 
+  useEffect(() => { sessionIdRef.current = existingSessionId; }, [existingSessionId]);
+
   // La liste du club sert à nommer les partenaires pointés sur la séance.
   useEffect(() => {
     playersApi.list().then(setOrgPlayers).catch(() => {});
+  }, [selected?.team.id]);
+
+  /**
+   * Catégories de séance de l'équipe — la saisie manuelle crée une séance, elle doit proposer
+   * le vocabulaire du club et non une liste figée.
+   *
+   * La proposition par défaut ne vaut QUE pour une séance à créer. Une séance déjà en base
+   * fait autorité, y compris quand elle n'a pas de catégorie : sans ce garde-fou, les deux
+   * chargements (celui-ci et `findSession`) se courent l'un après l'autre, et le défaut peut
+   * gagner — on écrirait alors à l'enregistrement une catégorie que personne n'a choisie.
+   *
+   * Le test passe par une ref parce que `setCategoryId(prev => …)` ne voit pas l'état voisin.
+   */
+  useEffect(() => {
+    if (!selected) { setCategories([]); return; }
+    teamCategoriesApi.list(selected.team.id, 'session')
+      .then(list => {
+        setCategories(list);
+        setCategoryId(prev => prev || (sessionIdRef.current ? '' : list[0]?.id ?? ''));
+      })
+      .catch(() => setCategories([]));
   }, [selected?.team.id]);
 
   /**
@@ -180,7 +205,7 @@ export default function RPEPage() {
       .then(async session => {
         if (session) {
           setExistingSessionId(session.id);
-          setSessionType(session.sessionType);
+          setCategoryId(session.categoryId ?? '');
           setDuration(session.plannedDuration);
           const existing = await rpeApi.loadEntriesForSession(session.id);
           setRpeValues(prev => Object.fromEntries(Object.keys(prev).map(id => [id, existing[id] ?? null])));
@@ -243,7 +268,7 @@ export default function RPEPage() {
 
   const selSession     = linkedSessions.find(s => s.id === existingSessionId) ?? null;
   const selDate        = selSession ? new Date(selSession.date + 'T12:00:00') : null;
-  const selTypeColor   = selSession ? (SESSION_TYPE_COLORS as Record<string, string>)[selSession.sessionType as string] ?? '#94A3B8' : '#94A3B8';
+  const selTypeColor   = selSession?.categoryColor ?? CATEGORY_FALLBACK_COLOR;
   const MONTHS_RPE     = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const DAYS_RPE       = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const nextSession    = linkedSessions.filter(s => s.date >= todayStr()).at(-1) ?? null;
@@ -280,7 +305,7 @@ export default function RPEPage() {
     setManualMode(false);
     setShowSessionPicker(false);
     setSessionDate(session.date);
-    setSessionType(session.sessionType as SessionType);
+    setCategoryId(session.categoryId ?? '');
     setDuration(session.plannedDuration);
     setExistingSessionId(session.id);
     const existing = await rpeApi.loadEntriesForSession(session.id);
@@ -296,7 +321,7 @@ export default function RPEPage() {
         teamId:            selected.team.id,
         seasonId:          selected.season.id,
         date:              sessionDate,
-        sessionType,
+        categoryId:        categoryId || undefined,
         plannedDuration:   duration,
         entries:           activeEntries.map(([playerId, rpe]) => ({ playerId, rpe })),
         existingSessionId: existingSessionId ?? undefined,
@@ -311,18 +336,6 @@ export default function RPEPage() {
       setSaving(false);
     }
   }
-
-  // ── Individual chart data
-  const individualChartData = [...history]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-20)
-    .map((e, i) => ({
-      i,
-      date:   fmtDate(e.date),
-      rpe:    e.rpe,
-      charge: e.rpe * (e.actualDuration ?? e.plannedDuration),
-      type:   e.sessionType,
-    }));
 
   const tableData     = [...history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
@@ -409,7 +422,7 @@ export default function RPEPage() {
                     const day = d.getDate();
                     const month = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][d.getMonth()];
                     const dow = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
-                    const typeColor = (SESSION_TYPE_COLORS as Record<string, string>)[s.sessionType as string] ?? '#94A3B8';
+                    const typeColor = s.categoryColor ?? CATEGORY_FALLBACK_COLOR;
                     return (
                       <button
                         key={s.id}
@@ -467,7 +480,7 @@ export default function RPEPage() {
                         {selSession.notes ? <span style={{ color: '#94A3B8', fontWeight: 400 }}> — {selSession.notes}</span> : null}
                       </div>
                       <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 2 }}>
-                        {SESSION_TYPE_LABELS[selSession.sessionType as string] ?? selSession.sessionType} · {selSession.plannedDuration} min
+                        {selSession.categoryName ?? CATEGORY_MISSING_LABEL} · {selSession.plannedDuration} min
                       </div>
                     </>
                   ) : (
@@ -502,13 +515,11 @@ export default function RPEPage() {
                     style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }} />
                 </div>
                 <div>
-                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Type</p>
-                  <select value={sessionType} onChange={e => setSessionType(e.target.value as SessionType)}
+                  <p style={{ color: '#94A3B8', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Catégorie</p>
+                  <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
                     style={{ padding: '5px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none' }}>
-                    <option value="training">Entraînement</option>
-                    <option value="match">Match</option>
-                    <option value="gym">Gym</option>
-                    <option value="rest">Repos</option>
+                    <option value="">Sans catégorie</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>

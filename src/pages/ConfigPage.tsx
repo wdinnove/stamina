@@ -4,16 +4,15 @@ import { TacticalConfigManager } from '../components/TacticalConfigManager';
 import { TeamNotificationsTab } from '../components/TeamNotificationsTab';
 import { teamsApi, teamRolesApi } from '../api';
 import type { AssignableProfile } from '../api/teamRoles';
-import { exerciseCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/exerciseCategories';
 import { playersApi } from '../api/players';
 import { staffApi } from '../api/staff';
 import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
-import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview, AddButton } from '../components';
+import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, CategoryManager, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview, AddButton } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { ExerciseCategory, Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod } from '../data/types';
+import type { Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod } from '../data/types';
 import { LAYER } from '../styles/layers';
 
 const inputStyle: React.CSSProperties = {
@@ -107,121 +106,6 @@ function StatColorPreview({ t }: { t: StatThresholds }) {
         <div style={{ color: '#64748B', fontSize: '0.68rem', marginBottom: 2 }}>DRtg</div>
         <ZoneBar zones={drtgZones} />
       </div>
-    </div>
-  );
-}
-
-function iconBtnStyle(color: string): React.CSSProperties {
-  return { background: 'none', border: 'none', color, cursor: 'pointer', padding: 5, display: 'flex', flexShrink: 0 };
-}
-
-function CategoryRow({
-  category, onRenamed, onRemoved, onMove, canMoveUp, canMoveDown, moving,
-}: {
-  category: ExerciseCategory;
-  onRenamed: (c: ExerciseCategory) => void;
-  onRemoved: (id: string) => void;
-  onMove: (direction: -1 | 1) => void;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  moving: boolean;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(category.name);
-  const [color, setColor] = useState(category.color);
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [error, setError] = useState('');
-
-  function cancelEdit() {
-    setEditing(false);
-    setName(category.name);
-    setColor(category.color);
-  }
-
-  async function save() {
-    const trimmed = name.trim();
-    if (!trimmed) { cancelEdit(); return; }
-    if (trimmed === category.name && color === category.color) { setEditing(false); return; }
-    setSaving(true); setError('');
-    try {
-      const updated = await exerciseCategoriesApi.update(category.id, { name: trimmed, color });
-      onRenamed(updated);
-      setEditing(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erreur');
-    } finally { setSaving(false); }
-  }
-
-  async function remove() {
-    setRemoving(true); setError('');
-    try {
-      await exerciseCategoriesApi.remove(category.id);
-      onRemoved(category.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erreur');
-      setRemoving(false);
-    }
-  }
-
-  if (confirmingDelete) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, marginBottom: 2 }}>
-        <span style={{ color: '#F1F5F9', fontSize: '0.82rem' }}>Supprimer « {category.name} » ?</span>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" onClick={() => setConfirmingDelete(false)}
-            style={{ padding: '4px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem' }}>
-            Annuler
-          </button>
-          <button type="button" onClick={remove} disabled={removing}
-            style={{ padding: '4px 10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 5, color: '#fff', cursor: removing ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>
-            {removing ? '…' : 'Oui'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ marginBottom: 2 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 2px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          <button type="button" onClick={() => onMove(-1)} disabled={!canMoveUp || moving} title="Monter"
-            style={{ ...iconBtnStyle(canMoveUp ? '#94A3B8' : '#2A2F3A'), padding: 1, cursor: (!canMoveUp || moving) ? 'not-allowed' : 'pointer' }}>
-            <ChevronUp size={13} />
-          </button>
-          <button type="button" onClick={() => onMove(1)} disabled={!canMoveDown || moving} title="Descendre"
-            style={{ ...iconBtnStyle(canMoveDown ? '#94A3B8' : '#2A2F3A'), padding: 1, cursor: (!canMoveDown || moving) ? 'not-allowed' : 'pointer' }}>
-            <ChevronDown size={13} />
-          </button>
-        </div>
-        {editing ? (
-          <input type="color" value={color} onChange={e => setColor(e.target.value)}
-            style={{ width: 26, height: 26, border: '1px solid #2A2F3A', borderRadius: 6, padding: 1, backgroundColor: '#1E2229', cursor: 'pointer', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: category.color, flexShrink: 0 }} />
-        )}
-        {editing ? (
-          <input autoFocus value={name} onChange={e => setName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancelEdit(); }}
-            style={{ ...inputStyle, flex: 1, padding: '5px 8px' }} />
-        ) : (
-          <span style={{ flex: 1, color: '#F1F5F9', fontSize: '0.85rem' }}>{category.name}</span>
-        )}
-        {editing ? (
-          <>
-            <button type="button" onClick={save} disabled={saving} title="Enregistrer" style={iconBtnStyle('#00E5A0')}><Check size={14} /></button>
-            <button type="button" onClick={cancelEdit} title="Annuler" style={iconBtnStyle('#94A3B8')}><X size={14} /></button>
-          </>
-        ) : (
-          <>
-            <button type="button" onClick={() => setEditing(true)} title="Renommer" style={iconBtnStyle('#94A3B8')}><Pencil size={13} /></button>
-            <button type="button" onClick={() => setConfirmingDelete(true)} title="Supprimer" style={iconBtnStyle('#EF4444')}><Trash2 size={13} /></button>
-          </>
-        )}
-      </div>
-      {error && <p style={{ color: '#EF4444', fontSize: '0.72rem', margin: '0 0 4px 20px' }}>{error}</p>}
     </div>
   );
 }
@@ -582,8 +466,13 @@ const roleColor = (role: string) => ROLES.find(r => r.value === role)?.color ?? 
 const emptyStaffForm = { firstName: '', lastName: '', role: 'coach' };
 
 function StaffTab() {
-  const { selected } = useTeamSeason();
+  const { selected, orgId } = useTeamSeason();
   const [staff,     setStaff]     = useState<StaffMember[]>([]);
+  /** Le staff du club qui n'est PAS encore sur cette équipe — une personne intervient sur
+   *  plusieurs équipes, on la rattache au lieu de la recréer. */
+  const [available, setAvailable] = useState<StaffMember[]>([]);
+  const [showPick,  setShowPick]  = useState(false);
+  const [busyId,    setBusyId]    = useState<string | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [showForm,  setShowForm]  = useState(false);
@@ -599,12 +488,50 @@ function StaffTab() {
     if (!selected) return;
     setLoading(true);
     setStaff([]);
+    setAvailable([]);
     setError('');
-    staffApi.listByTeam(selected.team.id)
-      .then(setStaff)
+    const teamId = selected.team.id;
+    Promise.all([staffApi.listByTeam(teamId), staffApi.listByOrganization()])
+      .then(([teamStaff, orgStaff]) => {
+        setStaff(teamStaff);
+        setAvailable(orgStaff.filter(m => !(m.teamIds ?? []).includes(teamId)));
+      })
       .catch(err => setError(err?.message ?? String(err)))
       .finally(() => setLoading(false));
   }, [selected?.team.id]);
+
+  async function handleAssign(member: StaffMember) {
+    if (!selected) return;
+    setBusyId(member.id);
+    setError('');
+    try {
+      await staffApi.assign(member.id, selected.team.id);
+      setStaff(prev => [...prev, member].sort((a, b) => a.lastName.localeCompare(b.lastName)));
+      setAvailable(prev => prev.filter(m => m.id !== member.id));
+      setShowPick(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors du rattachement.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Retirer, ce n'est pas supprimer : la personne reste au club, avec ses tâches et ses
+  // dossiers. Elle quitte seulement cette équipe.
+  async function handleUnassign(member: StaffMember) {
+    if (!selected) return;
+    setBusyId(member.id);
+    setError('');
+    try {
+      await staffApi.unassign(member.id, selected.team.id);
+      setStaff(prev => prev.filter(m => m.id !== member.id));
+      setAvailable(prev => [...prev, member].sort((a, b) => a.lastName.localeCompare(b.lastName)));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors du retrait.');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -616,11 +543,13 @@ function StaffTab() {
     setSaving(true);
     setFormError('');
     try {
+      if (!orgId) throw new Error('Aucune organisation associée à votre compte.');
       const created = await staffApi.create({
-        teamId:    selected.team.id,
-        firstName: form.firstName,
-        lastName:  form.lastName,
-        role:      form.role,
+        organizationId: orgId,
+        teamId:         selected.team.id,
+        firstName:      form.firstName,
+        lastName:       form.lastName,
+        role:           form.role,
       });
       setStaff(prev => [...prev, created].sort((a, b) => a.lastName.localeCompare(b.lastName)));
       setShowForm(false);
@@ -680,9 +609,16 @@ function StaffTab() {
       icon={<UserCheck size={14} color="#00E5A0" />}
       title="Staff"
       action={
-        <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
-          Ajouter un membre
-        </ConfigAction>
+        <>
+          {available.length > 0 && (
+            <ConfigAction icon={<UserPlus size={14} />} onClick={() => setShowPick(true)} tone="neutral" hideLabelOnMobile>
+              Rattacher du club
+            </ConfigAction>
+          )}
+          <ConfigAction icon={<Plus size={14} />} onClick={() => setShowForm(true)} hideLabelOnMobile>
+            Nouveau membre
+          </ConfigAction>
+        </>
       }>
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16 }}>
@@ -701,13 +637,14 @@ function StaffTab() {
                 <th style={thStyle}>Nom</th>
                 <th style={thStyle}>Rôle</th>
                 <th style={thStyle}>Compte</th>
+                <th style={thStyle}></th>
               </tr>
             </thead>
             <tbody>
               {staff.length === 0 ? (
                 <tr>
-                  <td colSpan={3} style={{ color: '#475569', textAlign: 'center', padding: '40px 0', fontSize: '0.88rem' }}>
-                    Aucun membre du staff. Ajoutez-en un avec le bouton ci-dessus.
+                  <td colSpan={4} style={{ color: '#475569', textAlign: 'center', padding: '40px 0', fontSize: '0.88rem' }}>
+                    Aucun membre du staff sur cette équipe. Rattachez quelqu'un du club, ou créez une nouvelle personne.
                   </td>
                 </tr>
               ) : staff.map((member, idx) => {
@@ -742,12 +679,55 @@ function StaffTab() {
                         </button>
                       )}
                     </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleUnassign(member)}
+                        disabled={busyId === member.id}
+                        title="Retirer de cette équipe — la personne reste au club"
+                        style={{ color: '#475569', fontSize: '0.75rem', background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, padding: '4px 8px', cursor: busyId === member.id ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                        {busyId === member.id ? '…' : 'Retirer'}
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Rattachement d'une personne déjà connue du club */}
+      {showPick && (
+        <Modal onClose={() => setShowPick(false)} maxWidth={440} overlayOpacity={0.7} style={{ padding: '28px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Rattacher à l'équipe</h2>
+            <button onClick={() => setShowPick(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+          </div>
+          <p style={{ color: '#94A3B8', fontSize: '0.8rem', margin: '0 0 18px' }}>
+            Ces personnes appartiennent déjà au club. Les rattacher ici ne les retire d'aucune autre équipe.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+            {available.map(member => {
+              const color = roleColor(member.role);
+              return (
+                <button key={member.id} onClick={() => handleAssign(member)} disabled={busyId === member.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, cursor: busyId === member.id ? 'not-allowed' : 'pointer', textAlign: 'left' }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: '50%', backgroundColor: color + '22', border: `2px solid ${color}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color, fontSize: '0.7rem', fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {member.firstName[0]}{member.lastName[0]}
+                  </div>
+                  <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 600, flex: 1 }}>{member.firstName} {member.lastName}</span>
+                  <span style={{ color: '#64748B', fontSize: '0.75rem' }}>{roleLabel(member.role)}</span>
+                  <span style={{ color: '#475569', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                    {(member.teamIds ?? []).length} équipe{(member.teamIds ?? []).length > 1 ? 's' : ''}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
       )}
 
       {/* Modal création de compte */}
@@ -890,15 +870,6 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
   const [wellnessSaving, setWellnessSaving] = useState(false);
   const [wellnessMsg,    setWellnessMsg]    = useState<{ ok: boolean; text: string } | null>(null);
 
-  const [categories,   setCategories]   = useState<ExerciseCategory[]>([]);
-  const [catLoading,   setCatLoading]   = useState(true);
-  const [catError,     setCatError]     = useState('');
-  const [newCatName,   setNewCatName]   = useState('');
-  const [newCatColor,  setNewCatColor]  = useState(NEW_CATEGORY_PALETTE[0]);
-  const [addingCat,    setAddingCat]    = useState(false);
-  const [addCatError,  setAddCatError]  = useState('');
-  const [catMoving,    setCatMoving]    = useState(false);
-
   useEffect(() => {
     if (!selected) return;
     const t = selected.team;
@@ -908,66 +879,6 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
       if (full) setTeamForm(f => ({ ...f, description: (full as unknown as { description?: string }).description ?? '' }));
     });
   }, [selected?.team.id]);
-
-  useEffect(() => {
-    if (!selected) return;
-    setCatLoading(true);
-    setCatError('');
-    exerciseCategoriesApi.list(selected.team.id)
-      .then(setCategories)
-      .catch(e => setCatError(e instanceof Error ? e.message : 'Erreur'))
-      .finally(() => setCatLoading(false));
-  }, [selected?.team.id]);
-
-  async function handleAddCategory(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selected) return;
-    const trimmed = newCatName.trim();
-    if (!trimmed) return;
-    if (categories.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
-      setAddCatError('Cette catégorie existe déjà.');
-      return;
-    }
-    setAddingCat(true); setAddCatError('');
-    try {
-      const created = await exerciseCategoriesApi.create(selected.team.id, trimmed, newCatColor);
-      setCategories(prev => [...prev, created]);
-      setNewCatName('');
-      setNewCatColor(NEW_CATEGORY_PALETTE[(categories.length + 1) % NEW_CATEGORY_PALETTE.length]);
-    } catch (e) {
-      setAddCatError(e instanceof Error ? e.message : 'Erreur');
-    } finally {
-      setAddingCat(false);
-    }
-  }
-
-  async function moveCategory(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= categories.length) return;
-    const a = categories[index];
-    const b = categories[targetIndex];
-    const reordered = [...categories];
-    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
-    setCategories(reordered);
-    setCatMoving(true);
-    setCatError('');
-    try {
-      await Promise.all([
-        exerciseCategoriesApi.update(a.id, { position: b.position }),
-        exerciseCategoriesApi.update(b.id, { position: a.position }),
-      ]);
-      setCategories(prev => prev.map(c => {
-        if (c.id === a.id) return { ...c, position: b.position };
-        if (c.id === b.id) return { ...c, position: a.position };
-        return c;
-      }));
-    } catch (e) {
-      setCategories(categories);
-      setCatError(e instanceof Error ? e.message : 'Erreur de réorganisation');
-    } finally {
-      setCatMoving(false);
-    }
-  }
 
   useEffect(() => {
     setLightMax(thresholds.lightMax);
@@ -1277,40 +1188,26 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
       {/* Notifications */}
       {tab === 'notifs' && <TeamNotificationsTab />}
 
-      {/* Catégories d'exercices */}
-      {tab === 'categories' && (
-      <ConfigCard
-        icon={<Tag size={14} color="#00E5A0" />}
-        title="Catégories d'exercices"
-        description={'Ces catégories servent à classer les exercices de la bibliothèque de cette équipe. Supprimer une catégorie ne supprime pas les exercices qui l\'utilisent : ils deviennent simplement "sans catégorie".'}>
-        {catLoading && <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>}
-        {catError && <p style={{ color: '#EF4444', fontSize: '0.82rem' }}>{catError}</p>}
+      {/* Catégories — un même écran pour les trois portées : c'est le même objet, et le club
+          gagne à régler son vocabulaire au même endroit. */}
+      {tab === 'categories' && selected && (
+        <ConfigStack>
+          <CategoryManager
+            teamId={selected.team.id} scope="exercise"
+            title="Catégories d'exercices"
+            description={'Elles classent les exercices de la bibliothèque, et alimentent aussi la catégorie des séquences d\'une séance. Supprimer une catégorie ne supprime pas les exercices qui l\'utilisent : ils deviennent simplement "sans catégorie".'} />
 
-        {!catLoading && !catError && (
-          <div style={{ marginBottom: 16 }}>
-            {categories.map((c, i) => (
-              <CategoryRow key={c.id} category={c}
-                onRenamed={updated => setCategories(prev => prev.map(x => x.id === updated.id ? updated : x))}
-                onRemoved={id => setCategories(prev => prev.filter(x => x.id !== id))}
-                onMove={direction => moveCategory(i, direction)}
-                canMoveUp={i > 0}
-                canMoveDown={i < categories.length - 1}
-                moving={catMoving}
-              />
-            ))}
-            {categories.length === 0 && <p style={{ color: '#475569', fontSize: '0.82rem' }}>Aucune catégorie.</p>}
-          </div>
-        )}
+          <CategoryManager
+            teamId={selected.team.id} scope="meeting"
+            title="Catégories de réunion"
+            description={'Elles classent les réunions de l\'équipe. Supprimer une catégorie laisse les réunions concernées sans catégorie.'} />
 
-        <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: 8, borderTop: '1px solid #2A2F3A', paddingTop: 16 }}>
-          <input type="color" value={newCatColor} onChange={e => setNewCatColor(e.target.value)}
-            style={{ width: 36, height: 36, border: '1px solid #2A2F3A', borderRadius: 6, padding: 2, backgroundColor: '#1E2229', cursor: 'pointer', flexShrink: 0 }} />
-          <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Nouvelle catégorie…" style={{ ...inputStyle, flex: 1 }} />
-          <AddButton type="submit" label={addingCat ? 'Ajout…' : 'Ajouter une catégorie'}
-            disabled={addingCat || !newCatName.trim()} />
-        </form>
-        {addCatError && <p style={{ color: '#EF4444', fontSize: '0.78rem', margin: '8px 0 0' }}>{addCatError}</p>}
-      </ConfigCard>
+          <CategoryManager
+            teamId={selected.team.id} scope="session"
+            title="Catégories de séance"
+            description="Elles qualifient les séances — c'est ce qui s'affiche en étiquette dans le planning et sur la fiche. Une catégorie encore utilisée ne peut pas être supprimée : renommez-la, ou déplacez d'abord les séances concernées."
+            guardDelete />
+        </ConfigStack>
       )}
 
       {/* Données tactiques */}

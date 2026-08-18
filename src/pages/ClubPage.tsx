@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Plus, Search, Users, X, AlertCircle, CheckCircle, Building2, Pencil, Trash2, Lock, UserCog } from 'lucide-react';
 import { teamsApi, playersApi, configApi, teamRolesApi } from '../api';
+import { staffApi } from '../api/staff';
 import type { AssignableProfile } from '../api/teamRoles';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, Modal, PlayerEditModal } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { Team, Player, Organization, TeamRole, TeamRoleAssignment } from '../data/types';
+import type { Team, Player, Organization, StaffMember, TeamRole, TeamRoleAssignment } from '../data/types';
 import { LAYER } from '../styles/layers';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
@@ -749,6 +750,96 @@ function OrgConfigTab() {
   );
 }
 
+// ── Onglet Staff (club) ────────────────────────────────────────────────────────
+// Le staff appartient à l'organisation : cette vue le montre tel qu'il est, une personne par
+// ligne, avec les équipes où elle intervient. La composition d'une équipe, elle, se règle dans
+// la configuration de cette équipe.
+
+const STAFF_ROLE_LABELS: Record<string, string> = {
+  coach: 'Coach', kine: 'Kinésithérapeute', medecin: 'Médecin',
+  prep_physique: 'Préparateur physique', assistant: 'Assistant', autre: 'Autre',
+};
+
+function StaffTab() {
+  const [staff,    setStaff]    = useState<StaffMember[]>([]);
+  const [teams,    setTeams]    = useState<Team[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [fetchErr, setFetchErr] = useState('');
+  const [search,   setSearch]   = useState('');
+
+  useEffect(() => {
+    Promise.all([staffApi.listByOrganization(), teamsApi.list()])
+      .then(([members, teamList]) => { setStaff(members); setTeams(teamList); })
+      .catch(err => setFetchErr(err?.message ?? String(err)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const teamName = (id: string) => teams.find(t => t.id === id)?.name ?? '—';
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? staff.filter(m => `${m.firstName} ${m.lastName}`.toLowerCase().includes(q))
+    : staff;
+
+  return (
+    <ConfigCard
+      icon={<UserCog size={14} color="#00E5A0" />}
+      title="Staff du club"
+      description="Une personne peut intervenir sur plusieurs équipes. Son rattachement se règle dans la configuration de chaque équipe, onglet Staff.">
+      {fetchErr && <p style={{ color: '#EF4444', fontSize: '0.82rem' }}>{fetchErr}</p>}
+      {loading && <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>}
+
+      {!loading && !fetchErr && (
+        <>
+          <div style={{ position: 'relative', marginBottom: 14, maxWidth: 280 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…"
+              style={{ ...inputStyle, paddingLeft: 30 }} />
+          </div>
+
+          {shown.length === 0 ? (
+            <EmptyState message={staff.length === 0 ? 'Aucun membre du staff dans ce club.' : 'Aucun résultat.'} />
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                    <th style={thStyle}>Nom</th>
+                    <th style={thStyle}>Rôle</th>
+                    <th style={thStyle}>Équipes</th>
+                    <th style={thStyle}>Compte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((m, idx) => (
+                    <tr key={m.id} style={{ borderBottom: idx < shown.length - 1 ? '1px solid #1E2229' : 'none' }}>
+                      <td style={tdStyle}><span style={{ fontWeight: 600 }}>{m.firstName} {m.lastName}</span></td>
+                      <td style={tdStyle}>{STAFF_ROLE_LABELS[m.role] ?? m.role}</td>
+                      <td style={tdStyle}>
+                        {(m.teamIds ?? []).length === 0 ? (
+                          <span style={{ color: '#475569', fontSize: '0.78rem' }}>Aucune</span>
+                        ) : (
+                          <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>
+                            {(m.teamIds ?? []).map(teamName).join(', ')}
+                          </span>
+                        )}
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={{ color: m.profileId ? '#00E5A0' : '#475569', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {m.profileId ? 'Lié' : '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </ConfigCard>
+  );
+}
+
 // ── Sections club ──────────────────────────────────────────────────────────────
 // La navigation (et le contrôle d'accès superadmin) vit dans ConfigurationPage :
 // ici on ne fait que rendre la section demandée.
@@ -756,6 +847,7 @@ export const CLUB_SECTIONS = [
   { key: 'info',    label: 'Informations' },
   { key: 'teams',   label: 'Équipes' },
   { key: 'players', label: 'Joueurs' },
+  { key: 'staff',   label: 'Staff' },
   { key: 'roles',   label: 'Rôles' },
 ] as const;
 
@@ -767,6 +859,7 @@ export function ClubConfigSection({ section }: { section: ClubSection }) {
       {section === 'info'    && <OrgConfigTab />}
       {section === 'teams'   && <TeamsTab />}
       {section === 'players' && <PlayersTab />}
+      {section === 'staff'   && <StaffTab />}
       {section === 'roles'   && <RolesTab />}
     </>
   );

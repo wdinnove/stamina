@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { X, AlertCircle, Clock, ChevronRight } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
+import { teamCategoriesApi } from '../api/categories';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
-import { Modal, DropzoneEmptyState, EmptyState, AddButton } from '../components';
+import { Modal, DropzoneEmptyState, EmptyState, AddButton, CategoryBadge } from '../components';
 import { MONTHS_ABBR3, DAYS_ABBR3 } from '../utils/dateFormat';
-import type { StaffMeeting } from '../data/types';
+import type { StaffMeeting, TeamCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -22,7 +23,7 @@ function fmtMeetDate(dateStr: string) {
   return { day: d.getDate(), month: MONTHS_ABBR3[d.getMonth()], dow: DAYS_ABBR3[d.getDay()] };
 }
 
-const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '' };
+const emptyMeeting = { title: '', date: TODAY, time: '10:00', notes: '', categoryId: '' };
 
 export default function MeetingsPage() {
   const { selected, canEditTeamData } = useTeamSeason();
@@ -34,6 +35,8 @@ export default function MeetingsPage() {
   const [meetForm,      setMeetForm]      = useState(emptyMeeting);
   const [meetSaving,    setMeetSaving]    = useState(false);
   const [meetFormError, setMeetFormError] = useState('');
+  const [categories,    setCategories]    = useState<TeamCategory[]>([]);
+  const [filterCat,     setFilterCat]     = useState('');
 
   useEffect(() => {
     if (!selected) return;
@@ -42,6 +45,18 @@ export default function MeetingsPage() {
     meetingsApi.listByTeam(selected.team.id)
       .then(setMeetings)
       .catch(err => setMeetingsError(err?.message ?? String(err)));
+  }, [selected?.team.id]);
+
+  // Les catégories de réunion appartiennent à l'équipe. La première sert de proposition par
+  // défaut au formulaire — le coach reste libre de n'en mettre aucune.
+  useEffect(() => {
+    if (!selected) { setCategories([]); return; }
+    teamCategoriesApi.list(selected.team.id, 'meeting')
+      .then(list => {
+        setCategories(list);
+        setMeetForm(f => f.categoryId ? f : { ...f, categoryId: list[0]?.id ?? '' });
+      })
+      .catch(() => setCategories([]));
   }, [selected?.team.id]);
 
   async function handleMeetingSubmit(e: React.FormEvent) {
@@ -55,15 +70,16 @@ export default function MeetingsPage() {
     setMeetFormError('');
     try {
       const created = await meetingsApi.create({
-        teamId: selected.team.id,
-        title:  meetForm.title,
-        date:   meetForm.date,
-        time:   meetForm.time,
-        notes:  meetForm.notes || undefined,
+        teamId:     selected.team.id,
+        title:      meetForm.title,
+        date:       meetForm.date,
+        time:       meetForm.time,
+        notes:      meetForm.notes || undefined,
+        categoryId: meetForm.categoryId || undefined,
       });
       setMeetings(prev => [created, ...prev].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
       setShowMeetForm(false);
-      setMeetForm(emptyMeeting);
+      setMeetForm({ ...emptyMeeting, categoryId: categories[0]?.id ?? '' });
       notify(selected?.team.id, 'meeting_added', meetForm.title, { body: `${meetForm.date} à ${meetForm.time}`, entityType: 'meeting', entityId: created.id });
     } catch (err: unknown) {
       setMeetFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -72,8 +88,9 @@ export default function MeetingsPage() {
     }
   }
 
-  const upcomingMeetings = meetings.filter(m => m.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-  const pastMeetings     = meetings.filter(m => m.date < TODAY).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+  const shown            = filterCat ? meetings.filter(m => m.categoryId === filterCat) : meetings;
+  const upcomingMeetings = shown.filter(m => m.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+  const pastMeetings     = shown.filter(m => m.date < TODAY).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
 
   return (
     <div className="p-4 md:p-6">
@@ -95,6 +112,25 @@ export default function MeetingsPage() {
         </div>
       )}
 
+      {selected && categories.length > 0 && meetings.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {[{ id: '', name: 'Toutes', color: '#94A3B8' }, ...categories].map(c => {
+            const active = filterCat === c.id;
+            return (
+              <button key={c.id || 'all'} type="button" onClick={() => setFilterCat(c.id)}
+                style={{
+                  padding: '5px 11px', borderRadius: 999, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                  border: `1px solid ${active ? c.color : '#2A2F3A'}`,
+                  backgroundColor: active ? `${c.color}1F` : '#161920',
+                  color: active ? c.color : '#94A3B8',
+                }}>
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {selected && (
         meetings.length === 0 ? (
           canEditTeamData ? (
@@ -102,6 +138,10 @@ export default function MeetingsPage() {
           ) : (
             <EmptyState message="Aucune réunion. Seuls les rôles Admin et Éditeur peuvent en planifier." size="lg" />
           )
+        // Un filtre qui ne ramène rien doit le dire : sinon la page se vide sans expliquer
+        // pourquoi, et on croit avoir perdu ses réunions.
+        ) : shown.length === 0 ? (
+          <EmptyState message="Aucune réunion dans cette catégorie." size="lg" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[...upcomingMeetings, ...pastMeetings].map(m => {
@@ -134,6 +174,9 @@ export default function MeetingsPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.9rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
+                        {m.categoryName && (
+                          <CategoryBadge name={m.categoryName} color={m.categoryColor} size="sm" style={{ flexShrink: 0 }} />
+                        )}
                         {isToday && <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 8, letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>Aujourd'hui</span>}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -181,6 +224,13 @@ export default function MeetingsPage() {
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Heure *</label>
                 <input type="time" required value={meetForm.time} onChange={e => setMeetForm(f => ({ ...f, time: e.target.value }))} style={inputStyle} />
               </div>
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+              <select value={meetForm.categoryId} onChange={e => setMeetForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                <option value="">Sans catégorie</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
             <div>
               <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compte rendu / Notes</label>

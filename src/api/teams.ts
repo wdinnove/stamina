@@ -1,5 +1,5 @@
 import { supabase } from './client';
-import { exerciseCategoriesApi } from './exerciseCategories';
+import { teamCategoriesApi } from './categories';
 import type { Team, WellnessEntryMethod } from '../data/types';
 
 export const teamsApi = {
@@ -84,7 +84,7 @@ export const teamsApi = {
       });
     if (error) throw error;
 
-    await exerciseCategoriesApi.seedDefaults(id);
+    await teamCategoriesApi.seedDefaults(id);
 
     return {
       id,

@@ -24,10 +24,6 @@ const itemStyle: React.CSSProperties = {
   color: '#E6E9EF', fontSize: '0.85rem',
 };
 
-const SESSION_TYPE_LABELS: Record<string, string> = {
-  training: 'Entraînement', match: 'Match', gym: 'Gym', rest: 'Repos',
-};
-
 /** Toutes les formes sous lesquelles une date peut être tapée ("12/07", "12 juil", "Dimanche"…) */
 function dateKeywords(iso: string): string[] {
   return [iso, fmtDate(iso), fmtDateShort(iso), fmtDateWithDay(iso), fmtDateFull(iso)];
@@ -222,13 +218,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             {sessions.map(s => (
               <Command.Item
                 key={s.id}
-                value={`Séance ${SESSION_TYPE_LABELS[s.sessionType] ?? s.sessionType} — ${fmtDateFull(s.date)}`}
+                value={`Séance ${s.categoryName ?? 'sans catégorie'} — ${fmtDateFull(s.date)}`}
                 keywords={dateKeywords(s.date)}
                 onSelect={() => go(`/seances/${s.id}`)}
                 style={itemStyle}
               >
                 <Dumbbell size={16} style={{ color: '#00E5A0', flexShrink: 0 }} />
-                <span>{SESSION_TYPE_LABELS[s.sessionType] ?? s.sessionType} — {fmtDateWithDay(s.date)}</span>
+                <span>{s.categoryName ?? 'Séance'} — {fmtDateWithDay(s.date)}</span>
               </Command.Item>
             ))}
           </Command.Group>

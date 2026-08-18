@@ -17,6 +17,7 @@ const CLUB_SLUGS: Record<ClubSection, string> = {
   info:    'informations',
   teams:   'equipes',
   players: 'joueurs',
+  staff:   'staff',
   roles:   'roles',
 };
 

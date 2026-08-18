@@ -25,8 +25,8 @@ function localDate(offsetDays = 0): string {
   d.setDate(d.getDate() + offsetDays);
   return d.toLocaleDateString('sv');
 }
-interface TrainingSession { id: string; date: string; planned_duration: number; session_type?: string }
-interface SessionSummary  { id: string; date: string; duration: number; load: number | null; avgRpe: number | null; nbPlayers: number; type: string }
+interface TrainingSession { id: string; date: string; planned_duration: number }
+interface SessionSummary  { id: string; date: string; duration: number; load: number | null; avgRpe: number | null; nbPlayers: number }
 
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
@@ -132,7 +132,7 @@ export default function DashboardPage() {
 
         // Séances — 3 dernières (carte Entraînements, jamais impactée par le sélecteur de plage)
         const sessions: TrainingSession[] = sessResult.map(s => ({
-          id: s.id, date: s.date, planned_duration: s.plannedDuration, session_type: s.sessionType,
+          id: s.id, date: s.date, planned_duration: s.plannedDuration,
         }));
         const sessionDurMap = new Map(sessions.map(s => [s.id, s.planned_duration]));
         const sessionIds30d = sessions.map(s => s.id);
@@ -152,14 +152,14 @@ export default function DashboardPage() {
           setLast3Sessions(recentSessions.map(s => {
             const e = sessionLoadMap.get(s.id);
             return {
-              id: s.id, date: s.date, duration: s.planned_duration, type: s.session_type ?? 'training',
+              id: s.id, date: s.date, duration: s.planned_duration,
               load:    e ? Math.round(e.total) : null,
               avgRpe:  e ? Math.round(e.sumRpe / e.nb * 10) / 10 : null,
               nbPlayers: e?.nb ?? 0,
             };
           }));
         } else {
-          setLast3Sessions(recentSessions.map(s => ({ id: s.id, date: s.date, duration: s.planned_duration, type: s.session_type ?? 'training', load: null, avgRpe: null, nbPlayers: 0 })));
+          setLast3Sessions(recentSessions.map(s => ({ id: s.id, date: s.date, duration: s.planned_duration, load: null, avgRpe: null, nbPlayers: 0 })));
         }
 
         const allSessRows = await rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, undefined, today);
@@ -213,7 +213,10 @@ export default function DashboardPage() {
     ? `vs ${lastMatch.opponent} · ${lastMatch.homeAway === 'home' ? 'Domicile' : 'Extérieur'}`
     : 'Aucun match enregistré';
 
-  const lastSession = last3Sessions.filter(s => s.type !== 'match')[0] ?? null;
+  // Cette carte écartait les séances de type « match », qui doublonnaient la fiche match.
+  // Le type de séance appartient désormais au club : plus aucune valeur n'est garantie, et un
+  // match a sa propre table. On prend donc la dernière séance, quelle que soit sa catégorie.
+  const lastSession = last3Sessions[0] ?? null;
   const lastSessionColor = lastSession?.avgRpe != null ? rpeColor(lastSession.avgRpe) : '#475569';
   const lastSessionLabel = lastSession?.avgRpe != null ? rpeLabel(Math.round(lastSession.avgRpe)) : '—';
   const lastSessionSubtitle = lastSession

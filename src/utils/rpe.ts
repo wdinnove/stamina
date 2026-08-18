@@ -1,12 +1,23 @@
 import { teamAverageOfField, type TeamAverage } from './teamAverage';
+import type { SessionBlockKind } from '../data/types';
 
-/** Config visuelle (libellé, couleurs) par type de séance — partagée entre les pages/composants RPE */
-export const SESSION_TYPES: Record<string, { label: string; color: string; bg: string }> = {
-  training: { label: 'Entraînement', color: '#3B82F6', bg: '#3B82F622' },
-  match:    { label: 'Match',        color: '#F59E0B', bg: '#F59E0B22' },
-  gym:      { label: 'Salle',        color: '#A855F7', bg: '#A855F722' },
-  rest:     { label: 'Repos',        color: '#475569', bg: '#47556922' },
-};
+/**
+ * RPE estimé d'une séance : sa charge planifiée rapportée à son temps de TRAVAIL.
+ *
+ * Les repos sont exclus du dénominateur. Ils occupent du temps sans en porter la charge :
+ * les compter ferait baisser l'estimation à chaque pause ajoutée, et une séance planifiée
+ * avant l'arrivée des repos ne serait plus comparable à une séance d'après. La durée totale
+ * affichée, elle, les compte — c'est le temps qu'occupe la séance, pas son intensité.
+ *
+ * `null` quand il n'y a aucun temps de travail : rien à estimer.
+ */
+export function estimatedSessionRpe(
+  blocks: Array<{ kind: SessionBlockKind; duration: number; loadUa: number }>,
+): number | null {
+  const workDuration = blocks.reduce((sum, b) => b.kind === 'repos' ? sum : sum + b.duration, 0);
+  if (workDuration <= 0) return null;
+  return blocks.reduce((sum, b) => sum + b.loadUa, 0) / workDuration;
+}
 
 /** Sous-ensemble de champs requis pour les calculs de charge (ACWR, TSB…) — RPEEntry le satisfait déjà */
 export interface LoadEntry {

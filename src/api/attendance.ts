@@ -1,13 +1,21 @@
 import { supabase } from './client';
-import type { TrainingSession, TrainingAttendance, SessionType } from '../data/types';
+import type { TrainingSession, TrainingAttendance } from '../data/types';
+
+/** La catégorie voyage avec la séance : nom et couleur s'affichent partout sans que chaque
+ *  écran ait à tenir sa propre table de correspondance — le club change son vocabulaire, et
+ *  toute l'app suit. */
+const SELECT = '*, team_categories(id, name, color)';
 
 function toSession(row: Record<string, unknown>): TrainingSession {
+  const cat = row.team_categories as { id: string; name: string; color: string } | null | undefined;
   return {
     id:              row.id               as string,
     teamId:          row.team_id          as string,
     seasonId:        row.season_id        as string,
     date:            row.date             as string,
-    sessionType:     row.session_type     as SessionType,
+    categoryId:      cat?.id,
+    categoryName:    cat?.name,
+    categoryColor:   cat?.color,
     plannedDuration: row.planned_duration as number,
     notes:           row.notes            as string | undefined,
     createdAt:       row.created_at       as string,
@@ -29,7 +37,7 @@ export const attendanceApi = {
   async getSession(id: string): Promise<TrainingSession | null> {
     const { data, error } = await supabase
       .from('training_sessions')
-      .select('*')
+      .select(SELECT)
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -39,7 +47,7 @@ export const attendanceApi = {
   async listSessions(teamId: string, seasonId: string): Promise<TrainingSession[]> {
     const { data, error } = await supabase
       .from('training_sessions')
-      .select('*')
+      .select(SELECT)
       .eq('team_id', teamId)
       .eq('season_id', seasonId)
       .order('date', { ascending: true });
@@ -47,35 +55,35 @@ export const attendanceApi = {
     return (data ?? []).map(toSession);
   },
 
-  async createSession(input: { teamId: string; seasonId: string; date: string; duration: number; notes?: string }): Promise<TrainingSession> {
+  async createSession(input: { teamId: string; seasonId: string; date: string; duration: number; notes?: string; categoryId?: string }): Promise<TrainingSession> {
     const payload: Record<string, unknown> = {
       team_id:          input.teamId,
       season_id:        input.seasonId,
       date:             input.date,
-      session_type:     'training',
+      category_id:      input.categoryId ?? null,
       planned_duration: input.duration,
     };
     if (input.notes) payload.notes = input.notes;
     const { data, error } = await supabase
       .from('training_sessions')
       .insert(payload)
-      .select()
+      .select(SELECT)
       .single();
     if (error) throw error;
     return toSession(data);
   },
 
-  async updateSession(id: string, input: { date?: string; sessionType?: string; plannedDuration?: number; notes?: string | null }): Promise<TrainingSession> {
+  async updateSession(id: string, input: { date?: string; categoryId?: string | null; plannedDuration?: number; notes?: string | null }): Promise<TrainingSession> {
     const payload: Record<string, unknown> = {};
     if (input.date !== undefined) payload.date = input.date;
-    if (input.sessionType !== undefined) payload.session_type = input.sessionType;
+    if ('categoryId' in input) payload.category_id = input.categoryId ?? null;
     if (input.plannedDuration !== undefined) payload.planned_duration = input.plannedDuration;
     if ('notes' in input) payload.notes = input.notes ?? null;
     const { data, error } = await supabase
       .from('training_sessions')
       .update(payload)
       .eq('id', id)
-      .select()
+      .select(SELECT)
       .single();
     if (error) throw error;
     return toSession(data as Record<string, unknown>);

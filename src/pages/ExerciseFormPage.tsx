@@ -3,14 +3,14 @@ import { useBlocker, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, AlertCircle, Trash2, ChevronUp, ChevronDown, ListOrdered, FileText, Video, PencilRuler } from 'lucide-react';
 import { exercisesApi } from '../api/exercises';
 import { exercisePhasesApi } from '../api/exercisePhases';
-import { exerciseCategoriesApi } from '../api/exerciseCategories';
+import { teamCategoriesApi } from '../api/categories';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Card, CardTitle, DiagramEditor, DiagramThumb, Modal, AccessRestricted, Spinner, DropzoneEmptyState, AddButton } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
 import { createScene, newId, nextPhaseScene, type DiagramScene } from '../utils/diagram';
 import { MAX_EXERCISE_PHASES } from '../data/config';
-import type { Exercise, ExerciseCategory, ExercisePhase } from '../data/types';
+import type { Exercise, TeamCategory, ExercisePhase } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -69,7 +69,7 @@ export default function ExerciseFormPage() {
   const rolesLoading = roleLoading || teamRoleLoading;
 
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
-  const [categories, setCategories] = useState<ExerciseCategory[]>([]);
+  const [categories, setCategories] = useState<TeamCategory[]>([]);
   const [loading,    setLoading]    = useState(!isNew);
   const [denied,     setDenied]     = useState(false);
 
@@ -104,7 +104,7 @@ export default function ExerciseFormPage() {
 
   useEffect(() => {
     if (!selected) return;
-    exerciseCategoriesApi.list(selected.team.id).then(setCategories).catch(() => {});
+    teamCategoriesApi.list(selected.team.id, 'exercise').then(setCategories).catch(() => {});
   }, [selected?.team.id]);
 
   useEffect(() => {

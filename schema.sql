@@ -44,7 +44,6 @@
 
 CREATE TYPE player_status       AS ENUM ('active', 'injured', 'limited', 'suspended', 'unavailable');
 CREATE TYPE basketball_position AS ENUM ('Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot');
-CREATE TYPE session_type        AS ENUM ('training', 'match', 'gym', 'rest');
 CREATE TYPE block_intensity     AS ENUM ('basse', 'moyenne', 'haute', 'très élevée');
 CREATE TYPE medical_type        AS ENUM ('injury', 'checkup', 'treatment');
 CREATE TYPE medical_severity    AS ENUM ('mild', 'moderate', 'severe');
@@ -230,10 +229,16 @@ CREATE TRIGGER on_auth_user_created
 --    role : 'coach' | 'kine' | 'medecin' | 'prep_physique' | 'assistant' | 'autre'
 -- ────────────────────────────────────────────────────────────────
 
+-- Un membre du staff est une PERSONNE de l'organisation, pas une ligne par équipe :
+-- le même coach peut intervenir sur plusieurs équipes sans y être dédoublé. L'appartenance
+-- passe par `staff_team`, comme l'effectif passe par `player_season`.
+--
+-- `role` reste porté par la personne : la liste décrit un métier (kiné, préparateur…), pas une
+-- fonction dans une équipe donnée.
 CREATE TABLE staff (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-  profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  profile_id      UUID REFERENCES profiles(id) ON DELETE SET NULL,
   first_name TEXT NOT NULL,
   last_name  TEXT NOT NULL,
   role       TEXT NOT NULL
@@ -241,7 +246,19 @@ CREATE TABLE staff (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX ON staff (team_id);
+CREATE INDEX ON staff (organization_id);
+
+CREATE TABLE staff_team (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  staff_id   UUID NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (staff_id, team_id)
+);
+
+CREATE INDEX ON staff_team (team_id);
+CREATE INDEX ON staff_team (staff_id);
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -334,12 +351,17 @@ CREATE INDEX ON player_season (season_id);
 --     chaque joueur y soumet son RPE individuellement
 -- ────────────────────────────────────────────────────────────────
 
+-- `category_id` qualifie la séance (« Entraînement collectif », « Préparation physique »…).
+-- C'était un enum figé (`session_type`) : le vocabulaire change d'un club à l'autre, il
+-- appartient donc à l'équipe. Nullable, parce qu'une catégorie supprimée laisse ses séances
+-- derrière elle plutôt que de bloquer la suppression en base — l'écran de configuration, lui,
+-- refuse de supprimer une catégorie encore utilisée.
 CREATE TABLE training_sessions (
   id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id          UUID         NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   season_id        UUID         NOT NULL REFERENCES seasons(id),
   date             DATE         NOT NULL,
-  session_type     session_type NOT NULL,
+  category_id      UUID,        -- scope 'session' — contrainte posée après `team_categories`
   planned_duration SMALLINT     NOT NULL CHECK (planned_duration BETWEEN 1 AND 300),
   notes            TEXT,
   created_by       UUID         REFERENCES profiles(id) ON DELETE SET NULL,
@@ -356,10 +378,22 @@ CREATE INDEX ON training_sessions (team_id, date DESC);
 --     drill_id : FK nullable, réservée à la future table drills
 -- ────────────────────────────────────────────────────────────────
 
+-- `kind` distingue un exercice d'un repos. Un repos occupe du temps et rien d'autre : il
+-- compte dans la durée de la séance, ne porte ni catégorie, ni intensité, ni charge, et ne
+-- rejoint jamais la bibliothèque. D'où sa charge forcée à 0 dans `load_ua` — l'intensité de
+-- la ligne, elle, garde sa valeur par défaut, personne ne la lit.
+--
+-- `staff_id` : qui anime la séquence. Un seul membre — un atelier à deux coachs demanderait
+-- une table de liaison, que personne n'a réclamée.
+--
+-- `team_block_id` : le groupe d'équipes du jour utilisé par cette séquence (optionnel).
+-- La contrainte est posée plus bas, `session_team_blocks` n'existant pas encore ici.
 CREATE TABLE session_blocks (
   id         UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID            NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
   position   SMALLINT        NOT NULL DEFAULT 1,
+  kind       TEXT            NOT NULL DEFAULT 'exercice'
+               CHECK (kind IN ('exercice', 'repos')),
   duration   SMALLINT        NOT NULL CHECK (duration > 0),  -- minutes
   category   TEXT            NOT NULL,  -- 'Échauffement', 'Jeu réduit'…
   intensity  block_intensity NOT NULL DEFAULT 'moyenne',
@@ -367,14 +401,19 @@ CREATE TABLE session_blocks (
   description TEXT            NULL,      -- description propre à cette occurrence (copiée depuis la bibliothèque si liée, modifiable sans impact)
   consignes   TEXT            NULL,      -- instructions spécifiques à cette occurrence du bloc dans la séance
   drill_id    UUID            NULL,      -- FK future : REFERENCES drills(id)
-  -- Charge UA = durée × valeur intensité (basse=2, moyenne=5, haute=7, très élevée=9)
+  staff_id      UUID          NULL REFERENCES staff(id) ON DELETE SET NULL,
+  team_block_id UUID          NULL,
+  -- Charge UA = durée × valeur intensité (basse=2, moyenne=5, haute=7, très élevée=9),
+  -- et 0 pour un repos : du temps, pas de la charge.
   load_ua    SMALLINT GENERATED ALWAYS AS (
-    duration * CASE intensity
-      WHEN 'basse'       THEN 2
-      WHEN 'moyenne'     THEN 5
-      WHEN 'haute'       THEN 7
-      WHEN 'très élevée' THEN 9
-      ELSE 5
+    CASE WHEN kind = 'repos' THEN 0 ELSE
+      duration * CASE intensity
+        WHEN 'basse'       THEN 2
+        WHEN 'moyenne'     THEN 5
+        WHEN 'haute'       THEN 7
+        WHEN 'très élevée' THEN 9
+        ELSE 5
+      END
     END
   ) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -428,6 +467,13 @@ CREATE TABLE session_team_players (
 );
 
 CREATE INDEX ON session_team_players (session_team_id);
+
+-- Le lien séquence → groupe d'équipes, posé ici parce que `session_blocks` est déclarée
+-- avant `session_team_blocks`. `SET NULL` plutôt que `CASCADE` : supprimer un groupe d'équipes
+-- ne doit pas emporter la séquence qui s'en servait, elle perd juste son lien.
+ALTER TABLE session_blocks
+  ADD CONSTRAINT session_blocks_team_block_id_fkey
+  FOREIGN KEY (team_block_id) REFERENCES session_team_blocks(id) ON DELETE SET NULL;
 
 
 -- ────────────────────────────────────────────────────────────────
@@ -916,8 +962,9 @@ JOIN matches m ON m.id = tms.match_id;
 -- ────────────────────────────────────────────────────────────────
 
 CREATE TABLE staff_meetings (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  category_id UUID,  -- scope 'meeting' — contrainte posée après `team_categories`
   title      TEXT NOT NULL,
   date       DATE NOT NULL,
   time       TIME NOT NULL,
@@ -938,11 +985,17 @@ CREATE TABLE staff_meetings (
 -- L'étiquette porte sur la PRÉSENCE, jamais sur le joueur : le même joueur est titulaire dans
 -- son équipe, où il doit compter normalement, et partenaire ici. Un statut porté par le
 -- joueur fausserait les statistiques de sa propre équipe.
+--
+-- `not_expected` — « non attendu » : le joueur n'était pas censé venir (sélection, examens,
+-- récupération programmée, séance qui ne le concerne pas). Ce n'est ni une présence ni une
+-- absence : la ligne SORT du taux d'assiduité, dénominateur compris. Une absence prévue ne
+-- doit pas peser comme un manquement, et ne pas saisir la ligne du tout ne dirait pas la
+-- même chose — on ne saurait plus si le coach a oublié de pointer.
 CREATE TABLE training_attendance (
   id         UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID    NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
   player_id  UUID    NOT NULL REFERENCES players(id)           ON DELETE CASCADE,
-  status     TEXT    NOT NULL CHECK (status IN ('present', 'absent', 'late')),
+  status     TEXT    NOT NULL CHECK (status IN ('present', 'absent', 'late', 'not_expected')),
   sparring   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -1003,17 +1056,37 @@ ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 --      en SVG (cf. src/utils/diagram.ts).
 -- ────────────────────────────────────────────────────────────────
 
-CREATE TABLE exercise_categories (
+-- Les catégories que le club se donne, quel que soit ce qu'elles classent : `scope` dit à
+-- quoi la ligne s'applique. Une seule table plutôt qu'une par domaine — c'est le même objet
+-- (un nom, une couleur, un ordre, propres à une équipe), et l'écran de configuration les gère
+-- toutes de la même façon.
+--
+-- L'unicité porte sur (équipe, portée, nom) : « Physique » peut exister à la fois comme
+-- catégorie d'exercice et comme catégorie de séance sans se marcher dessus.
+CREATE TABLE team_categories (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  scope      TEXT NOT NULL DEFAULT 'exercise'
+               CHECK (scope IN ('exercise', 'meeting', 'session')),
   name       TEXT NOT NULL,
   color      TEXT NOT NULL,
   position   SMALLINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (team_id, name)
+  UNIQUE (team_id, scope, name)
 );
 
-CREATE INDEX ON exercise_categories (team_id);
+CREATE INDEX ON team_categories (team_id, scope);
+
+-- Les deux tables qui référencent les catégories sont déclarées AVANT celle-ci : leurs
+-- contraintes se posent donc ici, comme celle de `session_blocks.team_block_id` plus haut.
+-- `SET NULL` : supprimer une catégorie ne supprime pas ce qu'elle classait.
+ALTER TABLE training_sessions
+  ADD CONSTRAINT training_sessions_category_id_fkey
+  FOREIGN KEY (category_id) REFERENCES team_categories(id) ON DELETE SET NULL;
+
+ALTER TABLE staff_meetings
+  ADD CONSTRAINT staff_meetings_category_id_fkey
+  FOREIGN KEY (category_id) REFERENCES team_categories(id) ON DELETE SET NULL;
 
 -- `team_id` est obligatoire : un exercice appartient toujours à une équipe. Une ligne sans
 -- équipe serait de toute façon invisible pour tout le monde — la policy de lecture compare
@@ -1029,7 +1102,7 @@ CREATE TABLE exercises (
   name        TEXT NOT NULL,
   deroulement TEXT,  -- le « comment » de l'exercice
   objectifs   TEXT,  -- le « pourquoi » de l'exercice
-  category_id UUID REFERENCES exercise_categories(id) ON DELETE SET NULL,
+  category_id UUID REFERENCES team_categories(id) ON DELETE SET NULL,  -- scope 'exercise'
   video_url   TEXT,  -- option : lien réseau social, si le coach en a un
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1107,6 +1180,7 @@ ALTER TABLE seasons               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_roles            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE staff                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_team            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE players               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_season         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_sessions     ENABLE ROW LEVEL SECURITY;
@@ -1130,7 +1204,7 @@ ALTER TABLE staff_meetings        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_attendance   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercises             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercise_phases       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exercise_categories   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_categories       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications         ENABLE ROW LEVEL SECURITY;
 
 -- ── Policies ─────────────────────────────────────────────────────
@@ -1494,12 +1568,35 @@ CREATE POLICY "team_match_stats_write" ON team_match_stats
     match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids()))
   );
 
--- Staff : consultable par tous les rôles de l'équipe, géré par l'admin d'équipe
+-- Staff : la fiche d'identité est une affaire d'organisation ; l'appartenance à une équipe se
+-- gère équipe par équipe, par son admin. À l'INSERT d'une personne on ne peut pas contraindre
+-- sur `staff_team` (la ligne n'existe pas encore) : on exige d'être admin quelque part.
 CREATE POLICY "staff_select" ON staff
+  FOR SELECT TO authenticated
+  USING (organization_id = my_organization_id());
+
+-- Création : impossible de contraindre sur `staff_team`, la ligne de rattachement n'existe pas
+-- encore. Être admin d'au moins une équipe de l'organisation est donc le seul filtre possible,
+-- et il suffit : la personne créée n'apparaît nulle part avant d'être rattachée.
+CREATE POLICY "staff_insert" ON staff
+  FOR INSERT TO authenticated
+  WITH CHECK (organization_id = my_organization_id() AND EXISTS (SELECT 1 FROM admin_team_ids()));
+
+-- Modification et suppression, elles, se bornent aux personnes réellement gérées.
+CREATE POLICY "staff_update" ON staff
+  FOR UPDATE TO authenticated
+  USING      (organization_id = my_organization_id() AND staff_is_manageable(id))
+  WITH CHECK (organization_id = my_organization_id() AND staff_is_manageable(id));
+
+CREATE POLICY "staff_delete" ON staff
+  FOR DELETE TO authenticated
+  USING (organization_id = my_organization_id() AND staff_is_manageable(id));
+
+CREATE POLICY "staff_team_select" ON staff_team
   FOR SELECT TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
-CREATE POLICY "staff_write" ON staff
+CREATE POLICY "staff_team_write" ON staff_team
   FOR ALL TO authenticated
   USING      (team_id IN (SELECT * FROM admin_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
@@ -1589,11 +1686,11 @@ CREATE POLICY "exercises_write" ON exercises
   WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
 
 -- Catégories d'exercices : par équipe, config réservée à l'admin d'équipe
-CREATE POLICY "exercise_categories_select" ON exercise_categories
+CREATE POLICY "team_categories_select" ON team_categories
   FOR SELECT TO authenticated
   USING (team_id IN (SELECT * FROM accessible_team_ids()));
 
-CREATE POLICY "exercise_categories_write" ON exercise_categories
+CREATE POLICY "team_categories_write" ON team_categories
   FOR ALL TO authenticated
   USING      (team_id IN (SELECT * FROM admin_team_ids()))
   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
@@ -1733,6 +1830,30 @@ RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
         WHERE tr.team_id = t.id AND tr.profile_id = p.id AND tr.role = 'admin'
       )
     )
+$$;
+
+-- Helper RLS : qui peut MODIFIER ou SUPPRIMER la fiche d'un membre du staff ?
+--
+-- La fiche est org-wide, mais la gérer ne doit pas l'être : sans ce filtre, l'admin d'une
+-- équipe pourrait renommer ou supprimer n'importe quelle personne de l'organisation, y compris
+-- le staff d'une équipe à laquelle il n'a pas accès.
+--
+-- SECURITY DEFINER n'est pas cosmétique ici : interrogée sous la RLS de l'appelant,
+-- `staff_team` serait filtrée, et le `NOT EXISTS` deviendrait vrai pour une personne dont les
+-- rattachements sont simplement invisibles — l'inverse du contrôle voulu.
+--
+-- Le troisième cas couvre la personne rattachée à aucune équipe : elle vient d'être créée (ou
+-- son rattachement a échoué), tout admin de l'organisation doit pouvoir la corriger ou la
+-- supprimer, sinon la ligne devient intouchable.
+CREATE OR REPLACE FUNCTION staff_is_manageable(p_staff_id UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT is_superadmin()
+      OR EXISTS (
+        SELECT 1 FROM staff_team st
+        WHERE st.staff_id = p_staff_id
+          AND st.team_id IN (SELECT * FROM admin_team_ids())
+      )
+      OR NOT EXISTS (SELECT 1 FROM staff_team st WHERE st.staff_id = p_staff_id)
 $$;
 
 -- Helper RLS : le profil courant a-t-il un rôle admin/editor sur AU MOINS UNE
@@ -3843,3 +3964,337 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- Vérification — l'auteur doit être rempli tout seul :
 --   SELECT column_default FROM information_schema.columns
 --    WHERE table_name = 'player_notes' AND column_name = 'created_by';   -- auth.uid()
+
+-- Catégories d'équipe : une seule table pour tout ce que le club se donne à classer
+--
+-- `exercise_categories` ne classait que les exercices. Les réunions et les séances ont le
+-- même besoin, et le vocabulaire d'un club n'est pas celui du voisin. Plutôt que trois
+-- tables jumelles, la table devient `team_categories` avec une colonne `scope` — c'est le
+-- même objet (un nom, une couleur, un ordre, propres à une équipe) et le même écran de
+-- configuration les gère toutes.
+--
+-- Deux passages, séparés par le déploiement du front : le premier est entièrement additif,
+-- le second retire la colonne `session_type` une fois qu'on a vu l'application tourner sans
+-- elle. Le renommage de la table, lui, casse le front déployé : passage 1 et déploiement
+-- doivent s'enchaîner sans attendre.
+--
+-- Les sections 15 et suivantes de ce fichier citent encore `exercise_categories` : ce sont
+-- des migrations déjà exécutées, on ne réécrit pas l'histoire.
+--
+-- ── PASSAGE 1 — additif ─────────────────────────────────────────────────────
+--
+-- À VÉRIFIER D'ABORD. La contrainte d'unicité garde son nom d'origine après le renommage,
+-- et le DROP plus bas la nomme en dur. Si elle s'appelle autrement sur votre base, corrigez
+-- ce DROP — sinon l'ancienne unicité (team_id, name) survit et interdira le même nom sur
+-- deux portées différentes :
+--   SELECT conname FROM pg_constraint
+--    WHERE conrelid = 'exercise_categories'::regclass AND contype = 'u';
+--
+-- ALTER TABLE exercise_categories RENAME TO team_categories;
+--
+-- ALTER TABLE team_categories ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'exercise'
+--   CHECK (scope IN ('exercise', 'meeting', 'session'));
+--
+-- ALTER TABLE team_categories DROP CONSTRAINT IF EXISTS exercise_categories_team_id_name_key;
+-- ALTER TABLE team_categories ADD  CONSTRAINT team_categories_team_id_scope_name_key
+--   UNIQUE (team_id, scope, name);
+--
+-- CREATE INDEX IF NOT EXISTS team_categories_team_scope_idx ON team_categories (team_id, scope);
+--
+-- -- Les policies suivent la table, mais gardent un nom qui ne dit plus ce qu'elles gardent.
+-- DROP POLICY IF EXISTS "exercise_categories_select" ON team_categories;
+-- DROP POLICY IF EXISTS "exercise_categories_write"  ON team_categories;
+-- DROP POLICY IF EXISTS "exercise_categories_access" ON team_categories;
+-- CREATE POLICY "team_categories_select" ON team_categories
+--   FOR SELECT TO authenticated
+--   USING (team_id IN (SELECT * FROM accessible_team_ids()));
+-- CREATE POLICY "team_categories_write" ON team_categories
+--   FOR ALL TO authenticated
+--   USING      (team_id IN (SELECT * FROM admin_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+--
+-- -- Réunions — rien à reprendre, `staff_meetings` n'avait aucune catégorie.
+-- ALTER TABLE staff_meetings ADD COLUMN IF NOT EXISTS category_id UUID
+--   REFERENCES team_categories(id) ON DELETE SET NULL;
+--
+-- INSERT INTO team_categories (team_id, scope, name, color, position)
+-- SELECT t.id, 'meeting', c.name, c.color, c.position
+--   FROM teams t
+--   CROSS JOIN (VALUES ('Staff', '#3B82F6', 0), ('Équipe', '#00E5A0', 1)) AS c(name, color, position)
+--  ON CONFLICT (team_id, scope, name) DO NOTHING;
+--
+-- -- Séances — la colonne arrive à côté de `session_type`, qui reste le temps du déploiement.
+-- ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS category_id UUID
+--   REFERENCES team_categories(id) ON DELETE SET NULL;
+--
+-- -- INDISPENSABLE, et pas seulement du confort : le front déployé juste après ce passage
+-- -- n'envoie plus `session_type`. Tant qu'elle est NOT NULL sans défaut, TOUTE création de
+-- -- séance échoue — y compris depuis la saisie RPE. La colonne n'est plus lue par personne,
+-- -- elle attend juste le passage 2 pour disparaître.
+-- ALTER TABLE training_sessions ALTER COLUMN session_type DROP NOT NULL;
+--
+-- INSERT INTO team_categories (team_id, scope, name, color, position)
+-- SELECT t.id, 'session', c.name, c.color, c.position
+--   FROM teams t
+--   CROSS JOIN (VALUES
+--     ('Entraînement collectif',  '#3B82F6', 0),
+--     ('Entraînement individuel', '#06B6D4', 1),
+--     ('Préparation physique',    '#A855F7', 2)
+--   ) AS c(name, color, position)
+--  ON CONFLICT (team_id, scope, name) DO NOTHING;
+--
+-- -- « Match » et « Repos » ne font PAS partie des valeurs par défaut : elles ne sont créées
+-- -- que pour les équipes dont l'historique en contient, pour ne rien perdre. Une équipe qui
+-- -- n'a jamais saisi de séance « Match » ne les voit pas apparaître. Un match a d'ailleurs
+-- -- déjà sa table (`matches`) : `session_type = 'match'` doublonnait la notion.
+-- INSERT INTO team_categories (team_id, scope, name, color, position)
+-- SELECT DISTINCT ts.team_id, 'session', c.name, c.color, c.position
+--   FROM training_sessions ts
+--   JOIN (VALUES ('match', 'Match', '#F59E0B', 3), ('rest', 'Repos', '#475569', 4))
+--     AS c(session_type, name, color, position) ON c.session_type = ts.session_type::TEXT
+--  ON CONFLICT (team_id, scope, name) DO NOTHING;
+--
+-- -- Reprise : chaque séance rejoint la catégorie de SON équipe. « Salle » désignait déjà la
+-- -- muscu, elle rejoint « Préparation physique » — c'est le même objet sous deux noms.
+-- UPDATE training_sessions ts SET category_id = tc.id
+--   FROM team_categories tc
+--  WHERE tc.team_id = ts.team_id
+--    AND tc.scope   = 'session'
+--    AND tc.name    = CASE ts.session_type
+--          WHEN 'training' THEN 'Entraînement collectif'
+--          WHEN 'gym'      THEN 'Préparation physique'
+--          WHEN 'match'    THEN 'Match'
+--          WHEN 'rest'     THEN 'Repos'
+--        END;
+--
+-- ── Vérifications avant le passage 2 ────────────────────────────────────────
+--
+-- Aucune séance orpheline — doit valoir 0 :
+--   SELECT COUNT(*) FROM training_sessions WHERE category_id IS NULL;
+--
+-- Ce que chaque équipe a désormais sous les yeux :
+--   SELECT t.name, tc.scope, tc.name, tc.position
+--     FROM team_categories tc JOIN teams t ON t.id = tc.team_id
+--    ORDER BY t.name, tc.scope, tc.position;
+--
+-- ── PASSAGE 2 — après déploiement du front ──────────────────────────────────
+--
+-- ALTER TABLE training_sessions DROP COLUMN session_type;
+-- DROP TYPE IF EXISTS session_type;
+
+-- Séances : repos, animateur, et équipes du jour rattachées à une séquence
+--
+-- Trois colonnes sur `session_blocks`, et une expression générée à refaire.
+--
+-- `kind` — un repos entre deux exercices. Il occupe du temps et rien d'autre : il compte dans
+-- la durée de la séance, jamais dans sa charge. `load_ua` est une colonne GÉNÉRÉE : son
+-- expression ne se modifie pas en place sur toutes les versions de Postgres, on la supprime
+-- et on la recrée. Sans risque, c'est du calcul pur — aucune donnée n'y est stockée qui ne
+-- puisse être recalculée depuis `duration` et `intensity`.
+--
+-- Côté application, le RPE estimé d'une séance (`charge totale / durée`) exclut le repos de
+-- son dénominateur : c'est une intensité de travail, elle doit rester comparable d'une séance
+-- à l'autre. La durée affichée, elle, compte tout — c'est le temps qu'occupe la séance.
+--
+-- `staff_id` — qui anime la séquence. Un seul membre : un atelier à deux coachs demanderait
+-- une table de liaison, que personne n'a réclamée.
+--
+-- `team_block_id` — le groupe d'équipes du jour utilisé par cette séquence. Optionnel, et
+-- masqué tant qu'il n'est pas renseigné. `ON DELETE SET NULL` : supprimer un groupe ne doit
+-- pas emporter la séquence qui s'en servait.
+--
+-- PRÉREQUIS APPLICATIF : `sessionTeamsApi.saveBlocks` doit conserver les identifiants des
+-- groupes (c'est fait). Tant qu'il réenregistrait par delete + insert, chaque sauvegarde des
+-- équipes du jour vidait ce lien en silence.
+--
+-- ALTER TABLE session_blocks ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'exercice';
+-- ALTER TABLE session_blocks DROP CONSTRAINT IF EXISTS session_blocks_kind_check;
+-- ALTER TABLE session_blocks ADD  CONSTRAINT session_blocks_kind_check
+--   CHECK (kind IN ('exercice', 'repos'));
+--
+-- ALTER TABLE session_blocks DROP COLUMN load_ua;
+-- ALTER TABLE session_blocks ADD COLUMN load_ua SMALLINT GENERATED ALWAYS AS (
+--   CASE WHEN kind = 'repos' THEN 0 ELSE
+--     duration * CASE intensity
+--       WHEN 'basse'       THEN 2
+--       WHEN 'moyenne'     THEN 5
+--       WHEN 'haute'       THEN 7
+--       WHEN 'très élevée' THEN 9
+--       ELSE 5
+--     END
+--   END
+-- ) STORED;
+--
+-- ALTER TABLE session_blocks ADD COLUMN IF NOT EXISTS staff_id UUID
+--   REFERENCES staff(id) ON DELETE SET NULL;
+--
+-- ALTER TABLE session_blocks ADD COLUMN IF NOT EXISTS team_block_id UUID;
+-- ALTER TABLE session_blocks DROP CONSTRAINT IF EXISTS session_blocks_team_block_id_fkey;
+-- ALTER TABLE session_blocks ADD  CONSTRAINT session_blocks_team_block_id_fkey
+--   FOREIGN KEY (team_block_id) REFERENCES session_team_blocks(id) ON DELETE SET NULL;
+--
+-- Vérification — la charge doit être inchangée sur l'existant (tout est 'exercice') :
+--   SELECT COUNT(*) FROM session_blocks WHERE kind <> 'exercice';   -- 0
+--   SELECT SUM(load_ua) FROM session_blocks;                        -- à comparer à l'avant
+
+-- Staff : une personne, plusieurs équipes
+--
+-- `staff.team_id` faisait d'un membre du staff une ligne PAR ÉQUIPE. Le même coach sur trois
+-- équipes, c'était trois lignes, trois identifiants, trois fois le même compte lié — et donc
+-- une identité différente selon l'équipe pour `player_actions.assigned_to` et
+-- `medical_records.created_by`. Il n'existait d'ailleurs aucun écran d'assignation : le seul
+-- chemin était de recréer la personne dans chaque équipe.
+--
+-- Le modèle rejoint celui des joueurs, qui résout déjà ce problème : la personne appartient à
+-- l'organisation, l'appartenance à une équipe passe par une table de liaison.
+--
+-- Le `role` reste sur la personne : la liste (coach, kiné, médecin, préparateur…) décrit un
+-- métier, pas une fonction dans une équipe. Si « assistant en U18, coach en NF2 » devient un
+-- vrai besoin, ce sera un `staff_team.role` nullable en surcharge — pas avant.
+--
+-- TROIS TEMPS, et le deuxième se fait À LA MAIN.
+--
+-- ── PASSAGE 1 — additif, rien ne casse ──────────────────────────────────────
+--
+-- ALTER TABLE staff ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+--
+-- UPDATE staff s SET organization_id = t.organization_id
+--   FROM teams t WHERE t.id = s.team_id AND s.organization_id IS NULL;
+--
+-- ALTER TABLE staff ALTER COLUMN organization_id SET NOT NULL;
+-- CREATE INDEX IF NOT EXISTS staff_organization_id_idx ON staff (organization_id);
+--
+-- -- INDISPENSABLE : le front déployé juste après ce passage n'envoie plus `team_id`. Tant
+-- -- qu'elle est NOT NULL, créer un membre du staff échoue — et la fenêtre jusqu'au passage 3
+-- -- contient un dédoublonnage manuel, donc elle peut durer.
+-- ALTER TABLE staff ALTER COLUMN team_id DROP NOT NULL;
+--
+-- CREATE TABLE IF NOT EXISTS staff_team (
+--   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   staff_id   UUID NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+--   team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--   UNIQUE (staff_id, team_id)
+-- );
+-- CREATE INDEX IF NOT EXISTS staff_team_team_id_idx  ON staff_team (team_id);
+-- CREATE INDEX IF NOT EXISTS staff_team_staff_id_idx ON staff_team (staff_id);
+--
+-- -- Le garde sur NULL rend le bloc rejouable : après le DROP NOT NULL ci-dessus, une personne
+-- -- créée entre-temps par le nouveau front n'a pas de `team_id`, et `staff_team.team_id` est
+-- -- NOT NULL — sans ce filtre, un second passage échouerait.
+-- INSERT INTO staff_team (staff_id, team_id)
+-- SELECT s.id, s.team_id FROM staff s WHERE s.team_id IS NOT NULL
+--  ON CONFLICT (staff_id, team_id) DO NOTHING;
+--
+-- ALTER TABLE staff_team ENABLE ROW LEVEL SECURITY;
+--
+-- DROP POLICY IF EXISTS "staff_team_select" ON staff_team;
+-- CREATE POLICY "staff_team_select" ON staff_team
+--   FOR SELECT TO authenticated
+--   USING (team_id IN (SELECT * FROM accessible_team_ids()));
+--
+-- -- C'est ici que se joue le vrai contrôle : l'admin d'une équipe compose SON staff.
+-- DROP POLICY IF EXISTS "staff_team_write" ON staff_team;
+-- CREATE POLICY "staff_team_write" ON staff_team
+--   FOR ALL TO authenticated
+--   USING      (team_id IN (SELECT * FROM admin_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM admin_team_ids()));
+--
+-- -- La fiche d'identité devient une affaire d'organisation, mais la GÉRER reste borné aux
+-- -- équipes de l'utilisateur : sans ce filtre, l'admin d'une équipe pourrait renommer ou
+-- -- supprimer n'importe qui dans l'organisation. SECURITY DEFINER est indispensable — sous la
+-- -- RLS de l'appelant, `staff_team` serait filtrée et le NOT EXISTS s'inverserait.
+-- CREATE OR REPLACE FUNCTION staff_is_manageable(p_staff_id UUID)
+-- RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+--   SELECT is_superadmin()
+--       OR EXISTS (
+--         SELECT 1 FROM staff_team st
+--         WHERE st.staff_id = p_staff_id
+--           AND st.team_id IN (SELECT * FROM admin_team_ids())
+--       )
+--       OR NOT EXISTS (SELECT 1 FROM staff_team st WHERE st.staff_id = p_staff_id)
+-- $$;
+--
+-- DROP POLICY IF EXISTS "staff_select" ON staff;
+-- CREATE POLICY "staff_select" ON staff
+--   FOR SELECT TO authenticated
+--   USING (organization_id = my_organization_id());
+--
+-- -- L'ancienne policy unique cède la place à trois : la création ne peut pas se contraindre sur
+-- -- un rattachement qui n'existe pas encore, la modification et la suppression si.
+-- DROP POLICY IF EXISTS "staff_write" ON staff;
+-- DROP POLICY IF EXISTS "staff_insert" ON staff;
+-- CREATE POLICY "staff_insert" ON staff
+--   FOR INSERT TO authenticated
+--   WITH CHECK (organization_id = my_organization_id() AND EXISTS (SELECT 1 FROM admin_team_ids()));
+--
+-- DROP POLICY IF EXISTS "staff_update" ON staff;
+-- CREATE POLICY "staff_update" ON staff
+--   FOR UPDATE TO authenticated
+--   USING      (organization_id = my_organization_id() AND staff_is_manageable(id))
+--   WITH CHECK (organization_id = my_organization_id() AND staff_is_manageable(id));
+--
+-- DROP POLICY IF EXISTS "staff_delete" ON staff;
+-- CREATE POLICY "staff_delete" ON staff
+--   FOR DELETE TO authenticated
+--   USING (organization_id = my_organization_id() AND staff_is_manageable(id));
+--
+-- ── PASSAGE 2 — dédoublonnage, À LA MAIN ────────────────────────────────────
+--
+-- Une même personne présente sur deux équipes est aujourd'hui DEUX lignes. Il faut n'en garder
+-- qu'une, et repointer ce qui référence celle qui part — sinon des tâches et des dossiers
+-- médicaux changent de propriétaire en silence. Aucune fusion automatique ici : deux personnes
+-- peuvent légitimement porter le même nom.
+--
+-- Repérer les candidats :
+--   SELECT organization_id, lower(first_name) AS prenom, lower(last_name) AS nom,
+--          COUNT(*), array_agg(id) AS ids, array_agg(profile_id) AS profils
+--     FROM staff
+--    GROUP BY 1, 2, 3
+--   HAVING COUNT(*) > 1;
+--
+-- Un doublon certain : deux lignes qui partagent le MÊME compte.
+--   SELECT profile_id, COUNT(*), array_agg(id)
+--     FROM staff WHERE profile_id IS NOT NULL
+--    GROUP BY profile_id HAVING COUNT(*) > 1;
+--
+-- Ce que la ligne à supprimer emporte avec elle, à vérifier avant :
+--   SELECT 'actions' AS quoi, COUNT(*) FROM player_actions   WHERE assigned_to = '<ID_A_SUPPRIMER>'
+--   UNION ALL SELECT 'medical_cree',  COUNT(*) FROM medical_records WHERE created_by  = '<ID_A_SUPPRIMER>'
+--   UNION ALL SELECT 'medical_maj',   COUNT(*) FROM medical_records WHERE updated_by  = '<ID_A_SUPPRIMER>';
+--
+-- Puis, POUR CHAQUE doublon confirmé (<ID_GARDE> et <ID_A_SUPPRIMER>) :
+--   INSERT INTO staff_team (staff_id, team_id)
+--   SELECT '<ID_GARDE>', team_id FROM staff_team WHERE staff_id = '<ID_A_SUPPRIMER>'
+--    ON CONFLICT (staff_id, team_id) DO NOTHING;
+--
+--   UPDATE player_actions  SET assigned_to = '<ID_GARDE>' WHERE assigned_to = '<ID_A_SUPPRIMER>';
+--   UPDATE medical_records SET created_by  = '<ID_GARDE>' WHERE created_by  = '<ID_A_SUPPRIMER>';
+--   UPDATE medical_records SET updated_by  = '<ID_GARDE>' WHERE updated_by  = '<ID_A_SUPPRIMER>';
+--   UPDATE session_blocks  SET staff_id    = '<ID_GARDE>' WHERE staff_id    = '<ID_A_SUPPRIMER>';
+--
+--   DELETE FROM staff WHERE id = '<ID_A_SUPPRIMER>';
+--
+-- ── PASSAGE 3 — après déploiement du front et dédoublonnage ─────────────────
+--
+-- ALTER TABLE staff DROP COLUMN team_id;
+
+-- Présences : un quatrième statut, « non attendu »
+--
+-- Le joueur n'était pas censé venir : sélection, examens, récupération programmée, séance qui
+-- ne le concerne pas. Ce n'est ni une présence ni une absence — la ligne sort du taux
+-- d'assiduité, DÉNOMINATEUR COMPRIS. C'est ce qui la distingue d'un `absent` : une absence
+-- prévue ne doit pas peser comme un manquement.
+--
+-- Pourquoi une ligne plutôt que pas de ligne : sans elle, on ne saurait plus distinguer
+-- « pas attendu » de « le coach a oublié de pointer ». Les deux sortent du calcul, mais l'un
+-- est une information et l'autre un trou.
+--
+-- Purement additif : aucune ligne existante ne change de statut, aucun taux ne bouge.
+--
+-- ALTER TABLE training_attendance DROP CONSTRAINT IF EXISTS training_attendance_status_check;
+-- ALTER TABLE training_attendance ADD  CONSTRAINT training_attendance_status_check
+--   CHECK (status IN ('present', 'absent', 'late', 'not_expected'));
+--
+-- Vérification — la contrainte accepte bien la nouvelle valeur, et rien n'a bougé :
+--   SELECT status, COUNT(*) FROM training_attendance GROUP BY status ORDER BY status;

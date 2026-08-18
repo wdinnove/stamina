@@ -14,6 +14,10 @@ interface BadgeProps {
   style?: CSSProperties;
 }
 
+/** Libellé de repli quand la ligne a perdu sa catégorie — supprimée depuis, ou jamais choisie.
+ *  Un trou dans une colonne se lit comme un bug ; « Sans catégorie » se lit comme un état. */
+export const CATEGORY_MISSING_LABEL = 'Sans catégorie';
+
 /** Pastille colorée (statut/tier/type…) — mutualise le style répété dans ~30 fichiers de l'app. */
 export function Badge({ color, bg, label, size = 'md', style }: BadgeProps) {
   return (
@@ -28,5 +32,22 @@ export function Badge({ color, bg, label, size = 'md', style }: BadgeProps) {
     }}>
       {label}
     </span>
+  );
+}
+
+/** La catégorie d'équipe telle qu'elle s'affiche partout — y compris absente. Les couleurs
+ *  viennent de la configuration de l'équipe, pas d'une table figée dans le code. */
+export function CategoryBadge({ name, color, size = 'md', style }: {
+  name?: string;
+  color?: string;
+  size?: 'sm' | 'md';
+  style?: CSSProperties;
+}) {
+  return (
+    <Badge
+      color={color ?? CATEGORY_FALLBACK_COLOR}
+      label={name ?? CATEGORY_MISSING_LABEL}
+      size={size}
+      style={style} />
   );
 }

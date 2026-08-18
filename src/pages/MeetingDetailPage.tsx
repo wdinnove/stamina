@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Edit, Trash2, Save, X, Check, AlertCircle, Calendar, Clock } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
+import { teamCategoriesApi } from '../api/categories';
 import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { fmtDateFull } from '../utils/dateFormat';
 import { sanitizeHtml } from '../utils/sanitize';
-import { Modal, AccessRestricted } from '../components';
+import { Modal, AccessRestricted, CategoryBadge } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import type { StaffMeeting } from '../data/types';
+import type { StaffMeeting, TeamCategory } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -29,7 +30,8 @@ export default function MeetingDetailPage() {
   const [editing,     setEditing]     = useState(false);
   const [savingMeta,  setSavingMeta]  = useState(false);
   const [metaError,   setMetaError]   = useState('');
-  const [metaForm,    setMetaForm]    = useState({ title: '', date: '', time: '' });
+  const [metaForm,    setMetaForm]    = useState({ title: '', date: '', time: '', categoryId: '' });
+  const [categories,  setCategories]  = useState<TeamCategory[]>([]);
 
   const [notesEdit,  setNotesEdit]  = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
@@ -49,6 +51,11 @@ export default function MeetingDetailPage() {
         setLoading(false);
       }, (err: { message?: string }) => { setFetchErr(err?.message ?? 'Erreur de chargement.'); setLoading(false); });
   }, [id]);
+
+  useEffect(() => {
+    if (!selected) { setCategories([]); return; }
+    teamCategoriesApi.list(selected.team.id, 'meeting').then(setCategories).catch(() => setCategories([]));
+  }, [selected?.team.id]);
 
   useEffect(() => {
     // La réunion dans l'URL n'appartient pas à l'équipe sélectionnée (ex. bascule dans la TopBar).
@@ -84,7 +91,7 @@ export default function MeetingDetailPage() {
     setSavingMeta(true);
     setMetaError('');
     try {
-      const updated = await meetingsApi.update(meeting!.id, { title: metaForm.title, date: metaForm.date, time: metaForm.time });
+      const updated = await meetingsApi.update(meeting!.id, { title: metaForm.title, date: metaForm.date, time: metaForm.time, categoryId: metaForm.categoryId || null });
       setMeeting(updated);
       setEditing(false);
     } catch (err: unknown) {
@@ -146,6 +153,9 @@ export default function MeetingDetailPage() {
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94A3B8', fontSize: '0.85rem' }}>
                   <Clock size={14} /> {meeting.time.slice(0, 5)}
                 </span>
+                {meeting.categoryName && (
+                  <CategoryBadge name={meeting.categoryName} color={meeting.categoryColor} />
+                )}
                 {meeting.date === TODAY && (
                   <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 8, letterSpacing: '0.05em' }}>Aujourd'hui</span>
                 )}
@@ -153,7 +163,7 @@ export default function MeetingDetailPage() {
             </div>
             {canEditTeamData && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <button onClick={() => { setMetaForm({ title: meeting.title, date: meeting.date, time: meeting.time }); setMetaError(''); setEditing(true); }}
+              <button onClick={() => { setMetaForm({ title: meeting.title, date: meeting.date, time: meeting.time, categoryId: meeting.categoryId ?? '' }); setMetaError(''); setEditing(true); }}
                 style={{ padding: '7px 14px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Edit size={13} /> Modifier
               </button>
@@ -191,6 +201,13 @@ export default function MeetingDetailPage() {
                 <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Heure *</label>
                 <input type="time" required value={metaForm.time} onChange={e => setMetaForm(f => ({ ...f, time: e.target.value }))} style={inputStyle} />
               </div>
+            </div>
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+              <select value={metaForm.categoryId} onChange={e => setMetaForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                <option value="">Sans catégorie</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button type="button" onClick={() => setEditing(false)} style={{ flex: 1, padding: '9px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
