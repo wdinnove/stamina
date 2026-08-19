@@ -19,7 +19,10 @@ export type ActionKind   = 'dribble' | 'pass' | 'cut' | 'screen' | 'shot' | 'han
 
 export interface Pt { x: number; y: number }
 
-export interface PlayerElement { id: string; type: 'player'; team: DiagramTeam; label: string; x: number; y: number }
+/** `hasBall` ne vaut que pour un attaquant : c'est ce qui distingue, à l'affichage, celui qui
+ *  porte le ballon (cercle) du reste de l'attaque (chiffre seul). Absent ou faux = pas de ballon
+ *  — un défenseur ne s'en sert jamais, mais rien n'empêche techniquement de le poser. */
+export interface PlayerElement { id: string; type: 'player'; team: DiagramTeam; label: string; hasBall?: boolean; x: number; y: number }
 export interface BallElement   { id: string; type: 'ball';   x: number; y: number }
 export interface ConeElement   { id: string; type: 'cone';   x: number; y: number }
 export interface TextElement   { id: string; type: 'text';   text: string; x: number; y: number }
@@ -145,8 +148,16 @@ const LINK_R = MARKER.playerR + 0.35;
  * encore libre part de là où il vient d'arriver. Chaque tracé n'est consommé qu'une fois, sinon
  * deux joueurs partis du même point s'y renverraient l'un l'autre indéfiniment.
  *
- * Tout le reste — ballon, plots, textes et les tracés eux-mêmes — repart de zéro : la phase
- * suivante décrit un autre mouvement, pas la copie du précédent.
+ * Une passe transfère le ballon : le porteur de la phase suivante est celui qui se trouve à
+ * l'arrivée de la DERNIÈRE passe du bloc (au sens de l'ordre de création, donc de l'ordre dans
+ * `scene.elements`) — une passe plus ancienne ne compte plus, elle décrit un ballon qui a déjà
+ * changé de mains avant celui-ci. Le joueur reçoit à l'endroit où il finit la phase : une passe
+ * vers un joueur qui coupe en même temps vers ce point arrive bien chez lui. Sans passe dans le
+ * bloc, le porteur ne change pas — la phase suivante ne fait alors aucune hypothèse sur le
+ * ballon.
+ *
+ * Tout le reste — le marqueur du ballon, les plots, les textes et les tracés eux-mêmes —
+ * repart de zéro : la phase suivante décrit un autre mouvement, pas la copie du précédent.
  */
 export function nextPhaseScene(scene: DiagramScene): DiagramScene {
   const players = scene.elements.filter((el): el is PlayerElement => el.type === 'player').map(p => ({ ...p }));
@@ -164,6 +175,17 @@ export function nextPhaseScene(scene: DiagramScene): DiagramScene {
       const at = clampToCourt(move.to, scene.court);
       player.x = at.x;
       player.y = at.y;
+    }
+  }
+
+  const passes = scene.elements.filter((el): el is ActionElement => el.type === 'action' && el.kind === 'pass');
+  if (passes.length > 0) {
+    const lastPass = passes[passes.length - 1];
+    // Position finale des joueurs (après leurs propres tracés), pas leur position de départ :
+    // un joueur qui coupe pile là où la passe arrive doit être reconnu comme le receveur.
+    const receiver = players.find(p => p.team === 'off' && Math.hypot(p.x - lastPass.to.x, p.y - lastPass.to.y) <= LINK_R);
+    if (receiver) {
+      for (const p of players) p.hasBall = p.id === receiver.id;
     }
   }
 

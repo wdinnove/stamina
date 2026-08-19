@@ -43,18 +43,37 @@ export function sceneAspect(scene: DiagramScene): number {
 
 /* ── Marqueurs ────────────────────────────────────────────────────────────── */
 
+/**
+ * Un attaquant sans ballon n'est qu'un chiffre : rien à distinguer d'un simple repère de
+ * position, le cercle serait un bruit visuel de plus sur un schéma qui en a déjà beaucoup.
+ * Celui qui porte le ballon, lui, sort du lot — c'est la seule information de statut que ce
+ * marqueur porte, elle doit donc se voir avant tout le reste.
+ *
+ * Un défenseur, à l'inverse, se distingue toujours de la même façon : un disque rouge plein,
+ * jamais un simple chiffre — on ne confond pas visuellement un défenseur avec un repère vide.
+ */
 function Player({ el }: { el: Extract<DiagramElement, { type: 'player' }> }) {
-  const color = el.team === 'off' ? ELEMENT_COLORS.off : ELEMENT_COLORS.def;
   const r = MARKER.playerR;
+
+  if (el.team === 'def') {
+    return (
+      <g>
+        <circle cx={el.x} cy={el.y} r={r} fill={ELEMENT_COLORS.def} />
+        <text
+          x={el.x} y={el.y} fill={ELEMENT_COLORS.text} fontFamily={FONT} fontSize={0.86} fontWeight={700}
+          textAnchor="middle" dominantBaseline="central"
+        >
+          {el.label}
+        </text>
+      </g>
+    );
+  }
+
+  const color = ELEMENT_COLORS.off;
   return (
     <g>
-      {el.team === 'off' ? (
+      {el.hasBall && (
         <circle cx={el.x} cy={el.y} r={r} fill={COURT_COLORS.surface} stroke={color} strokeWidth={MARKER.strokeW} />
-      ) : (
-        <rect
-          x={el.x - r} y={el.y - r} width={r * 2} height={r * 2} rx={0.14}
-          fill={COURT_COLORS.surface} stroke={color} strokeWidth={MARKER.strokeW}
-        />
       )}
       <text
         x={el.x} y={el.y} fill={color} fontFamily={FONT} fontSize={0.86} fontWeight={700}

@@ -4,10 +4,10 @@ import {
   createScene, convertCourt, clampToCourt, spawnPoint,
   quadPoint, quadTangent, defaultCtrl, renderAction, arrowPoints, barSegment,
   hitTest, ctrlHandle, ctrlFromHandle, moveEndpoint, nextPhaseScene,
-  type DiagramScene, type DiagramElement, type ActionElement, type Pt,
+  type DiagramScene, type DiagramElement, type PlayerElement, type ActionElement, type Pt,
 } from './diagram';
 
-const player = (id: string, x: number, y: number): DiagramElement =>
+const player = (id: string, x: number, y: number): PlayerElement =>
   ({ id, type: 'player', team: 'off', label: '1', x, y });
 
 const action = (kind: ActionElement['kind'], from: Pt, to: Pt, ctrl?: Pt): ActionElement =>
@@ -285,6 +285,62 @@ describe('nextPhaseScene', () => {
     ]);
     const [p] = nextPhaseScene(s).elements as [DiagramElement & { x: number; y: number }];
     expect([p.x, p.y]).toEqual([5, 5]);
+  });
+
+  it('transfère le ballon au joueur qui reçoit la passe', () => {
+    const s = scene([
+      { ...player('a', 5, 5), hasBall: true },
+      player('b', 10, 5),
+      move('m', 'pass', { x: 5, y: 5 }, { x: 10, y: 5 }),
+    ]);
+    const [a, b] = nextPhaseScene(s).elements as (DiagramElement & { hasBall?: boolean })[];
+    expect(a.hasBall).toBe(false);
+    expect(b.hasBall).toBe(true);
+  });
+
+  it('ne retient que la dernière passe du bloc si plusieurs se succèdent', () => {
+    const s = scene([
+      { ...player('a', 5, 5), hasBall: true },
+      player('b', 10, 5),
+      player('c', 3, 9),
+      move('m1', 'pass', { x: 5, y: 5 }, { x: 10, y: 5 }),   // vers b — plus ancienne, ignorée
+      move('m2', 'pass', { x: 5, y: 5 }, { x: 3, y: 9 }),    // vers c — la dernière, elle compte
+    ]);
+    const [a, b, c] = nextPhaseScene(s).elements as (DiagramElement & { hasBall?: boolean })[];
+    expect(a.hasBall).toBe(false);
+    expect(b.hasBall).toBe(false);
+    expect(c.hasBall).toBe(true);
+  });
+
+  it('reconnaît le receveur à sa position finale, même s\'il coupe en même temps que la passe', () => {
+    const s = scene([
+      { ...player('a', 5, 5), hasBall: true },
+      player('b', 2, 2),
+      move('m1', 'cut',  { x: 2, y: 2 }, { x: 10, y: 5 }),
+      move('m2', 'pass', { x: 5, y: 5 }, { x: 10, y: 5 }),
+    ]);
+    const [, b] = nextPhaseScene(s).elements as (DiagramElement & { hasBall?: boolean })[];
+    expect(b.hasBall).toBe(true);
+  });
+
+  it('sans attaquant à l\'arrivée de la dernière passe (un défenseur ne compte pas), le porteur ne change pas', () => {
+    const s = scene([
+      { ...player('a', 5, 5), hasBall: true },
+      { ...player('d', 10, 5), team: 'def' },
+      move('m', 'pass', { x: 5, y: 5 }, { x: 10, y: 5 }),
+    ]);
+    const [a, d] = nextPhaseScene(s).elements as (DiagramElement & { hasBall?: boolean })[];
+    expect(a.hasBall).toBe(true);
+    expect(d.hasBall).toBeUndefined();
+  });
+
+  it('laisse le ballon inchangé quand le bloc ne contient aucune passe', () => {
+    const s = scene([
+      { ...player('a', 5, 5), hasBall: true },
+      move('m', 'cut', { x: 5, y: 5 }, { x: 8, y: 8 }),
+    ]);
+    const [a] = nextPhaseScene(s).elements as (DiagramElement & { hasBall?: boolean })[];
+    expect(a.hasBall).toBe(true);
   });
 
   it('enchaîne les tracés successifs d\'un même joueur', () => {

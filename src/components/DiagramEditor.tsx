@@ -479,11 +479,26 @@ export function DiagramEditor({ initial, onChange, disabled }: {
               <>
                 <input
                   value={selected.label} maxLength={3} onChange={e => patchSelected({ label: e.target.value } as Partial<DiagramElement>)}
-                  style={{ ...inputStyle, width: 54, textAlign: 'center' }}
+                  style={{ ...inputStyle, width: 40, textAlign: 'center', flexShrink: 0 }}
                 />
-                <button type="button" style={{ ...btnStyle(false, selected.team === 'off' ? ELEMENT_COLORS.def : ELEMENT_COLORS.off), flex: 1 }}
-                  onClick={() => patchSelected({ team: selected.team === 'off' ? 'def' : 'off' } as Partial<DiagramElement>)}>
-                  {selected.team === 'off' ? 'Passer en défense' : 'Passer en attaque'}
+                {/* Le ballon ne veut rien dire en défense : bouton figé sur « Non porteur »,
+                    pas seulement grisé — sinon un clic malheureux poserait un état sans effet
+                    visuel ni sens, qui ressurgirait si le joueur repasse en attaque. */}
+                <button type="button" disabled={selected.team === 'def'}
+                  style={{
+                    ...btnStyle(selected.team === 'off' && !!selected.hasBall, ELEMENT_COLORS.off),
+                    flex: 1, padding: '7px 4px',
+                    cursor: selected.team === 'def' ? 'not-allowed' : 'pointer',
+                    opacity: selected.team === 'def' ? 0.5 : 1,
+                  }}
+                  onClick={() => patchSelected({ hasBall: !selected.hasBall } as Partial<DiagramElement>)}>
+                  {selected.team === 'off' && selected.hasBall ? 'Porteur' : 'Non porteur'}
+                </button>
+                <button type="button" style={{ ...btnStyle(true, selected.team === 'off' ? ELEMENT_COLORS.off : ELEMENT_COLORS.def), flex: 1, padding: '7px 4px' }}
+                  onClick={() => patchSelected(
+                    selected.team === 'off' ? { team: 'def', hasBall: false } : { team: 'off' } as Partial<DiagramElement>,
+                  )}>
+                  {selected.team === 'off' ? 'Attaque' : 'Défense'}
                 </button>
               </>
             )}
