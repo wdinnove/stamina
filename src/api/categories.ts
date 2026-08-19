@@ -14,6 +14,7 @@ const USAGE: Record<CategoryScope, { table: string; column: string }> = {
   exercise: { table: 'exercises',         column: 'category_id' },
   meeting:  { table: 'staff_meetings',    column: 'category_id' },
   session:  { table: 'training_sessions', column: 'category_id' },
+  system:   { table: 'tactical_systems',  column: 'category_id' },
 };
 
 /**
@@ -42,6 +43,12 @@ const DEFAULTS: Record<CategoryScope, { name: string; color: string }[]> = {
     { name: 'Entraînement collectif',  color: '#3B82F6' },
     { name: 'Entraînement individuel', color: '#06B6D4' },
     { name: 'Préparation physique',    color: '#A855F7' },
+  ],
+  system: [
+    { name: 'Attaque',            color: '#3B82F6' },
+    { name: 'Défense',            color: '#EF4444' },
+    { name: 'Transition',         color: '#06B6D4' },
+    { name: 'Sorties de balle',   color: '#F59E0B' },
   ],
 };
 

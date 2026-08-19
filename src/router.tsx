@@ -117,6 +117,11 @@ export const router = createBrowserRouter([
           { path: 'exercices/nouveau',   lazy: () => import('./pages/ExerciseFormPage').then(m => ({ Component: m.default })) },
           { path: 'exercices/:id',       lazy: () => import('./pages/ExerciseDetailPage').then(m => ({ Component: m.default })) },
           { path: 'exercices/:id/modifier', lazy: () => import('./pages/ExerciseFormPage').then(m => ({ Component: m.default })) },
+          // Systèmes tactiques : même gabarit que les exercices, mais jamais liés à une séance.
+          { path: 'systemes',               lazy: () => import('./pages/TacticalSystemsPage').then(m => ({ Component: m.default })) },
+          { path: 'systemes/nouveau',       lazy: () => import('./pages/TacticalSystemFormPage').then(m => ({ Component: m.default })) },
+          { path: 'systemes/:id',           lazy: () => import('./pages/TacticalSystemDetailPage').then(m => ({ Component: m.default })) },
+          { path: 'systemes/:id/modifier',  lazy: () => import('./pages/TacticalSystemFormPage').then(m => ({ Component: m.default })) },
           { path: 'aide',            lazy: () => import('./pages/HelpPage').then(m => ({ Component: m.default })) },
           { path: 'aide/:section',   lazy: () => import('./pages/HelpPage').then(m => ({ Component: m.default })) },
           { path: 'profil',          lazy: () => import('./pages/ProfilePage').then(m => ({ Component: m.default })) },

@@ -466,7 +466,7 @@ export interface Exercise {
 
 /** Ce qu'une catégorie d'équipe classe. Une même équipe peut avoir « Physique » en exercice
  *  et en séance : ce sont deux lignes, elles ne se confondent pas. */
-export type CategoryScope = 'exercise' | 'meeting' | 'session';
+export type CategoryScope = 'exercise' | 'meeting' | 'session' | 'system';
 
 /** Un nom, une couleur, un rang — propres à une équipe. Le club se donne son vocabulaire,
  *  l'app n'en impose que les valeurs de départ. */
@@ -493,6 +493,43 @@ export interface ExercisePhase {
   text?: string;
   scene: DiagramScene;
   /** Raster réservé à un futur export PDF de séance — jamais renseigné aujourd'hui. */
+  thumbUrl?: string;
+  createdAt: string;
+}
+
+/**
+ * Un système tactique = un en-tête + une séquence de phases (voir `TacticalSystemPhase`).
+ * Contrairement à l'exercice, il ne se rattache jamais à une séance : pas d'équivalent au
+ * `drillId` d'un bloc de séance, c'est un bloc de bibliothèque indépendant.
+ */
+export interface TacticalSystem {
+  id: string;
+  name: string;
+  teamId: string;
+  description?: string;
+  categoryId?: string;
+  categoryName?: string;
+  categoryColor?: string;
+  /** Nombre de phases, pour les écrans qui n'ont pas besoin de leur contenu. */
+  phaseCount: number;
+  /** Scène de la première phase — la vignette du système dans la liste. */
+  coverScene?: DiagramScene;
+  createdAt: string;
+}
+
+/**
+ * Une phase de système : un schéma de terrain et son texte, dans l'ordre `position`.
+ *
+ * `scene` est la source de vérité et se rend en SVG partout — aucun fichier n'est produit.
+ * Une scène sans élément est légitime : la phase n'est alors que du texte.
+ */
+export interface TacticalSystemPhase {
+  id: string;
+  systemId: string;
+  position: number;
+  title?: string;
+  text?: string;
+  scene: DiagramScene;
   thumbUrl?: string;
   createdAt: string;
 }

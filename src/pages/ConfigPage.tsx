@@ -1207,6 +1207,11 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
             title="Catégories de séance"
             description="Elles qualifient les séances — c'est ce qui s'affiche en étiquette dans le planning et sur la fiche. Une catégorie encore utilisée ne peut pas être supprimée : renommez-la, ou déplacez d'abord les séances concernées."
             guardDelete />
+
+          <CategoryManager
+            teamId={selected.team.id} scope="system"
+            title="Catégories de systèmes"
+            description={'Elles classent les systèmes tactiques de la bibliothèque. Supprimer une catégorie ne supprime pas les systèmes qui l\'utilisent : ils deviennent simplement "sans catégorie".'} />
         </ConfigStack>
       )}
 

@@ -4298,3 +4298,76 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --
 -- Vérification — la contrainte accepte bien la nouvelle valeur, et rien n'a bougé :
 --   SELECT status, COUNT(*) FROM training_attendance GROUP BY status ORDER BY status;
+
+-- Systèmes tactiques : un nouvel onglet, indépendant des séances
+--
+-- Un système (attaque, défense, transition…) se catalogue comme un exercice — titre, catégorie,
+-- description, phases dessinées sur le terrain — mais ne se rattache JAMAIS à une séance : pas
+-- d'équivalent au `drillId` d'un bloc de séance, c'est un bloc de bibliothèque indépendant.
+--
+-- CREATE TABLE tactical_systems (
+--   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+--   name        TEXT NOT NULL,
+--   description TEXT,
+--   category_id UUID REFERENCES team_categories(id) ON DELETE SET NULL,  -- scope 'system'
+--   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX ON tactical_systems (team_id);
+--
+-- CREATE TABLE tactical_system_phases (
+--   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   tactical_system_id UUID NOT NULL REFERENCES tactical_systems(id) ON DELETE CASCADE,
+--   position           SMALLINT NOT NULL DEFAULT 0,
+--   title              TEXT,
+--   text               TEXT,
+--   scene              JSONB NOT NULL,
+--   thumb_url          TEXT,
+--   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
+-- CREATE INDEX ON tactical_system_phases (tactical_system_id);
+--
+-- ALTER TABLE tactical_systems       ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE tactical_system_phases ENABLE ROW LEVEL SECURITY;
+--
+-- CREATE POLICY "tactical_systems_select" ON tactical_systems
+--   FOR SELECT TO authenticated
+--   USING (team_id IN (SELECT * FROM accessible_team_ids()));
+-- CREATE POLICY "tactical_systems_write" ON tactical_systems
+--   FOR ALL TO authenticated
+--   USING      (team_id IN (SELECT * FROM writable_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+--
+-- CREATE POLICY "tactical_system_phases_select" ON tactical_system_phases
+--   FOR SELECT TO authenticated
+--   USING (tactical_system_id IN (SELECT id FROM tactical_systems WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+-- CREATE POLICY "tactical_system_phases_write" ON tactical_system_phases
+--   FOR ALL TO authenticated
+--   USING      (tactical_system_id IN (SELECT id FROM tactical_systems WHERE team_id IN (SELECT * FROM writable_team_ids())))
+--   WITH CHECK (tactical_system_id IN (SELECT id FROM tactical_systems WHERE team_id IN (SELECT * FROM writable_team_ids())));
+--
+-- -- Catégories : une quatrième portée. Le nom de la contrainte CHECK sur `scope` n'est pas
+-- -- fiable (posée sans nom explicite à sa création) — on la retrouve par la colonne plutôt que
+-- -- de deviner son nom.
+-- DO $$
+-- DECLARE c TEXT;
+-- BEGIN
+--   SELECT con.conname INTO c
+--     FROM pg_constraint con
+--     JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY(con.conkey)
+--    WHERE con.conrelid = 'team_categories'::regclass
+--      AND con.contype = 'c'
+--      AND att.attname = 'scope';
+--   IF c IS NOT NULL THEN
+--     EXECUTE format('ALTER TABLE team_categories DROP CONSTRAINT %I', c);
+--   END IF;
+-- END $$;
+--
+-- ALTER TABLE team_categories ADD CONSTRAINT team_categories_scope_check
+--   CHECK (scope IN ('exercise', 'meeting', 'session', 'system'));
+--
+-- Vérification — la contrainte accepte la nouvelle portée, et les tables existent :
+--   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+--    WHERE conrelid = 'team_categories'::regclass AND contype = 'c';
+--   SELECT COUNT(*) FROM tactical_systems;
+--   SELECT COUNT(*) FROM tactical_system_phases;

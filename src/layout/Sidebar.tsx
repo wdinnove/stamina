@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Trophy, BarChart2, UserSearch,
+  CheckSquare, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Trophy, Clipboard, BarChart2, UserSearch,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { LAYER } from '../styles/layers';
@@ -33,6 +33,7 @@ export const navGroups = [
     title: 'Compétition',
     items: [
       { path: '/matchs',              icon: Trophy,     label: 'Matchs'             },
+      { path: '/systemes',            icon: Clipboard,  label: 'Systèmes'           },
     ],
   },
   {
