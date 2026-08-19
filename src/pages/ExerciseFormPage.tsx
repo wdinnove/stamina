@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useBlocker, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, AlertCircle, Trash2, ChevronUp, ChevronDown, ListOrdered, FileText, Video, PencilRuler } from 'lucide-react';
+import { useBlocker, useNavigate, useLocation, useParams } from 'react-router';
+import { ArrowLeft, AlertCircle, Info, Trash2, ChevronUp, ChevronDown, ListOrdered, FileText, Video, PencilRuler } from 'lucide-react';
 import { exercisesApi } from '../api/exercises';
 import { exercisePhasesApi } from '../api/exercisePhases';
+import { sessionBlocksApi } from '../api/sessionBlocks';
 import { teamCategoriesApi } from '../api/categories';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Card, CardTitle, DiagramEditor, DiagramThumb, Modal, AccessRestricted, Spinner, DropzoneEmptyState, AddButton } from '../components';
@@ -50,6 +51,17 @@ interface DraftPhase {
   scene: DiagramScene;
 }
 
+/** Pré-remplissage venu d'une séquence de séance qu'on promeut en exercice de bibliothèque. */
+interface SessionBlockPrefill {
+  sessionBlockId: string;
+  /** Chemin vers lequel revenir une fois l'exercice créé — la séance qui l'a demandé. */
+  returnTo: string;
+  name: string;
+  deroulement?: string;
+  objectifs?: string;
+  categoryName?: string;
+}
+
 function toDraft(phase: ExercisePhase): DraftPhase {
   return { id: phase.id, key: phase.id, title: phase.title ?? '', text: phase.text ?? '', scene: phase.scene };
 }
@@ -62,21 +74,28 @@ function snapshot(header: { name: string; categoryId: string; deroulement: strin
 export default function ExerciseFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { selected, canEditTeamData, roleLoading, teamRoleLoading } = useTeamSeason();
   const isNew = !id;
   /** Le rôle d'équipe arrive après un aller-retour réseau : sans cette attente, la page
    *  afficherait un « accès restreint » clignotant à chaque ouverture. */
   const rolesLoading = roleLoading || teamRoleLoading;
 
+  // Une seule lecture, au montage : une fois le formulaire modifié, on ne veut plus retourner
+  // au pré-remplissage d'origine si `location.state` change pour une autre raison.
+  const [prefill] = useState<SessionBlockPrefill | undefined>(
+    () => isNew ? (location.state as { sessionBlockPrefill?: SessionBlockPrefill } | null)?.sessionBlockPrefill : undefined,
+  );
+
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
   const [categories, setCategories] = useState<TeamCategory[]>([]);
   const [loading,    setLoading]    = useState(!isNew);
   const [denied,     setDenied]     = useState(false);
 
-  const [name,       setName]       = useState('');
+  const [name,       setName]       = useState(prefill?.name ?? '');
   const [categoryId, setCategoryId] = useState('');
-  const [deroulement, setDeroulement] = useState('');
-  const [objectifs,  setObjectifs]  = useState('');
+  const [deroulement, setDeroulement] = useState(prefill?.deroulement ?? '');
+  const [objectifs,  setObjectifs]  = useState(prefill?.objectifs ?? '');
   const [videoUrl,   setVideoUrl]   = useState('');
 
   const [phases,     setPhases]     = useState<DraftPhase[]>([]);
@@ -106,6 +125,15 @@ export default function ExerciseFormPage() {
     if (!selected) return;
     teamCategoriesApi.list(selected.team.id, 'exercise').then(setCategories).catch(() => {});
   }, [selected?.team.id]);
+
+  // La catégorie de la séquence et celles de la bibliothèque sont deux listes distinctes : on
+  // pré-sélectionne quand les noms se recouvrent (« Jeu réduit », « Technique »…), sinon on
+  // laisse choisir plutôt que de deviner.
+  useEffect(() => {
+    if (!prefill?.categoryName) return;
+    const match = categories.find(c => c.name.toLowerCase() === prefill.categoryName!.toLowerCase());
+    if (match) setCategoryId(match.id);
+  }, [categories, prefill?.categoryName]);
 
   useEffect(() => {
     if (!id) return;
@@ -212,7 +240,7 @@ export default function ExerciseFormPage() {
 
   const videoPlatform = videoUrl.trim() ? detectSocialPlatform(videoUrl) : null;
   const videoInvalid  = videoUrl.trim() !== '' && !videoPlatform;
-  const backTo        = isNew ? '/exercices' : `/exercices/${id}`;
+  const backTo        = isNew ? (prefill?.returnTo ?? '/exercices') : `/exercices/${id}`;
 
   /**
    * Le nom et les phases sont travaillés dans n'importe quel ordre : ce qui manque est dit au
@@ -255,6 +283,9 @@ export default function ExerciseFormPage() {
         const created = await exercisesApi.create({ ...header, teamId: selected.team.id });
         createdId.current = created.id;
         exerciseId = created.id;
+        // Sans ce lien, la bibliothèque aurait bien l'exercice mais la séance continuerait de
+        // l'ignorer, et une seconde promotion créerait un doublon.
+        if (prefill) await sessionBlocksApi.update(prefill.sessionBlockId, { drillId: created.id });
       } else {
         await exercisesApi.update(exerciseId, header);
       }
@@ -275,7 +306,7 @@ export default function ExerciseFormPage() {
         }
       }
 
-      go(`/exercices/${exerciseId}`);
+      go(prefill ? prefill.returnTo : `/exercices/${exerciseId}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur');
       setSaving(false);
@@ -309,7 +340,7 @@ export default function ExerciseFormPage() {
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}
           onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
           onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}>
-          <ArrowLeft size={15} /> {isNew ? 'Exercices' : exercise?.name}
+          <ArrowLeft size={15} /> {isNew ? (prefill ? 'Séance' : 'Exercices') : exercise?.name}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {dirty && <span style={{ color: '#475569', fontSize: '0.75rem' }}>Modifications non enregistrées</span>}
@@ -357,6 +388,18 @@ export default function ExerciseFormPage() {
                 </select>
               </div>
             </div>
+
+            {/* Repris du bloc de séance qui a demandé cette création : les deux champs sont
+                copiés une fois, puis vivent chacun leur vie — d'où le rappel ci-dessous. */}
+            {prefill && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: 6, padding: '8px 12px' }}>
+                <Info size={13} style={{ color: '#60A5FA', flexShrink: 0, marginTop: 1 }} />
+                <span style={{ color: '#60A5FA', fontSize: '0.78rem' }}>
+                  Déroulement et objectifs sont repris de la séance. Ils sont désormais indépendants :
+                  les modifier ici ne changera pas le bloc de la séance, et inversement.
+                </span>
+              </div>
+            )}
 
             {/* Les deux textes de l'exercice, côte à côte : ce sont exactement les deux
                 champs que le bloc de séance pré-remplit à l'ajout. */}

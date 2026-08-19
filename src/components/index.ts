@@ -75,7 +75,6 @@ export { DiagramSceneView, DiagramThumb } from './DiagramSceneView';
 export { DiagramCourt } from './DiagramCourt';
 export { ExerciseView, ExercisePhaseList } from './ExerciseView';
 export { ExerciseCopyModal, useCopyTargetTeams } from './ExerciseCopyModal';
-export { ExerciseFromBlockModal } from './ExerciseFromBlockModal';
 export { SocialVideoEmbed } from './SocialVideoEmbed';
 export { SlideCarousel, CarouselDots, useSwipeCarousel } from './SlideCarousel';
 export { ObjectivesPanel } from './ObjectivesPanel';

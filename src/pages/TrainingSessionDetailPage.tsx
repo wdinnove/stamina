@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router';
+import { useParams, useNavigate, useLocation, Link } from 'react-router';
 import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, BookPlus, Users, UserCheck, Check, Minus, Save, ChevronDown, ChevronUp, Activity, Plus } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
@@ -13,7 +13,7 @@ import { teamCategoriesApi } from '../api/categories';
 import { staffApi } from '../api/staff';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, CategoryBadge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, ExerciseFromBlockModal, ExercisePhaseList } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, CategoryBadge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, ExercisePhaseList } from '../components';
 import { ExerciseView } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { computeAcwr, acwrZone, rpeColor, estimatedSessionRpe } from '../utils/rpe';
@@ -293,6 +293,8 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
   teamBlocks: { id: string; label: string; teamCount: number }[];
 }) {
   const { thresholds, selected, canEditTeamData } = useTeamSeason();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [showForm,       setShowForm]       = useState(false);
   const [showRestForm,   setShowRestForm]   = useState(false);
   const [restForm,       setRestForm]       = useState({ duration: '2', label: 'Repos' });
@@ -326,8 +328,26 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
   const [openSchemas,     setOpenSchemas]     = useState<Record<string, boolean>>({});
   const [phasesByExercise, setPhasesByExercise] = useState<Record<string, ExercisePhase[]>>({});
   const [loadingPhases,   setLoadingPhases]   = useState<Record<string, boolean>>({});
-  /** Séquence en cours de promotion en exercice de bibliothèque. */
-  const [promoteBlock,    setPromoteBlock]    = useState<SessionBlock | null>(null);
+
+  /**
+   * Une séquence sans exercice de bibliothèque s'y ajoute sur la pleine page de création, pas
+   * dans une modale : les schémas s'y dessinent, et le libellé/déroulement/objectifs partent
+   * en pré-remplissage — à charge pour la page de relier l'exercice créé à cette séquence.
+   */
+  function promoteToLibrary(block: SessionBlock) {
+    navigate('/exercices/nouveau', {
+      state: {
+        sessionBlockPrefill: {
+          sessionBlockId: block.id,
+          returnTo:       `${location.pathname}${location.search}`,
+          name:           block.label,
+          deroulement:    block.description,
+          objectifs:      block.consignes,
+          categoryName:   block.category,
+        },
+      },
+    });
+  }
 
   // La bibliothèque proposée est celle de l'équipe de la séance, pas celle de toutes les
   // équipes auxquelles on a accès.
@@ -765,7 +785,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
                             </button>
                           ) : canEditTeamData && (
                             <button
-                              onClick={() => setPromoteBlock(block)}
+                              onClick={() => promoteToLibrary(block)}
                               style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2 }}
                               onMouseEnter={e => (e.currentTarget.style.color = '#00E5A0')}
                               onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
@@ -850,7 +870,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
                         </button>
                       ) : canEditTeamData && (
                         <button
-                          onClick={() => setPromoteBlock(block)}
+                          onClick={() => promoteToLibrary(block)}
                           style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 3, flexShrink: 0 }}
                           onMouseEnter={e => (e.currentTarget.style.color = '#00E5A0')}
                           onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
@@ -1113,22 +1133,6 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
 
           <ExerciseView exercise={viewExercise} phases={viewPhases} />
         </Modal>
-      )}
-
-      {/* Promotion d'une séquence en exercice de bibliothèque */}
-      {promoteBlock && selected && (
-        <ExerciseFromBlockModal
-          block={promoteBlock}
-          teamId={selected.team.id}
-          onClose={() => setPromoteBlock(null)}
-          onCreated={(exercise, updated) => {
-            // L'exercice rejoint la liste locale, sinon le bloc afficherait un lien vers une
-            // fiche introuvable jusqu'au prochain chargement de la page.
-            setExercises(prev => [...prev, exercise].sort((a, b) => a.name.localeCompare(b.name)));
-            onBlocksChange(blocks.map(b => b.id === updated.id ? updated : b));
-            setPromoteBlock(null);
-          }}
-        />
       )}
     </div>
   );
