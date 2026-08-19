@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { X, Check, Clock, Minus, AlertCircle, Trash2 } from 'lucide-react';
 import { EmptyState, Modal, DropzoneEmptyState, AddButton } from '../components';
 import { attendanceApi, playersApi, rpeApi } from '../api';
@@ -17,7 +18,9 @@ const STATUS = {
   late:         { label: 'Retard',      color: '#F59E0B', bg: 'rgba(245,158,11,0.15)',  Icon: Clock  },
   // Gris volontaire : « non attendu » n'est pas un degré entre présent et absent, c'est une
   // ligne hors calcul. La couleur ne doit pas le ranger sur la même échelle.
-  not_expected: { label: 'Non attendu', color: '#64748B', bg: 'rgba(100,116,139,0.15)', Icon: Minus  },
+  // Libellé raccourci (vs. « Non attendu » ailleurs) : les 4 boutons du popover partagent la
+  // même largeur, sur une seule ligne — le texte le plus long dicte celle des trois autres.
+  not_expected: { label: 'Non prévu', color: '#64748B', bg: 'rgba(100,116,139,0.15)', Icon: Minus  },
 } as const;
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -34,9 +37,10 @@ const inputStyle: React.CSSProperties = {
 };
 
 const NAME_W = 200;
-const CELL_W = 76;
+const CELL_W = 44;
 
 export default function AttendancePage() {
+  const navigate = useNavigate();
   const { selected, canEditTeamData } = useTeamSeason();
   const popoverRef        = useRef<HTMLDivElement>(null);
 
@@ -126,9 +130,14 @@ export default function AttendancePage() {
   function handleCellClick(e: React.MouseEvent, sessionId: string, playerId: string) {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const popW = 300;
+    const popW = 272;
     const x = Math.max(8, Math.min(rect.left + rect.width / 2 - popW / 2, window.innerWidth - popW - 8));
-    setActiveCell({ sessionId, playerId, x, y: rect.bottom + 6 });
+    // Estimation de la hauteur du popover (mesurer le DOM demanderait un premier rendu hors
+    // écran) : en cellule basse, il n'y a pas la place en dessous, on l'ouvre au-dessus.
+    const popH = 82;
+    const openAbove = rect.bottom + 6 + popH > window.innerHeight;
+    const y = openAbove ? Math.max(8, rect.top - popH - 6) : rect.bottom + 6;
+    setActiveCell({ sessionId, playerId, x, y });
   }
 
   async function applyStatus(status: AttendanceStatus | null) {
@@ -386,7 +395,13 @@ export default function AttendancePage() {
                       padding: '8px 4px 10px', textAlign: 'center', backgroundColor: '#161920',
                       position: 'relative',
                     }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <div
+                        onClick={() => navigate(`/seances/${s.id}`)}
+                        title="Ouvrir la séance"
+                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', borderRadius: 6, padding: '2px 4px', margin: '-2px -4px' }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E2229')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
                         <span style={{ color: '#475569', fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{fd.dow}</span>
                         <span style={{ color: isToday ? '#F59E0B' : '#F1F5F9', fontSize: '1.05rem', fontWeight: 800, lineHeight: 1 }}>{fd.day}</span>
                         <span style={{ color: '#94A3B8', fontSize: '0.65rem', fontWeight: 600 }}>{fd.month}</span>
@@ -580,7 +595,7 @@ export default function AttendancePage() {
           style={{
             position: 'fixed', left: activeCell.x, top: activeCell.y, zIndex: LAYER.dropdown,
             backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 10,
-            padding: '6px', display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 300,
+            padding: '6px', display: 'flex', gap: 4,
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
           }}
         >
@@ -593,16 +608,16 @@ export default function AttendancePage() {
                 onClick={() => applyStatus(isActive ? null : s)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                  padding: '10px 14px',
+                  padding: '8px 4px', boxSizing: 'border-box',
                   background: isActive ? cfg.bg : 'none',
                   border: `1px solid ${isActive ? cfg.color : '#2A2F3A'}`,
-                  borderRadius: 8, cursor: 'pointer', minWidth: 68,
+                  borderRadius: 8, cursor: 'pointer', width: 62, flexShrink: 0,
                 }}
                 onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = '#252B36'; }}
                 onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
               >
                 <cfg.Icon size={18} style={{ color: cfg.color }} />
-                <span style={{ color: isActive ? cfg.color : '#94A3B8', fontSize: '0.68rem', fontWeight: 600 }}>{cfg.label}</span>
+                <span style={{ color: isActive ? cfg.color : '#94A3B8', fontSize: '0.64rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{cfg.label}</span>
               </button>
             );
           })}
