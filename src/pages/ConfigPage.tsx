@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell } from 'lucide-react';
+import { Sliders, Shield, TrendingUp, Tag, Plus, Pencil, Trash2, Check, X, ChevronUp, ChevronDown, ClipboardList, Search, UserCheck, UserPlus, AlertCircle, Heart, Video, Lock, Bell, Info } from 'lucide-react';
 import { TacticalConfigManager } from '../components/TacticalConfigManager';
 import { TeamNotificationsTab } from '../components/TeamNotificationsTab';
 import { teamsApi, teamRolesApi } from '../api';
@@ -59,6 +59,97 @@ function ThresholdPreview({ lightMax, normalMax }: { lightMax: number; normalMax
         <span style={{ color: '#EF444480', fontSize: '0.65rem' }}>{'>'} {normalMax} UA</span>
       </div>
     </div>
+  );
+}
+
+function ThresholdsHelpModal({
+  sessionsPerWeek, onClose, onApply,
+}: {
+  sessionsPerWeek: number;
+  onClose: () => void;
+  onApply: (lightMax: number, normalMax: number, sessionsPerWeek: number) => void;
+}) {
+  const [duration, setDuration] = useState(90);
+  const [targetRpe, setTargetRpe] = useState(5);
+  const [sessions, setSessions] = useState(sessionsPerWeek);
+
+  const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
+  const suggestedLight = roundTo50(duration * targetRpe * sessions);
+  const suggestedNormal = roundTo50(suggestedLight * 1.3);
+
+  return (
+    <Modal onClose={onClose} closeOnBackdropClick maxWidth={540} className="p-4 sm:p-6">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+        <div>
+          <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem' }}>Comment choisir ces seuils ?</h2>
+          <p style={{ color: '#64748B', fontSize: '0.78rem', margin: '4px 0 0' }}>UA = RPE (0–10) × durée de la séance (min)</p>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', flexShrink: 0, padding: 2 }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <p style={{ color: '#94A3B8', fontSize: '0.82rem', lineHeight: 1.5, margin: '0 0 18px' }}>
+        Il n'existe pas de seuil hebdomadaire universel dans la littérature (Foster, Gabbett) : il dépend de
+        la durée et du nombre de vos séances — pas du secteur masculin/féminin. Renseignez votre contexte
+        pour obtenir une estimation de départ, à affiner ensuite avec vos propres données de charge.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 12 }}>
+        <div>
+          <label style={labelStyle}>Durée moyenne d'une séance (min)</label>
+          <input type="number" min={15} max={240} step={5} value={duration}
+            onChange={e => setDuration(Math.max(15, Math.trunc(Number(e.target.value))))}
+            style={{ ...inputStyle, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
+        </div>
+        <div>
+          <label style={labelStyle}>RPE cible en zone normale (0–10)</label>
+          <input type="number" min={1} max={10} step={0.5} value={targetRpe}
+            onChange={e => setTargetRpe(Math.min(10, Math.max(1, Number(e.target.value))))}
+            style={{ ...inputStyle, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
+        </div>
+        <div>
+          <label style={labelStyle}>Séances par semaine</label>
+          <input type="number" min={1} max={14} step={1} value={sessions}
+            onChange={e => setSessions(Math.max(1, Math.trunc(Number(e.target.value))))}
+            style={{ ...inputStyle, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }} />
+        </div>
+      </div>
+
+      <div style={{ backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 8, padding: '12px 14px', margin: '18px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}>
+          <span style={{ color: '#00E5A0' }}>Légère — max suggéré</span>
+          <span style={{ color: '#F1F5F9', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>{suggestedLight} UA</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+          <span style={{ color: '#3B82F6' }}>Normale — max suggéré</span>
+          <span style={{ color: '#F1F5F9', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>{suggestedNormal} UA</span>
+        </div>
+        <p style={{ color: '#475569', fontSize: '0.68rem', margin: '8px 0 0', lineHeight: 1.4 }}>
+          Normale = Légère × 1,3 — le même ratio que la borne « zone optimale » de l'ACWR (Gabbett, 2016),
+          pour rester cohérent avec les alertes de charge aiguë/chronique.
+        </p>
+      </div>
+
+      <details style={{ marginBottom: 18 }}>
+        <summary style={{ color: '#64748B', fontSize: '0.75rem', cursor: 'pointer' }}>Repères classiques de la littérature (contexte, non modifiables ici)</summary>
+        <ul style={{ color: '#64748B', fontSize: '0.75rem', lineHeight: 1.6, margin: '8px 0 0', paddingLeft: 18 }}>
+          <li><strong style={{ color: '#94A3B8' }}>ACWR</strong> (charge aiguë 7j / chronique 28j) : &lt;0,8 sous-charge · 0,8–1,3 zone optimale · 1,3–1,5 risque modéré · &gt;1,5 risque élevé — un ratio auto-référencé, valable quel que soit le secteur ou le volume d'entraînement.</li>
+          <li>Ces bornes sont surtout validées sur des cohortes masculines (Gabbett — rugby, football) : à interpréter avec prudence, comme un repère et non un verdict, en secteur féminin ou chez les jeunes.</li>
+          <li>Aucune étude ne fournit de seuil hebdomadaire en UA universel par sexe : la charge absolue dépend avant tout de la durée et du nombre de vos séances, déjà réglables ci-dessus.</li>
+        </ul>
+      </details>
+
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button onClick={onClose} style={{ padding: '9px 16px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem' }}>
+          Fermer
+        </button>
+        <button onClick={() => { onApply(suggestedLight, suggestedNormal, sessions); onClose(); }}
+          style={{ padding: '9px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+          Appliquer ces valeurs
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -860,6 +951,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
   const [sessionsPerWeek, setSessionsPerWeek] = useState(DEFAULT_THRESHOLDS.sessionsPerWeek);
   const [thrSaving, setThrSaving] = useState(false);
   const [thrMsg,    setThrMsg]    = useState<{ ok: boolean; text: string } | null>(null);
+  const [showThrHelp, setShowThrHelp] = useState(false);
 
   const [stat, setStat] = useState<StatThresholds>(DEFAULT_STAT);
   const [statSaving, setStatSaving] = useState(false);
@@ -1027,7 +1119,15 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
         icon={<Sliders size={14} color="#F59E0B" />}
         title="Seuils de charge physique"
         description="Les seuils définissent les zones de charge hebdomadaire (RPE × minutes). Ils s'appliquent à toutes les vues de charge de cette équipe."
-        action={<ConfigSaveAction loading={thrSaving} onClick={saveThresholds} />}>
+        action={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button type="button" onClick={() => setShowThrHelp(true)} title="Comment choisir ces seuils ?"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem' }}>
+              <Info size={14} /> Aide
+            </button>
+            <ConfigSaveAction loading={thrSaving} onClick={saveThresholds} />
+          </div>
+        }>
         <ThresholdPreview lightMax={lightMax} normalMax={normalMax} />
 
         <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16, marginTop: 20 }}>
@@ -1070,6 +1170,19 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
 
         <ConfigMessage msg={thrMsg} />
       </ConfigCard>
+
+      {showThrHelp && (
+        <ThresholdsHelpModal
+          sessionsPerWeek={sessionsPerWeek}
+          onClose={() => setShowThrHelp(false)}
+          onApply={(newLight, newNormal, newSessions) => {
+            setLightMax(newLight);
+            setNormalMax(newNormal);
+            setSessionsPerWeek(newSessions);
+            setThrMsg(null);
+          }}
+        />
+      )}
 
       <ConfigCard
         icon={<TrendingUp size={14} color="#3B82F6" />}
