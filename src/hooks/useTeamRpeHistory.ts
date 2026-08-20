@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { rpeApi } from '../api/rpe';
+import { playersApi } from '../api/players';
 import { computeAcwr, computeTsb, teamAvgRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { roundedAvg } from '../utils/avg';
@@ -90,6 +91,7 @@ export function useTeamRpeHistory(
   const [teamAcwrAvg, setTeamAcwrAvg]               = useState<number | null>(null);
   const [teamFreshAvg, setTeamFreshAvg]             = useState<number | null>(null);
   const [teamHistoryShort, setTeamHistoryShort]     = useState(false);
+  const [extraPlayers, setExtraPlayers]             = useState<Player[]>([]);
 
   // ── Load team history
   useEffect(() => {
@@ -342,16 +344,32 @@ export function useTeamRpeHistory(
       }, () => { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); });
   }, [roster]);
 
-  // Résout le nom depuis `roster` à chaque rendu où l'un des deux change — jamais figé au
-  // moment (potentiellement plus tôt) où le fetch RPE a résolu, contrairement à un ref mis à
-  // jour par un effet séparé (source du bug "nom du joueur absent" selon l'ordre d'arrivée).
-  const playerRanking: PlayerRank[] = useMemo(() => playerStatsRaw
-    .map(s => {
-      const player = roster.find(p => p.id === s.playerId);
-      return { ...s, name: player ? playerNameShort(player) : '—', nameFull: player ? playerNameFull(player) : '—' };
-    })
-    .sort((a, b) => b.avgRpe - a.avgRpe),
-  [playerStatsRaw, roster]);
+  // Un joueur peut avoir des séances RPE sur la période sans être dans `roster` (ex. retiré de
+  // l'effectif de la saison depuis) : on va chercher ces fiches séparément, indépendamment de
+  // player_season, pour ne pas perdre leur nom (cf. `players.getByIds`).
+  useEffect(() => {
+    const missingIds = playerStatsRaw
+      .map(s => s.playerId)
+      .filter(id => !roster.some(p => p.id === id));
+    if (missingIds.length === 0) { setExtraPlayers([]); return; }
+    playersApi.getByIds(missingIds).then(setExtraPlayers, () => setExtraPlayers([]));
+  }, [playerStatsRaw, roster]);
+
+  // Résout le nom depuis `roster` (+ `extraPlayers` pour les joueurs sortis de l'effectif) à
+  // chaque rendu où l'un des deux change — jamais figé au moment (potentiellement plus tôt) où
+  // le fetch RPE a résolu, contrairement à un ref mis à jour par un effet séparé (source du bug
+  // "nom du joueur absent" selon l'ordre d'arrivée).
+  const playerRanking: PlayerRank[] = useMemo(() => {
+    const byId = new Map<string, Player>();
+    roster.forEach(p => byId.set(p.id, p));
+    extraPlayers.forEach(p => byId.set(p.id, p));
+    return playerStatsRaw
+      .map(s => {
+        const player = byId.get(s.playerId);
+        return { ...s, name: player ? playerNameShort(player) : '—', nameFull: player ? playerNameFull(player) : '—' };
+      })
+      .sort((a, b) => b.avgRpe - a.avgRpe);
+  }, [playerStatsRaw, roster, extraPlayers]);
 
   return {
     teamChartData, teamSessionRows, teamWeekRows, playerRanking, teamKpis,
