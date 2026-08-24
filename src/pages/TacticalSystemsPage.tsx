@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, ListOrdered, Pencil, Trash2 } from 'lucide-react';
+import { Search, Pencil, Trash2 } from 'lucide-react';
 import { tacticalSystemsApi } from '../api/tacticalSystems';
 import { teamCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/categories';
 import { teamFoldersApi, countByFolder } from '../api/folders';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Badge, DropzoneEmptyState, EmptyState, DiagramThumb, Spinner, AddButton, FolderCard, NewFolderCard, FolderBreadcrumb, FolderRenameModal, FolderDeleteModal } from '../components';
+import { createScene } from '../utils/diagram';
 import type { TacticalSystem, TeamCategory, TeamFolder } from '../data/types';
+
+/** Terrain vide pour la couverture d'un système sans phase — un diagramme vierge, plutôt
+ *  qu'un cadre noir avec une icône. */
+const BLANK_SCENE = createScene('half');
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -29,21 +34,12 @@ const deleteHeaderBtn: React.CSSProperties = {
   backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444', cursor: 'pointer', fontSize: '0.82rem',
 };
 
-/** La vignette du système : son premier schéma, ou un cadre vide s'il n'en a pas encore.
+/** La vignette du système : son premier schéma, ou un terrain vierge s'il n'en a pas encore.
  *  Toujours carrée — un ratio fixe, indépendant du terrain de la scène, pour que toutes les
  *  cards d'une rangée fassent la même taille. */
 function Cover({ system }: { system: TacticalSystem }) {
-  if (system.coverScene && system.coverScene.elements.length > 0) {
-    return <DiagramThumb scene={system.coverScene} radius={0} style={{ aspectRatio: '1 / 1' }} />;
-  }
-  return (
-    <div style={{
-      width: '100%', aspectRatio: '1 / 1', backgroundColor: '#0D0F14',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <ListOrdered size={20} color="#2A2F3A" />
-    </div>
-  );
+  const scene = system.coverScene && system.coverScene.elements.length > 0 ? system.coverScene : BLANK_SCENE;
+  return <DiagramThumb scene={scene} radius={0} style={{ aspectRatio: '1 / 1' }} />;
 }
 
 export default function TacticalSystemsPage() {
