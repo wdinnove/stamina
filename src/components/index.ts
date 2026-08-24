@@ -90,3 +90,5 @@ export { MbtiStaffPanel } from './MbtiStaffPanel';
 export { PlayerNotesPanel } from './PlayerNotesPanel';
 export { ArchetypeSelect } from './ArchetypeSelect';
 export { ChannelToggle } from './ChannelToggle';
+export { ReportHeader, ReportSectionTitle } from './ReportHeader';
+export { ReportRpeSection } from './ReportRpeSection';

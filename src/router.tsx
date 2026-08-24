@@ -149,6 +149,7 @@ export const router = createBrowserRouter([
           { path: 'performance-individuelle',          lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },
           { path: 'performance-individuelle/:id',      lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },
           { path: 'performance-individuelle/:id/:tab', lazy: () => import('./pages/PerformanceIndividuellePage').then(m => ({ Component: m.default })) },
+          { path: 'rapports',                          lazy: () => import('./pages/ReportsPage').then(m => ({ Component: m.default })) },
 
           // ── Anciennes routes — conservées en redirection pour ne pas casser les liens/favoris ──
           { path: 'collective-analyze',     element: <Navigate to="/performance-collective/vue-ensemble" replace /> },

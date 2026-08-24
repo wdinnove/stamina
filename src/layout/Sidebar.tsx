@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router';
 import {
   LayoutDashboard, Activity, Heart, Stethoscope,
-  CheckSquare, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Trophy, Clipboard, BarChart2, UserSearch,
+  CheckSquare, ClipboardList, Calendar, CalendarCheck, Dumbbell, BookOpen, Trophy, Clipboard, BarChart2, UserSearch, FileText,
 } from 'lucide-react';
 import { StaminaLogo } from '../components/StaminaLogo';
 import { LAYER } from '../styles/layers';
@@ -49,6 +49,7 @@ export const navGroups = [
     items: [
       { path: '/performance-collective/vue-ensemble', icon: BarChart2,  label: 'Analyse collective'  },
       { path: '/performance-individuelle',             icon: UserSearch, label: 'Analyse individuelle' },
+      { path: '/rapports',                             icon: FileText,   label: 'Rapports'             },
     ],
   },
 ];
