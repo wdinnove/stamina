@@ -25,6 +25,7 @@ function toBlock(row: Record<string, unknown>): SessionBlock {
     drillId:     row.drill_id as string | null,
     staffId:     (row.staff_id as string | null) ?? null,
     teamBlockId: (row.team_block_id as string | null) ?? null,
+    scene:       (row.scene as SessionBlock['scene']) ?? null,
     createdAt:   row.created_at as string,
   };
 }
@@ -62,6 +63,7 @@ export const sessionBlocksApi = {
     drillId?: string | null;
     staffId?: string | null;
     teamBlockId?: string | null;
+    scene?: SessionBlock['scene'] | null;
   }): Promise<SessionBlock> {
     const { data, error } = await supabase
       .from('session_blocks')
@@ -78,6 +80,7 @@ export const sessionBlocksApi = {
         drill_id:      block.drillId ?? null,
         staff_id:      block.staffId ?? null,
         team_block_id: block.teamBlockId ?? null,
+        scene:         block.scene ?? null,
       })
       .select()
       .single();
@@ -85,7 +88,7 @@ export const sessionBlocksApi = {
     return toBlock(data as Record<string, unknown>);
   },
 
-  async update(id: string, patch: Partial<Pick<SessionBlock, 'duration' | 'category' | 'intensity' | 'label' | 'description' | 'consignes' | 'position' | 'drillId' | 'staffId' | 'teamBlockId'>>): Promise<SessionBlock> {
+  async update(id: string, patch: Partial<Pick<SessionBlock, 'duration' | 'category' | 'intensity' | 'label' | 'description' | 'consignes' | 'position' | 'drillId' | 'staffId' | 'teamBlockId' | 'scene'>>): Promise<SessionBlock> {
     const payload: Record<string, unknown> = {};
     if (patch.duration    !== undefined) payload.duration    = patch.duration;
     if (patch.category    !== undefined) payload.category    = patch.category;
@@ -97,6 +100,7 @@ export const sessionBlocksApi = {
     if (patch.drillId     !== undefined) payload.drill_id     = patch.drillId;
     if (patch.staffId     !== undefined) payload.staff_id      = patch.staffId;
     if (patch.teamBlockId !== undefined) payload.team_block_id = patch.teamBlockId;
+    if (patch.scene       !== undefined) payload.scene         = patch.scene ?? null;
     const { data, error } = await supabase
       .from('session_blocks')
       .update(payload)

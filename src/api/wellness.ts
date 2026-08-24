@@ -1,5 +1,5 @@
 import { supabase } from './client';
-import type { WellnessEntry, WellnessEntryMethod } from '../data/types';
+import type { WellnessEntry, WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 
 export interface ListWellnessFilters {
   playerId?: string;
@@ -12,6 +12,7 @@ export interface PublicPlayerInfo {
   firstName: string;
   lastName: string;
   publicWellnessMethod: WellnessEntryMethod | null;
+  wellnessQuickScaleSize: WellnessQuickScaleSize;
 }
 
 export interface SubmitWellnessPublicInput {
@@ -31,8 +32,12 @@ export const wellnessApi = {
   async getPublicPlayerInfo(playerId: string): Promise<PublicPlayerInfo | null> {
     const { data, error } = await supabase.rpc('get_player_public_info', { p_player_id: playerId }).maybeSingle();
     if (error || !data) return null;
-    const info = data as { first_name: string; last_name: string; public_wellness_method: WellnessEntryMethod | null };
-    return { firstName: info.first_name, lastName: info.last_name, publicWellnessMethod: info.public_wellness_method };
+    const info = data as { first_name: string; last_name: string; public_wellness_method: WellnessEntryMethod | null; wellness_quick_scale_size: WellnessQuickScaleSize | null };
+    return {
+      firstName: info.first_name, lastName: info.last_name,
+      publicWellnessMethod: info.public_wellness_method,
+      wellnessQuickScaleSize: info.wellness_quick_scale_size ?? 3,
+    };
   },
 
   /** Soumission bien-être via le formulaire public (lien partagé, sans session) */

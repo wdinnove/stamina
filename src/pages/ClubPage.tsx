@@ -197,7 +197,7 @@ const emptyPlayerForm = {
   status: 'active' as Player['status'],
   birthDate: '', nationality: 'FR',
   hand: 'right' as Player['hand'],
-  height: '', weight: '', contractEnd: '', email: '',
+  height: '', weight: '', email: '',
 };
 
 function PlayersTab() {
@@ -220,7 +220,7 @@ function PlayersTab() {
 
   useEffect(() => {
     setLoading(true);
-    playersApi.list()
+    playersApi.list({ includeLeft: true })
       .then(setPlayers)
       .catch(e => setFetchErr(e.message))
       .finally(() => setLoading(false));
@@ -249,7 +249,6 @@ function PlayersTab() {
         status:      'active',
         height:      form.height ? parseInt(form.height) : undefined,
         weight:      form.weight ? parseInt(form.weight) : undefined,
-        contractEnd: form.contractEnd || undefined,
         email:       form.email       || undefined,
       });
       setPlayers(prev => [...prev, created].sort((a, b) => a.lastName.localeCompare(b.lastName)));
@@ -354,7 +353,17 @@ function PlayersTab() {
                   </td>
                   <td style={tdStyle}>{player.position}</td>
                   <td style={{ ...tdStyle, textAlign: 'center' }}>#{player.number}</td>
-                  <td style={tdStyle}><StatusBadge status={player.status} size="sm" /></td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <StatusBadge status={player.status} size="sm" />
+                      {player.leftDate && (
+                        <span title={`Parti le ${player.leftDate}`}
+                          style={{ color: '#EF4444', backgroundColor: 'rgba(239,68,68,0.12)', fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>
+                          Parti
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td style={{ ...tdStyle, textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                       <button onClick={() => setEditingPlayer(player)}
@@ -442,11 +451,6 @@ function PlayersTab() {
                 <input type="number" min={40} max={150} value={form.weight}
                   onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
               </div>
-            </div>
-            <div>
-              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
-              <input type="date" value={form.contractEnd}
-                onChange={e => setForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
             </div>
             <div>
               <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>

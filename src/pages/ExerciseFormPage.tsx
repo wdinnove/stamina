@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useNavigate, useLocation, useParams } from 'react-router';
-import { ArrowLeft, AlertCircle, Info, Trash2, ChevronUp, ChevronDown, ListOrdered, FileText, Video, PencilRuler } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Info, Trash2, Copy, ChevronUp, ChevronDown, ListOrdered, FileText, Video, PencilRuler } from 'lucide-react';
 import { exercisesApi } from '../api/exercises';
 import { exercisePhasesApi } from '../api/exercisePhases';
 import { sessionBlocksApi } from '../api/sessionBlocks';
@@ -9,7 +9,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Card, CardTitle, DiagramEditor, DiagramThumb, Modal, AccessRestricted, Spinner, DropzoneEmptyState, AddButton } from '../components';
 import RichTextEditor from '../components/RichTextEditor';
 import { detectSocialPlatform, SOCIAL_PLATFORM_LABELS } from '../utils/socialVideo';
-import { createScene, newId, nextPhaseScene, type DiagramScene } from '../utils/diagram';
+import { createScene, newId, nextPhaseScene, cloneScene, type DiagramScene } from '../utils/diagram';
 import { MAX_EXERCISE_PHASES } from '../data/config';
 import type { Exercise, TeamCategory, ExercisePhase } from '../data/types';
 
@@ -212,6 +212,22 @@ export default function ExerciseFormPage() {
     const scene: DiagramScene = previous ? nextPhaseScene(previous.scene) : createScene('half');
     const draft: DraftPhase = { key: newId(), title: '', text: '', scene };
     setPhases(prev => [...prev, draft]);
+    setEditingKey(draft.key);
+  }
+
+  /** Duplique une phase telle quelle (mêmes éléments, mêmes flèches), insérée juste après —
+   *  contrairement à `addPhase`, qui repart de la position produite par la phase précédente. */
+  function duplicatePhase(key: string) {
+    if (full) return;
+    const index = phases.findIndex(p => p.key === key);
+    if (index === -1) return;
+    const source = phases[index];
+    const draft: DraftPhase = { key: newId(), title: source.title, text: source.text, scene: cloneScene(source.scene) };
+    setPhases(prev => {
+      const next = [...prev];
+      next.splice(index + 1, 0, draft);
+      return next;
+    });
     setEditingKey(draft.key);
   }
 
@@ -489,6 +505,10 @@ export default function ExerciseFormPage() {
                       <button type="button" onClick={() => movePhase(i, 1)} disabled={i === phases.length - 1} title="Descendre"
                         style={{ ...ghostBtn, padding: 4, opacity: i === phases.length - 1 ? 0.3 : 1, cursor: i === phases.length - 1 ? 'not-allowed' : 'pointer' }}>
                         <ChevronDown size={12} />
+                      </button>
+                      <button type="button" onClick={() => duplicatePhase(p.key)} disabled={full} title={full ? `Maximum de ${MAX_EXERCISE_PHASES} phases atteint.` : 'Dupliquer'}
+                        style={{ ...ghostBtn, padding: 4, opacity: full ? 0.3 : 1, cursor: full ? 'not-allowed' : 'pointer' }}>
+                        <Copy size={12} />
                       </button>
                       <button type="button" onClick={() => setDelKey(p.key)} title="Retirer"
                         style={{ ...ghostBtn, padding: 4, color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}>

@@ -112,6 +112,9 @@ function toAction(row: Record<string, unknown>): Action {
     category:    (row.category   as Action['category'] | null) ?? undefined,
     priority:    row.priority    as Action['priority'],
     dueDate:     row.due_date    as string,
+    notifyJ1:    row.notify_j1   as boolean,
+    notifyJJ:    row.notify_jj   as boolean,
+    notifyCustomDate: (row.notify_custom_date as string | null) ?? undefined,
     assignedTo:  (row.assigned_to as string | null) ?? undefined,
     status:      row.status      as Action['status'],
   };
@@ -127,6 +130,9 @@ function toRow(a: Partial<Omit<Action, 'id'>>): Record<string, unknown> {
   if (a.category    !== undefined) row.category     = a.category;
   if (a.priority    !== undefined) row.priority     = a.priority;
   if (a.dueDate     !== undefined) row.due_date     = a.dueDate;
+  if (a.notifyJ1    !== undefined) row.notify_j1    = a.notifyJ1;
+  if (a.notifyJJ    !== undefined) row.notify_jj    = a.notifyJJ;
+  if (a.notifyCustomDate !== undefined) row.notify_custom_date = a.notifyCustomDate || null;
   if (a.assignedTo  !== undefined) row.assigned_to  = a.assignedTo;
   if (a.status      !== undefined) row.status       = a.status;
   return row;

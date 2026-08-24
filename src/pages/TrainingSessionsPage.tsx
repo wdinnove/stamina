@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, Check, Minus } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { Modal, DropzoneEmptyState, EmptyState, AddButton, CategoryBadge } from '../components';
 import { rpeApi } from '../api/rpe';
@@ -10,7 +10,17 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { roundedAvg } from '../utils/avg';
 import { estimatedSessionRpe } from '../utils/rpe';
-import type { TrainingSession, Player, TeamCategory } from '../data/types';
+import type { TrainingSession, Player, TeamCategory, TrainingAttendance } from '../data/types';
+
+type AttendanceStatus = TrainingAttendance['status'];
+/** Statut par défaut proposé à la création — un choix global pour tout l'effectif, pas un
+ *  réglage par joueur : c'est la présence attendue par défaut, pas un pointage détaillé. */
+type DefaultAttendanceStatus = Extract<AttendanceStatus, 'present' | 'not_expected'>;
+
+const DEFAULT_STATUS_CFG: Record<DefaultAttendanceStatus, { label: string; color: string; bg: string; Icon: typeof Check }> = {
+  present:      { label: 'Présent',    color: '#00E5A0', bg: 'rgba(0,229,160,0.15)',   Icon: Check },
+  not_expected: { label: 'Non attendu', color: '#64748B', bg: 'rgba(100,116,139,0.15)', Icon: Minus },
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -58,6 +68,14 @@ export default function TrainingSessionsPage() {
   const [addSaving,  setAddSaving]  = useState(false);
   const [addError,   setAddError]   = useState('');
   const [addForm,    setAddForm]    = useState({ date: new Date().toLocaleDateString('sv'), categoryId: '', duration: '90', notes: '' });
+  /** Statut par défaut appliqué à tout l'effectif à la création — les partenaires suivent leur
+   *  propre règle (non attendu par défaut) et ne sont pas concernés par ce réglage. */
+  const [addDefaultStatus, setAddDefaultStatus] = useState<DefaultAttendanceStatus>('present');
+
+  function openAddForm() {
+    setAddDefaultStatus('present');
+    setShowAdd(true);
+  }
   const [recForm,    setRecForm]    = useState({ days: [] as number[], startDate: new Date().toLocaleDateString('sv'), endDate: '', categoryId: '', duration: '90', notes: '' });
   const [recSaving,  setRecSaving]  = useState(false);
   const [recError,   setRecError]   = useState('');
@@ -195,15 +213,18 @@ export default function TrainingSessionsPage() {
         categoryId: addForm.categoryId || undefined,
       });
       if (players.length) {
-        await attendanceApi.bulkSetPresent(players.map(p => ({ sessionId: final.id, playerId: p.id })));
+        await attendanceApi.bulkSetStatus(players.map(p => ({ sessionId: final.id, playerId: p.id })), addDefaultStatus);
       }
       setSessions(prev => [final, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
       setAttendanceCounts(prev => ({
         ...prev,
-        [final.id]: { present: players.length, absent: 0, late: 0 },
+        [final.id]: addDefaultStatus === 'present'
+          ? { present: players.length, absent: 0, late: 0 }
+          : { present: 0, absent: 0, late: 0 },
       }));
       setShowAdd(false);
       setAddForm({ date: new Date().toLocaleDateString('sv'), categoryId: categories[0]?.id ?? '', duration: '90', notes: '' });
+      setAddDefaultStatus('present');
       navigate(`/seances/${final.id}`);
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -226,15 +247,20 @@ export default function TrainingSessionsPage() {
       ));
       if (players.length) {
         const entries = created.flatMap(s => players.map(p => ({ sessionId: s.id, playerId: p.id })));
-        await attendanceApi.bulkSetPresent(entries);
+        await attendanceApi.bulkSetStatus(entries, addDefaultStatus);
       }
       setSessions(prev => [...created, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
       setAttendanceCounts(prev => {
         const next = { ...prev };
-        created.forEach(s => { next[s.id] = { present: players.length, absent: 0, late: 0 }; });
+        created.forEach(s => {
+          next[s.id] = addDefaultStatus === 'present'
+            ? { present: players.length, absent: 0, late: 0 }
+            : { present: 0, absent: 0, late: 0 };
+        });
         return next;
       });
       setShowAdd(false);
+      setAddDefaultStatus('present');
       setRecForm({ days: [], startDate: new Date().toLocaleDateString('sv'), endDate: '', categoryId: categories[0]?.id ?? '', duration: '90', notes: '' });
       // Création en lot depuis l'historique : sans ça, les séances créées n'apparaissent nulle
       // part à l'écran. La séance unique, elle, ouvre directement sa fiche.
@@ -251,7 +277,7 @@ export default function TrainingSessionsPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Séances</h1>
         {selected && canEditTeamData && (
-          <AddButton label="Ajouter une séance" onClick={() => setShowAdd(true)} />
+          <AddButton label="Ajouter une séance" onClick={openAddForm} />
         )}
       </div>
 
@@ -268,7 +294,7 @@ export default function TrainingSessionsPage() {
         </div>
       ) : sessions.length === 0 ? (
         canEditTeamData ? (
-          <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAdd(true)} />
+          <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={openAddForm} />
         ) : (
           <EmptyState message="Aucune séance. Seuls les rôles Admin et Éditeur peuvent en créer." size="lg" />
         )
@@ -433,6 +459,37 @@ export default function TrainingSessionsPage() {
                 {tab === 'unique' ? 'Séance unique' : 'Récurrentes'}
               </button>
             ))}
+          </div>
+
+          {/* Statut par défaut de l'effectif — partagé entre les deux onglets, un seul choix
+              pour tout le monde, pas un réglage par joueur. Les partenaires ne sont pas
+              concernés : ils suivent leur propre règle (non attendu par défaut). */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>
+              Présences par défaut
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['present', 'not_expected'] as const).map(s => {
+                const cfg = DEFAULT_STATUS_CFG[s];
+                const active = addDefaultStatus === s;
+                return (
+                  <button key={s} type="button" onClick={() => setAddDefaultStatus(s)}
+                    style={{
+                      flex: 1, padding: '7px 0', borderRadius: 6, cursor: 'pointer',
+                      border: `1px solid ${active ? cfg.color : '#2A2F3A'}`,
+                      backgroundColor: active ? cfg.bg : '#1E2229',
+                      color: active ? cfg.color : '#94A3B8',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      fontSize: '0.8rem', fontWeight: active ? 700 : 500,
+                    }}>
+                    <cfg.Icon size={13} /> {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ color: '#475569', fontSize: '0.7rem', margin: '4px 0 0' }}>
+              S'applique à tout l'effectif — les partenaires ne sont pas concernés.
+            </p>
           </div>
 
           {addTab === 'unique' ? (

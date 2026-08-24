@@ -4371,3 +4371,178 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --    WHERE conrelid = 'team_categories'::regclass AND contype = 'c';
 --   SELECT COUNT(*) FROM tactical_systems;
 --   SELECT COUNT(*) FROM tactical_system_phases;
+
+-- Rôle par équipe pour le staff : surcharge nullable sur staff_team
+--
+-- `staff.role` reste le métier de la personne (coach, kiné, préparateur…) — annoncé dès la
+-- migration "Staff : une personne, plusieurs équipes" plus haut : "Si « assistant en U18, coach
+-- en NF2 » devient un vrai besoin, ce sera un `staff_team.role` nullable en surcharge — pas
+-- avant." C'est ce besoin. NULL = pas de surcharge, la personne garde son métier sur cette
+-- équipe ; une valeur = son rôle POUR cette équipe précise, sans toucher aux autres.
+--
+-- ALTER TABLE staff_team ADD COLUMN IF NOT EXISTS role TEXT
+--   CHECK (role IN ('coach', 'kine', 'medecin', 'prep_physique', 'assistant', 'autre'));
+--
+-- Vérification — la contrainte accepte les mêmes valeurs que `staff.role`, et rien d'existant
+-- n'a de surcharge tant que personne n'en a posé une :
+--   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+--    WHERE conrelid = 'staff_team'::regclass AND contype = 'c';
+--   SELECT COUNT(*) FROM staff_team WHERE role IS NOT NULL;   -- 0 juste après la migration
+
+-- Date de départ du club pour un joueur
+--
+-- Un joueur qui quitte le club en cours de saison doit rester visible sur les saisons où il a
+-- été rattaché (l'historique ne se réécrit pas), mais disparaître des saisons suivantes et des
+-- viviers de partenaires (org-wide, indépendants de `player_season`). `left_date` porte cette
+-- information sur la personne elle-même — `playersApi.list()` l'exclut par défaut, les écrans
+-- de gestion du club (Joueurs, Club) demandent explicitement `includeLeft` pour la voir.
+--
+-- ALTER TABLE players ADD COLUMN IF NOT EXISTS left_date DATE;
+--
+-- Vérification — additif, personne n'est marqué parti tant que le champ n'est pas renseigné :
+--   SELECT COUNT(*) FROM players WHERE left_date IS NOT NULL;   -- 0 juste après la migration
+
+-- Bien-être : nombre de crans de l'échelle rapide (méthodes "emoji" et "single"), par équipe
+--
+-- Un seul réglage partagé par la saisie interne (staff) et la saisie publique (lien joueur) —
+-- les deux passent par la même échelle. 3 crans par défaut (comportement actuel inchangé).
+--
+-- ALTER TABLE teams ADD COLUMN IF NOT EXISTS wellness_quick_scale_size SMALLINT NOT NULL DEFAULT 3
+--   CHECK (wellness_quick_scale_size IN (3, 4, 5));
+--
+-- -- get_player_public_info change de type de retour (ajout de wellness_quick_scale_size) :
+-- -- CREATE OR REPLACE ne suffit pas, Postgres exige un DROP préalable (erreur 42P13).
+-- DROP FUNCTION IF EXISTS get_player_public_info(UUID);
+-- CREATE FUNCTION get_player_public_info(p_player_id UUID)
+-- RETURNS TABLE(first_name TEXT, last_name TEXT, public_wellness_method TEXT, wellness_quick_scale_size SMALLINT)
+-- LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+--   SELECT p.first_name, p.last_name, COALESCE(t.public_wellness_method, 'detailed'),
+--          COALESCE(t.wellness_quick_scale_size, 3)
+--   FROM players p
+--   LEFT JOIN player_season ps ON ps.player_id = p.id
+--   LEFT JOIN seasons s        ON s.id = ps.season_id AND s.is_current = TRUE
+--   LEFT JOIN teams t          ON t.id = s.team_id
+--   WHERE p.id = p_player_id
+--   LIMIT 1;
+-- $$;
+-- GRANT EXECUTE ON FUNCTION get_player_public_info(UUID) TO anon;
+--
+-- Vérification — additif, toutes les équipes restent à 3 crans tant que personne n'a réglé 5 :
+--   SELECT COUNT(*) FROM teams WHERE wellness_quick_scale_size = 5;   -- 0 juste après la migration
+
+-- Schéma propre à une séquence de séance, indépendant de la bibliothèque d'exercices
+--
+-- Une séquence référence aujourd'hui un exercice de bibliothèque via `drill_id`, ou n'a aucun
+-- schéma. Pouvoir dessiner directement sur la séance, sans créer/nommer un exercice au
+-- préalable, demande de porter la scène sur la séquence elle-même — même colonne JSONB que
+-- `exercise_phases.scene`/`tactical_system_phases.scene`.
+--
+-- ALTER TABLE session_blocks ADD COLUMN IF NOT EXISTS scene JSONB;
+--
+-- Vérification — additif, aucune séquence existante n'a de schéma tant que personne n'en dessine un :
+--   SELECT COUNT(*) FROM session_blocks WHERE scene IS NOT NULL;   -- 0 juste après la migration
+
+-- Test de personnalité (MBTI) pour le staff, même questionnaire que les joueurs
+--
+-- `mbti_responses.player_id` était NOT NULL — une réponse ne pouvait être que celle d'un joueur.
+-- On ouvre la table au staff via un second sujet possible (`staff_id`), mutuellement exclusif
+-- avec `player_id` : une ligne répond pour une personne, jamais les deux à la fois.
+--
+-- ALTER TABLE mbti_responses ALTER COLUMN player_id DROP NOT NULL;
+-- ALTER TABLE mbti_responses ADD COLUMN IF NOT EXISTS staff_id UUID REFERENCES staff(id) ON DELETE CASCADE;
+-- ALTER TABLE mbti_responses ADD CONSTRAINT mbti_responses_staff_id_key UNIQUE (staff_id);
+-- ALTER TABLE mbti_responses ADD CONSTRAINT mbti_responses_subject_check
+--   CHECK ((player_id IS NOT NULL AND staff_id IS NULL) OR (player_id IS NULL AND staff_id IS NOT NULL));
+--
+-- -- La policy filtrait uniquement sur `player_id` : avec la colonne devenue nullable, une ligne
+-- -- de staff (player_id NULL) ne matchait plus rien et devenait invisible à tout le monde.
+-- DROP POLICY IF EXISTS "mbti_access" ON mbti_responses;
+-- CREATE POLICY "mbti_access" ON mbti_responses
+--   FOR ALL TO authenticated
+--   USING (
+--     (player_id IS NOT NULL AND player_id IN (SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())))
+--     OR
+--     (staff_id  IS NOT NULL AND staff_id  IN (SELECT id FROM staff   WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())))
+--   )
+--   WITH CHECK (
+--     (player_id IS NOT NULL AND player_id IN (SELECT id FROM players WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())))
+--     OR
+--     (staff_id  IS NOT NULL AND staff_id  IN (SELECT id FROM staff   WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())))
+--   );
+--
+-- -- Pendants de get_mbti_public_info / submit_mbti_public pour le staff — mêmes règles
+-- -- (SECURITY DEFINER, une seule passation, 24 réponses de 1 à 5), sujet différent.
+-- CREATE OR REPLACE FUNCTION get_staff_mbti_public_info(p_staff_id UUID)
+-- RETURNS TABLE(first_name TEXT, last_name TEXT, already_answered BOOLEAN)
+-- LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+--   SELECT s.first_name, s.last_name, EXISTS (SELECT 1 FROM mbti_responses m WHERE m.staff_id = s.id)
+--   FROM staff s
+--   WHERE s.id = p_staff_id;
+-- $$;
+-- GRANT EXECUTE ON FUNCTION get_staff_mbti_public_info(UUID) TO anon;
+--
+-- CREATE OR REPLACE FUNCTION submit_staff_mbti_public(
+--   p_staff_id UUID,
+--   p_answers  JSONB
+-- )
+-- RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+-- DECLARE
+--   v_key   TEXT;
+--   v_value JSONB;
+--   v_count INT;
+-- BEGIN
+--   IF NOT EXISTS (SELECT 1 FROM staff WHERE id = p_staff_id) THEN
+--     RAISE EXCEPTION 'Membre du staff introuvable';
+--   END IF;
+--
+--   IF EXISTS (SELECT 1 FROM mbti_responses WHERE staff_id = p_staff_id) THEN
+--     RAISE EXCEPTION 'Questionnaire déjà rempli';
+--   END IF;
+--
+--   IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN
+--     RAISE EXCEPTION 'Réponses invalides';
+--   END IF;
+--
+--   SELECT COUNT(*) INTO v_count FROM jsonb_object_keys(p_answers);
+--   IF v_count <> 24 THEN
+--     RAISE EXCEPTION 'Questionnaire incomplet : 24 réponses attendues, % reçues', v_count;
+--   END IF;
+--
+--   FOR v_key, v_value IN SELECT * FROM jsonb_each(p_answers) LOOP
+--     IF v_key !~ '^([1-9]|1[0-9]|2[0-4])$' THEN
+--       RAISE EXCEPTION 'Question inconnue : %', v_key;
+--     END IF;
+--     IF jsonb_typeof(v_value) <> 'number' THEN
+--       RAISE EXCEPTION 'Réponse invalide à la question % : attendu un entier de 1 à 5', v_key;
+--     END IF;
+--     IF (v_value)::NUMERIC NOT IN (1, 2, 3, 4, 5) THEN
+--       RAISE EXCEPTION 'Réponse invalide à la question % : attendu un entier de 1 à 5', v_key;
+--     END IF;
+--   END LOOP;
+--
+--   INSERT INTO mbti_responses (staff_id, answers) VALUES (p_staff_id, p_answers);
+-- END;
+-- $$;
+-- GRANT EXECUTE ON FUNCTION submit_staff_mbti_public(UUID, JSONB) TO anon;
+--
+-- Vérification — la contrainte interdit bien les deux à la fois ou aucun des deux, et l'existant
+-- (tout en player_id) n'a pas bougé :
+--   INSERT INTO mbti_responses (player_id, staff_id, answers) VALUES (gen_random_uuid(), gen_random_uuid(), '{}');  -- doit échouer
+--   SELECT COUNT(*) FROM mbti_responses WHERE staff_id IS NOT NULL;   -- 0 juste après la migration
+
+-- Rappels de tâche à la carte (J-1 / J-J / date personnalisée)
+--
+-- Remplace l'ancien réglage à date unique par trois leviers indépendants, cumulables : la veille
+-- de l'échéance (J-1), le jour même (J-J) — tous deux activés par défaut, comme l'était la cadence
+-- automatique — et un rappel supplémentaire optionnel à une date choisie. La relance hebdomadaire
+-- du lundi pour une tâche en retard (cf. `taskReminderReason` dans api/cron/notifications.js)
+-- n'est pas concernée par ces cases : elle reste indépendante, tant que la tâche n'est pas faite.
+--
+-- ALTER TABLE player_actions ADD COLUMN IF NOT EXISTS notify_j1 BOOLEAN NOT NULL DEFAULT true;
+-- ALTER TABLE player_actions ADD COLUMN IF NOT EXISTS notify_jj BOOLEAN NOT NULL DEFAULT true;
+-- ALTER TABLE player_actions ADD COLUMN IF NOT EXISTS notify_custom_date DATE;
+--
+-- Vérification — toute tâche existante hérite du comportement d'avant (veille + jour J), et aucune
+-- n'a de date personnalisée tant que personne n'en pose une :
+--   SELECT COUNT(*) FROM player_actions WHERE NOT (notify_j1 AND notify_jj);        -- 0 juste après la migration
+--   SELECT COUNT(*) FROM player_actions WHERE notify_custom_date IS NOT NULL;       -- 0 juste après la migration

@@ -37,14 +37,19 @@ function fullName(p) {
 const LOG_RETENTION_DAYS = 90
 
 /**
- * Cadence de relance d'une tâche : la veille, le jour même, puis une fois par
- * semaine tant qu'elle reste ouverte. Sans cette règle, une tâche en retard
- * renotifierait son assigné chaque jour indéfiniment.
+ * Cadence de relance d'une tâche : la veille et/ou le jour même selon les cases cochées sur la
+ * tâche (toutes deux activées par défaut), plus une fois par semaine tant qu'elle reste ouverte
+ * et en retard — cette relance hebdomadaire est inconditionnelle, elle ne dépend pas des cases.
+ * Sans elle, une tâche en retard renotifierait son assigné chaque jour indéfiniment.
+ *
+ * `notifyCustomDate`, quand renseignée, s'ajoute à ces réglages (elle ne les remplace pas) : un
+ * rappel supplémentaire part ce jour-là, qu'il coïncide ou non avec J-1/J-J.
  */
-export function taskReminderReason(dueDate, today) {
+export function taskReminderReason(dueDate, today, { notifyJ1 = true, notifyJJ = true, notifyCustomDate = null } = {}) {
   const t = isoDate(today)
-  if (dueDate === isoDate(shiftDays(today, 1))) return 'veille'
-  if (dueDate === t) return 'jour J'
+  if (notifyCustomDate && notifyCustomDate === t) return 'date personnalisée'
+  if (notifyJ1 && dueDate === isoDate(shiftDays(today, 1))) return 'veille'
+  if (notifyJJ && dueDate === t) return 'jour J'
   if (dueDate < t && today.getUTCDay() === 1) return 'relance hebdomadaire'
   return null
 }
@@ -216,27 +221,39 @@ async function notifyWellnessDigest(admin, team, rosterIds, today) {
 }
 
 async function notifyTasksDue(admin, team, today) {
+  const t = isoDate(today)
   const { data: actions } = await admin
     .from('player_actions')
-    .select('id, title, due_date, assigned_to, staff(profile_id)')
+    .select('id, title, due_date, notify_j1, notify_jj, notify_custom_date, assigned_to, staff(profile_id)')
     .eq('team_id', team.id)
     .neq('status', 'done')
     .not('assigned_to', 'is', null)
-    .lte('due_date', isoDate(shiftDays(today, TASK_HORIZON_DAYS)))
+    // Une tâche à échéance lointaine mais avec une date de rappel personnalisée aujourd'hui doit
+    // quand même remonter : le filtre ne peut plus se limiter à l'horizon de `due_date`.
+    .or(`due_date.lte.${isoDate(shiftDays(today, TASK_HORIZON_DAYS))},notify_custom_date.eq.${t}`)
 
   let sent = 0
   for (const action of actions ?? []) {
     const profileId = action.staff?.profile_id
     if (!profileId) continue
-    const reason = taskReminderReason(action.due_date, today)
+    const reason = taskReminderReason(action.due_date, today, {
+      notifyJ1: action.notify_j1,
+      notifyJJ: action.notify_jj,
+      notifyCustomDate: action.notify_custom_date,
+    })
     if (!reason) continue
     if (!await claimDispatch(admin, `task_due_soon:${action.id}`, isoDate(today))) continue
     const overdue = action.due_date < isoDate(today)
+    // Une date personnalisée ne dit rien de la proximité réelle de l'échéance (elle peut être
+    // volontairement bien avant) — "Échéance proche" serait trompeur si l'échéance est lointaine.
+    const title = reason === 'date personnalisée'
+      ? `Rappel — ${action.title}`
+      : overdue ? `Tâche en retard — ${action.title}` : `Échéance proche — ${action.title}`
     await dispatch(admin, {
       teamId: team.id,
       orgId: team.organization_id,
       type: 'task_due_soon',
-      title: overdue ? `Tâche en retard — ${action.title}` : `Échéance proche — ${action.title}`,
+      title,
       body: `À faire pour le ${action.due_date}`,
       entityType: 'player_action',
       entityId: action.id,

@@ -78,6 +78,7 @@ describe('registre des notifications', () => {
     expect(urlFor('medical_added', 'p1')).toBe('/medical/joueur/p1');
     expect(urlFor('wellness_added', 'p1')).toBe('/bien-etre/joueur/p1');
     expect(urlFor('rpe_added', 's1')).toBe('/seances/s1');
+    expect(urlFor('attendance_missing', 's1')).toBe('/seances/s1');
     expect(urlFor('match_stats_added', 'm1')).toBe('/matchs/m1');
     expect(urlFor('tactical_import_done', 'm1')).toBe('/matchs/m1/tactique');
     expect(urlFor('rtp_upcoming')).toBe('/medical/infirmerie');

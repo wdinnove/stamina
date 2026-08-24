@@ -85,6 +85,12 @@ export function createScene(court: CourtVariant = 'half'): DiagramScene {
   return { v: 1, court, elements: [] };
 }
 
+/** Copie profonde d'une scène, avec de nouveaux `id` d'éléments — pour dupliquer une phase sans
+ *  que ses éléments partagent leur identité avec l'original (déplacer l'un déplacerait l'autre). */
+export function cloneScene(scene: DiagramScene): DiagramScene {
+  return { ...scene, elements: scene.elements.map(el => ({ ...el, id: newId() })) };
+}
+
 /**
  * Change le format de terrain en conservant les positions relatives : sans cette
  * remise à l'échelle, passer de demi à entier tasserait tout le schéma dans un coin.

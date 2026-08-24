@@ -6,16 +6,31 @@ import type { StaffMember } from '../data/types';
 const SELECT = '*, staff_team(team_id)';
 
 export const staffApi = {
-  /** Le staff rattaché à une équipe. La liaison porte le filtre, d'où le `!inner`. */
+  /** Le staff rattaché à une équipe. La liaison porte le filtre, d'où le `!inner` — elle porte
+   *  aussi la surcharge de rôle éventuelle pour CETTE équipe (`teamRole`). */
   async listByTeam(teamId: string): Promise<StaffMember[]> {
     const { data, error } = await supabase
       .from('staff')
-      .select('*, staff_team!inner(team_id)')
+      .select('*, staff_team!inner(team_id, role)')
       .eq('staff_team.team_id', teamId)
       .order('last_name');
     if (error) throw error;
     // L'embed filtré ne ramène que l'équipe demandée : on ne peut pas en déduire les autres.
-    return (data ?? []).map(row => ({ ...toStaff(row), teamIds: undefined }));
+    return (data ?? []).map(row => {
+      const links = row.staff_team as { team_id: string; role: string | null }[] | undefined;
+      return { ...toStaff(row), teamIds: undefined, teamRole: links?.[0]?.role ?? undefined };
+    });
+  },
+
+  /** Surcharge (ou efface, avec `role: null`) le rôle d'une personne pour UNE équipe précise —
+   *  sans toucher à son métier, ni à ses autres équipes. */
+  async setTeamRole(staffId: string, teamId: string, role: string | null): Promise<void> {
+    const { error } = await supabase
+      .from('staff_team')
+      .update({ role })
+      .eq('staff_id', staffId)
+      .eq('team_id', teamId);
+    if (error) throw error;
   },
 
   /** Tout le staff de l'organisation, avec ses rattachements — l'écran club et l'ajout

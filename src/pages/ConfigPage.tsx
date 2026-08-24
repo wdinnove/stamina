@@ -12,7 +12,7 @@ import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
 import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, CategoryManager, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview, AddButton } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod } from '../data/types';
+import type { Player, StaffMember, TeamRole, TeamRoleAssignment, WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 import { LAYER } from '../styles/layers';
 
 const inputStyle: React.CSSProperties = {
@@ -607,6 +607,21 @@ function StaffTab() {
     }
   }
 
+  /** Change le rôle de la personne pour CETTE équipe uniquement (`staff_team.role`) — son métier
+   *  (`role`) et ses autres équipes ne bougent pas. Une valeur vide efface la surcharge : la
+   *  personne retombe sur son métier pour cette équipe. */
+  async function handleTeamRoleChange(member: StaffMember, teamRole: string) {
+    if (!selected) return;
+    const prev = member.teamRole;
+    setStaff(s => s.map(m => m.id === member.id ? { ...m, teamRole: teamRole || undefined } : m));
+    try {
+      await staffApi.setTeamRole(member.id, selected.team.id, teamRole || null);
+    } catch (err: unknown) {
+      setStaff(s => s.map(m => m.id === member.id ? { ...m, teamRole: prev } : m));
+      setError(err instanceof Error ? err.message : 'Erreur lors du changement de rôle.');
+    }
+  }
+
   // Retirer, ce n'est pas supprimer : la personne reste au club, avec ses tâches et ses
   // dossiers. Elle quitte seulement cette équipe.
   async function handleUnassign(member: StaffMember) {
@@ -739,7 +754,7 @@ function StaffTab() {
                   </td>
                 </tr>
               ) : staff.map((member, idx) => {
-                const color = roleColor(member.role);
+                const color = roleColor(member.teamRole ?? member.role);
                 return (
                   <tr key={member.id} style={{ borderBottom: idx < staff.length - 1 ? '1px solid #1E2229' : 'none' }}>
                     <td style={tdStyle}>
@@ -755,7 +770,14 @@ function StaffTab() {
                         <span style={{ fontWeight: 600 }}>{member.firstName} {member.lastName}</span>
                       </div>
                     </td>
-                    <td style={tdStyle}>{roleLabel(member.role)}</td>
+                    <td style={tdStyle}>
+                      <select value={member.teamRole ?? ''} onChange={e => handleTeamRoleChange(member, e.target.value)}
+                        title="Rôle pour cette équipe — vide = métier de la personne"
+                        style={{ padding: '4px 8px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.8rem', outline: 'none' }}>
+                        <option value="">{roleLabel(member.role)} (métier)</option>
+                        {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                    </td>
                     <td style={tdStyle}>
                       {member.profileId ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00E5A0', fontSize: '0.75rem', fontWeight: 600 }}>
@@ -940,7 +962,7 @@ function StaffTab() {
 }
 
 export function TeamConfigSection({ section }: { section: TeamSection }) {
-  const { selected, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, isSuperadmin, canConfigureTeam } = useTeamSeason();
+  const { selected, reload, thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, wellnessQuickScaleSize, isSuperadmin, canConfigureTeam } = useTeamSeason();
 
   const [teamForm, setTeamForm] = useState({ name: '', category: '', color: '#3B82F6', description: '' });
   const [teamSaving, setTeamSaving] = useState(false);
@@ -959,6 +981,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
 
   const [wellnessDefaultMethod, setWellnessDefaultMethod] = useState<WellnessEntryMethod>('detailed');
   const [wellnessPublicMethod,  setWellnessPublicMethod]  = useState<WellnessEntryMethod>('emoji');
+  const [wellnessQuickSize,     setWellnessQuickSize]     = useState<WellnessQuickScaleSize>(3);
   const [wellnessSaving, setWellnessSaving] = useState(false);
   const [wellnessMsg,    setWellnessMsg]    = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -985,7 +1008,8 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
   useEffect(() => {
     setWellnessDefaultMethod(defaultWellnessMethod);
     setWellnessPublicMethod(publicWellnessMethod);
-  }, [selected?.team.id, defaultWellnessMethod, publicWellnessMethod]);
+    setWellnessQuickSize(wellnessQuickScaleSize);
+  }, [selected?.team.id, defaultWellnessMethod, publicWellnessMethod, wellnessQuickScaleSize]);
 
   async function saveTeam() {
     if (!selected) return;
@@ -1045,7 +1069,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
     if (!selected) return;
     setWellnessSaving(true); setWellnessMsg(null);
     try {
-      await teamsApi.updateWellnessMethods(selected.team.id, { defaultMethod: wellnessDefaultMethod, publicMethod: wellnessPublicMethod });
+      await teamsApi.updateWellnessMethods(selected.team.id, { defaultMethod: wellnessDefaultMethod, publicMethod: wellnessPublicMethod, quickScaleSize: wellnessQuickSize });
       setWellnessMsg({ ok: true, text: 'Méthodes de saisie enregistrées.' });
       reload();
     } catch (e) {
@@ -1273,7 +1297,16 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
         title="Bien-être — méthode de saisie"
         description="Méthode utilisée à l'ouverture du formulaire — Détaillé (6 axes précis), Rapide (6 axes via icône/couleur) ou Note unique (1 seule valeur globale). Ce choix n'est modifiable qu'ici, pas depuis le formulaire lui-même."
         action={<ConfigSaveAction loading={wellnessSaving} onClick={saveWellnessMethods} />}>
-        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
+        <div>
+          <label style={labelStyle}>Échelle rapide (méthodes Rapide et Note unique)</label>
+          <select value={wellnessQuickSize} onChange={e => setWellnessQuickSize(Number(e.target.value) as WellnessQuickScaleSize)} style={{ ...inputStyle, maxWidth: 260 }}>
+            <option value={3}>3 crans — vert / orange / rouge</option>
+            <option value={4}>4 crans — vert / bleu / orange / rouge</option>
+            <option value={5}>5 crans — vert / bleu / jaune / orange / rouge</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16, marginTop: 16 }}>
           <div>
             <label style={labelStyle}>Saisie interne (staff)</label>
             <select value={wellnessDefaultMethod} onChange={e => setWellnessDefaultMethod(e.target.value as WellnessEntryMethod)} style={inputStyle}>
@@ -1281,7 +1314,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
               <option value="emoji">Rapide (icône/couleur)</option>
               <option value="single">Note unique</option>
             </select>
-            <WellnessMethodPreview method={wellnessDefaultMethod} />
+            <WellnessMethodPreview method={wellnessDefaultMethod} quickScaleSize={wellnessQuickSize} />
           </div>
           <div>
             <label style={labelStyle}>Lien public joueur</label>
@@ -1290,7 +1323,7 @@ export function TeamConfigSection({ section }: { section: TeamSection }) {
               <option value="emoji">Rapide (icône/couleur)</option>
               <option value="single">Note unique</option>
             </select>
-            <WellnessMethodPreview method={wellnessPublicMethod} />
+            <WellnessMethodPreview method={wellnessPublicMethod} quickScaleSize={wellnessQuickSize} />
           </div>
         </div>
 

@@ -1,8 +1,8 @@
-import { Smile, Meh, Frown } from 'lucide-react';
-import { WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessDimColor, wellnessRawValue } from '../utils/wellness';
-import type { WellnessEntryMethod } from '../data/types';
+import { Angry, Smile, Meh, Frown, Laugh } from 'lucide-react';
+import { WELLNESS_DIMENSIONS, wellnessQuickScale, wellnessDimColor, wellnessRawValue } from '../utils/wellness';
+import type { WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 
-const QUICK_ICONS = { frown: Frown, meh: Meh, smile: Smile };
+const QUICK_ICONS = { angry: Angry, frown: Frown, meh: Meh, smile: Smile, laugh: Laugh };
 
 // Aperçu figé du formulaire bien-être tel qu'il apparaîtra au saisisseur, pour la méthode choisie.
 // Valeurs "ressenties" (plus haut = mieux) arbitraires, juste là pour matérialiser une sélection
@@ -11,9 +11,9 @@ const PREVIEW_FELT: Record<string, number> = {
   fatigue: 5, mood: 9, stress: 6, motivation: 8, sleep: 7, soreness: 3,
 };
 
-/** Option de l'échelle rapide (3 points) la plus proche du ressenti d'aperçu de cet axe. */
-const nearestQuick = (felt: number) =>
-  WELLNESS_QUICK_SCALE.reduce((a, b) => Math.abs(b.v - felt) < Math.abs(a.v - felt) ? b : a);
+/** Option de l'échelle rapide la plus proche du ressenti d'aperçu de cet axe. */
+const nearestQuick = (scale: ReturnType<typeof wellnessQuickScale>, felt: number) =>
+  scale.reduce((a, b) => Math.abs(b.v - felt) < Math.abs(a.v - felt) ? b : a);
 
 const boxStyle: React.CSSProperties = {
   marginTop: 10, padding: '12px 14px', backgroundColor: '#12151B',
@@ -29,7 +29,8 @@ const captionStyle: React.CSSProperties = {
 const footnoteStyle: React.CSSProperties = { color: '#475569', fontSize: '0.68rem', margin: '10px 0 0' };
 
 /** Rendu non interactif du formulaire de saisie bien-être, pour la config d'équipe. */
-export function WellnessMethodPreview({ method }: { method: WellnessEntryMethod }) {
+export function WellnessMethodPreview({ method, quickScaleSize = 3 }: { method: WellnessEntryMethod; quickScaleSize?: WellnessQuickScaleSize }) {
+  const quickScale = wellnessQuickScale(quickScaleSize);
   if (method === 'single') {
     return (
       <div style={boxStyle}>
@@ -38,7 +39,7 @@ export function WellnessMethodPreview({ method }: { method: WellnessEntryMethod 
           Comment tu te sens aujourd'hui, globalement ?
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          {WELLNESS_QUICK_SCALE.map(opt => {
+          {quickScale.map(opt => {
             const Icon = QUICK_ICONS[opt.icon];
             const active = opt.v === 9;
             return (
@@ -72,9 +73,9 @@ export function WellnessMethodPreview({ method }: { method: WellnessEntryMethod 
               </div>
               {method === 'emoji' ? (
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {WELLNESS_QUICK_SCALE.map(opt => {
+                  {quickScale.map(opt => {
                     const Icon = QUICK_ICONS[opt.icon];
-                    const active = opt.v === nearestQuick(PREVIEW_FELT[dim.key]).v;
+                    const active = opt.v === nearestQuick(quickScale, PREVIEW_FELT[dim.key]).v;
                     return (
                       <div key={opt.v} style={{ flex: 1, height: 34, borderRadius: 7, border: `1px solid ${active ? opt.color : '#2A2F3A'}`, backgroundColor: active ? opt.color + '22' : '#1E2229', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Icon size={17} color={active ? opt.color : '#475569'} />

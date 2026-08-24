@@ -127,4 +127,28 @@ describe('cadence de relance des tâches', () => {
     }
     expect(rappels).toBe(3) // 3 lundis en 21 jours, au lieu de 21 notifications
   })
+
+  it('la case J-1 décochée désactive le rappel de la veille', () => {
+    expect(taskReminderReason('2026-08-05', mardi, { notifyJ1: false })).toBeNull()
+  })
+
+  it('la case J-J décochée désactive le rappel du jour même', () => {
+    expect(taskReminderReason('2026-08-04', mardi, { notifyJJ: false })).toBeNull()
+  })
+
+  it('une date personnalisée s\'ajoute à la cadence, ne la remplace pas', () => {
+    // Échéance encore lointaine (le 1er septembre, cf. test ci-dessus) mais rappel voulu le 4 août.
+    expect(taskReminderReason('2026-09-01', mardi, { notifyCustomDate: '2026-08-04' })).toBe('date personnalisée')
+    // La veille de l'échéance reste par ailleurs signalée normalement, hors de la date choisie.
+    expect(taskReminderReason('2026-08-05', mardi, { notifyCustomDate: '2026-08-10' })).toBe('veille')
+  })
+
+  it('J-1 et J-J restent activés par défaut si les réglages sont absents (tâches créées avant la migration)', () => {
+    expect(taskReminderReason('2026-08-05', mardi, {})).toBe('veille')
+    expect(taskReminderReason('2026-08-04', mardi, {})).toBe('jour J')
+  })
+
+  it('la relance hebdomadaire ignore les cases J-1/J-J', () => {
+    expect(taskReminderReason('2026-07-16', lundi, { notifyJ1: false, notifyJJ: false })).toBe('relance hebdomadaire')
+  })
 })

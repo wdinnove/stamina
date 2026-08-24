@@ -26,6 +26,10 @@ const emptyForm = {
   category:    '' as ActionCategory | '',
   priority:    'normal'  as ActionPriority,
   dueDate:     TODAY,
+  notifyJ1:    true,
+  notifyJJ:    true,
+  notifyCustomEnabled: false,
+  notifyCustomDate:    TODAY,
   assignedTo:  '',
 };
 
@@ -47,6 +51,7 @@ export default function ActionsPage() {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState('');
   const [showForm,     setShowForm]     = useState(false);
+  const [editingId,    setEditingId]    = useState<string | null>(null);
   const [form,         setForm]         = useState(emptyForm);
   const [saving,       setSaving]       = useState(false);
   const [formError,    setFormError]    = useState('');
@@ -157,6 +162,38 @@ export default function ActionsPage() {
     }
   }
 
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowForm(true);
+  }
+
+  function openEdit(action: Action) {
+    setEditingId(action.id);
+    setForm({
+      playerId:    action.playerId ?? '',
+      title:       action.title,
+      description: action.description ?? '',
+      category:    action.category ?? '',
+      priority:    action.priority,
+      dueDate:     action.dueDate,
+      notifyJ1:    action.notifyJ1 ?? true,
+      notifyJJ:    action.notifyJJ ?? true,
+      notifyCustomEnabled: !!action.notifyCustomDate,
+      notifyCustomDate:    action.notifyCustomDate ?? TODAY,
+      assignedTo:  action.assignedTo ?? '',
+    });
+    setFormError('');
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setFormError('');
+    setForm(emptyForm);
+    setEditingId(null);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title || !form.dueDate) {
@@ -166,31 +203,43 @@ export default function ActionsPage() {
     setSaving(true);
     setFormError('');
     try {
-      const created = await actionsApi.create({
+      const payload = {
         playerId:    form.playerId || undefined,
-        teamId:      selected?.team.id,
-        seasonId:    selected?.season.id,
         title:       form.title,
         description: form.description || undefined,
         category:    form.category || undefined,
         priority:    form.priority,
         dueDate:     form.dueDate,
+        notifyJ1:    form.notifyJ1,
+        notifyJJ:    form.notifyJJ,
+        // Toujours envoyé (jamais `undefined`) : sur une édition, décocher doit bien effacer
+        // une date personnalisée déjà enregistrée, pas juste laisser le champ inchangé en base.
+        notifyCustomDate: form.notifyCustomEnabled ? form.notifyCustomDate : '',
         assignedTo:  form.assignedTo || undefined,
-        status:      'todo',
-      });
-      setActs(prev => [...prev, created].sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
-      setShowForm(false);
-      setForm(emptyForm);
-      const player = form.playerId ? players.find(p => p.id === form.playerId) : undefined;
-      const playerName = player ? playerNameFull(player) : undefined;
-      notify(selected?.team.id, 'action_added', form.title, {
-        body: playerName,
-        entityType: 'action',
-        entityId: created.id,
-        assigneeStaffId: form.assignedTo || undefined,
-      });
+      };
+      if (editingId) {
+        const updated = await actionsApi.update(editingId, payload);
+        setActs(prev => prev.map(a => a.id === editingId ? updated : a).sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
+      } else {
+        const created = await actionsApi.create({
+          ...payload,
+          teamId:   selected?.team.id,
+          seasonId: selected?.season.id,
+          status:   'todo',
+        });
+        setActs(prev => [...prev, created].sort((a, b) => a.dueDate.localeCompare(b.dueDate)));
+        const player = form.playerId ? players.find(p => p.id === form.playerId) : undefined;
+        const playerName = player ? playerNameFull(player) : undefined;
+        notify(selected?.team.id, 'action_added', form.title, {
+          body: playerName,
+          entityType: 'action',
+          entityId: created.id,
+          assigneeStaffId: form.assignedTo || undefined,
+        });
+      }
+      closeForm();
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : 'Erreur lors de la création.');
+      setFormError(err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement.');
     } finally {
       setSaving(false);
     }
@@ -218,15 +267,18 @@ export default function ActionsPage() {
     const isDone    = action.status === 'done';
 
     return (
-      <div style={{
-        backgroundColor: '#161920',
-        border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.25)' : '#2A2F3A'}`,
-        borderRadius: 8, padding: '12px 14px',
-        opacity: isDone ? 0.6 : 1,
-      }}>
+      <div
+        onClick={canEditTeamData ? () => openEdit(action) : undefined}
+        style={{
+          backgroundColor: '#161920',
+          border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.25)' : '#2A2F3A'}`,
+          borderRadius: 8, padding: '12px 14px',
+          opacity: isDone ? 0.6 : 1,
+          cursor: canEditTeamData ? 'pointer' : 'default',
+        }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <button
-            onClick={() => toggleDone(action.id)}
+            onClick={e => { e.stopPropagation(); toggleDone(action.id); }}
             disabled={!canEditTeamData}
             style={{ background: 'none', border: 'none', cursor: canEditTeamData ? 'pointer' : 'not-allowed', color: isDone ? '#00E5A0' : '#475569', padding: 0, marginTop: 2, flexShrink: 0, opacity: canEditTeamData ? 1 : 0.5 }}
           >
@@ -271,7 +323,7 @@ export default function ActionsPage() {
             </div>
           </div>
           <button
-            onClick={() => setConfirmDelete(action)}
+            onClick={e => { e.stopPropagation(); setConfirmDelete(action); }}
             disabled={!canEditTeamData}
             title="Supprimer"
             style={{ background: 'none', border: 'none', cursor: canEditTeamData ? 'pointer' : 'not-allowed', color: '#334155', padding: '2px', flexShrink: 0, display: 'flex', alignItems: 'center', marginTop: 1, opacity: canEditTeamData ? 1 : 0.5 }}
@@ -294,7 +346,7 @@ export default function ActionsPage() {
           <span className="sm:hidden">Tâches</span>
         </h1>
         {canEditTeamData && (
-          <AddButton label="Ajouter une tâche" onClick={() => setShowForm(true)} />
+          <AddButton label="Ajouter une tâche" onClick={openCreate} />
         )}
       </div>
 
@@ -443,15 +495,15 @@ export default function ActionsPage() {
       )}
 
       {showForm && (
-        <Modal maxWidth={500} scrollOverlay={false} onClose={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }}>
+        <Modal maxWidth={500} scrollOverlay={false} onClose={closeForm}>
           <style>{`
             @media (max-width: 539px) {
               .act-form-2col { grid-template-columns: 1fr !important; }
             }
           `}</style>
             <div className="px-4 sm:px-7" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 20, paddingBottom: 16, borderBottom: '1px solid #2A2F3A' }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Ajouter une tâche</h2>
-              <button onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>{editingId ? 'Modifier la tâche' : 'Ajouter une tâche'}</h2>
+              <button onClick={closeForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
             </div>
 
             <form className="px-4 sm:px-7" style={{ paddingTop: 18, paddingBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleSubmit}>
@@ -477,6 +529,27 @@ export default function ActionsPage() {
                   <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value as ActionPriority }))} style={inputStyle}>
                     {Object.entries(priorityConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 6 }}>Rappels</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#CBD5E1', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.notifyJ1} onChange={e => setForm(f => ({ ...f, notifyJ1: e.target.checked }))} />
+                    La veille (J-1)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#CBD5E1', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.notifyJJ} onChange={e => setForm(f => ({ ...f, notifyJJ: e.target.checked }))} />
+                    Le jour même (J-J)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#CBD5E1', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.notifyCustomEnabled}
+                      onChange={e => setForm(f => ({ ...f, notifyCustomEnabled: e.target.checked }))} />
+                    Délai personnalisé
+                  </label>
+                  <input type="date" disabled={!form.notifyCustomEnabled} value={form.notifyCustomDate}
+                    onChange={e => setForm(f => ({ ...f, notifyCustomDate: e.target.value }))}
+                    style={{ ...inputStyle, marginLeft: 24, width: 'calc(100% - 24px)', opacity: form.notifyCustomEnabled ? 1 : 0.5 }} />
                 </div>
               </div>
               <div className="act-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -509,9 +582,9 @@ export default function ActionsPage() {
                 <RichTextEditor value={form.description} onChange={html => setForm(f => ({ ...f, description: html }))} placeholder="Description détaillée de la tâche..." minHeight={72} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" onClick={() => { setShowForm(false); setFormError(''); setForm(emptyForm); }} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.88rem' }}>Annuler</button>
+                <button type="button" onClick={closeForm} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.88rem' }}>Annuler</button>
                 <button type="submit" disabled={saving} style={{ flex: 1, padding: '10px', backgroundColor: saving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: saving ? '#475569' : '#0D0F14', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}>
-                  {saving ? 'Création…' : 'Créer'}
+                  {saving ? (editingId ? 'Enregistrement…' : 'Création…') : (editingId ? 'Enregistrer' : 'Créer')}
                 </button>
               </div>
             </form>

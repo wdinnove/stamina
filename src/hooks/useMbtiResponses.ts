@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { mbtiApi } from '../api/mbti';
+import { mbtiApi, type StaffMbtiResponse } from '../api/mbti';
 import type { MbtiResponse } from '../data/types';
 
 /**
@@ -22,6 +22,29 @@ export function useMbtiResponses(playerIds: string[]) {
     if (!ids.length) { setResponses([]); setLoading(false); return; }
     setLoading(true);
     mbtiApi.listByPlayers(ids)
+      .then(rows => { setResponses(rows); setError(null); })
+      .catch(err => setError(err))
+      .finally(() => setLoading(false));
+  }, [key]);
+
+  useEffect(load, [load]);
+
+  return { responses, loading, error, reload: load };
+}
+
+/** Même chose pour le staff — cf. `useMbtiResponses`, dont c'est le pendant. */
+export function useStaffMbtiResponses(staffIds: string[]) {
+  const [responses, setResponses] = useState<StaffMbtiResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
+
+  const key = staffIds.join(',');
+
+  const load = useCallback(() => {
+    const ids = key ? key.split(',') : [];
+    if (!ids.length) { setResponses([]); setLoading(false); return; }
+    setLoading(true);
+    mbtiApi.listByStaffIds(ids)
       .then(rows => { setResponses(rows); setError(null); })
       .catch(err => setError(err))
       .finally(() => setLoading(false));

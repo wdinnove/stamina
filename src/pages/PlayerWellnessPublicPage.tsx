@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
-import { Send, CheckCircle, AlertCircle, Clock, Smile, Meh, Frown } from 'lucide-react';
+import { Send, CheckCircle, AlertCircle, Clock, Angry, Smile, Meh, Frown, Laugh } from 'lucide-react';
 import { wellnessApi } from '../api/wellness';
 import { notifyPublicWellness } from '../api/notifications';
 import { StaminaLogo } from '../components/StaminaLogo';
 import {
-  WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor,
+  WELLNESS_DIMENSIONS, wellnessQuickScale, wellnessScoreColor, wellnessDimColor,
   wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues,
 } from '../utils/wellness';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull } from '../utils/playerName';
-import type { WellnessEntryMethod } from '../data/types';
+import type { WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 
 const DIMS = WELLNESS_DIMENSIONS;
 const NORMAL_DIMS = DIMS.filter(d => !d.inverted);
@@ -23,7 +23,7 @@ function calcScore(v: Record<string, number>) {
 
 const scoreColor = wellnessScoreColor;
 const dimColor   = wellnessDimColor;
-const QUICK_ICONS = { frown: Frown, meh: Meh, smile: Smile };
+const QUICK_ICONS = { angry: Angry, frown: Frown, meh: Meh, smile: Smile, laugh: Laugh };
 
 function todayStr() { return new Date().toISOString().split('T')[0]; }
 function minDateStr() {
@@ -46,6 +46,7 @@ export default function PlayerWellnessPublicPage() {
     Object.fromEntries(DIMS.map(d => [d.key, 5]))
   );
   const [entryMode, setEntryMode] = useState<WellnessEntryMethod>('detailed');
+  const [quickScaleSize, setQuickScaleSize] = useState<WellnessQuickScaleSize>(3);
   const [singleValue, setSingleValue] = useState(5);
   const [notes,  setNotes]  = useState('');
 
@@ -60,6 +61,7 @@ export default function PlayerWellnessPublicPage() {
         else {
           setPlayerName(playerNameFull(info));
           setEntryMode(info.publicWellnessMethod ?? 'detailed');
+          setQuickScaleSize(info.wellnessQuickScaleSize);
         }
         setLoading(false);
       }, () => { setNotFound(true); setLoading(false); });
@@ -103,6 +105,7 @@ export default function PlayerWellnessPublicPage() {
   }
 
   const score = calcScore(values);
+  const quickScale = wellnessQuickScale(quickScaleSize);
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const card: React.CSSProperties = {
@@ -195,7 +198,7 @@ export default function PlayerWellnessPublicPage() {
             <div style={{ padding: '18px 12px', backgroundColor: '#0D0F14', border: '1px solid #2A2F3A', borderRadius: 8, marginBottom: 24, textAlign: 'center' }}>
               <p style={{ color: '#F1F5F9', fontWeight: 500, margin: '0 0 14px', fontSize: '0.9rem' }}>Comment tu te sens aujourd'hui ?</p>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                {WELLNESS_QUICK_SCALE.map(opt => {
+                {quickScale.map(opt => {
                   const Icon = QUICK_ICONS[opt.icon];
                   return (
                     <button key={opt.v} type="button" onClick={() => { setSingleValue(opt.v); setValues(wellnessBroadcastValues(opt.v)); }}
@@ -225,7 +228,7 @@ export default function PlayerWellnessPublicPage() {
                         </div>
                         {entryMode === 'emoji' ? (
                           <div style={{ display: 'flex', gap: 8 }}>
-                            {WELLNESS_QUICK_SCALE.map(opt => {
+                            {quickScale.map(opt => {
                               const raw = wellnessRawValue(opt.v, dim.inverted);
                               const active = val === raw;
                               const Icon = QUICK_ICONS[opt.icon];

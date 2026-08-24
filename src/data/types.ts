@@ -56,6 +56,9 @@ export interface Match {
  * équipes : `teamIds` porte ces rattachements quand ils ont été chargés.
  *
  * `role` est un métier (coach, kiné, préparateur…), pas une fonction dans une équipe donnée.
+ * `teamRole`, quand présent, surcharge ce métier pour UNE équipe précise (ex. assistant en U18,
+ * coach en NF2) — n'est renseigné que par `listByTeam`, qui charge le staff d'une équipe donnée ;
+ * le rôle à afficher/filtrer pour cette équipe est donc `teamRole ?? role`.
  */
 export interface StaffMember {
   id: string;
@@ -64,6 +67,7 @@ export interface StaffMember {
   firstName: string;
   lastName: string;
   role: string;
+  teamRole?: string;
   /** Équipes de la personne — absent quand la liste a été chargée équipe par équipe. */
   teamIds?: string[];
 }
@@ -105,9 +109,13 @@ export interface Player {
   height?: number;
   weight?: number;
   hand: 'right' | 'left' | 'both';
-  contractEnd?: string;
   email?: string;
   photoUrl?: string;
+  /** Date de départ du club — présente = le joueur ne doit plus apparaître dans les listes de
+   *  saisons futures ni dans les viviers de partenaires, mais reste visible sur les saisons où
+   *  il a été rattaché (l'historique ne se réécrit pas). Absent des listes par défaut
+   *  (`playersApi.list`) sauf demande explicite (`includeLeft`). */
+  leftDate?: string;
 }
 
 export interface Team {
@@ -132,10 +140,15 @@ export interface Team {
   drtgTRed?:    number;
   defaultWellnessMethod?: WellnessEntryMethod;
   publicWellnessMethod?:  WellnessEntryMethod;
+  /** Nombre de crans de l'échelle rapide (méthodes "emoji" et "single") — 3 ou 5. */
+  wellnessQuickScaleSize?: WellnessQuickScaleSize;
 }
 
 /** Méthode de saisie bien-être : détaillée (6 axes précis), rapide (6 axes via smiley/couleur), ou note unique (1 valeur globale) */
 export type WellnessEntryMethod = 'detailed' | 'emoji' | 'single';
+
+/** Nombre de crans de l'échelle rapide partagée par les méthodes "emoji" et "single". */
+export type WellnessQuickScaleSize = 3 | 4 | 5;
 
 export interface RPEEntry {
   id: string;
@@ -224,6 +237,13 @@ export interface Action {
   category?: ActionCategory;
   priority: ActionPriority;
   dueDate: string;
+  /** Rappel la veille de l'échéance (J-1). */
+  notifyJ1?: boolean;
+  /** Rappel le jour même de l'échéance (J-J). */
+  notifyJJ?: boolean;
+  /** Rappel supplémentaire optionnel à une date choisie — cumulable avec J-1/J-J, pas un
+   *  remplacement. N'affecte pas la relance hebdomadaire d'une tâche en retard. */
+  notifyCustomDate?: string;
   assignedTo?: string;
   status: ActionStatus;
 }
@@ -556,6 +576,9 @@ export interface SessionBlock {
   staffId: string | null;
   /** Groupe d'équipes du jour utilisé par la séquence — optionnel, masqué tant qu'il est nul. */
   teamBlockId: string | null;
+  /** Schéma propre à cette séquence — indépendant de tout exercice de bibliothèque, pour
+   *  dessiner sans avoir à créer/nommer un exercice au préalable. */
+  scene: DiagramScene | null;
   createdAt: string;
 }
 

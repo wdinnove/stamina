@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router';
-import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, BookPlus, Users, UserCheck, Check, Minus, Save, ChevronDown, ChevronUp, Activity, Plus } from 'lucide-react';
+import { ArrowLeft, Clock, File, FileText, Image, Video, Trash2, ExternalLink, Edit, X, AlertCircle, GripVertical, ArrowRight, ArrowUp, ArrowDown, BookOpen, BookPlus, Users, UserCheck, Check, Minus, Save, ChevronDown, ChevronUp, Activity, Plus, PencilRuler } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
@@ -13,8 +13,9 @@ import { teamCategoriesApi } from '../api/categories';
 import { staffApi } from '../api/staff';
 import { sanitizeHtml } from '../utils/sanitize';
 import { wellnessApi } from '../api/wellness';
-import { Modal, PlayerAvatar, RpeKpiCard, Badge, CategoryBadge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, ExercisePhaseList } from '../components';
+import { Modal, PlayerAvatar, RpeKpiCard, Badge, CategoryBadge, CATEGORY_FALLBACK_COLOR, DropzoneEmptyState, AccessRestricted, EmptyState, ExercisePhaseList, DiagramEditor, DiagramSceneView, DiagramThumb } from '../components';
 import { ExerciseView } from '../components';
+import { createScene, type DiagramScene } from '../utils/diagram';
 import RichTextEditor from '../components/RichTextEditor';
 import { computeAcwr, acwrZone, rpeColor, estimatedSessionRpe } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
@@ -284,13 +285,20 @@ function ExercisePicker({ exercises, value, onChange, inputStyle }: {
   );
 }
 
-function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
+function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks, teamComposition, compositionPlayers }: {
   sessionId: string;
   blocks: SessionBlock[];
   onBlocksChange: (blocks: SessionBlock[]) => void;
   /** Groupes d'équipes du jour DÉJÀ ENREGISTRÉS — les seuls qu'une séquence peut référencer :
    *  un groupe encore à l'écran mais absent de la base ferait échouer la clé étrangère. */
   teamBlocks: { id: string; label: string; teamCount: number }[];
+  /** Composition complète des groupes du jour (qui est dans quelle équipe) — pour la modale
+   *  « Voir les équipes », déclenchée depuis le badge `teamBlocks` ci-dessus. */
+  teamComposition: BlockDraft[];
+  /** Effectif + partenaires pouvant être assignés à une équipe — sert à résoudre les noms de la
+   *  modale, indépendamment du statut de présence (un joueur assigné puis marqué absent doit
+   *  quand même apparaître dans son équipe, cf. `attendanceModalPlayers`/`eligiblePlayers`). */
+  compositionPlayers: Player[];
 }) {
   const { thresholds, selected, canEditTeamData } = useTeamSeason();
   const navigate = useNavigate();
@@ -305,12 +313,26 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
   const [formDescription, setFormDescription] = useState('');
   const [formStaffId,    setFormStaffId]    = useState<string | null>(null);
   const [formTeamBlockId, setFormTeamBlockId] = useState<string | null>(null);
+  /** Schéma propre à la séquence en cours de création — indépendant de tout exercice de
+   *  bibliothèque, pour dessiner sans avoir à créer/nommer un exercice au préalable. */
+  const [formScene,      setFormScene]      = useState<DiagramScene | null>(null);
   const [editingId,      setEditingId]      = useState<string | null>(null);
   const [editForm,       setEditForm]       = useState(BLANK_BLOCK);
   const [editDrillId,    setEditDrillId]    = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editStaffId,     setEditStaffId]     = useState<string | null>(null);
   const [editTeamBlockId, setEditTeamBlockId] = useState<string | null>(null);
+  const [editScene,       setEditScene]       = useState<DiagramScene | null>(null);
+  /** Quelle scène la modale de dessin édite en ce moment — évite deux modales dupliquées. */
+  const [diagramTarget,   setDiagramTarget]   = useState<'form' | 'edit' | null>(null);
+  /** Brouillon édité dans la modale — appliqué à `formScene`/`editScene` seulement au clic sur
+   *  « Enregistrer » (pas en direct au fil du dessin) : sinon rien ne distingue visuellement
+   *  fermer la modale de valider le schéma. */
+  const [diagramDraft,    setDiagramDraft]    = useState<DiagramScene | null>(null);
+  /** Schéma propre (hors bibliothèque) déplié, séquence par séquence — même logique que
+   *  `openSchemas` pour les schémas d'un exercice lié, mais rien à charger : la scène est
+   *  déjà sur le bloc. */
+  const [openOwnSchema,   setOpenOwnSchema]   = useState<Record<string, boolean>>({});
   const [draggingIndex,  setDraggingIndex]  = useState<number | null>(null);
   const [overIndex,      setOverIndex]      = useState<number | null>(null);
   const [exercises,       setExercises]       = useState<Exercise[]>([]);
@@ -318,6 +340,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
   const [teamStaff,       setTeamStaff]       = useState<StaffMember[]>([]);
   const [viewExercise,    setViewExercise]    = useState<Exercise | null>(null);
   const [viewPhases,      setViewPhases]      = useState<ExercisePhase[]>([]);
+  const [viewTeamBlockId, setViewTeamBlockId] = useState<string | null>(null);
   /**
    * Schémas dépliés en ligne, séquence par séquence — repliés par défaut : une séance de dix
    * séquences deviendrait illisible si chacune ouvrait ses terrains d'office.
@@ -426,6 +449,41 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
    * Un repos n'a ni catégorie ni objectif : deux champs suffisent, et la catégorie part vide
    * plutôt que de recevoir un libellé factice qu'il faudrait ensuite filtrer partout.
    */
+  /**
+   * Ouvre le formulaire d'ajout, animateur pré-rempli par défaut sur le coach de l'équipe — mais
+   * seulement s'il n'y a aucune ambiguïté : un seul membre au rôle coach (métier ou surcharge
+   * d'équipe, cf. `staff_team.role`) rattaché à cette équipe. À 0 ou plusieurs coachs, aucun
+   * défaut n'est mieux qu'un mauvais defaut — la sélection reste manuelle, comme avant.
+   */
+  function openAddForm() {
+    const coaches = teamStaff.filter(m => (m.teamRole ?? m.role) === 'coach');
+    setFormStaffId(coaches.length === 1 ? coaches[0].id : null);
+    setFormScene(null);
+    setShowForm(true);
+    setBlockError('');
+  }
+
+  /** Ouvre la modale de dessin sur un brouillon — la scène existante (ou un terrain vide si
+   *  aucune) n'est répercutée sur `formScene`/`editScene` qu'à l'enregistrement. */
+  function openDiagramEditor(target: 'form' | 'edit') {
+    setDiagramDraft((target === 'form' ? formScene : editScene) ?? createScene('half'));
+    setDiagramTarget(target);
+  }
+
+  function saveDiagramDraft() {
+    if (diagramTarget && diagramDraft) {
+      if (diagramTarget === 'form') setFormScene(diagramDraft);
+      else setEditScene(diagramDraft);
+    }
+    setDiagramTarget(null);
+    setDiagramDraft(null);
+  }
+
+  function cancelDiagramEditor() {
+    setDiagramTarget(null);
+    setDiagramDraft(null);
+  }
+
   async function handleAddRest(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -466,6 +524,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
         drillId: formDrillId,
         staffId: formStaffId,
         teamBlockId: formTeamBlockId,
+        scene: formScene,
       });
       onBlocksChange([...blocks, next]);
       setForm({ ...BLANK_BLOCK, category: blockCategories[0]?.name ?? BLOCK_CATEGORY_FALLBACK });
@@ -473,6 +532,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
       setFormDescription('');
       setFormStaffId(null);
       setFormTeamBlockId(null);
+      setFormScene(null);
       setShowForm(false);
     } catch (err: unknown) {
       setBlockError(err instanceof Error ? err.message : 'Erreur');
@@ -499,6 +559,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
     setEditDescription(block.description ?? '');
     setEditStaffId(block.staffId);
     setEditTeamBlockId(block.teamBlockId);
+    setEditScene(block.scene ?? null);
   }
 
   async function handleEditSave(block: SessionBlock) {
@@ -519,6 +580,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
             drillId:     editDrillId,
             staffId:     editStaffId,
             teamBlockId: editTeamBlockId,
+            scene:       editScene,
           };
       const updated = await sessionBlocksApi.update(block.id, patch);
       onBlocksChange(blocks.map(b => b.id === block.id ? updated : b));
@@ -748,6 +810,28 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
                       </div>
                     </div>
 
+                    {/* Schéma propre à cette séquence — pas besoin de passer par la bibliothèque d'exercices. */}
+                    <div>
+                      <label style={labelStyle}>Schéma</label>
+                      {editScene && editScene.elements.length > 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <button type="button" onClick={() => openDiagramEditor('edit')}
+                            style={{ width: 120, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>
+                            <DiagramThumb scene={editScene} height={72} />
+                          </button>
+                          <button type="button" onClick={() => setEditScene(createScene(editScene.court))}
+                            style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.76rem', padding: '5px 10px' }}>
+                            Effacer
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => openDiagramEditor('edit')}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem', padding: '7px 12px' }}>
+                          <PencilRuler size={13} /> Dessiner un schéma
+                        </button>
+                      )}
+                    </div>
+
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
                       <button onClick={() => setEditingId(null)}
                         style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
@@ -825,9 +909,10 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
                         </span>
                         <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px' }}>{block.loadUa} UA</span>
                         {linkedTeamBlock && (
-                          <span style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <button type="button" onClick={() => setViewTeamBlockId(linkedTeamBlock.id)} title="Voir les équipes du jour"
+                            style={{ ...neutralBadge, fontSize: '0.68rem', padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                             <Users size={10} /> {linkedTeamBlock.label} · {linkedTeamBlock.teamCount}
-                          </span>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -856,9 +941,10 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
                       </span>
                       <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px' }}>{block.loadUa} UA</span>
                       {linkedTeamBlock && (
-                        <span style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <button type="button" onClick={() => setViewTeamBlockId(linkedTeamBlock.id)} title="Voir les équipes du jour"
+                          style={{ ...neutralBadge, fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
                           <Users size={11} /> {linkedTeamBlock.label} · {linkedTeamBlock.teamCount}
-                        </span>
+                        </button>
                       )}
                       <div style={{ width: 1, height: 18, backgroundColor: '#2A2F3A', flexShrink: 0 }} />
                       {block.drillId ? (
@@ -939,6 +1025,28 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
                             ) : (
                               <ExercisePhaseList phases={phasesByExercise[linkedExercise.id] ?? []} />
                             )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Schéma propre à la séquence, dessiné directement sans exercice de bibliothèque. */}
+                    {block.scene && block.scene.elements.length > 0 && (
+                      <div style={{ paddingLeft: 30, marginTop: 8 }}>
+                        <button
+                          onClick={() => setOpenOwnSchema(prev => ({ ...prev, [block.id]: !prev[block.id] }))}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px',
+                            backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5,
+                            color: openOwnSchema[block.id] ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                          }}>
+                          {openOwnSchema[block.id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          Schéma
+                        </button>
+
+                        {openOwnSchema[block.id] && (
+                          <div style={{ marginTop: 10, maxWidth: 340 }}>
+                            <DiagramThumb scene={block.scene} />
                           </div>
                         )}
                       </div>
@@ -1044,8 +1152,30 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
             </div>
           </div>
 
+          {/* Schéma propre à cette séquence — pas besoin de passer par la bibliothèque d'exercices. */}
+          <div>
+            <label style={labelStyle}>Schéma</label>
+            {formScene && formScene.elements.length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button type="button" onClick={() => openDiagramEditor('form')}
+                  style={{ width: 120, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>
+                  <DiagramThumb scene={formScene} height={72} />
+                </button>
+                <button type="button" onClick={() => setFormScene(createScene(formScene.court))}
+                  style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.76rem', padding: '5px 10px' }}>
+                  Effacer
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => openDiagramEditor('form')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.8rem', padding: '7px 12px' }}>
+                <PencilRuler size={13} /> Dessiner un schéma
+              </button>
+            )}
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-            <button type="button" onClick={() => { setShowForm(false); setForm({ ...BLANK_BLOCK, category: blockCategories[0]?.name ?? BLOCK_CATEGORY_FALLBACK }); setFormDrillId(null); setFormDescription(''); setFormStaffId(null); setFormTeamBlockId(null); }}
+            <button type="button" onClick={() => { setShowForm(false); setForm({ ...BLANK_BLOCK, category: blockCategories[0]?.name ?? BLOCK_CATEGORY_FALLBACK }); setFormDrillId(null); setFormDescription(''); setFormStaffId(null); setFormTeamBlockId(null); setFormScene(null); }}
               style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
               Annuler
             </button>
@@ -1088,7 +1218,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
           <>
             <DropzoneEmptyState
               label="Cliquer pour ajouter une séquence"
-              onClick={() => { setShowForm(true); setBlockError(''); }}
+              onClick={openAddForm}
               style={{ marginTop: blocks.length > 0 ? 8 : 0 }}
             />
             {/* Même gabarit que « Ajouter une séquence », en plus compact : le repos n'est pas
@@ -1107,7 +1237,7 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
 
       {/* Fiche exercice — exactement la vue de la page dédiée, phases comprises */}
       {viewExercise && (
-        <Modal maxWidth={760} style={{ padding: 24 }} onClose={() => setViewExercise(null)} closeOnBackdropClick>
+        <Modal maxWidth={1040} style={{ padding: 24 }} onClose={() => setViewExercise(null)} closeOnBackdropClick>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ color: '#F1F5F9', margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 700 }}>{viewExercise.name}</h2>
@@ -1132,6 +1262,76 @@ function SessionBlocks({ sessionId, blocks, onBlocksChange, teamBlocks }: {
           </div>
 
           <ExerciseView exercise={viewExercise} phases={viewPhases} />
+        </Modal>
+      )}
+
+      {/* Composition du groupe d'équipes du jour référencé par la séquence */}
+      {viewTeamBlockId && (() => {
+        const block = teamComposition.find(b => b.localId === viewTeamBlockId);
+        if (!block) return null;
+        return (
+          <Modal maxWidth={480} style={{ padding: 24 }} onClose={() => setViewTeamBlockId(null)} closeOnBackdropClick>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{block.label}</h2>
+              <button onClick={() => setViewTeamBlockId(null)}
+                style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, display: 'flex' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#94A3B8')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {block.teams.map(team => {
+                const members = compositionPlayers.filter(p => block.assign[p.id] === team.localId);
+                return (
+                  <div key={team.localId}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: team.color, flexShrink: 0 }} />
+                      <span style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 700 }}>{team.name}</span>
+                      <span style={{ color: '#475569', fontSize: '0.72rem' }}>({members.length})</span>
+                    </div>
+                    {members.length === 0 ? (
+                      <p style={{ color: '#475569', fontSize: '0.8rem', margin: '0 0 0 18px' }}>Personne.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {members.map(p => (
+                          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <PlayerAvatar player={p} size={24} />
+                            <span style={{ color: '#F1F5F9', fontSize: '0.82rem' }}>{playerNameFull(p)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {/* Dessin du schéma propre à la séquence (form d'ajout ou d'édition, selon `diagramTarget`) —
+          brouillon local, appliqué à la séquence seulement au clic sur « Enregistrer ». */}
+      {diagramTarget && diagramDraft && (
+        <Modal maxWidth={900} style={{ padding: 20 }} onClose={cancelDiagramEditor} closeOnBackdropClick>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Schéma</h2>
+            <button onClick={cancelDiagramEditor}
+              style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 4, display: 'flex' }}>
+              <X size={18} />
+            </button>
+          </div>
+          <DiagramEditor initial={diagramDraft} onChange={setDiagramDraft} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+            <button type="button" onClick={cancelDiagramEditor}
+              style={{ padding: '8px 16px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.84rem' }}>
+              Annuler
+            </button>
+            <button type="button" onClick={saveDiagramDraft}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontWeight: 700, fontSize: '0.84rem' }}>
+              <Save size={14} /> Enregistrer
+            </button>
+          </div>
         </Modal>
       )}
     </div>
@@ -1346,7 +1546,9 @@ export default function TrainingSessionDetailPage() {
     setError('');
     Promise.all([
       attendanceApi.getSession(id),
-      playersApi.list(),
+      // Départs compris : un partenaire (ou un joueur sorti de l'effectif depuis) qui a une
+      // présence/un RPE sur CETTE séance doit garder son nom résolu, même après son départ.
+      playersApi.list({ includeLeft: true }),
       attendanceApi.listAttendance([id]),
       rpeApi.listBySession(id),
       sessionBlocksApi.list(id),
@@ -1581,6 +1783,14 @@ export default function TrainingSessionDetailPage() {
     .filter(p => attMap[p.id] === 'present' || attMap[p.id] === 'late')
     .sort((a, b) => a.lastName.localeCompare(b.lastName, 'fr'));
 
+  /** Effectif + partenaires déjà pointés sur la séance (quel que soit leur statut) — pour la
+   *  modale de présences, qui doit pouvoir retoucher le statut de tout le monde, pas seulement
+   *  ceux actuellement présents/en retard (cf. `eligiblePlayers`). */
+  const attendanceModalPlayers = [
+    ...rosterPlayers,
+    ...players.filter(p => sparringIds.has(p.id) && !rosterIds.has(p.id)),
+  ].sort((a, b) => a.lastName.localeCompare(b.lastName, 'fr'));
+
   function renderPlayerItem(player: Player) {
     const attStatus = attMap[player.id] as TrainingAttendance['status'] | undefined;
     const statusCfg = attStatus === 'late' ? STATUS_CFG[attStatus] : null;
@@ -1654,12 +1864,9 @@ export default function TrainingSessionDetailPage() {
 
       {/* Header */}
       <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 200 }}>
             <h1 style={{ color: '#F1F5F9', margin: 0 }}>{fmtDateFull(session.date)}</h1>
-            {session.notes && (
-              <p style={{ color: '#94A3B8', fontSize: '0.82rem', fontStyle: 'italic', margin: '6px 0 0' }}>{session.notes}</p>
-            )}
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <CategoryBadge name={session.categoryName} color={session.categoryColor}
@@ -1674,6 +1881,27 @@ export default function TrainingSessionDetailPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Notes */}
+      <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Edit size={15} style={{ color: '#00E5A0' }} />
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Notes</h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {notesError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{notesError}</span>}
+            {canEditTeamData && (
+            <button type="button" onClick={handleSaveNotes} disabled={notesSaving || notesDraft === (session.notes ?? '')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: notesSaved ? '#1E2229' : (notesSaving || notesDraft === (session.notes ?? '')) ? '#1E2229' : '#00E5A0', border: notesSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: notesSaved ? '#00E5A0' : (notesSaving || notesDraft === (session.notes ?? '')) ? '#475569' : '#0D0F14', cursor: (notesSaving || notesDraft === (session.notes ?? '')) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
+              {notesSaved ? <><Check size={13} /> Enregistré</> : <><Save size={13} /> {notesSaving ? 'Enregistrement…' : 'Enregistrer'}</>}
+            </button>
+            )}
+          </div>
+        </div>
+        <RichTextEditor value={notesDraft} onChange={setNotesDraft} disabled={!canEditTeamData}
+          placeholder="Notes sur la séance…" minHeight={70} />
       </div>
 
       {/* Player table */}
@@ -2041,31 +2269,11 @@ export default function TrainingSessionDetailPage() {
         )}
       </div>
 
-      <SessionBlocks sessionId={session.id} blocks={blocks} onBlocksChange={setBlocks} teamBlocks={savedTeamBlocks} />
+      <SessionBlocks sessionId={session.id} blocks={blocks} onBlocksChange={setBlocks} teamBlocks={savedTeamBlocks}
+        teamComposition={blockDrafts} compositionPlayers={relevantPlayers} />
 
-      {/* Notes, puis Documents en dessous */}
+      {/* Documents */}
       <div className="grid grid-cols-1" style={{ gap: 16, marginBottom: 16, alignItems: 'start' }}>
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Edit size={15} style={{ color: '#00E5A0' }} />
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Notes</h2>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {notesError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{notesError}</span>}
-              {canEditTeamData && (
-              <button type="button" onClick={handleSaveNotes} disabled={notesSaving || notesDraft === (session.notes ?? '')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: notesSaved ? '#1E2229' : (notesSaving || notesDraft === (session.notes ?? '')) ? '#1E2229' : '#00E5A0', border: notesSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: notesSaved ? '#00E5A0' : (notesSaving || notesDraft === (session.notes ?? '')) ? '#475569' : '#0D0F14', cursor: (notesSaving || notesDraft === (session.notes ?? '')) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
-                {notesSaved ? <><Check size={13} /> Enregistré</> : <><Save size={13} /> {notesSaving ? 'Enregistrement…' : 'Enregistrer'}</>}
-              </button>
-              )}
-            </div>
-          </div>
-          <textarea value={notesDraft} onChange={e => setNotesDraft(e.target.value)} disabled={!canEditTeamData}
-            placeholder="Notes sur la séance…"
-            style={{ width: '100%', minHeight: 70, padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', opacity: canEditTeamData ? 1 : 0.6 }} />
-        </div>
-
         <SessionDocuments sessionId={session.id} />
       </div>
 
@@ -2132,9 +2340,9 @@ export default function TrainingSessionDetailPage() {
           )}
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-            {rosterPlayers.length === 0 ? (
+            {attendanceModalPlayers.length === 0 ? (
               <p style={{ color: '#475569', fontSize: '0.85rem', textAlign: 'center', padding: '32px 0' }}>Aucun joueur dans l'effectif.</p>
-            ) : rosterPlayers.map(p => {
+            ) : attendanceModalPlayers.map(p => {
               const status = attendance.find(a => a.playerId === p.id)?.status;
               return (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 8px', borderBottom: '1px solid #1E2229' }}>
@@ -2143,6 +2351,12 @@ export default function TrainingSessionDetailPage() {
                     <span className="hidden md:inline">{playerNameFull(p)}</span>
                     <span className="md:hidden">{playerNameShort(p)}</span>
                   </span>
+                  {sparringIds.has(p.id) && (
+                    <span title="Partenaire d'entraînement — hors effectif"
+                      style={{ color: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.12)', fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                      Partenaire
+                    </span>
+                  )}
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                     {(['present', 'absent', 'late', 'not_expected'] as const).map(s => {
                       const cfg = STATUS_CFG[s];

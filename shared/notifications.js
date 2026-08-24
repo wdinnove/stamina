@@ -125,8 +125,10 @@ export function urlFor(type, entityId) {
 
     case 'session_updated':
       return entityId ? `/seances/${entityId}` : '/seances';
+    // `entityId` = séance concernée → sa fiche porte la modale de présences, pas la grille
+    // globale (même pattern que `rpe_missing` juste en dessous, créé par le même cron).
     case 'attendance_missing':
-      return '/presences';
+      return entityId ? `/seances/${entityId}` : '/presences';
 
     // `entityId` = séance concernée → la fiche de séance porte les RPE saisis.
     case 'rpe_added':

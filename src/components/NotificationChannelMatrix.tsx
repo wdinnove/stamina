@@ -13,6 +13,12 @@ export const CHANNEL_LABELS: Record<Channel, string> = {
   email: 'Email',
 };
 
+const TIMING_LABELS: Record<string, string> = {
+  immediate:    'immédiat',
+  daily_cron:   'quotidien',
+  weekly_cron:  'hebdo',
+};
+
 /** État d'un interrupteur pour une (catégorie, canal) donnée. */
 export interface CellState {
   on: boolean;
@@ -33,14 +39,21 @@ const thStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 };
 
-function CategoryLabel({ color, label, types }: { color: string; label: string; types: string }) {
+function CategoryLabel({ color, label, types }: { color: string; label: string; types: { key: string; label: string; timing: string; audience: string }[] }) {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
         <span style={{ color: '#F1F5F9', fontSize: '0.85rem', fontWeight: 500 }}>{label}</span>
       </div>
-      <p style={{ color: '#475569', fontSize: '0.72rem', margin: '3px 0 0 16px' }}>{types}</p>
+      <div style={{ margin: '4px 0 0 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {types.map(t => (
+          <p key={t.key} style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>
+            {t.label}
+            <span style={{ color: '#334155' }}> — {TIMING_LABELS[t.timing] ?? t.timing}{t.audience === 'assignee' ? ', à la personne concernée' : ''}</span>
+          </p>
+        ))}
+      </div>
     </>
   );
 }
@@ -64,7 +77,7 @@ export function NotificationChannelMatrix({ channels, cell, onToggle }: Props) {
             backgroundColor: '#1A1F27', border: '1px solid #2A2F3A', borderRadius: 8,
             padding: '12px 14px',
           }}>
-            <CategoryLabel color={cat.color} label={cat.label} types={typesInCategory(cat.key).map(t => t.label).join(' · ')} />
+            <CategoryLabel color={cat.color} label={cat.label} types={typesInCategory(cat.key)} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 10 }}>
               {channels.map(channel => {
                 const state = cell(cat.key, channel);
@@ -110,7 +123,7 @@ export function NotificationChannelMatrix({ channels, cell, onToggle }: Props) {
             {NOTIFICATION_CATEGORIES.map(cat => (
               <tr key={cat.key} style={{ borderBottom: '1px solid #1A1F27' }}>
                 <td style={{ padding: '10px' }}>
-                  <CategoryLabel color={cat.color} label={cat.label} types={typesInCategory(cat.key).map(t => t.label).join(' · ')} />
+                  <CategoryLabel color={cat.color} label={cat.label} types={typesInCategory(cat.key)} />
                 </td>
                 {channels.map(channel => {
                   const state = cell(cat.key, channel);

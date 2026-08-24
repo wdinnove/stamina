@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Save, Check, Mail, X, Users, Smile, Meh, Frown } from 'lucide-react';
+import { Save, Check, Mail, X, Users, Angry, Smile, Meh, Frown, Laugh } from 'lucide-react';
 import { sendWellnessLinks } from '../api/email';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
+import { attendanceApi } from '../api/attendance';
+import { rpeApi } from '../api/rpe';
 import { notify } from '../api/notifications';
 import { isWellnessAlerting } from '../../shared/notifications.js';
 import RichTextEditor from '../components/RichTextEditor';
@@ -11,7 +13,7 @@ import { DateRangeCard, useDateRange, PlayerSelect, Modal } from '../components'
 import { WellnessPomsPanel } from '../components/WellnessPomsPanel';
 import { WellnessPlayerRankingTable } from '../components/WellnessPlayerRankingTable';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { WELLNESS_DIMENSIONS, WELLNESS_QUICK_SCALE, wellnessScoreColor, wellnessDimColor, wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues, aggregateTeamWellnessDaily } from '../utils/wellness';
+import { WELLNESS_DIMENSIONS, wellnessQuickScale, wellnessScoreColor, wellnessDimColor, wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues, aggregateTeamWellnessDaily } from '../utils/wellness';
 import { playerNameFull } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
 import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
@@ -21,7 +23,7 @@ const normalDims = dimensions.filter(d => !d.inverted);
 const invertedDims = dimensions.filter(d => d.inverted);
 const scoreColor = wellnessScoreColor;
 const dimColor   = wellnessDimColor;
-const QUICK_ICONS = { frown: Frown, meh: Meh, smile: Smile };
+const QUICK_ICONS = { angry: Angry, frown: Frown, meh: Meh, smile: Smile, laugh: Laugh };
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtDate(iso: string): string {
@@ -38,7 +40,8 @@ const TAB_SLUGS: Record<string, Tab> = {
 };
 
 export default function WellnessPage() {
-  const { selected, defaultWellnessMethod, canEditTeamData } = useTeamSeason();
+  const { selected, defaultWellnessMethod, wellnessQuickScaleSize, canEditTeamData } = useTeamSeason();
+  const quickScale = wellnessQuickScale(wellnessQuickScaleSize);
   const navigate     = useNavigate();
   const { tab: tabSlug, id: urlId } = useParams<{ tab?: string; id?: string }>();
 
@@ -62,6 +65,9 @@ export default function WellnessPage() {
 
   const [roster, setRoster]               = useState<Player[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
+  /** Joueurs du club hors effectif — un partenaire pointé sur la séance du jour en fait partie. */
+  const [orgPlayers, setOrgPlayers]       = useState<Player[]>([]);
+  const [sparringIds, setSparringIds]     = useState<Set<string>>(new Set());
 
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [values, setValues]       = useState<Record<string, number>>(
@@ -108,19 +114,39 @@ export default function WellnessPage() {
             // L'équipe dans l'URL ne correspond plus à l'équipe sélectionnée (ex. bascule dans la TopBar).
             navigate('/', { replace: true });
           }
-        } else if (players.length > 0) {
-          if (!urlId) {
-            const slug = activeTab === 'entry' ? 'saisie' : 'joueur';
-            navigate(`/bien-etre/${slug}/${players[0].id}`, { replace: true });
-          } else if (!players.some(p => p.id === urlId)) {
-            // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
-            navigate('/', { replace: true });
-          }
+        } else if (players.length > 0 && !urlId) {
+          const slug = activeTab === 'entry' ? 'saisie' : 'joueur';
+          navigate(`/bien-etre/${slug}/${players[0].id}`, { replace: true });
         }
+        // Un joueur hors effectif de saison (partenaire, ou sorti de l'effectif depuis) garde sa
+        // saisie/son historique consultables — son nom est résolu via `orgPlayers` (cf. `selectedPlayer`).
       })
       .catch(() => {})
       .finally(() => setLoadingRoster(false));
   }, [selected?.season.id]);
+
+  // La liste du club sert à proposer les partenaires d'entraînement et à nommer un joueur hors
+  // effectif — départs compris, sinon un partenaire ou un joueur parti perd son nom ici même.
+  useEffect(() => {
+    playersApi.list({ includeLeft: true }).then(setOrgPlayers).catch(() => {});
+  }, [selected?.team.id]);
+
+  // Partenaires pointés sur la séance de la date en cours de saisie — proposés à la saisie bien-être.
+  useEffect(() => {
+    if (!selected || activeTab !== 'entry') { setSparringIds(new Set()); return; }
+    rpeApi.findSession(selected.team.id, selected.season.id, entryDate)
+      .then(session => session ? attendanceApi.listAttendance([session.id]) : [])
+      .then(att => setSparringIds(new Set(
+        att.filter(a => a.sparring && (a.status === 'present' || a.status === 'late')).map(a => a.playerId),
+      )))
+      .catch(() => setSparringIds(new Set()));
+  }, [selected?.team.id, selected?.season.id, activeTab, entryDate]);
+
+  /** Effectif de saison + partenaires pointés ce jour-là, pour la sélection de saisie. */
+  const selectablePlayers = useMemo(() => {
+    const guests = orgPlayers.filter(p => sparringIds.has(p.id) && !roster.some(r => r.id === p.id));
+    return [...roster, ...guests];
+  }, [roster, orgPlayers, sparringIds]);
 
   useEffect(() => {
     if (activeTab !== 'team' || roster.length === 0) return;
@@ -157,7 +183,8 @@ export default function WellnessPage() {
       .catch(() => {});
   }, [selectedPlayerId, entryDate]);
 
-  const selectedPlayer = roster.find(p => p.id === selectedPlayerId);
+  const selectedPlayer = roster.find(p => p.id === selectedPlayerId)
+    ?? orgPlayers.find(p => p.id === selectedPlayerId);
   const score = wellnessGlobalScore(values as { fatigue: number; mood: number; stress: number; motivation: number; sleep: number; soreness: number });
 
   // Dernière saisie enregistrée avant la date en cours d'édition, pour donner un repère pendant la saisie
@@ -289,10 +316,14 @@ export default function WellnessPage() {
           </div>
         ) : loadingRoster ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Chargement…</span>
-        ) : roster.length === 0 ? (
+        ) : (activeTab === 'entry' ? selectablePlayers : orgPlayers).length === 0 ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun joueur dans l'effectif pour cette saison.</span>
         ) : (
-          <PlayerSelect players={roster} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} />
+          // La saisie ne propose que l'effectif + les partenaires pointés aujourd'hui (on ne
+          // peut saisir que pour quelqu'un présent) ; l'historique doit au contraire rester
+          // accessible pour un partenaire pointé un autre jour, ou d'une autre équipe — sinon sa
+          // saisie, bien enregistrée, devient introuvable dès qu'il n'est plus pointé le jour même.
+          <PlayerSelect players={activeTab === 'entry' ? selectablePlayers : orgPlayers} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} />
         )}
 
         {activeTab === 'entry' && canEditTeamData && (
@@ -324,7 +355,7 @@ export default function WellnessPage() {
             <div style={{ padding: '20px', backgroundColor: '#1E2229', borderRadius: 8, textAlign: 'center' }}>
               <p style={{ color: '#F1F5F9', fontWeight: 500, margin: '0 0 14px' }}>Comment tu te sens aujourd'hui, globalement ?</p>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                {WELLNESS_QUICK_SCALE.map(opt => {
+                {quickScale.map(opt => {
                   const Icon = QUICK_ICONS[opt.icon];
                   return (
                     <button key={opt.v} disabled={!canEditTeamData}
@@ -358,7 +389,7 @@ export default function WellnessPage() {
                         </div>
                         {entryMode === 'emoji' ? (
                           <div style={{ display: 'flex', gap: 8 }}>
-                            {WELLNESS_QUICK_SCALE.map(opt => {
+                            {quickScale.map(opt => {
                               const raw = wellnessRawValue(opt.v, dim.inverted);
                               const active = val === raw;
                               const Icon = QUICK_ICONS[opt.icon];

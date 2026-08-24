@@ -114,6 +114,13 @@ export default function RPEPage() {
   /** Miroir de `existingSessionId` lisible depuis un `setState` fonctionnel — cf. l'effet des
    *  catégories, qui ne doit proposer un défaut que pour une séance encore à créer. */
   const sessionIdRef = useRef<string | null>(existingSessionId);
+  /** Miroir de `sessionDate`, pour ignorer la réponse d'une recherche de séance devenue
+   *  obsolète — cf. l'effet de vérification de séance existante, plus bas. */
+  const sessionDateRef = useRef(sessionDate);
+  /** Équipe/saison pour laquelle le défaut auto (séance du jour sinon dernière séance passée) a
+   *  déjà joué — au plus une fois par équipe/saison, pas une seule fois pour toute la session
+   *  de navigation (sinon changer d'équipe dans la TopBar ne proposerait plus jamais de défaut). */
+  const autoDefaultKeyRef = useRef<string | null>(null);
 
   // ── Individual tab state
   const selectedPlayerId = activeTab === 'individual' ? (urlId ?? null) : null;
@@ -130,10 +137,13 @@ export default function RPEPage() {
   const [teamDisplay, setTeamDisplay]           = useState<TeamDisplayMode>('chart');
 
   useEffect(() => { sessionIdRef.current = existingSessionId; }, [existingSessionId]);
+  useEffect(() => { sessionDateRef.current = sessionDate; }, [sessionDate]);
 
   // La liste du club sert à nommer les partenaires pointés sur la séance.
   useEffect(() => {
-    playersApi.list().then(setOrgPlayers).catch(() => {});
+    // Un partenaire ou un joueur sorti de l'effectif doit garder son nom résolu ici — cf. `selectedPlayer` —
+    // donc l'org complète, départs compris (le tri "candidats à inviter" se fait ailleurs, sur cette liste).
+    playersApi.list({ includeLeft: true }).then(setOrgPlayers).catch(() => {});
   }, [selected?.team.id]);
 
   /**
@@ -174,14 +184,11 @@ export default function RPEPage() {
       .then(players => {
         setRoster(players);
         setRpeValues(Object.fromEntries(players.map(p => [p.id, null])));
-        if (players.length > 0 && activeTab === 'individual') {
-          if (!urlId) {
-            navigate(`/rpe/joueur/${players[0].id}`, { replace: true });
-          } else if (!players.some(p => p.id === urlId)) {
-            // Le joueur dans l'URL n'appartient pas à l'équipe/saison sélectionnée.
-            navigate('/', { replace: true });
-          }
+        if (players.length > 0 && activeTab === 'individual' && !urlId) {
+          navigate(`/rpe/joueur/${players[0].id}`, { replace: true });
         }
+        // Un joueur hors effectif de saison (partenaire, ou sorti de l'effectif depuis) garde
+        // son historique consultable — son nom est résolu via `orgPlayers` (cf. `selectedPlayer`).
       })
       .catch(() => {})
       .finally(() => setLoadingRoster(false));
@@ -192,7 +199,29 @@ export default function RPEPage() {
     if (!selected || activeTab !== 'collective') return;
     setLoadingLinkedSessions(true);
     attendanceApi.listSessions(selected.team.id, selected.season.id)
-      .then(sessions => setLinkedSessions([...sessions].sort((a, b) => b.date.localeCompare(a.date))))
+      .then(sessions => {
+        const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
+        setLinkedSessions(sorted);
+        /**
+         * Défaut à l'ouverture (une seule fois) : la séance du jour si elle existe, sinon la
+         * dernière séance passée. `sorted` est trié par date décroissante, donc la première
+         * séance dont la date est ≤ aujourd'hui est exactement celle voulue dans les deux cas.
+         * On ne fait que déplacer `sessionDate` — c'est l'effet de vérification de séance
+         * existante, plus bas, qui charge réellement les données : un seul chemin d'accès aux
+         * entrées RPE, jamais deux requêtes concurrentes qui pourraient se marcher dessus.
+         * Une navigation explicite (état de route) ou un choix déjà fait ne doivent jamais être
+         * écrasés par ce défaut.
+         */
+        const key = `${selected.team.id}:${selected.season.id}`;
+        if (autoDefaultKeyRef.current !== key && !_navState?.sessionId && !_navState?.sessionDate) {
+          autoDefaultKeyRef.current = key;
+          const today = todayStr();
+          if (!sorted.some(s => s.date === today)) {
+            const fallback = sorted.find(s => s.date < today);
+            if (fallback) setSessionDate(fallback.date);
+          }
+        }
+      })
       .catch(() => {})
       .finally(() => setLoadingLinkedSessions(false));
   }, [selected?.team.id, selected?.season.id, activeTab]);
@@ -201,14 +230,24 @@ export default function RPEPage() {
   useEffect(() => {
     if (!selected) return;
     if (skipNextFindRef.current) { skipNextFindRef.current = false; return; }
+    const queryDate = sessionDate;
     rpeApi.findSession(selected.team.id, selected.season.id, sessionDate)
       .then(async session => {
+        // `sessionDate` a changé depuis le lancement de cette recherche (ex. défaut auto qui
+        // vient de basculer sur une autre date) : cette réponse est obsolète, on l'ignore.
+        if (sessionDateRef.current !== queryDate) return;
         if (session) {
           setExistingSessionId(session.id);
           setCategoryId(session.categoryId ?? '');
           setDuration(session.plannedDuration);
           const existing = await rpeApi.loadEntriesForSession(session.id);
-          setRpeValues(prev => Object.fromEntries(Object.keys(prev).map(id => [id, existing[id] ?? null])));
+          // `existing` peut contenir des joueurs hors effectif de saison (partenaires) absents de
+          // `prev` (initialisé uniquement sur le roster, cf. plus haut) : sans cette union, leur
+          // valeur enregistrée est chargée puis aussitôt perdue faute de clé pour la porter.
+          setRpeValues(prev => {
+            const ids = new Set([...Object.keys(prev), ...Object.keys(existing)]);
+            return Object.fromEntries([...ids].map(id => [id, existing[id] ?? null]));
+          });
         } else {
           setExistingSessionId(null);
           setRpeValues(prev => Object.fromEntries(Object.keys(prev).map(id => [id, null])));
@@ -340,7 +379,8 @@ export default function RPEPage() {
   const tableData     = [...history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
-  const selectedPlayer = roster.find(p => p.id === selectedPlayerId);
+  const selectedPlayer = roster.find(p => p.id === selectedPlayerId)
+    ?? orgPlayers.find(p => p.id === selectedPlayerId);
 
   if (teamLoading) return <div style={{ padding: 24, color: '#94A3B8', fontSize: '0.85rem' }}>Chargement…</div>;
 
@@ -442,7 +482,7 @@ export default function RPEPage() {
                         <span style={{ width: 3, height: 32, backgroundColor: typeColor, borderRadius: 2, flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600 }}>{dow} {day} {month}</div>
-                          <div style={{ color: '#475569', fontSize: '0.72rem', marginTop: 1 }}>{s.notes ? s.notes + ' · ' : ''}{s.plannedDuration} min</div>
+                          <div style={{ color: '#475569', fontSize: '0.72rem', marginTop: 1 }}>{s.plannedDuration} min</div>
                         </div>
                         <span style={{ color: '#334155', fontSize: '0.7rem' }}>→</span>
                       </button>
@@ -477,7 +517,6 @@ export default function RPEPage() {
                     <>
                       <div style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.95rem' }}>
                         {DAYS_RPE[selDate.getDay()]} {selDate.getDate()} {MONTHS_RPE[selDate.getMonth()]}
-                        {selSession.notes ? <span style={{ color: '#94A3B8', fontWeight: 400 }}> — {selSession.notes}</span> : null}
                       </div>
                       <div style={{ color: '#475569', fontSize: '0.78rem', marginTop: 2 }}>
                         {selSession.categoryName ?? CATEGORY_MISSING_LABEL} · {selSession.plannedDuration} min
@@ -643,7 +682,10 @@ export default function RPEPage() {
       {activeTab === 'individual' && (
         <div>
           <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <PlayerSelect players={roster} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} style={{ minWidth: 180 }} />
+            {/* L'historique reste accessible pour un partenaire pointé un autre jour, ou d'une
+                autre équipe — se limiter à l'effectif le rendrait introuvable une fois qu'il
+                n'est plus pointé le jour même (même correctif que WellnessPage). */}
+            <PlayerSelect players={orgPlayers} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} style={{ minWidth: 180 }} />
           </div>
 
           <DateRangeCard from={dateRange.from} to={dateRange.to} preset={dateRange.preset}

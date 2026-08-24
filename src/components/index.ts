@@ -85,6 +85,7 @@ export { PlayerArchetypesPanel } from './PlayerArchetypesPanel';
 export { TeamArchetypesPanel } from './TeamArchetypesPanel';
 export { MbtiPlayerPanel } from './MbtiPlayerPanel';
 export { MbtiTeamPanel } from './MbtiTeamPanel';
+export { MbtiStaffPanel } from './MbtiStaffPanel';
 export { PlayerNotesPanel } from './PlayerNotesPanel';
 export { ArchetypeSelect } from './ArchetypeSelect';
 export { ChannelToggle } from './ChannelToggle';

@@ -81,6 +81,13 @@ export const router = createBrowserRouter([
   },
   { path: '/joueur/:playerId/mbti', element: <PlayerPersonalityLegacyRedirect /> },
   {
+    // Même questionnaire, pour un membre du staff — public comme son pendant joueur ci-dessus,
+    // et pour la même raison : la personne n'a pas forcément de compte. Doit rester AU-DESSUS
+    // de RequireAuth, dont le catch-all `*` renverrait sinon vers /connexion.
+    path: '/staff/:staffId/personnalite',
+    lazy: () => import('./pages/StaffMbtiPublicPage').then(m => ({ Component: m.default })),
+  },
+  {
     element: <RequireAuth />,
     children: [
       {

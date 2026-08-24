@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { X, Check, Clock, Minus, AlertCircle, Trash2 } from 'lucide-react';
+import { X, Check, Clock, Minus, AlertCircle } from 'lucide-react';
 import { EmptyState, Modal, DropzoneEmptyState, AddButton } from '../components';
-import { attendanceApi, playersApi, rpeApi } from '../api';
+import { attendanceApi, playersApi, rpeApi, teamCategoriesApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
-import type { Player, TrainingSession, TrainingAttendance } from '../data/types';
-import { notify } from '../api/notifications';
+import type { Player, TrainingSession, TrainingAttendance, TeamCategory } from '../data/types';
 import { LAYER } from '../styles/layers';
 
 type AttendanceStatus = TrainingAttendance['status'];
@@ -22,6 +21,15 @@ const STATUS = {
   // même largeur, sur une seule ligne — le texte le plus long dicte celle des trois autres.
   not_expected: { label: 'Non prévu', color: '#64748B', bg: 'rgba(100,116,139,0.15)', Icon: Minus  },
 } as const;
+
+/** Statut par défaut proposé à la création — un choix global pour tout l'effectif, pas un
+ *  réglage par joueur : c'est la présence attendue par défaut, pas un pointage détaillé. */
+type DefaultAttendanceStatus = Extract<AttendanceStatus, 'present' | 'not_expected'>;
+
+const DEFAULT_STATUS_CFG: Record<DefaultAttendanceStatus, { label: string; color: string; bg: string; Icon: typeof Check }> = {
+  present:      { label: 'Présent',    color: '#00E5A0', bg: 'rgba(0,229,160,0.15)',   Icon: Check },
+  not_expected: { label: 'Non attendu', color: '#64748B', bg: 'rgba(100,116,139,0.15)', Icon: Minus },
+};
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -48,6 +56,7 @@ export default function AttendancePage() {
   const [sessions,      setSessions]      = useState<TrainingSession[]>([]);
   const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceStatus>>({});
   const [rpeMap,        setRpeMap]        = useState<Record<string, number>>({});
+  const [categories,    setCategories]    = useState<TeamCategory[]>([]);
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState('');
 
@@ -60,22 +69,26 @@ export default function AttendancePage() {
   const [guestIds,      setGuestIds]      = useState<string[]>([]);
   const [showGuestPick, setShowGuestPick] = useState(false);
   const [confirmGuest,  setConfirmGuest]  = useState<Player | null>(null);
-  const [confirmDeleteSession, setConfirmDeleteSession] = useState<TrainingSession | null>(null);
-  const [showAddForm,  setShowAddForm]  = useState(false);
-  const [newDate,      setNewDate]      = useState(TODAY);
-  const [newDuration,  setNewDuration]  = useState('90');
-  const [newNotes,     setNewNotes]     = useState('');
-  const [addSaving,    setAddSaving]    = useState(false);
-  const [addError,     setAddError]     = useState('');
 
-  const [addTab,        setAddTab]        = useState<'single' | 'recurring'>('single');
-  const [recurSlots,    setRecurSlots]    = useState<Array<{ dayOfWeek: number; notes: string }>>([{ dayOfWeek: 2, notes: '' }]);
-  const [recurFrom,     setRecurFrom]     = useState(TODAY);
-  const [recurTo,       setRecurTo]       = useState('');
-  const [recurDuration, setRecurDuration] = useState('90');
-  const [recurSaving,   setRecurSaving]   = useState(false);
-  const [recurError,    setRecurError]    = useState('');
-  const [recurProgress, setRecurProgress] = useState<{ done: number; total: number } | null>(null);
+  // ── Modale d'ajout de séance — mêmes champs/comportement que celle de la page Séances
+  // (TrainingSessionsPage) : c'est la référence, les deux doivent rester identiques.
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addTab,      setAddTab]      = useState<'unique' | 'recurrente'>('unique');
+  const [addSaving,   setAddSaving]   = useState(false);
+  const [addError,    setAddError]    = useState('');
+  const [addForm,     setAddForm]     = useState({ date: TODAY, categoryId: '', duration: '90', notes: '' });
+  /** Statut par défaut appliqué à tout l'effectif à la création — les partenaires suivent leur
+   *  propre règle (non attendu par défaut) et ne sont pas concernés par ce réglage. */
+  const [addDefaultStatus, setAddDefaultStatus] = useState<DefaultAttendanceStatus>('present');
+
+  const [recForm,    setRecForm]    = useState({ days: [] as number[], startDate: TODAY, endDate: '', categoryId: '', duration: '90', notes: '' });
+  const [recSaving,  setRecSaving]  = useState(false);
+  const [recError,   setRecError]   = useState('');
+
+  function openAddForm() {
+    setAddDefaultStatus('present');
+    setShowAddForm(true);
+  }
 
   useEffect(() => {
     if (!selected) return;
@@ -87,7 +100,10 @@ export default function AttendancePage() {
     const playersPromise = playersApi.listBySeason(season.id);
     const sessionsPromise = attendanceApi.listSessions(team.id, season.id);
     // La RLS des joueurs est cadrée par organisation : cette liste est déjà celle du club.
-    const orgPromise = playersApi.list();
+    // Départs compris — un partenaire déjà pointé sur une séance passée doit garder son nom
+    // résolu ici (cf. `guests`) ; c'est `invitable`, plus bas, qui exclut les joueurs partis
+    // du vivier proposé pour un NOUVEL invité.
+    const orgPromise = playersApi.list({ includeLeft: true });
 
     Promise.all([playersPromise, sessionsPromise, orgPromise])
       .then(([pl, ss, org]) => {
@@ -117,6 +133,19 @@ export default function AttendancePage() {
       .catch(err => setError(err?.message ?? String(err)))
       .finally(() => setLoading(false));
   }, [selected?.team.id, selected?.season.id]);
+
+  // Catégories de séance de l'équipe — mêmes source et défaut que TrainingSessionsPage.
+  useEffect(() => {
+    if (!selected) { setCategories([]); return; }
+    teamCategoriesApi.list(selected.team.id, 'session')
+      .then(list => {
+        setCategories(list);
+        const first = list[0]?.id ?? '';
+        setAddForm(f => f.categoryId ? f : { ...f, categoryId: first });
+        setRecForm(f => f.categoryId ? f : { ...f, categoryId: first });
+      })
+      .catch(() => setCategories([]));
+  }, [selected?.team.id]);
 
   useEffect(() => {
     if (!activeCell) return;
@@ -158,30 +187,38 @@ export default function AttendancePage() {
 
   async function handleAddSession(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || !newDate) return;
+    if (!selected) return;
     setAddSaving(true);
     setAddError('');
     try {
       const created = await attendanceApi.createSession({
-        teamId:   selected.team.id,
-        seasonId: selected.season.id,
-        date:     newDate,
-        duration: parseInt(newDuration, 10) || 90,
-        notes:    newNotes || undefined,
+        teamId:     selected.team.id,
+        seasonId:   selected.season.id,
+        date:       addForm.date,
+        duration:   parseInt(addForm.duration),
+        notes:      addForm.notes || undefined,
+        categoryId: addForm.categoryId || undefined,
       });
       if (players.length) {
-        await attendanceApi.bulkSetPresent(players.map(p => ({ sessionId: created.id, playerId: p.id })));
+        await attendanceApi.bulkSetStatus(players.map(p => ({ sessionId: created.id, playerId: p.id })), addDefaultStatus);
         setAttendanceMap(prev => {
           const next = { ...prev };
-          players.forEach(p => { next[`${created.id}:${p.id}`] = 'present'; });
+          players.forEach(p => { next[`${created.id}:${p.id}`] = addDefaultStatus; });
+          return next;
+        });
+      }
+      // Un partenaire déjà invité sur la grille part sur « non prévu » — à la coche de le
+      // pointer présent, plutôt que de laisser une case vide à corriger séance par séance.
+      if (guests.length) {
+        await attendanceApi.bulkSetStatus(guests.map(g => ({ sessionId: created.id, playerId: g.id })), 'not_expected', true);
+        setAttendanceMap(prev => {
+          const next = { ...prev };
+          guests.forEach(g => { next[`${created.id}:${g.id}`] = 'not_expected'; });
           return next;
         });
       }
       setSessions(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)));
-      setShowAddForm(false);
-      setNewDate(TODAY);
-      setNewDuration('90');
-      setNewNotes('');
+      closeAddForm();
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Erreur.');
     } finally {
@@ -189,24 +226,9 @@ export default function AttendancePage() {
     }
   }
 
-  async function deleteSession(id: string) {
-    const snapshot = sessions;
-    setSessions(prev => prev.filter(s => s.id !== id));
-    setAttendanceMap(m => {
-      const n = { ...m };
-      Object.keys(n).forEach(k => { if (k.startsWith(id + ':')) delete n[k]; });
-      return n;
-    });
-    const removed = snapshot.find(s => s.id === id);
-    try {
-      await attendanceApi.deleteSession(id);
-      notify(selected?.team.id, 'session_updated', `Séance annulée${removed ? ` — ${removed.date}` : ''}`, { entityType: 'session' });
-    } catch { setSessions(snapshot); }
-  }
-
   /** Invités, dans l'ordre de la liste du club — jamais un joueur de l'effectif. */
   const guests = orgPlayers.filter(p => guestIds.includes(p.id) && !players.some(r => r.id === p.id));
-  const invitable = orgPlayers.filter(p => !players.some(r => r.id === p.id) && !guestIds.includes(p.id));
+  const invitable = orgPlayers.filter(p => !players.some(r => r.id === p.id) && !guestIds.includes(p.id) && !p.leftDate);
 
   /**
    * Retire un invité de la grille. Ses pointages sur les séances affichées partent avec
@@ -253,67 +275,61 @@ export default function AttendancePage() {
   function closeAddForm() {
     setShowAddForm(false);
     setAddError('');
-    setAddTab('single');
-    setRecurSlots([{ dayOfWeek: 2, notes: '' }]);
-    setRecurFrom(TODAY);
-    setRecurTo('');
-    setRecurProgress(null);
-    setRecurError('');
+    setRecError('');
+    setAddTab('unique');
+    setAddForm({ date: TODAY, categoryId: categories[0]?.id ?? '', duration: '90', notes: '' });
+    setAddDefaultStatus('present');
+    setRecForm({ days: [], startDate: TODAY, endDate: '', categoryId: categories[0]?.id ?? '', duration: '90', notes: '' });
   }
 
-  function generateRecurringDates(): Array<{ date: string; notes: string }> {
-    if (!recurFrom || !recurTo) return [];
-    const results: Array<{ date: string; notes: string }> = [];
-    const end = new Date(recurTo + 'T12:00:00');
-    const cur = new Date(recurFrom + 'T12:00:00');
+  function generateRecurringDates(days: number[], startDate: string, endDate: string, notes: string): { date: string; notes: string }[] {
+    const result: { date: string; notes: string }[] = [];
+    if (!days.length || !startDate || !endDate) return result;
+    const end = new Date(endDate + 'T12:00:00');
+    const cur = new Date(startDate + 'T12:00:00');
     while (cur <= end) {
-      for (const slot of recurSlots) {
-        if (cur.getDay() === slot.dayOfWeek) {
-          results.push({ date: cur.toISOString().slice(0, 10), notes: slot.notes });
-        }
-      }
+      if (days.includes(cur.getDay())) result.push({ date: cur.toISOString().split('T')[0], notes });
       cur.setDate(cur.getDate() + 1);
     }
-    return results.sort((a, b) => a.date.localeCompare(b.date) || a.notes.localeCompare(b.notes));
+    return result;
   }
 
   async function handleAddRecurring(e: React.FormEvent) {
     e.preventDefault();
     if (!selected) return;
-    const dates = generateRecurringDates();
-    if (!dates.length) { setRecurError('Aucune séance à créer avec ces paramètres.'); return; }
-    setRecurSaving(true);
-    setRecurError('');
-    setRecurProgress({ done: 0, total: dates.length });
+    const dates = generateRecurringDates(recForm.days, recForm.startDate, recForm.endDate, recForm.notes);
+    if (!dates.length) { setRecError('Aucune date générée avec ces paramètres.'); return; }
+    setRecSaving(true);
+    setRecError('');
     try {
-      const created: TrainingSession[] = [];
-      for (const { date, notes } of dates) {
-        const s = await attendanceApi.createSession({
-          teamId:   selected.team.id,
-          seasonId: selected.season.id,
-          date,
-          duration: parseInt(recurDuration, 10) || 90,
-          notes: notes || undefined,
-        });
-        created.push(s);
-        setRecurProgress(p => p ? { ...p, done: p.done + 1 } : null);
-      }
-      if (players.length && created.length) {
+      const dur = parseInt(recForm.duration);
+      const created = await Promise.all(dates.map(({ date, notes }) =>
+        attendanceApi.createSession({ teamId: selected.team.id, seasonId: selected.season.id, date, duration: dur, notes: notes || undefined, categoryId: recForm.categoryId || undefined })
+      ));
+      if (players.length) {
         const entries = created.flatMap(s => players.map(p => ({ sessionId: s.id, playerId: p.id })));
-        await attendanceApi.bulkSetPresent(entries);
+        await attendanceApi.bulkSetStatus(entries, addDefaultStatus);
         setAttendanceMap(prev => {
           const next = { ...prev };
-          created.forEach(s => { players.forEach(p => { next[`${s.id}:${p.id}`] = 'present'; }); });
+          created.forEach(s => { players.forEach(p => { next[`${s.id}:${p.id}`] = addDefaultStatus; }); });
+          return next;
+        });
+      }
+      if (guests.length) {
+        const guestEntries = created.flatMap(s => guests.map(g => ({ sessionId: s.id, playerId: g.id })));
+        await attendanceApi.bulkSetStatus(guestEntries, 'not_expected', true);
+        setAttendanceMap(prev => {
+          const next = { ...prev };
+          created.forEach(s => { guests.forEach(g => { next[`${s.id}:${g.id}`] = 'not_expected'; }); });
           return next;
         });
       }
       setSessions(prev => [...prev, ...created].sort((a, b) => a.date.localeCompare(b.date)));
       closeAddForm();
     } catch (err: unknown) {
-      setRecurError(err instanceof Error ? err.message : 'Erreur.');
+      setRecError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
-      setRecurSaving(false);
-      setRecurProgress(null);
+      setRecSaving(false);
     }
   }
 
@@ -336,7 +352,7 @@ export default function AttendancePage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexShrink: 0, gap: 12 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Présences</h1>
         {selected && canEditTeamData && (
-          <AddButton label="Ajouter une séance" onClick={() => setShowAddForm(true)} />
+          <AddButton label="Ajouter une séance" onClick={openAddForm} />
         )}
       </div>
 
@@ -358,7 +374,7 @@ export default function AttendancePage() {
 
       {selected && !loading && sessions.length === 0 && (
         canEditTeamData ? (
-          <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={() => setShowAddForm(true)} />
+          <DropzoneEmptyState label="Cliquer pour ajouter une séance" onClick={openAddForm} />
         ) : (
           <EmptyState message="Aucune séance. Seuls les rôles Admin et Éditeur peuvent en ajouter." size="lg" />
         )
@@ -405,7 +421,6 @@ export default function AttendancePage() {
                         <span style={{ color: '#475569', fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{fd.dow}</span>
                         <span style={{ color: isToday ? '#F59E0B' : '#F1F5F9', fontSize: '1.05rem', fontWeight: 800, lineHeight: 1 }}>{fd.day}</span>
                         <span style={{ color: '#94A3B8', fontSize: '0.65rem', fontWeight: 600 }}>{fd.month}</span>
-                        {s.notes && <span style={{ color: '#475569', fontSize: '0.58rem', marginTop: 1, maxWidth: CELL_W - 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.notes}</span>}
                       </div>
                     </th>
                   );
@@ -668,206 +683,159 @@ export default function AttendancePage() {
         </Modal>
       )}
 
-      {/* ── Modal confirmation suppression séance ── */}
-      {confirmDeleteSession && (
-        <Modal maxWidth={380} scrollOverlay={false} style={{ padding: '28px' }} onClose={() => setConfirmDeleteSession(null)}>
-          <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1.05rem' }}>Supprimer la séance ?</h2>
-          <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 24px' }}>
-            {fmtDate(confirmDeleteSession.date).dow} {fmtDate(confirmDeleteSession.date).day} {fmtDate(confirmDeleteSession.date).month}
-            {confirmDeleteSession.notes ? ` — ${confirmDeleteSession.notes}` : ''} · Cette action supprimera aussi toutes les présences enregistrées.
-          </p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={() => setConfirmDeleteSession(null)}
-              style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}
-            >
-              Annuler
-            </button>
-            <button
-              onClick={() => { deleteSession(confirmDeleteSession.id); setConfirmDeleteSession(null); }}
-              className="btn-danger"
-              style={{ flex: 1, padding: '10px', backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700 }}
-            >
-              Supprimer
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {/* ── Modal nouvelle séance ── */}
+      {/* ── Modal nouvelle séance — identique à celle de la page Séances (TrainingSessionsPage,
+          référence) ── */}
       {showAddForm && (
-        <Modal maxWidth={480} scrollOverlay={false} style={{ padding: '28px' }} onClose={closeAddForm}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Nouvelle séance</h2>
-              <button onClick={closeAddForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
+        <Modal onClose={closeAddForm} closeOnBackdropClick maxWidth={440} overlayOpacity={0.7} style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1.1rem' }}>Ajouter une séance</h2>
+            <button onClick={closeAddForm} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}><X size={18} /></button>
+          </div>
 
-            {/* Tabs */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 20, backgroundColor: '#0D0F14', padding: 4, borderRadius: 8 }}>
-              {(['single', 'recurring'] as const).map(tab => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setAddTab(tab)}
-                  style={{
-                    flex: 1, padding: '7px 10px',
-                    backgroundColor: addTab === tab ? '#1E2229' : 'transparent',
-                    border: `1px solid ${addTab === tab ? '#2A2F3A' : 'transparent'}`,
-                    borderRadius: 6, color: addTab === tab ? '#F1F5F9' : '#475569',
-                    cursor: 'pointer', fontSize: '0.82rem', fontWeight: addTab === tab ? 600 : 400,
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {tab === 'single' ? 'Séance unique' : 'Séances récurrentes'}
-                </button>
-              ))}
-            </div>
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 4, backgroundColor: '#1E2229', borderRadius: 8, padding: 4, marginBottom: 18 }}>
+            {(['unique', 'recurrente'] as const).map(tab => (
+              <button key={tab} type="button" onClick={() => { setAddTab(tab); setAddError(''); setRecError(''); }}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                  backgroundColor: addTab === tab ? '#2A2F3A' : 'transparent',
+                  color: addTab === tab ? '#F1F5F9' : '#475569' }}>
+                {tab === 'unique' ? 'Séance unique' : 'Récurrentes'}
+              </button>
+            ))}
+          </div>
 
-            {/* ── Tab : Séance unique ── */}
-            {addTab === 'single' && (
-              <>
-                {addError && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                    <AlertCircle size={13} style={{ color: '#EF4444' }} />
-                    <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{addError}</span>
-                  </div>
-                )}
-                <form onSubmit={handleAddSession} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Statut par défaut de l'effectif — partagé entre les deux onglets, un seul choix
+              pour tout le monde, pas un réglage par joueur. Les partenaires ne sont pas
+              concernés : ils suivent leur propre règle (non attendu par défaut). */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>
+              Présences par défaut
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['present', 'not_expected'] as const).map(s => {
+                const cfg = DEFAULT_STATUS_CFG[s];
+                const active = addDefaultStatus === s;
+                return (
+                  <button key={s} type="button" onClick={() => setAddDefaultStatus(s)}
+                    style={{
+                      flex: 1, padding: '7px 0', borderRadius: 6, cursor: 'pointer',
+                      border: `1px solid ${active ? cfg.color : '#2A2F3A'}`,
+                      backgroundColor: active ? cfg.bg : '#1E2229',
+                      color: active ? cfg.color : '#94A3B8',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      fontSize: '0.8rem', fontWeight: active ? 700 : 500,
+                    }}>
+                    <cfg.Icon size={13} /> {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ color: '#475569', fontSize: '0.7rem', margin: '4px 0 0' }}>
+              S'applique à tout l'effectif — les partenaires ne sont pas concernés.
+            </p>
+          </div>
+
+          {addTab === 'unique' ? (
+            <>
+              {addError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                  <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                  <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{addError}</span>
+                </div>
+              )}
+              <form onSubmit={handleAddSession} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
                   <div>
                     <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
-                    <input type="date" required autoFocus value={newDate} onChange={e => setNewDate(e.target.value)} style={inputStyle} />
+                    <input type="date" required value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée prévue (min) *</label>
-                    <input type="number" required min={1} max={300} value={newDuration} onChange={e => setNewDuration(e.target.value)} style={inputStyle} />
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+                    <select value={addForm.categoryId} onChange={e => setAddForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                      <option value="">Sans catégorie</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+                  <input type="number" required min={1} max={300} value={addForm.duration} onChange={e => setAddForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+                  <input type="text" placeholder="Optionnel…" value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                  <button type="button" onClick={closeAddForm} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                  <button type="submit" disabled={addSaving} style={{ flex: 1, padding: '10px', backgroundColor: addSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: addSaving ? '#475569' : '#0D0F14', cursor: addSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                    {addSaving ? 'Création…' : 'Créer'}
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <>
+              {recError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
+                  <AlertCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />
+                  <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{recError}</span>
+                </div>
+              )}
+              <form onSubmit={handleAddRecurring} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 6 }}>Jours *</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {DAYS_MONDAY_FIRST.map(d => (
+                      <button key={d} type="button"
+                        onClick={() => setRecForm(f => ({ ...f, days: f.days.includes(d) ? f.days.filter(x => x !== d) : [...f.days, d] }))}
+                        style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                          borderColor: recForm.days.includes(d) ? '#00E5A0' : '#2A2F3A',
+                          backgroundColor: recForm.days.includes(d) ? 'rgba(0,229,160,0.12)' : '#1E2229',
+                          color: recForm.days.includes(d) ? '#00E5A0' : '#94A3B8' }}>
+                        {DAYS_FULL[d].slice(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
+                  <div>
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Du *</label>
+                    <input type="date" required value={recForm.startDate} onChange={e => setRecForm(f => ({ ...f, startDate: e.target.value }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes (optionnel)</label>
-                    <input type="text" placeholder="Ex : Entraînement matin" value={newNotes} onChange={e => setNewNotes(e.target.value)} style={inputStyle} />
+                    <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Au *</label>
+                    <input type="date" required value={recForm.endDate} onChange={e => setRecForm(f => ({ ...f, endDate: e.target.value }))} style={inputStyle} />
                   </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                    <button type="button" onClick={closeAddForm} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
-                    <button type="submit" disabled={addSaving} style={{ flex: 1, padding: '10px', backgroundColor: addSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: addSaving ? '#475569' : '#0D0F14', cursor: addSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                      {addSaving ? 'Création…' : 'Ajouter'}
-                    </button>
-                  </div>
-                </form>
-              </>
-            )}
-
-            {/* ── Tab : Séances récurrentes ── */}
-            {addTab === 'recurring' && (() => {
-              const preview = recurFrom && recurTo ? generateRecurringDates().length : 0;
-              return (
-                <>
-                  {recurError && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>
-                      <AlertCircle size={13} style={{ color: '#EF4444' }} />
-                      <span style={{ color: '#EF4444', fontSize: '0.8rem' }}>{recurError}</span>
-                    </div>
-                  )}
-                  <form onSubmit={handleAddRecurring} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                    {/* Créneaux */}
-                    <div>
-                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 8 }}>Créneaux hebdomadaires *</label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {recurSlots.map((slot, i) => (
-                          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <select
-                              value={slot.dayOfWeek}
-                              onChange={e => setRecurSlots(prev => prev.map((s, j) => j === i ? { ...s, dayOfWeek: Number(e.target.value) } : s))}
-                              style={{ ...inputStyle, width: 140, flexShrink: 0 }}
-                            >
-                              {DAYS_MONDAY_FIRST.map(d => (
-                                <option key={d} value={d}>{DAYS_FULL[d]}</option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              placeholder="Label (ex: Soir)"
-                              value={slot.notes}
-                              onChange={e => setRecurSlots(prev => prev.map((s, j) => j === i ? { ...s, notes: e.target.value } : s))}
-                              style={{ ...inputStyle, flex: 1 }}
-                            />
-                            {recurSlots.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setRecurSlots(prev => prev.filter((_, j) => j !== i))}
-                                style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '4px', flexShrink: 0 }}
-                                onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-                                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
-                              >
-                                <X size={15} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setRecurSlots(prev => [...prev, { dayOfWeek: 2, notes: '' }])}
-                        style={{ marginTop: 8, background: 'none', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', padding: '6px 12px', fontSize: '0.78rem', width: '100%' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#00E5A0'; (e.currentTarget as HTMLElement).style.color = '#00E5A0'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; (e.currentTarget as HTMLElement).style.color = '#475569'; }}
-                      >
-                        + Ajouter un créneau
-                      </button>
-                    </div>
-
-                    {/* Période */}
-                    <div>
-                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 6 }}>Période *</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input type="date" required value={recurFrom} onChange={e => setRecurFrom(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-                        <span style={{ color: '#475569', fontSize: '0.78rem', flexShrink: 0 }}>→</span>
-                        <input type="date" required value={recurTo} min={recurFrom} onChange={e => setRecurTo(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-                      </div>
-                    </div>
-
-                    {/* Durée */}
-                    <div>
-                      <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée prévue (min) *</label>
-                      <input type="number" required min={1} max={300} value={recurDuration} onChange={e => setRecurDuration(e.target.value)} style={inputStyle} />
-                    </div>
-
-                    {/* Preview */}
-                    {recurFrom && recurTo && (
-                      <div style={{
-                        padding: '10px 14px', borderRadius: 8,
-                        backgroundColor: preview > 0 ? 'rgba(0,229,160,0.08)' : 'rgba(239,68,68,0.08)',
-                        border: `1px solid ${preview > 0 ? 'rgba(0,229,160,0.2)' : 'rgba(239,68,68,0.2)'}`,
-                        color: preview > 0 ? '#00E5A0' : '#EF4444',
-                        fontSize: '0.82rem', fontWeight: 600,
-                      }}>
-                        {preview > 0
-                          ? `${preview} séance${preview > 1 ? 's' : ''} vont être créées`
-                          : 'Aucune séance dans cette période avec ces jours'}
-                      </div>
-                    )}
-
-                    {/* Progress */}
-                    {recurProgress && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ flex: 1, height: 4, backgroundColor: '#1E2229', borderRadius: 2, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', backgroundColor: '#00E5A0', borderRadius: 2, width: `${Math.round((recurProgress.done / recurProgress.total) * 100)}%`, transition: 'width 0.2s' }} />
-                        </div>
-                        <span style={{ color: '#94A3B8', fontSize: '0.78rem', flexShrink: 0 }}>{recurProgress.done}/{recurProgress.total}</span>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                      <button type="button" onClick={closeAddForm} disabled={recurSaving} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recurSaving ? '#475569' : '#F1F5F9', cursor: recurSaving ? 'not-allowed' : 'pointer' }}>Annuler</button>
-                      <button type="submit" disabled={recurSaving || preview === 0} style={{ flex: 2, padding: '10px', backgroundColor: recurSaving || preview === 0 ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: recurSaving || preview === 0 ? '#475569' : '#0D0F14', cursor: recurSaving || preview === 0 ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
-                        {recurSaving ? `Création… (${recurProgress?.done ?? 0}/${recurProgress?.total ?? preview})` : preview > 0 ? `Créer ${preview} séance${preview > 1 ? 's' : ''}` : 'Créer'}
-                      </button>
-                    </div>
-                  </form>
-                </>
-              );
-            })()}
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Catégorie</label>
+                  <select value={recForm.categoryId} onChange={e => setRecForm(f => ({ ...f, categoryId: e.target.value }))} style={inputStyle}>
+                    <option value="">Sans catégorie</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Durée (min) *</label>
+                  <input type="number" required min={1} max={300} value={recForm.duration} onChange={e => setRecForm(f => ({ ...f, duration: e.target.value }))} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Notes</label>
+                  <input type="text" placeholder="Optionnel…" value={recForm.notes} onChange={e => setRecForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+                </div>
+                {recForm.days.length > 0 && recForm.startDate && recForm.endDate && (
+                  <p style={{ color: '#94A3B8', fontSize: '0.78rem', margin: 0 }}>
+                    {generateRecurringDates(recForm.days, recForm.startDate, recForm.endDate, '').length} séance(s) seront créées
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                  <button type="button" onClick={closeAddForm} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>Annuler</button>
+                  <button type="submit" disabled={recSaving} style={{ flex: 1, padding: '10px', backgroundColor: recSaving ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: recSaving ? '#475569' : '#0D0F14', cursor: recSaving ? 'not-allowed' : 'pointer', fontWeight: 700 }}>
+                    {recSaving ? 'Création…' : 'Créer tout'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </Modal>
       )}
     </div>

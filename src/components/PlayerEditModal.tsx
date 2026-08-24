@@ -41,8 +41,8 @@ export function PlayerEditModal({ player, teamId, onClose, onSaved }: PlayerEdit
     hand:        player.hand,
     height:      player.height ? String(player.height) : '',
     weight:      player.weight ? String(player.weight) : '',
-    contractEnd: player.contractEnd ?? '',
     email:       player.email ?? '',
+    leftDate:    player.leftDate ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [err,    setErr]    = useState('');
@@ -80,9 +80,11 @@ export function PlayerEditModal({ player, teamId, onClose, onSaved }: PlayerEdit
         hand:        form.hand,
         height:      form.height ? parseInt(form.height) : undefined,
         weight:      form.weight ? parseInt(form.weight) : undefined,
-        contractEnd: form.contractEnd || undefined,
         email:       form.email       || undefined,
       });
+      if (form.leftDate !== (player.leftDate ?? '')) {
+        await playersApi.setLeftDate(player.id, form.leftDate || null);
+      }
       playersApi.notifyStatusChange(player, form.status, teamId);
       onSaved({
         ...player,
@@ -92,8 +94,8 @@ export function PlayerEditModal({ player, teamId, onClose, onSaved }: PlayerEdit
         nationality: form.nationality || 'FR',
         height:      form.height ? parseInt(form.height) : undefined,
         weight:      form.weight ? parseInt(form.weight) : undefined,
-        contractEnd: form.contractEnd || undefined,
         email:       form.email       || undefined,
+        leftDate:    form.leftDate || undefined,
       });
     } catch (err: unknown) {
       setErr(err instanceof Error ? err.message : 'Erreur lors de la modification.');
@@ -187,7 +189,7 @@ export function PlayerEditModal({ player, teamId, onClose, onSaved }: PlayerEdit
               onChange={e => setForm(f => ({ ...f, nationality: e.target.value.toUpperCase() }))} style={inputStyle} />
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
             <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Taille (cm)</label>
             <input type="number" min={140} max={230} value={form.height}
@@ -198,16 +200,19 @@ export function PlayerEditModal({ player, teamId, onClose, onSaved }: PlayerEdit
             <input type="number" min={40} max={150} value={form.weight}
               onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
           </div>
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
-            <input type="date" value={form.contractEnd}
-              onChange={e => setForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
-          </div>
         </div>
         <div>
           <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Email du joueur</label>
           <input type="email" placeholder="joueur@example.com" value={form.email}
             onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} />
+        </div>
+        <div>
+          <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date de départ du club</label>
+          <input type="date" value={form.leftDate}
+            onChange={e => setForm(f => ({ ...f, leftDate: e.target.value }))} style={inputStyle} />
+          <p style={{ color: '#475569', fontSize: '0.7rem', margin: '4px 0 0' }}>
+            Reste visible sur les saisons déjà rattachées ; disparaît des saisons suivantes et des viviers de partenaires. Laisser vide si le joueur n'a pas quitté le club.
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
           <button type="button" onClick={onClose}

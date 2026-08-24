@@ -28,7 +28,7 @@ const emptyForm = {
   position:  'Meneur' as Player['position'],
   birthDate: '', nationality: 'FR',
   hand:      'right' as Player['hand'],
-  height: '', weight: '', contractEnd: '',
+  height: '', weight: '',
 };
 
 export default function PlayersPage() {
@@ -48,7 +48,7 @@ export default function PlayersPage() {
   useEffect(() => {
     setLoading(true);
     setFetchError('');
-    playersApi.list()
+    playersApi.list({ includeLeft: true })
       .then(setPlayers)
       .catch(err => setFetchError(err.message))
       .finally(() => setLoading(false));
@@ -71,7 +71,6 @@ export default function PlayersPage() {
         status:      'active',
         height:      form.height ? parseInt(form.height) : undefined,
         weight:      form.weight ? parseInt(form.weight) : undefined,
-        contractEnd: form.contractEnd || undefined,
       });
       setPlayers(prev => [...prev, created].sort((a, b) => a.lastName.localeCompare(b.lastName)));
       setShowForm(false);
@@ -154,7 +153,15 @@ export default function PlayersPage() {
                 <p style={{ color: '#94A3B8', fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.02em', margin: 0 }}>{playerNameFull(player)}</p>
                 <p style={{ color: '#475569', fontSize: '0.72rem', margin: 0 }}>#{player.number} · {player.position.split(' ')[0]}</p>
               </div>
-              <StatusBadge status={player.status} size="sm" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <StatusBadge status={player.status} size="sm" />
+                {player.leftDate && (
+                  <span title={`Parti le ${player.leftDate}`}
+                    style={{ color: '#EF4444', backgroundColor: 'rgba(239,68,68,0.12)', fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>
+                    Parti
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -222,10 +229,6 @@ export default function PlayersPage() {
                   <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Poids (kg)</label>
                   <input type="number" min={40} max={150} value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
                 </div>
-              </div>
-              <div>
-                <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Fin de contrat</label>
-                <input type="date" value={form.contractEnd} onChange={e => setForm(f => ({ ...f, contractEnd: e.target.value }))} style={inputStyle} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                 <button type="button" onClick={closeForm}

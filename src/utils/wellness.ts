@@ -1,4 +1,4 @@
-import type { WellnessEntry } from '../data/types';
+import type { WellnessEntry, WellnessQuickScaleSize } from '../data/types';
 import { teamAverageOfField, type TeamAverage } from './teamAverage';
 
 export interface WellnessDimension {
@@ -141,15 +141,43 @@ export function wellnessBroadcastValues(v: number): Record<WellnessDimension['ke
 
 export interface WellnessQuickOption {
   v: number;
-  /** Clé d'icône (Frown/Meh/Smile de lucide-react) — pas d'emoji, rendu en icône colorée côté UI */
-  icon: 'frown' | 'meh' | 'smile';
+  /** Clé d'icône (lucide-react) — pas d'emoji, rendu en icône colorée côté UI */
+  icon: 'angry' | 'frown' | 'meh' | 'smile' | 'laugh';
   color: string;
   label: string;
 }
 
-// Échelle 3 points utilisée par le mode "Emoji/couleur" (par axe) et le mode "Note unique" (global).
-export const WELLNESS_QUICK_SCALE: WellnessQuickOption[] = [
+// Échelles utilisées par le mode "Emoji/couleur" (par axe) et le mode "Note unique" (global) —
+// le nombre de crans est réglable par équipe (`teams.wellness_quick_scale_size`), pas le sens
+// des couleurs : vert = mieux, rouge = pire, dans les deux tailles.
+const WELLNESS_QUICK_SCALE_3: WellnessQuickOption[] = [
   { v: 2, icon: 'frown', color: '#EF4444', label: 'Pas bien' },
   { v: 5, icon: 'meh',   color: '#F59E0B', label: 'Moyen' },
   { v: 9, icon: 'smile', color: '#00E5A0', label: 'Bien' },
 ];
+
+const WELLNESS_QUICK_SCALE_4: WellnessQuickOption[] = [
+  { v: 2, icon: 'frown', color: '#EF4444', label: 'Pas bien' },
+  { v: 4, icon: 'meh',   color: '#F97316', label: 'Moyen' },
+  { v: 6, icon: 'smile', color: '#3B82F6', label: 'Bien' },
+  { v: 9, icon: 'laugh', color: '#00E5A0', label: 'Très bien' },
+];
+
+const WELLNESS_QUICK_SCALE_5: WellnessQuickOption[] = [
+  { v: 1, icon: 'angry', color: '#EF4444', label: 'Très mal' },
+  { v: 3, icon: 'frown', color: '#F97316', label: 'Pas bien' },
+  { v: 5, icon: 'meh',   color: '#EAB308', label: 'Moyen' },
+  { v: 7, icon: 'smile', color: '#3B82F6', label: 'Bien' },
+  { v: 9, icon: 'laugh', color: '#00E5A0', label: 'Très bien' },
+];
+
+const WELLNESS_QUICK_SCALES: Record<WellnessQuickScaleSize, WellnessQuickOption[]> = {
+  3: WELLNESS_QUICK_SCALE_3,
+  4: WELLNESS_QUICK_SCALE_4,
+  5: WELLNESS_QUICK_SCALE_5,
+};
+
+/** Échelle rapide à afficher, selon la taille réglée par l'équipe (3 par défaut). */
+export function wellnessQuickScale(size: WellnessQuickScaleSize = 3): WellnessQuickOption[] {
+  return WELLNESS_QUICK_SCALES[size] ?? WELLNESS_QUICK_SCALE_3;
+}

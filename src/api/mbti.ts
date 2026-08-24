@@ -52,12 +52,71 @@ export const mbtiApi = {
     const { error } = await supabase.from('mbti_responses').delete().eq('player_id', playerId);
     if (error) throw error;
   },
+
+  // ── Même questionnaire, pour un membre du staff plutôt qu'un joueur — `mbti_responses` porte
+  // soit `player_id`, soit `staff_id` (jamais les deux), cf. migration schema.sql. ──
+
+  async getStaffPublicInfo(staffId: string): Promise<MbtiPublicInfo | null> {
+    const { data, error } = await supabase.rpc('get_staff_mbti_public_info', { p_staff_id: staffId }).maybeSingle();
+    if (error || !data) return null;
+    const info = data as { first_name: string; last_name: string; already_answered: boolean };
+    return { firstName: info.first_name, lastName: info.last_name, alreadyAnswered: info.already_answered };
+  },
+
+  async submitStaffPublic(staffId: string, answers: Record<number, number>): Promise<{ error: { message: string } | null }> {
+    const { error } = await supabase.rpc('submit_staff_mbti_public', {
+      p_staff_id: staffId,
+      p_answers:  answers,
+    });
+    return { error };
+  },
+
+  async getByStaff(staffId: string): Promise<StaffMbtiResponse | null> {
+    const { data, error } = await supabase
+      .from('mbti_responses')
+      .select('*')
+      .eq('staff_id', staffId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? toStaffResponse(data) : null;
+  },
+
+  async listByStaffIds(staffIds: string[]): Promise<StaffMbtiResponse[]> {
+    if (!staffIds.length) return [];
+    const { data, error } = await supabase
+      .from('mbti_responses')
+      .select('*')
+      .in('staff_id', staffIds);
+    if (error) throw error;
+    return (data ?? []).map(toStaffResponse);
+  },
+
+  async resetStaff(staffId: string): Promise<void> {
+    const { error } = await supabase.from('mbti_responses').delete().eq('staff_id', staffId);
+    if (error) throw error;
+  },
 };
+
+export interface StaffMbtiResponse {
+  id: string;
+  staffId: string;
+  answers: Record<number, number>;
+  submittedAt: string;
+}
 
 function toResponse(row: Record<string, unknown>): MbtiResponse {
   return {
     id:          row.id           as string,
     playerId:    row.player_id    as string,
+    answers:     row.answers      as Record<number, number>,
+    submittedAt: row.submitted_at as string,
+  };
+}
+
+function toStaffResponse(row: Record<string, unknown>): StaffMbtiResponse {
+  return {
+    id:          row.id           as string,
+    staffId:     row.staff_id     as string,
     answers:     row.answers      as Record<number, number>,
     submittedAt: row.submitted_at as string,
   };

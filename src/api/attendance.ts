@@ -119,11 +119,19 @@ export const attendanceApi = {
   },
 
   async bulkSetPresent(entries: Array<{ sessionId: string; playerId: string }>): Promise<void> {
+    return attendanceApi.bulkSetStatus(entries, 'present');
+  },
+
+  /** Même statut (et éventuellement même statut de partenaire) pour tout un lot de
+   *  (séance, joueur) — la création de séance y écrit le statut par défaut choisi pour
+   *  l'effectif, et l'invitation de partenaires déjà présents sur la grille, en une seule
+   *  requête plutôt qu'un pointage par joueur/séance. */
+  async bulkSetStatus(entries: Array<{ sessionId: string; playerId: string }>, status: TrainingAttendance['status'], sparring = false): Promise<void> {
     if (!entries.length) return;
     const { error } = await supabase
       .from('training_attendance')
       .upsert(
-        entries.map(e => ({ session_id: e.sessionId, player_id: e.playerId, status: 'present' })),
+        entries.map(e => ({ session_id: e.sessionId, player_id: e.playerId, status, sparring })),
         { onConflict: 'session_id,player_id' },
       );
     if (error) throw error;

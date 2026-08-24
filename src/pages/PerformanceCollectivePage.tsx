@@ -14,7 +14,7 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel, PlayerNotesPanel
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel, MbtiStaffPanel, PlayerNotesPanel
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
@@ -36,7 +36,8 @@ import {
   playerAttributeIndicators, getSeries, periodValueOf, detectRiskAlerts,
   type CrossScope, type IndicatorDef,
 } from '../data/crossAnalysis';
-import type { MatchStat, TeamMatchStat, Action, Match } from '../data/types';
+import type { MatchStat, TeamMatchStat, Action, Match, StaffMember } from '../data/types';
+import { staffApi } from '../api/staff';
 import { ratioFromSums, pctFromSums } from '../utils/ratioFromSums';
 
 // ─── Helpers partagés (portés depuis AnalyseCollectivePage / PerformancePage) ──
@@ -97,7 +98,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 // entre les deux pages (cf. audit). Le hero "Forme actuelle" (trajectoire de forme) vit sur la
 // Vue d'ensemble des deux pages, ce n'est plus un onglet séparé.
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
-         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'notes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
+         | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'staff-mbti' | 'notes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'tactical-brutes' | 'tactical-dashboard'
          | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
 
@@ -114,6 +115,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'classement-joueurs':      'ranking',
   'archetypes':              'archetypes',
   'personnalite':            'mbti',
+  'personnalite-staff':      'staff-mbti',
   'suivi-mental':            'notes',
   'charge-physique':         'load',
   'rpe':                     'rpe',
@@ -142,8 +144,9 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     { key: 'medical',   slug: 'medical',         label: 'Médical' },
   ] },
   { label: 'Mental', tabs: [
-    { key: 'mbti',  slug: 'personnalite', label: 'Personnalité' },
-    { key: 'notes', slug: 'suivi-mental', label: 'Suivi' },
+    { key: 'mbti',       slug: 'personnalite',       label: 'Personnalité' },
+    { key: 'staff-mbti', slug: 'personnalite-staff', label: 'Personnalité staff' },
+    { key: 'notes',      slug: 'suivi-mental',       label: 'Suivi' },
   ] },
   { label: 'Statistiques joueurs', tabs: [
     { key: 'players-basic',    slug: 'stats-joueurs',          label: 'Brutes' },
@@ -181,7 +184,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
 const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   overview: 'saison', 'players-basic': 'saison', 'players-advanced': 'saison',
   'matches-basic': 'saison', 'matches-advanced': 'saison', 'matches-quarters': 'saison',
-  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', mbti: 'saison', notes: 'saison', dynamic: 'saison',
+  impact: 'saison', pca: 'saison', ranking: 'saison', archetypes: 'saison', mbti: 'saison', 'staff-mbti': 'saison', notes: 'saison', dynamic: 'saison',
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
@@ -198,6 +201,12 @@ export default function PerformanceCollectivePage() {
   // Chargé une fois par équipe/saison, indépendamment de l'onglet actif (même pattern que
   // PerformanceIndividuellePage) — le calcul couvre tout l'effectif d'un coup.
   const { reports: archetypeReports } = useArchetypes(selected?.team.id, selected?.season.id);
+  // Staff de l'équipe — chargé une fois par équipe, pour l'onglet Personnalité staff.
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  useEffect(() => {
+    if (!selected) { setStaff([]); return; }
+    staffApi.listByTeam(selected.team.id).then(setStaff).catch(() => setStaff([]));
+  }, [selected?.team.id]);
   const dateRange = useDateRange(seasonStart, TAB_DEFAULT_PRESET[activeTab], seasonEnd);
   const { from, to } = dateRange;
   const showSeasonDiff = dateRange.preset !== 'saison';
@@ -725,7 +734,7 @@ export default function PerformanceCollectivePage() {
         {/* ── Contenu de l'onglet ── */}
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
-          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && activeTab !== 'mbti' && activeTab !== 'notes' && (
+          {activeTab !== 'dynamic' && activeTab !== 'compare-match' && activeTab !== 'compare-season' && activeTab !== 'compare-player' && activeTab !== 'medical' && activeTab !== 'objectives' && activeTab !== 'archetypes' && activeTab !== 'mbti' && activeTab !== 'staff-mbti' && activeTab !== 'notes' && (
             <DateRangeCard
               from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
               onPreset={p => dateRange.applyPreset(p, seasonStart, seasonEnd)}
@@ -1259,6 +1268,11 @@ export default function PerformanceCollectivePage() {
       {/* ══ PERSONNALITÉ (questionnaire MBTI) ═══════════════════════════════ */}
       {activeTab === 'mbti' && (
         <MbtiTeamPanel roster={players} teamId={selected?.team.id} />
+      )}
+
+      {/* ══ PERSONNALITÉ STAFF (même questionnaire, pour le staff de l'équipe) ══ */}
+      {activeTab === 'staff-mbti' && (
+        <MbtiStaffPanel staff={staff} />
       )}
 
       {/* ══ SUIVI MENTAL (notes du staff, tout l'effectif) ══════════════════ */}

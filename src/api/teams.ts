@@ -1,6 +1,6 @@
 import { supabase } from './client';
 import { teamCategoriesApi } from './categories';
-import type { Team, WellnessEntryMethod } from '../data/types';
+import type { Team, WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 
 export const teamsApi = {
   async list(): Promise<Team[]> {
@@ -49,10 +49,14 @@ export const teamsApi = {
     if (error) throw error;
   },
 
-  async updateWellnessMethods(id: string, methods: { defaultMethod: WellnessEntryMethod; publicMethod: WellnessEntryMethod }): Promise<void> {
+  async updateWellnessMethods(id: string, methods: { defaultMethod: WellnessEntryMethod; publicMethod: WellnessEntryMethod; quickScaleSize: WellnessQuickScaleSize }): Promise<void> {
     const { error } = await supabase
       .from('teams')
-      .update({ default_wellness_method: methods.defaultMethod, public_wellness_method: methods.publicMethod })
+      .update({
+        default_wellness_method:   methods.defaultMethod,
+        public_wellness_method:    methods.publicMethod,
+        wellness_quick_scale_size: methods.quickScaleSize,
+      })
       .eq('id', id);
     if (error) throw error;
   },
@@ -132,6 +136,7 @@ function toTeam(row: Record<string, unknown>): Team {
     drtgTRed:         (row.drtg_t_red      as number | undefined) ?? 115,
     defaultWellnessMethod: (row.default_wellness_method as WellnessEntryMethod | undefined) ?? 'detailed',
     publicWellnessMethod:  (row.public_wellness_method  as WellnessEntryMethod | undefined) ?? 'detailed',
+    wellnessQuickScaleSize: (row.wellness_quick_scale_size as WellnessQuickScaleSize | undefined) ?? 3,
   };
 }
 

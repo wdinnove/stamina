@@ -1,4 +1,4 @@
-import { Bell, X, User, Trophy, Heart, CheckSquare, Calendar, Users, Video, Activity, Smile, ChevronRight } from 'lucide-react';
+import { Bell, X, User, Trophy, Heart, CheckSquare, Calendar, Users, Video, Activity, Smile, Brain, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Modal } from './Modal';
@@ -26,6 +26,7 @@ const CATEGORY_ICONS: Record<string, typeof User> = {
   training: Activity,
   meetings: Users,
   tasks:    CheckSquare,
+  mental:   Brain,
   matches:  Trophy,
   tactical: Video,
   season:   Calendar,

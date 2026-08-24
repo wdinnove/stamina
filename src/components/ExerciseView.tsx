@@ -51,7 +51,7 @@ function TextCard({ icon, title, html, empty }: {
  * demi-terrain est presque carré, le terrain entier deux fois plus large que haut. Plafonner la
  * largeur écraserait le second ; on plafonne donc la hauteur et la largeur suit le ratio.
  */
-const SCHEMA_MAX_HEIGHT = 245;
+const SCHEMA_MAX_HEIGHT = 320;
 
 function schemaMaxWidth(scene: ExercisePhase['scene']): number {
   return Math.round(SCHEMA_MAX_HEIGHT * sceneAspect(scene));

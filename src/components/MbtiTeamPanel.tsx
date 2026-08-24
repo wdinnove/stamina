@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { Copy, Check, Mail, Users, Zap, X, Sparkles } from 'lucide-react';
 import { Card, CardTitle } from './Card';
 import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
 import { Modal } from './Modal';
 import { Disclaimer } from './MbtiPlayerPanel';
+import { MbtiDetailModal } from './MbtiDetailModal';
 import { sendMbtiLinks } from '../api/email';
 import { useMbtiResponses } from '../hooks/useMbtiResponses';
 import {
   MBTI_PROFILES_V1, safeComputeMbtiResult, tieLabel,
-  axisSpread, frictionPairs, affinityPairs, type MbtiPlayerResult,
+  axisSpread, frictionPairs, affinityPairs, type MbtiPlayerResult, type MbtiResult,
 } from '../data/mbti';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
@@ -25,7 +25,6 @@ interface MbtiTeamPanelProps {
 }
 
 export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
-  const navigate = useNavigate();
   const playerIds = useMemo(() => roster.map(p => p.id), [roster]);
   const { responses, loading, reload } = useMbtiResponses(playerIds);
 
@@ -35,6 +34,7 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
   const [sendResult, setSendResult] = useState<{ sent: number; skipped: string[]; failed: string[] } | null>(null);
   const [sendError, setSendError] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [detailFor, setDetailFor] = useState<{ name: string; result: MbtiResult; submittedAt: string } | null>(null);
 
   const { answered, pending, results } = useMemo(() => {
     const byPlayer = new Map(responses.map(r => [r.playerId, r]));
@@ -131,7 +131,7 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
                   const profile = MBTI_PROFILES_V1[result.candidates[0]];
                   return (
                     <tr key={player.id}
-                      onClick={() => navigate(`/performance-individuelle/${player.id}/personnalite`)}
+                      onClick={() => setDetailFor({ name: playerNameFull(player), result, submittedAt })}
                       style={{ borderTop: '1px solid #2A2F3A', cursor: 'pointer' }}>
                       <td style={{ ...td, color: '#F1F5F9', fontWeight: 600 }}>{playerNameFull(player)}</td>
                       <td style={{ ...td, color: '#64748B' }}>{player.position}</td>
@@ -342,6 +342,11 @@ export function MbtiTeamPanel({ roster, teamId }: MbtiTeamPanelProps) {
             </>
           )}
         </Modal>
+      )}
+
+      {detailFor && (
+        <MbtiDetailModal name={detailFor.name} result={detailFor.result} submittedAt={detailFor.submittedAt}
+          onClose={() => setDetailFor(null)} />
       )}
     </div>
   );

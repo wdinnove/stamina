@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useSearchParams } from 'react-router';
 import { teamsApi, seasonsApi } from '../api';
 import { supabase } from '../api/client';
-import type { Team, Season, OrgRole, TeamRole, WellnessEntryMethod } from '../data/types';
+import type { Team, Season, OrgRole, TeamRole, WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 
 export interface TeamSeasonOption {
   team: Team;
@@ -39,6 +39,7 @@ interface Ctx {
   statThresholds:        StatThresholds;
   defaultWellnessMethod: WellnessEntryMethod;
   publicWellnessMethod:  WellnessEntryMethod;
+  wellnessQuickScaleSize: WellnessQuickScaleSize;
   orgId:          string | null;
   /** Superadmin : accès total à l'organisation (config club, toutes les équipes). */
   isSuperadmin:   boolean;
@@ -65,7 +66,7 @@ const DEFAULT_STAT_THRESHOLDS: StatThresholds = {
 const TeamSeasonContext = createContext<Ctx>({
   options: [], selected: null, selectAndGo: () => {}, loading: true, reload: () => {},
   thresholds: DEFAULT_THRESHOLDS, statThresholds: DEFAULT_STAT_THRESHOLDS,
-  defaultWellnessMethod: 'detailed', publicWellnessMethod: 'detailed',
+  defaultWellnessMethod: 'detailed', publicWellnessMethod: 'detailed', wellnessQuickScaleSize: 3,
   orgId: null, isSuperadmin: false, roleLoading: true, teamRole: null, teamRoleLoading: true,
   canEditTeamData: false, canConfigureTeam: false,
 });
@@ -232,8 +233,9 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
     drtgTRed:    selected?.team.drtgTRed    ?? DEFAULT_STAT_THRESHOLDS.drtgTRed,
   };
 
-  const defaultWellnessMethod = selected?.team.defaultWellnessMethod ?? 'detailed';
-  const publicWellnessMethod  = selected?.team.publicWellnessMethod  ?? 'detailed';
+  const defaultWellnessMethod  = selected?.team.defaultWellnessMethod  ?? 'detailed';
+  const publicWellnessMethod   = selected?.team.publicWellnessMethod   ?? 'detailed';
+  const wellnessQuickScaleSize = selected?.team.wellnessQuickScaleSize ?? 3;
 
   const orgId = selected?.team.organizationId ?? options[0]?.team.organizationId ?? null;
 
@@ -243,7 +245,7 @@ export function TeamSeasonProvider({ children }: { children: ReactNode }) {
   return (
     <TeamSeasonContext.Provider value={{
       options, selected, selectAndGo, loading, reload,
-      thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod,
+      thresholds, statThresholds, defaultWellnessMethod, publicWellnessMethod, wellnessQuickScaleSize,
       orgId, isSuperadmin, roleLoading, teamRole, teamRoleLoading, canEditTeamData, canConfigureTeam,
     }}>
       {children}

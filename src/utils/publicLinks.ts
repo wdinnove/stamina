@@ -13,6 +13,11 @@ export function wellnessPublicUrl(playerId: string): string {
   return `${window.location.origin}/joueur/${playerId}/bien-etre`;
 }
 
+/** Même questionnaire que `mbtiPublicUrl`, pour un membre du staff. */
+export function staffMbtiPublicUrl(staffId: string): string {
+  return `${window.location.origin}/staff/${staffId}/personnalite`;
+}
+
 /** Copie dans le presse-papier, avec repli sur les navigateurs sans API clipboard (http, vieux Safari). */
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
