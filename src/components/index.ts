@@ -90,5 +90,10 @@ export { MbtiStaffPanel } from './MbtiStaffPanel';
 export { PlayerNotesPanel } from './PlayerNotesPanel';
 export { ArchetypeSelect } from './ArchetypeSelect';
 export { ChannelToggle } from './ChannelToggle';
-export { ReportHeader, ReportSectionTitle } from './ReportHeader';
-export { ReportRpeSection } from './ReportRpeSection';
+export {
+  ReportPage, ReportTitle, SectionHeading, BlockTitle, StatBlock, StatRow, Findings,
+  DataTable, BarList, SplitRow, Tag, A4, REPORT_PAGE_CLASS,
+  reportDate, reportInt, reportDec,
+} from './ReportKit';
+export { ReportSummary } from './ReportSummary';
+export { ReportRpeSection, rpeFindings } from './ReportRpeSection';
