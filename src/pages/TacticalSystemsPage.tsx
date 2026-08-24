@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, ListOrdered } from 'lucide-react';
+import { Search, ListOrdered, Pencil, Trash2 } from 'lucide-react';
 import { tacticalSystemsApi } from '../api/tacticalSystems';
-import { teamCategoriesApi } from '../api/categories';
+import { teamCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/categories';
+import { teamFoldersApi, countByFolder } from '../api/folders';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { Badge, DropzoneEmptyState, EmptyState, DiagramThumb, Spinner, AddButton } from '../components';
-import type { TacticalSystem, TeamCategory } from '../data/types';
+import { Badge, DropzoneEmptyState, EmptyState, DiagramThumb, Spinner, AddButton, FolderCard, NewFolderCard, FolderBreadcrumb, FolderRenameModal, FolderDeleteModal } from '../components';
+import type { TacticalSystem, TeamCategory, TeamFolder } from '../data/types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', backgroundColor: '#1E2229',
@@ -13,22 +14,34 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
-const TH: React.CSSProperties = {
-  paddingTop: 10, paddingBottom: 10, textAlign: 'left', color: '#94A3B8',
-  fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
+const GRID: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12,
 };
 
-/** La vignette du système : son premier schéma, ou un cadre vide s'il n'en a pas encore. */
+// Même gabarit que Modifier/Supprimer sur la fiche système (TacticalSystemDetailPage) — fin,
+// pas le style plein des boutons AddButton.
+const modifyHeaderBtn: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6,
+  backgroundColor: '#1E2229', border: '1px solid #2A2F3A', color: '#94A3B8', cursor: 'pointer', fontSize: '0.82rem',
+};
+const deleteHeaderBtn: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6,
+  backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444', cursor: 'pointer', fontSize: '0.82rem',
+};
+
+/** La vignette du système : son premier schéma, ou un cadre vide s'il n'en a pas encore.
+ *  Toujours carrée — un ratio fixe, indépendant du terrain de la scène, pour que toutes les
+ *  cards d'une rangée fassent la même taille. */
 function Cover({ system }: { system: TacticalSystem }) {
   if (system.coverScene && system.coverScene.elements.length > 0) {
-    return <DiagramThumb scene={system.coverScene} radius={6} style={{ width: 60, maxWidth: 60 }} />;
+    return <DiagramThumb scene={system.coverScene} radius={0} style={{ aspectRatio: '1 / 1' }} />;
   }
   return (
     <div style={{
-      width: 60, height: 56, borderRadius: 6, border: '1px dashed #2A2F3A', backgroundColor: '#0D0F14',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      width: '100%', aspectRatio: '1 / 1', backgroundColor: '#0D0F14',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <ListOrdered size={14} color="#2A2F3A" />
+      <ListOrdered size={20} color="#2A2F3A" />
     </div>
   );
 }
@@ -38,10 +51,18 @@ export default function TacticalSystemsPage() {
   const navigate = useNavigate();
   const [systems,        setSystems]        = useState<TacticalSystem[]>([]);
   const [categories,     setCategories]     = useState<TeamCategory[]>([]);
+  const [folders,        setFolders]        = useState<TeamFolder[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState('');
   const [search,         setSearch]         = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [activeFolder,   setActiveFolder]   = useState<string | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderEditing,  setFolderEditing]  = useState(false);
+  const [folderDeleting, setFolderDeleting] = useState(false);
+
+  // Un dossier quitté ou changé referme toute édition en cours sur l'ancien.
+  useEffect(() => { setFolderEditing(false); setFolderDeleting(false); }, [activeFolder]);
 
   useEffect(() => {
     if (!selected) return;
@@ -56,16 +77,61 @@ export default function TacticalSystemsPage() {
   useEffect(() => {
     if (!selected) return;
     teamCategoriesApi.list(selected.team.id, 'system').then(setCategories).catch(() => {});
+    teamFoldersApi.list(selected.team.id, 'system').then(setFolders).catch(() => {});
   }, [selected?.team.id]);
 
-  const needle = search.toLowerCase();
-  const filtered = systems.filter(sys =>
+  const needle = search.trim().toLowerCase();
+  const searching = needle.length > 0;
+  // Recherche texte ou filtre catégorie : les deux sont des filtres globaux qui aplatissent
+  // la vue sur tous les systèmes correspondants, dossier ou pas — comme Drive. Sans ça, on
+  // navigue : dossiers + systèmes sans dossier à la racine, seulement le contenu du dossier
+  // une fois dedans.
+  const filtering = searching || categoryFilter !== '';
+  const currentFolder = activeFolder ? folders.find(f => f.id === activeFolder) : undefined;
+
+  const displayedFolders = filtering || activeFolder ? [] : folders;
+  const displayedSystems = systems.filter(sys =>
     (categoryFilter === '' || sys.categoryId === categoryFilter) &&
-    (
-      sys.name.toLowerCase().includes(needle) ||
-      (sys.categoryName ?? '').toLowerCase().includes(needle)
-    )
+    (filtering
+      ? (needle === '' || sys.name.toLowerCase().includes(needle) || (sys.categoryName ?? '').toLowerCase().includes(needle))
+      : (activeFolder ? sys.folderId === activeFolder : !sys.folderId))
   );
+
+  const counts = countByFolder(systems);
+
+  async function handleCreateFolder(name: string) {
+    if (!selected) return;
+    const color = NEW_CATEGORY_PALETTE[folders.length % NEW_CATEGORY_PALETTE.length];
+    const created = await teamFoldersApi.create(selected.team.id, 'system', name, color);
+    setFolders(prev => [...prev, created]);
+    setCreatingFolder(false);
+  }
+
+  async function handleRenameFolder(folder: TeamFolder) {
+    const updated = await teamFoldersApi.update(folder.id, { name: folder.name });
+    setFolders(prev => prev.map(f => f.id === updated.id ? updated : f));
+  }
+
+  async function handleDeleteFolder(folder: TeamFolder) {
+    await teamFoldersApi.remove(folder.id);
+    setFolders(prev => prev.filter(f => f.id !== folder.id));
+    setSystems(prev => prev.map(sys => sys.folderId === folder.id ? { ...sys, folderId: undefined } : sys));
+    setActiveFolder(prev => prev === folder.id ? null : prev);
+  }
+
+  async function moveToFolder(itemId: string, folderId: string | null) {
+    const sys = systems.find(s => s.id === itemId);
+    if (!sys || (sys.folderId ?? null) === folderId) return;
+    const prevFolderId = sys.folderId;
+    setSystems(prev => prev.map(s => s.id === itemId ? { ...s, folderId: folderId ?? undefined } : s));
+    try {
+      await tacticalSystemsApi.update(itemId, { folderId });
+    } catch {
+      setSystems(prev => prev.map(s => s.id === itemId ? { ...s, folderId: prevFolderId } : s));
+    }
+  }
+
+  const nothingToShow = !loading && displayedFolders.length === 0 && displayedSystems.length === 0 && !creatingFolder;
 
   return (
     <div className="p-4 md:p-6">
@@ -73,12 +139,27 @@ export default function TacticalSystemsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Systèmes</h1>
         {canEditTeamData && (
-          <AddButton label="Ajouter un système" onClick={() => navigate('/systemes/nouveau')} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            {currentFolder ? (
+              <>
+                <button type="button" onClick={() => setFolderEditing(true)} style={modifyHeaderBtn}>
+                  <Pencil size={13} /><span className="hidden sm:inline">Modifier le dossier</span>
+                </button>
+                <button type="button" onClick={() => setFolderDeleting(true)} style={deleteHeaderBtn}>
+                  <Trash2 size={13} /><span className="hidden sm:inline">Supprimer le dossier</span>
+                </button>
+              </>
+            ) : (
+              <AddButton label="Ajouter un dossier" variant="soft" onClick={() => { setSearch(''); setCategoryFilter(''); setCreatingFolder(true); }} />
+            )}
+            <AddButton label="Ajouter un système"
+              onClick={() => navigate('/systemes/nouveau', activeFolder ? { state: { folderId: activeFolder } } : undefined)} />
+          </div>
         )}
       </div>
 
-      {/* Filtres */}
-      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 20, width: '100%' }}>
+      {/* Recherche + catégorie */}
+      <div className="flex flex-col sm:flex-row" style={{ gap: 10, marginBottom: 16, width: '100%' }}>
         <div className="w-full sm:flex-[2_1_240px]" style={{ position: 'relative' }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
           <input type="text" placeholder="Rechercher…" value={search}
@@ -92,73 +173,102 @@ export default function TacticalSystemsPage() {
         </select>
       </div>
 
+      {/* Fil d'ariane — dedans un dossier, hors filtre global. Renommer/supprimer n'existe qu'ici. */}
+      {!filtering && currentFolder && (
+        <FolderBreadcrumb folder={currentFolder}
+          onBack={() => setActiveFolder(null)}
+          onDropUnassign={itemId => moveToFolder(itemId, null)}
+        />
+      )}
+
+      {folderEditing && currentFolder && (
+        <FolderRenameModal folder={currentFolder}
+          onSave={name => handleRenameFolder({ ...currentFolder, name })}
+          onClose={() => setFolderEditing(false)}
+        />
+      )}
+
+      {folderDeleting && currentFolder && (
+        <FolderDeleteModal folder={currentFolder} count={counts[currentFolder.id] ?? 0}
+          onConfirm={() => handleDeleteFolder(currentFolder)}
+          onClose={() => setFolderDeleting(false)}
+        />
+      )}
+
       {loading && <Spinner centered />}
 
       {error && <div style={{ color: '#EF4444', fontSize: '0.85rem', marginBottom: 16 }}>{error}</div>}
 
-      {!loading && filtered.length === 0 && (
+      {nothingToShow && (
         canEditTeamData ? (
           <DropzoneEmptyState
-            label={search ? 'Aucun système trouvé' : 'Cliquer pour ajouter un système'}
-            icon={search ? null : undefined}
-            onClick={search ? undefined : () => navigate('/systemes/nouveau')}
+            label={filtering ? 'Aucun système trouvé' : activeFolder ? 'Dossier vide' : 'Cliquer pour ajouter un système'}
+            icon={filtering || activeFolder ? null : undefined}
+            onClick={filtering || activeFolder ? undefined : () => navigate('/systemes/nouveau')}
           />
         ) : (
-          <EmptyState message={search ? 'Aucun système trouvé.' : 'Aucun système. Seuls les rôles Admin et Éditeur peuvent en ajouter.'} size="lg" />
+          <EmptyState message={filtering ? 'Aucun système trouvé.' : activeFolder ? 'Ce dossier est vide.' : 'Aucun système. Seuls les rôles Admin et Éditeur peuvent en ajouter.'} size="lg" />
         )
       )}
 
-      {filtered.length > 0 && (
-        <div style={{ backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 320 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                <th className="pl-3 sm:pl-5 w-[76px]" style={TH}></th>
-                <th className="px-3 sm:px-5" style={TH}>Nom</th>
-                <th className="px-3 sm:px-5 w-[110px] sm:w-[150px]" style={TH}>Catégorie</th>
-                <th className="hidden sm:table-cell sm:px-5 sm:w-[90px]" style={TH}>Phases</th>
-                <th className="pr-2 sm:px-5" style={{ ...TH, width: 24 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((sys, i) => (
-                <tr key={sys.id}
-                  onClick={() => navigate(`/systemes/${sys.id}`)}
-                  style={{ borderBottom: i < filtered.length - 1 ? '1px solid #1E2229' : 'none', cursor: 'pointer' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#1A1E26'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                >
-                  <td className="pl-3 sm:pl-5" style={{ paddingTop: 10, paddingBottom: 10 }}>
-                    <Cover system={sys} />
-                  </td>
-                  <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, overflow: 'hidden' }}>
-                    <span style={{ color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                      {sys.name}
-                    </span>
-                  </td>
-                  <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, overflow: 'hidden' }}>
-                    {sys.categoryName && (
-                      <Badge color={sys.categoryColor ?? '#475569'} bg={(sys.categoryColor ?? '#475569') + '18'}
-                        label={sys.categoryName} size="sm" style={{ fontWeight: 600, padding: '2px 8px', flexShrink: 0 }} />
-                    )}
-                  </td>
-                  <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
-                    <span style={{
-                      color: sys.phaseCount > 0 ? '#94A3B8' : '#334155',
-                      fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem', fontWeight: 700,
-                    }}>
-                      {sys.phaseCount}
-                    </span>
-                  </td>
-                  <td className="pr-2 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12 }}>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-                      <path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {(displayedFolders.length > 0 || creatingFolder) && (
+        <div style={{ ...GRID, marginBottom: 22 }}>
+          {creatingFolder && (
+            <NewFolderCard
+              color={NEW_CATEGORY_PALETTE[folders.length % NEW_CATEGORY_PALETTE.length]}
+              onCreate={handleCreateFolder}
+              onCancel={() => setCreatingFolder(false)}
+            />
+          )}
+          {displayedFolders.map(f => (
+            <FolderCard key={f.id} folder={f} count={counts[f.id] ?? 0}
+              onOpen={() => setActiveFolder(f.id)}
+              onDrop={itemId => moveToFolder(itemId, f.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {displayedSystems.length > 0 && (
+        <div style={GRID}>
+          {displayedSystems.map(sys => (
+            <div key={sys.id}
+              draggable={canEditTeamData}
+              onDragStart={e => e.dataTransfer.setData('text/plain', sys.id)}
+              onClick={() => navigate(`/systemes/${sys.id}`)}
+              style={{
+                backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10,
+                overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A4152'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#2A2F3A'; }}
+            >
+              <Cover system={sys} />
+              <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+                <span style={{
+                  color: '#F1F5F9', fontWeight: 600, fontSize: '0.85rem', lineHeight: 1.3,
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden', minHeight: 'calc(0.85rem * 1.3 * 2)',
+                }}>
+                  {sys.name}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'auto' }}>
+                  {sys.categoryName ? (
+                    <Badge color={sys.categoryColor ?? '#475569'} bg={(sys.categoryColor ?? '#475569') + '18'}
+                      label={sys.categoryName} size="sm" style={{ fontWeight: 600, padding: '2px 8px', flexShrink: 0 }} />
+                  ) : (
+                    <Badge color="#94A3B8" bg="#2A2F3A" label="Aucune catégorie" size="sm" style={{ fontWeight: 600, padding: '2px 8px', flexShrink: 0 }} />
+                  )}
+                  <span style={{
+                    color: sys.phaseCount > 0 ? '#94A3B8' : '#334155',
+                    fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {sys.phaseCount}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

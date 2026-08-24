@@ -5,6 +5,7 @@ export { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage 
 export { Modal }        from './Modal';
 export { Badge, CategoryBadge, CATEGORY_FALLBACK_COLOR, CATEGORY_MISSING_LABEL } from './Badge';
 export { CategoryManager } from './CategoryManager';
+export { FolderCard, NewFolderCard, FolderBreadcrumb, FolderRenameModal, FolderDeleteModal } from './FolderCard';
 export { DropzoneEmptyState } from './DropzoneEmptyState';
 export { EmptyState }    from './EmptyState';
 export { AccessRestricted } from './AccessRestricted';

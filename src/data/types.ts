@@ -476,6 +476,8 @@ export interface Exercise {
   categoryId?: string;
   categoryName?: string;
   categoryColor?: string;
+  /** Dossier libre (glisser-déposer depuis la bibliothèque), sans rapport avec la catégorie. */
+  folderId?: string;
   videoUrl?: string;
   /** Nombre de phases, pour les écrans qui n'ont pas besoin de leur contenu. */
   phaseCount: number;
@@ -494,6 +496,26 @@ export interface TeamCategory {
   id: string;
   teamId: string;
   scope: CategoryScope;
+  name: string;
+  color: string;
+  position: number;
+}
+
+/** Portées qui supportent le rangement en dossiers — volontairement limité (cf. migration
+ *  `team_folders` dans schema.sql). Sans rapport avec `CategoryScope` : un dossier n'est PAS
+ *  une catégorie, c'est un classement libre et indépendant, créé à la volée par un writer
+ *  directement depuis la bibliothèque d'exercices/systèmes. */
+export type FolderScope = 'exercise' | 'system';
+
+/**
+ * Un dossier créé librement par un writer pour ranger ses exercices/systèmes, sans rapport
+ * avec les catégories : un exercice garde sa catégorie ET peut en plus être dans un dossier,
+ * les deux classements sont orthogonaux.
+ */
+export interface TeamFolder {
+  id: string;
+  teamId: string;
+  scope: FolderScope;
   name: string;
   color: string;
   position: number;
@@ -530,6 +552,8 @@ export interface TacticalSystem {
   categoryId?: string;
   categoryName?: string;
   categoryColor?: string;
+  /** Dossier libre (glisser-déposer depuis la bibliothèque), sans rapport avec la catégorie. */
+  folderId?: string;
   /** Nombre de phases, pour les écrans qui n'ont pas besoin de leur contenu. */
   phaseCount: number;
   /** Scène de la première phase — la vignette du système dans la liste. */

@@ -86,6 +86,10 @@ export default function ExerciseFormPage() {
   const [prefill] = useState<SessionBlockPrefill | undefined>(
     () => isNew ? (location.state as { sessionBlockPrefill?: SessionBlockPrefill } | null)?.sessionBlockPrefill : undefined,
   );
+  // Le dossier dans lequel on était quand on a cliqué « Ajouter un exercice ».
+  const [folderId] = useState<string | undefined>(
+    () => isNew ? (location.state as { folderId?: string } | null)?.folderId : undefined,
+  );
 
   const [exercise,   setExercise]   = useState<Exercise | null>(null);
   const [categories, setCategories] = useState<TeamCategory[]>([]);
@@ -296,7 +300,7 @@ export default function ExerciseFormPage() {
       // Création et édition suivent le même chemin, à la première étape près.
       let exerciseId = id ?? createdId.current;
       if (!exerciseId) {
-        const created = await exercisesApi.create({ ...header, teamId: selected.team.id });
+        const created = await exercisesApi.create({ ...header, teamId: selected.team.id, folderId });
         createdId.current = created.id;
         exerciseId = created.id;
         // Sans ce lien, la bibliothèque aurait bien l'exercice mais la séance continuerait de

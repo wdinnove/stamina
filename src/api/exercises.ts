@@ -30,6 +30,7 @@ function toExercise(row: Record<string, unknown>): Exercise {
     categoryId:    cat?.id,
     categoryName:  cat?.name,
     categoryColor: cat?.color,
+    folderId:      (row.folder_id as string | null) ?? undefined,
     videoUrl:      (row.video_url as string | null) ?? undefined,
     phaseCount:    phases.length,
     coverScene:    cover?.scene,
@@ -52,7 +53,7 @@ export const exercisesApi = {
   },
 
   async create(input: {
-    name: string; teamId: string; deroulement?: string; objectifs?: string; categoryId?: string; videoUrl?: string;
+    name: string; teamId: string; deroulement?: string; objectifs?: string; categoryId?: string; folderId?: string; videoUrl?: string;
   }): Promise<Exercise> {
     const { data, error } = await supabase
       .from('exercises')
@@ -62,6 +63,7 @@ export const exercisesApi = {
         deroulement: input.deroulement || null,
         objectifs:   input.objectifs || null,
         category_id: input.categoryId || null,
+        folder_id:   input.folderId || null,
         video_url:   input.videoUrl || null,
       })
       .select(SELECT)
@@ -71,13 +73,14 @@ export const exercisesApi = {
   },
 
   async update(id: string, patch: {
-    name?: string; deroulement?: string; objectifs?: string; categoryId?: string; videoUrl?: string;
+    name?: string; deroulement?: string; objectifs?: string; categoryId?: string; folderId?: string | null; videoUrl?: string;
   }): Promise<Exercise> {
     const payload: Record<string, unknown> = {};
     if (patch.name       !== undefined) payload.name        = patch.name;
     if (patch.deroulement !== undefined) payload.deroulement = patch.deroulement || null;
     if (patch.objectifs  !== undefined) payload.objectifs   = patch.objectifs || null;
     if (patch.categoryId !== undefined) payload.category_id = patch.categoryId || null;
+    if (patch.folderId   !== undefined) payload.folder_id   = patch.folderId || null;
     if (patch.videoUrl   !== undefined) payload.video_url   = patch.videoUrl || null;
     const { data, error } = await supabase.from('exercises').update(payload).eq('id', id).select(SELECT).single();
     if (error) throw error;

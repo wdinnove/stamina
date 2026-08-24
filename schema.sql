@@ -4546,3 +4546,50 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- n'a de date personnalisée tant que personne n'en pose une :
 --   SELECT COUNT(*) FROM player_actions WHERE NOT (notify_j1 AND notify_jj);        -- 0 juste après la migration
 --   SELECT COUNT(*) FROM player_actions WHERE notify_custom_date IS NOT NULL;       -- 0 juste après la migration
+
+-- Dossiers pour ranger les exercices et les systèmes tactiques (indépendants des catégories)
+--
+-- Un dossier n'a rien à voir avec une catégorie : c'est un classement libre, créé à la volée par
+-- n'importe quel WRITER (pas seulement l'admin) directement depuis la bibliothèque d'exercices ou
+-- de systèmes — pas un réglage de configuration d'équipe comme `team_categories`. Un exercice
+-- garde sa catégorie ET peut en plus être rangé dans un dossier : les deux classements sont
+-- orthogonaux, l'un n'implique jamais l'autre. Le rangement se fait par glisser-déposer depuis la
+-- liste, pas par un écran de configuration séparé.
+--
+-- Supprimer un dossier ne supprime rien : les exercices/systèmes qu'il contenait redeviennent
+-- simplement "sans dossier" (`ON DELETE SET NULL`, même logique que `category_id`).
+--
+-- CREATE TABLE team_folders (
+--   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+--   scope      TEXT NOT NULL CHECK (scope IN ('exercise', 'system')),
+--   name       TEXT NOT NULL,
+--   color      TEXT NOT NULL,
+--   position   SMALLINT NOT NULL DEFAULT 0,
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--   UNIQUE (team_id, scope, name)
+-- );
+-- CREATE INDEX ON team_folders (team_id, scope);
+--
+-- ALTER TABLE exercises        ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES team_folders(id) ON DELETE SET NULL;
+-- ALTER TABLE tactical_systems ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES team_folders(id) ON DELETE SET NULL;
+-- CREATE INDEX ON exercises        (folder_id);
+-- CREATE INDEX ON tactical_systems (folder_id);
+--
+-- ALTER TABLE team_folders ENABLE ROW LEVEL SECURITY;
+--
+-- -- Écriture ouverte à tout writer, pas seulement l'admin : contrairement aux catégories (le
+-- -- vocabulaire du club, réservé à l'admin), un dossier est un classement de travail que
+-- -- n'importe quel éditeur range comme il l'entend — même politique que `exercises`/`tactical_systems`.
+-- CREATE POLICY "team_folders_select" ON team_folders
+--   FOR SELECT TO authenticated
+--   USING (team_id IN (SELECT * FROM accessible_team_ids()));
+-- CREATE POLICY "team_folders_write" ON team_folders
+--   FOR ALL TO authenticated
+--   USING      (team_id IN (SELECT * FROM writable_team_ids()))
+--   WITH CHECK (team_id IN (SELECT * FROM writable_team_ids()));
+--
+-- Vérification — additif, table vide et aucun exercice/système rangé tant que personne n'en crée :
+--   SELECT COUNT(*) FROM team_folders;
+--   SELECT COUNT(*) FROM exercises WHERE folder_id IS NOT NULL;
+--   SELECT COUNT(*) FROM tactical_systems WHERE folder_id IS NOT NULL;

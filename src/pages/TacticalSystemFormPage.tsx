@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useBlocker, useNavigate, useParams } from 'react-router';
+import { useBlocker, useNavigate, useLocation, useParams } from 'react-router';
 import { ArrowLeft, AlertCircle, Trash2, Copy, ChevronUp, ChevronDown, ListOrdered, FileText, PencilRuler } from 'lucide-react';
 import { tacticalSystemsApi } from '../api/tacticalSystems';
 import { tacticalSystemPhasesApi } from '../api/tacticalSystemPhases';
@@ -57,9 +57,15 @@ function snapshot(header: { name: string; categoryId: string; description: strin
 export default function TacticalSystemFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { selected, canEditTeamData, roleLoading, teamRoleLoading } = useTeamSeason();
   const isNew = !id;
   const rolesLoading = roleLoading || teamRoleLoading;
+
+  // Un seul lu au montage : le dossier dans lequel on était quand on a cliqué « Ajouter ».
+  const [folderId] = useState<string | undefined>(
+    () => isNew ? (location.state as { folderId?: string } | null)?.folderId : undefined,
+  );
 
   const [system,     setSystem]     = useState<TacticalSystem | null>(null);
   const [categories, setCategories] = useState<TeamCategory[]>([]);
@@ -231,7 +237,7 @@ export default function TacticalSystemFormPage() {
     try {
       let systemId = id ?? createdId.current;
       if (!systemId) {
-        const created = await tacticalSystemsApi.create({ ...header, teamId: selected.team.id });
+        const created = await tacticalSystemsApi.create({ ...header, teamId: selected.team.id, folderId });
         createdId.current = created.id;
         systemId = created.id;
       } else {

@@ -29,6 +29,7 @@ function toSystem(row: Record<string, unknown>): TacticalSystem {
     categoryId:    cat?.id,
     categoryName:  cat?.name,
     categoryColor: cat?.color,
+    folderId:      (row.folder_id as string | null) ?? undefined,
     phaseCount:    phases.length,
     coverScene:    cover?.scene,
     createdAt:     row.created_at as string,
@@ -50,7 +51,7 @@ export const tacticalSystemsApi = {
   },
 
   async create(input: {
-    name: string; teamId: string; description?: string; categoryId?: string;
+    name: string; teamId: string; description?: string; categoryId?: string; folderId?: string;
   }): Promise<TacticalSystem> {
     const { data, error } = await supabase
       .from('tactical_systems')
@@ -59,6 +60,7 @@ export const tacticalSystemsApi = {
         team_id:     input.teamId,
         description: input.description || null,
         category_id: input.categoryId || null,
+        folder_id:   input.folderId || null,
       })
       .select(SELECT)
       .single();
@@ -67,12 +69,13 @@ export const tacticalSystemsApi = {
   },
 
   async update(id: string, patch: {
-    name?: string; description?: string; categoryId?: string;
+    name?: string; description?: string; categoryId?: string; folderId?: string | null;
   }): Promise<TacticalSystem> {
     const payload: Record<string, unknown> = {};
     if (patch.name        !== undefined) payload.name        = patch.name;
     if (patch.description !== undefined) payload.description = patch.description || null;
     if (patch.categoryId  !== undefined) payload.category_id = patch.categoryId || null;
+    if (patch.folderId    !== undefined) payload.folder_id   = patch.folderId || null;
     const { data, error } = await supabase.from('tactical_systems').update(payload).eq('id', id).select(SELECT).single();
     if (error) throw error;
     return toSystem(data as Record<string, unknown>);
