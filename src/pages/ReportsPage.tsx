@@ -3,11 +3,18 @@ import { FileDown, Users, User } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
+import { useReportData } from '../hooks/useReportData';
 import {
   Card, CardTitle, EmptyState, Spinner, DateRangeCard, useDateRange, PlayerSelect,
-  ReportPage, ReportSummary, ReportRpeSection, rpeFindings, A4, REPORT_PAGE_CLASS,
+  ReportPage, ReportSummary, A4, REPORT_PAGE_CLASS,
+  ReportRpeSection, ReportWellnessSection, ReportMedicalSection, ReportStatsSection, ReportObjectivesSection,
+  rpeFindings, wellnessFindings, medicalFindings, statsFindings, objectivesFindings,
   reportDate, reportInt, reportDec,
 } from '../components';
+import { teamWellnessAvg, wellnessRawValue, WELLNESS_DIMENSIONS } from '../utils/wellness';
+import { sumInjuryDays } from '../utils/medical';
+import { ratioFromSums } from '../utils/ratioFromSums';
+import type { Tone } from '../components/ReportKit';
 import { exportPagesToPdf, reportFilename } from '../utils/reportPdf';
 import { playerNameFull } from '../utils/playerName';
 import { getWeekTier } from '../utils/weeklyLoad';
@@ -27,8 +34,8 @@ const SECTIONS = [
 
 type SectionKey = typeof SECTIONS[number]['key'];
 
-/** Sections déjà conçues — les autres sont annoncées mais pas encore cochables. */
-const AVAILABLE: SectionKey[] = ['rpe'];
+/** Sections dont le gabarit existe — les autres seraient annoncées mais non cochables. */
+const AVAILABLE: SectionKey[] = ['rpe', 'wellness', 'medical', 'stats', 'objectives'];
 
 const toggleBtn = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -66,6 +73,9 @@ export default function ReportsPage() {
     teamWeekRows, teamKpis, playerRanking, teamPeriodAvgWeeklyLoad, teamSeasonAvgWeeklyLoad,
     teamSeasonAvgRpe, teamAcwrAvg, teamFreshAvg, loadingTeamHistory,
   } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster);
+
+  // Les 4 autres sections partagent un seul chargement (le même que l'analyse collective).
+  const report = useReportData(dateRange.from, dateRange.to);
 
   const player = subject === 'player' ? roster.find(p => p.id === playerId) : undefined;
 
@@ -122,19 +132,93 @@ export default function ReportsPage() {
   const loadDelta = teamSeasonAvgWeeklyLoad.value !== null && teamSeasonAvgWeeklyLoad.value > 0
     ? Math.round(rpeData.avgWeeklyLoad - teamSeasonAvgWeeklyLoad.value) : null;
 
-  // La synthèse remonte les chiffres des sections retenues — pas d'autres.
-  const summaryStats = chosen.includes('rpe') ? [
-    { label: 'Charge hebdo moyenne', value: rpeData.avgWeeklyLoad > 0 ? reportInt(rpeData.avgWeeklyLoad) : '—', unit: 'UA', hint: tier.label },
-    { label: 'RPE moyen', value: reportDec(rpeData.rpeAvg.value), unit: '/ 10', hint: `${rpeData.rpeAvg.players} joueur${rpeData.rpeAvg.players > 1 ? 's' : ''}` },
-    { label: 'Séances suivies', value: rpeData.sessions, hint: `${reportInt(rpeData.totalLoad)} UA cumulées` },
-    { label: 'Semaines en surcharge', value: `${overloadWeeks} / ${rpeData.weeks.length}`, tone: overloadWeeks > 0 ? ('bad' as const) : ('good' as const) },
-  ] : [];
+  /**
+   * La synthèse ne résume que les sections retenues, et donne à chacune la même place : un
+   * chiffre de tête et un constat. Sans ça, un rapport « Médical seul » ouvrirait sur une page
+   * vide, et un rapport complet ouvrirait sur quatre chiffres de charge et rien d'autre.
+   */
+  const summaryStats: { label: string; value: React.ReactNode; unit?: string; hint?: React.ReactNode; tone?: Tone }[] = [];
+  const summaryFindings: { tone: Tone; text: string }[] = [];
 
-  const summaryFindings = chosen.includes('rpe')
-    ? rpeFindings(rpeData, thresholds, overloadWeeks, loadDelta).slice(0, 3)
-    : [];
+  if (chosen.includes('rpe')) {
+    summaryStats.push({
+      label: 'Charge hebdo moyenne',
+      value: rpeData.avgWeeklyLoad > 0 ? reportInt(rpeData.avgWeeklyLoad) : '—',
+      unit: 'UA', hint: tier.label,
+      tone: overloadWeeks > 0 ? 'warn' : 'good',
+    });
+    summaryFindings.push(...rpeFindings(rpeData, thresholds, overloadWeeks, loadDelta).slice(0, 1));
+  }
 
-  const dataLoading = chosen.includes('rpe') && loadingTeamHistory;
+  if (chosen.includes('wellness')) {
+    const wAvg = teamWellnessAvg(report.wellness.entries).value;
+    summaryStats.push({
+      label: 'Bien-être moyen',
+      value: reportDec(wAvg), unit: '/ 10',
+      hint: `${report.wellness.entries.length} saisie${report.wellness.entries.length > 1 ? 's' : ''}`,
+      tone: wAvg === null ? 'neutral' : wAvg >= 7 ? 'good' : wAvg >= 5 ? 'warn' : 'bad',
+    });
+    const activeDays = new Set(report.wellness.entries.map(e => e.date)).size;
+    const expected = report.wellness.rosterSize * activeDays;
+    const rate = expected > 0 ? Math.round((report.wellness.entries.length / expected) * 100) : 0;
+    const dims = WELLNESS_DIMENSIONS.map(dim => ({
+      label: dim.shortLabel,
+      value: teamWellnessAvg(
+        report.wellness.entries.map(e => ({ ...e, [dim.key]: wellnessRawValue(Number(e[dim.key]), dim.inverted) })),
+        dim.key,
+      ).value ?? 0,
+    })).sort((a, b) => a.value - b.value);
+    summaryFindings.push(...wellnessFindings(report.wellness, wAvg, null, rate, dims).slice(0, 1));
+  }
+
+  if (chosen.includes('medical')) {
+    const injuries = report.medical.events.filter(e => e.record.type === 'injury');
+    const unavailable = report.medical.roster.filter(p => p.status === 'injured' || p.status === 'unavailable').length;
+    const severe = injuries.filter(e => e.record.severity === 'severe').length;
+    const daysLost = sumInjuryDays(injuries.map(e => e.record)).days;
+    summaryStats.push({
+      label: 'Effectif disponible',
+      value: <>{report.medical.roster.filter(p => p.status === 'active').length}<span style={{ fontSize: 14, fontWeight: 600 }}> / {report.medical.roster.length}</span></>,
+      hint: `${injuries.length} blessure${injuries.length > 1 ? 's' : ''} sur la période`,
+      tone: unavailable === 0 ? 'good' : unavailable > 2 ? 'bad' : 'warn',
+    });
+    summaryFindings.push(...medicalFindings(report.medical, injuries.length, severe, daysLost, unavailable).slice(0, 1));
+  }
+
+  if (chosen.includes('stats')) {
+    const games = report.stats.teamStats;
+    const wins = games.filter(g => g.result === 'win').length;
+    const losses = games.length - wins;
+    const ptsFor = games.length ? games.reduce((s, g) => s + g.scoreUs, 0) / games.length : null;
+    const ptsAgainst = games.length ? games.reduce((s, g) => s + g.scoreThem, 0) / games.length : null;
+    const diff = ptsFor !== null && ptsAgainst !== null ? ptsFor - ptsAgainst : null;
+    summaryStats.push({
+      label: 'Bilan',
+      value: games.length === 0 ? '—' : <>{wins}<span style={{ fontSize: 15, fontWeight: 600 }}> V </span>{losses}<span style={{ fontSize: 15, fontWeight: 600 }}> D</span></>,
+      hint: `${games.length} match${games.length > 1 ? 's' : ''} joué${games.length > 1 ? 's' : ''}`,
+      tone: games.length === 0 ? 'neutral' : wins > losses ? 'good' : wins === losses ? 'neutral' : 'bad',
+    });
+    const fg3 = ratioFromSums(games, g => g.fg3m, g => g.fg3a);
+    const to = games.length ? games.reduce((s, g) => s + g.bp, 0) / games.length : null;
+    summaryFindings.push(...statsFindings(games, wins, losses, diff, fg3, to).slice(0, 1));
+  }
+
+  if (chosen.includes('objectives')) {
+    const active = report.objectives.filter(o => o.objective.active);
+    const measured = active.filter(o => o.met !== null);
+    const met = measured.filter(o => o.met === true).length;
+    const rate = measured.length > 0 ? Math.round((met / measured.length) * 100) : null;
+    summaryStats.push({
+      label: "Taux d'atteinte",
+      value: rate === null ? '—' : `${rate}`, unit: rate === null ? undefined : '%',
+      hint: `${met} sur ${measured.length} objectif${measured.length > 1 ? 's' : ''} mesuré${measured.length > 1 ? 's' : ''}`,
+      tone: rate === null ? 'neutral' : rate >= 70 ? 'good' : rate >= 40 ? 'warn' : 'bad',
+    });
+    summaryFindings.push(...objectivesFindings(active, met, measured.length - met, rate).slice(0, 1));
+  }
+
+  const needsPerfData = chosen.some(k => k !== 'rpe');
+  const dataLoading = (chosen.includes('rpe') && loadingTeamHistory) || (needsPerfData && report.loading);
   const notReady = chosen.length === 0 || dataLoading;
 
   return (
@@ -232,7 +316,11 @@ export default function ReportsPage() {
 
               {includedSections.map((s, i) => (
                 <ReportPage key={s.key} running={running} pageNumber={i + 2} totalPages={totalPages}>
-                  {s.key === 'rpe' && <ReportRpeSection index={i + 1} data={rpeData} thresholds={thresholds} />}
+                  {s.key === 'rpe'        && <ReportRpeSection        index={i + 1} data={rpeData} thresholds={thresholds} />}
+                  {s.key === 'wellness'   && <ReportWellnessSection   index={i + 1} data={report.wellness} />}
+                  {s.key === 'medical'    && <ReportMedicalSection    index={i + 1} data={report.medical} />}
+                  {s.key === 'stats'      && <ReportStatsSection      index={i + 1} data={report.stats} />}
+                  {s.key === 'objectives' && <ReportObjectivesSection index={i + 1} data={{ objectives: report.objectives }} />}
                 </ReportPage>
               ))}
             </div>

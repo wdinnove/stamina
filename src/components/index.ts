@@ -93,7 +93,11 @@ export { ChannelToggle } from './ChannelToggle';
 export {
   ReportPage, ReportTitle, SectionHeading, BlockTitle, StatBlock, StatRow, Findings,
   DataTable, BarList, SplitRow, Tag, A4, REPORT_PAGE_CLASS,
-  reportDate, reportInt, reportDec,
+  reportDate, reportDateNum, reportInt, reportDec,
 } from './ReportKit';
 export { ReportSummary } from './ReportSummary';
 export { ReportRpeSection, rpeFindings } from './ReportRpeSection';
+export { ReportWellnessSection, wellnessFindings } from './ReportWellnessSection';
+export { ReportMedicalSection, medicalFindings } from './ReportMedicalSection';
+export { ReportStatsSection, statsFindings } from './ReportStatsSection';
+export { ReportObjectivesSection, objectivesFindings } from './ReportObjectivesSection';

@@ -31,6 +31,13 @@ export function reportDate(iso: string): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+/** "12/07/2026" — la forme compacte, pour les colonnes de tableau où le mois en toutes lettres
+ *  passerait à la ligne. */
+export function reportDateNum(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 /** Un entier à la française : "39 530". */
 export function reportInt(v: number): string {
   return Math.round(v).toLocaleString('fr-FR');
