@@ -1491,7 +1491,10 @@ export default function TrainingSessionDetailPage() {
   const [historyMap,   setHistoryMap]   = useState<Record<string, LoadEntry[]>>({});
   const [wellnessMap,  setWellnessMap]  = useState<Record<string, WellnessEntry[]>>({});
   const [acwrLoading,  setAcwrLoading]  = useState(false);
-  const [acwrLoaded,   setAcwrLoaded]   = useState(false);
+  /** Joueurs dont l'historique a déjà été demandé. L'effectif arrive après les présences, donc
+   *  on complète au fil de l'eau au lieu de charger en un seul passage. */
+  const historyRequested = useRef<Set<string>>(new Set());
+  const historyPending   = useRef(0);
 
   const [blockDrafts, setBlockDrafts] = useState<BlockDraft[]>(defaultBlockDrafts);
   /** Groupes d'équipes tels qu'ils existent EN BASE — pas les brouillons à l'écran. Une
@@ -1573,21 +1576,30 @@ export default function TrainingSessionDetailPage() {
   // Charge l'historique RPE + bien-être de chaque joueur concerné (ACWR, charge 7j, bien-être 7j)
   // Chargé dès l'arrivée sur la page (pas seulement à l'ouverture du bloc) pour alimenter le compteur d'alertes dans le titre
   useEffect(() => {
-    if (acwrLoaded || !session) return;
-    const knownIds = new Set([...attendance.map(a => a.playerId), ...rpeEntries.map(e => e.playerId)]);
-    const targets = players.filter(p => knownIds.has(p.id));
-    if (targets.length === 0) { setAcwrLoaded(true); return; }
+    if (!session) return;
+    // L'effectif compte autant que les joueurs pointés : avant la séance personne n'a de ligne
+    // de présence, et c'est justement là que le tableau de charge doit pouvoir se remplir.
+    const targetIds = [...new Set([
+      ...attendance.map(a => a.playerId),
+      ...rpeEntries.map(e => e.playerId),
+      ...rosterPlayers.map(p => p.id),
+    ])].filter(pid => !historyRequested.current.has(pid));
+    if (targetIds.length === 0) return;
+    targetIds.forEach(pid => historyRequested.current.add(pid));
+    historyPending.current += 1;
     setAcwrLoading(true);
     Promise.all([
-      Promise.all(targets.map(p => rpeApi.listPlayerHistory(p.id).then(history => [p.id, history] as const))),
-      Promise.all(targets.map(p => wellnessApi.getByPlayer(p.id).then(entries => [p.id, entries] as const))),
+      Promise.all(targetIds.map(pid => rpeApi.listPlayerHistory(pid).then(history => [pid, history] as const))),
+      Promise.all(targetIds.map(pid => wellnessApi.getByPlayer(pid).then(entries => [pid, entries] as const))),
     ])
       .then(([rpeEntriesRes, wellnessRes]) => {
-        setHistoryMap(Object.fromEntries(rpeEntriesRes));
-        setWellnessMap(Object.fromEntries(wellnessRes));
+        setHistoryMap(prev => ({ ...prev, ...Object.fromEntries(rpeEntriesRes) }));
+        setWellnessMap(prev => ({ ...prev, ...Object.fromEntries(wellnessRes) }));
       })
-      .finally(() => { setAcwrLoading(false); setAcwrLoaded(true); });
-  }, [acwrLoaded, session, players, attendance, rpeEntries]);
+      // Les lots se chevauchent (présences d'abord, effectif ensuite) : le voile de chargement
+      // ne tombe qu'au retour du dernier, sinon le tableau s'affiche à moitié vide puis se remplit.
+      .finally(() => { historyPending.current -= 1; if (historyPending.current === 0) setAcwrLoading(false); });
+  }, [session, rosterPlayers, attendance, rpeEntries]);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}>
@@ -1792,6 +1804,18 @@ export default function TrainingSessionDetailPage() {
     ...players.filter(p => sparringIds.has(p.id) && !rosterIds.has(p.id)),
   ].sort((a, b) => a.lastName.localeCompare(b.lastName, 'fr'));
 
+  /** Charge physique : l'effectif du jour, absents et non-attendus exclus. Avant la séance
+   *  personne n'est pointé, donc tout l'effectif s'affiche — c'est précisément le moment où les
+   *  colonnes « avant séance » (risque, charge 7j, bien-être) servent à ajuster le contenu ;
+   *  après, il ne reste que ceux qui ont réellement pris la charge. Un joueur marqué absent qui
+   *  a quand même un RPE reste affiché : l'incohérence doit se voir, pas se masquer. */
+  const loadPlayers = [
+    ...rosterPlayers,
+    ...players.filter(p => knownIds.has(p.id) && !rosterIds.has(p.id)),
+  ]
+    .filter(p => rpeMap[p.id] || (attMap[p.id] !== 'absent' && attMap[p.id] !== 'not_expected'))
+    .sort((a, b) => a.lastName.localeCompare(b.lastName, 'fr'));
+
   function renderPlayerItem(player: Player) {
     const attStatus = attMap[player.id] as TrainingAttendance['status'] | undefined;
     const statusCfg = attStatus === 'late' ? STATUS_CFG[attStatus] : null;
@@ -1840,8 +1864,8 @@ export default function TrainingSessionDetailPage() {
   // Même référence que le tableau détail ci-dessous (veille de la séance : reflète le risque
   // en entrant dans la séance, pas après l'avoir effectuée).
   const acwrRefDate      = windowBefore(session.date).endStr;
-  const acwrAlertCount   = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], acwrRefDate))?.label === 'Risque élevé').length;
-  const acwrWarningCount = relevantPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], acwrRefDate))?.label === 'Risque modéré').length;
+  const acwrAlertCount   = loadPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], acwrRefDate))?.label === 'Risque élevé').length;
+  const acwrWarningCount = loadPlayers.filter(p => acwrZone(computeAcwr(historyMap[p.id] ?? [], acwrRefDate))?.label === 'Risque modéré').length;
 
   return (
     <div className="p-4 md:p-6">
@@ -2034,8 +2058,10 @@ export default function TrainingSessionDetailPage() {
 
             {acwrLoading ? (
               <p style={{ color: '#475569', fontSize: '0.82rem', margin: 0 }}>Chargement…</p>
-            ) : relevantPlayers.length === 0 ? (
-              <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>Aucune donnée enregistrée pour cette séance.</p>
+            ) : loadPlayers.length === 0 ? (
+              <p style={{ color: '#475569', fontSize: '0.85rem', margin: 0 }}>
+                {relevantPlayers.length > 0 ? 'Aucun joueur présent sur cette séance.' : 'Aucune donnée enregistrée pour cette séance.'}
+              </p>
             ) : (() => {
               const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
               const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
@@ -2069,7 +2095,7 @@ export default function TrainingSessionDetailPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {relevantPlayers.map(p => {
+                        {loadPlayers.map(p => {
                           const history    = historyMap[p.id] ?? [];
                           // Risque évalué à la veille de la séance (comme "Charge 7j"/"Bien-être 7j") :
                           // reflète le risque en entrant dans la séance, pas après l'avoir effectuée.
@@ -2088,7 +2114,10 @@ export default function TrainingSessionDetailPage() {
                               style={{ borderBottom: '1px solid #1E2229', cursor: 'pointer', backgroundColor: rowBg }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E222940')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = rowBg)}>
-                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></td>
+                              <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span>{(attMap[p.id] === 'absent' || attMap[p.id] === 'not_expected') && (() => {
+                                const cfg = STATUS_CFG[attMap[p.id] as 'absent' | 'not_expected'];
+                                return <span title="Statut de présence en contradiction avec le RPE saisi" style={{ marginLeft: 6, color: cfg.color, backgroundColor: cfg.bg, fontSize: '0.62rem', fontWeight: 700, padding: '2px 5px', borderRadius: 4 }}>{cfg.label}</span>;
+                              })()}</td>
                               <td style={{ padding: '8px 8px', textAlign: 'center' }}>
                                 {acwrTier ? tierBadge(acwrTier) : (
                                   <span title="Historique insuffisant (28 jours)" style={{ color: '#334155', fontSize: '0.72rem' }}>—</span>
