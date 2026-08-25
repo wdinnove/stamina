@@ -4593,3 +4593,46 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --   SELECT COUNT(*) FROM team_folders;
 --   SELECT COUNT(*) FROM exercises WHERE folder_id IS NOT NULL;
 --   SELECT COUNT(*) FROM tactical_systems WHERE folder_id IS NOT NULL;
+
+-- Recalibrage de l'échelle d'intensité des séquences (session_blocks) — 4 paliers → 5
+--
+-- Retour du terrain : les coefficients basse/moyenne/haute/très élevée (2/5/7/9) tiraient la
+-- charge planifiée d'une séance vers le bas par rapport au ressenti réel, en particulier sur les
+-- séquences les plus dures — le palier max plafonnait à 9 alors que l'échelle RPE réelle saisie
+-- par les joueurs va jusqu'à 10 (cf. `rpeLabel` dans `rpe.ts`). Nouvelle échelle à 5 paliers,
+-- linéaire, alignée sur le haut de cette échelle : très basse=2, basse=4, moyenne=6, élevée=8,
+-- très élevée=10. `haute` devient `élevée` pour coller au libellé déjà affiché côté front.
+--
+-- `load_ua` est une colonne GÉNÉRÉE : son expression ne se modifie pas en place, on la supprime
+-- et on la recrée — sans risque, c'est du calcul pur recalculé depuis `duration` et `intensity`,
+-- rien d'autre n'en dépend. Effet voulu et attendu : la charge de TOUTES les séquences déjà
+-- saisies cette saison se recalcule avec les nouveaux coefficients.
+--
+-- ── PASSAGE 1 — valeurs de l'énum, À EXÉCUTER SEULE PUIS VALIDER ────────────
+--
+-- Postgres interdit d'utiliser une valeur d'énum tout juste ajoutée dans la transaction qui l'a
+-- ajoutée : ce bloc doit être validé (commit) avant d'exécuter le PASSAGE 2.
+--
+-- ALTER TYPE block_intensity ADD VALUE 'très basse' BEFORE 'basse';
+-- ALTER TYPE block_intensity RENAME VALUE 'haute' TO 'élevée';
+--
+-- ── PASSAGE 2 — recalcul de la charge, après validation du passage 1 ────────
+--
+-- ALTER TABLE session_blocks DROP COLUMN load_ua;
+-- ALTER TABLE session_blocks ADD COLUMN load_ua SMALLINT GENERATED ALWAYS AS (
+--   CASE WHEN kind = 'repos' THEN 0 ELSE
+--     duration * CASE intensity
+--       WHEN 'très basse'  THEN 2
+--       WHEN 'basse'       THEN 4
+--       WHEN 'moyenne'     THEN 6
+--       WHEN 'élevée'      THEN 8
+--       WHEN 'très élevée' THEN 10
+--       ELSE 6
+--     END
+--   END
+-- ) STORED;
+--
+-- Vérification — la charge totale doit augmenter (nouveaux coefficients tous ≥ anciens), et
+-- aucune séquence existante ne doit se retrouver sur 'très basse' (valeur ajoutée, pas migrée) :
+--   SELECT SUM(load_ua) FROM session_blocks;                             -- à comparer à l'avant
+--   SELECT COUNT(*) FROM session_blocks WHERE intensity = 'très basse';   -- 0 juste après

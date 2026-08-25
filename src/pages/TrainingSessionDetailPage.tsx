@@ -91,9 +91,10 @@ function blockCategoryOptions(categories: TeamCategory[], current: string): stri
 }
 
 const INTENSITY_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  'basse':       { label: 'Basse',       color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'   },
+  'très basse':  { label: 'Très basse',  color: '#00E5A0', bg: 'rgba(0,229,160,0.12)'   },
+  'basse':       { label: 'Basse',       color: '#22D3EE', bg: 'rgba(34,211,238,0.12)'  },
   'moyenne':     { label: 'Moyenne',     color: '#3B82F6', bg: 'rgba(59,130,246,0.12)'  },
-  'haute':       { label: 'Haute',       color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
+  'élevée':      { label: 'Élevée',      color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
   'très élevée': { label: 'Très élevée', color: '#EF4444', bg: 'rgba(239,68,68,0.12)'   },
 };
 

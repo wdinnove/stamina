@@ -362,6 +362,7 @@ export default function RPEPage() {
         date:              sessionDate,
         categoryId:        categoryId || undefined,
         plannedDuration:   duration,
+        actualDuration:    duration,
         entries:           activeEntries.map(([playerId, rpe]) => ({ playerId, rpe })),
         existingSessionId: existingSessionId ?? undefined,
       });

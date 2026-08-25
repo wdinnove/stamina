@@ -578,7 +578,7 @@ export interface TacticalSystemPhase {
   createdAt: string;
 }
 
-type BlockIntensity = 'basse' | 'moyenne' | 'haute' | 'très élevée';
+type BlockIntensity = 'très basse' | 'basse' | 'moyenne' | 'élevée' | 'très élevée';
 
 /** Un repos occupe du temps et rien d'autre : ni catégorie, ni intensité, ni charge. */
 export type SessionBlockKind = 'exercice' | 'repos';
