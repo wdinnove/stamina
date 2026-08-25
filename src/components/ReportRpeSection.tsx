@@ -47,7 +47,7 @@ function tierPrint(label: string) {
  * les joueurs aux extrêmes, et les constats écrits qui en découlent.
  */
 export function ReportRpeSection({ index, data, thresholds }: {
-  index: number;
+  index: number | string;
   data: RpeSectionData;
   thresholds: LoadThresholds;
 }) {
@@ -72,7 +72,7 @@ export function ReportRpeSection({ index, data, thresholds }: {
 
   return (
     <>
-      <SectionHeading index={index} label="Charge d'entraînement (RPE)"
+      <SectionHeading index={index} label="Charge d'entraînement (RPE)" subject="Équipe"
         hint="Charge d'une séance = RPE ressenti × durée, en unités arbitraires (UA). Moyennes ramenées à l'effectif présent." />
 
       <StatRow>
@@ -138,7 +138,7 @@ export function ReportRpeSection({ index, data, thresholds }: {
           )}
           {data.freshness !== null && (
             <Tag
-              label={`Fraîcheur · ${data.freshness > 0 ? '+' : ''}${reportDec(data.freshness)}`}
+              label={`Fraîcheur · ${signed(data.freshness, true)}`}
               color={data.freshness < -20 ? '#B91C1C' : '#00875F'}
             />
           )}

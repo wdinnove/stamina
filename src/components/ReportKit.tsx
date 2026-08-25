@@ -23,6 +23,21 @@ export const ACCENT = '#00A67E';
 export const A4 = { width: 794, height: 1123 };
 const PAD = 46;
 
+/** Largeur utile d'une page — c'est à cette largeur que les sections doivent être mesurées. */
+export const REPORT_CONTENT_WIDTH = A4.width - PAD * 2;
+
+/**
+ * Hauteur utile d'une page portant un bandeau de rappel et un pied de page.
+ *
+ * Relevée sur le rendu réel (1 123 − 2×46 de marges − 30 de bandeau − 37 de pied ≈ 964), puis
+ * arrondie à la baisse : la mise en page se joue à quelques pixels près selon la fonte
+ * effectivement chargée, et une section qui déborde d'un cheveu ruine une page entière.
+ */
+export const REPORT_PAGE_AVAILABLE = 950;
+
+/** Espace entre deux sections enchaînées sur une même page. */
+export const REPORT_BLOCK_GAP = 26;
+
 export type Tone = 'neutral' | 'good' | 'warn' | 'bad';
 
 /** "12 juillet 2026" — sans le jour de la semaine, qui n'apporte rien à une borne de période. */
@@ -128,15 +143,39 @@ export function ReportTitle({ title, subject, meta }: {
   );
 }
 
-/** Le titre numéroté qui ouvre une section — un seul niveau, pour garder le document lisible. */
-export function SectionHeading({ index, label, hint }: { index?: number; label: string; hint?: string }) {
+/**
+ * Le titre numéroté qui ouvre une section.
+ *
+ * `subject` porte le périmètre du bloc — « Équipe » ou le nom du joueur. Une même section revient
+ * plusieurs fois dans un rapport (le bilan collectif, puis un bloc par joueur) : sans ce rappel,
+ * deux pages voisines seraient indiscernables une fois le document imprimé.
+ */
+export function SectionHeading({ index, label, subject, hint }: {
+  /** "03" pour un bloc d'équipe, "03.2" pour le 2ᵉ joueur de cette section. */
+  index?: number | string;
+  label: string;
+  subject?: string;
+  hint?: string;
+}) {
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+    // Sans phrase d'explication, le titre se resserre : les blocs individuels s'enchaînent à
+    // plusieurs par page, chaque interligne superflu y coûte une section de plus à reporter.
+    <div style={{ marginBottom: hint ? 18 : 11 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         {index !== undefined && (
-          <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT }}>{String(index).padStart(2, '0')}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT }}>
+            {typeof index === 'number' ? String(index).padStart(2, '0') : index}
+          </span>
         )}
         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, letterSpacing: '-0.3px' }}>{label}</h2>
+        {subject && (
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: MUTED, borderLeft: `1px solid ${LINE}`,
+            paddingLeft: 10, letterSpacing: '0.02em',
+          }}>
+            {subject}
+          </span>
+        )}
       </div>
       {hint && <p style={{ margin: '4px 0 0', fontSize: 10.5, color: MUTED }}>{hint}</p>}
       <div style={{ height: 2, backgroundColor: INK, marginTop: 8 }} />
@@ -292,6 +331,31 @@ export function BarList({ items, max, cap }: {
           {it.note && <span style={{ fontSize: 9.5, color: FAINT, width: 48, flexShrink: 0 }}>{it.note}</span>}
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Une ligne « libellé → valeur » d'un petit tableau de synthèse, avec un commentaire facultatif
+ * à droite (typiquement la comparaison à la moyenne d'équipe dans un bloc individuel).
+ */
+export function KeyValueRow({ label, value, note, tone = 'neutral', last }: {
+  label: string;
+  value: ReactNode;
+  note?: ReactNode;
+  tone?: Tone;
+  last?: boolean;
+}) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8,
+      padding: '5px 0', borderBottom: last ? 'none' : `1px solid ${LINE}`,
+    }}>
+      <span style={{ fontSize: 11 }}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+        {note && <span style={{ fontSize: 9.5, color: FAINT }}>{note}</span>}
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: TONE_COLOR[tone] }}>{value}</span>
+      </span>
     </div>
   );
 }

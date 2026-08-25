@@ -91,6 +91,13 @@ interface DateRangeCardProps {
   style?:       React.CSSProperties;
   /** Champ(s) de filtre additionnel(s) — même style FilterField, affiché à côté de Période/Du/Au */
   extra?:       ReactNode;
+  /**
+   * Un champ par ligne au lieu d'une barre en ligne.
+   *
+   * La disposition en ligne est calibrée pour la pleine largeur d'une page : ses champs ont une
+   * largeur fixe et ne se replient pas. Placée dans une colonne latérale, elle déborde de la card.
+   */
+  compact?:     boolean;
   /** Bornes de la saison en cours — empêche de sélectionner une date "Personnalisé" hors saison,
    * ce qui ferait diverger les onglets dont les données sous-jacentes sont bornées à la saison
    * (ex. Vue d'ensemble) de ceux qui interrogent tout l'historique (ex. RPE/Bien-être). */
@@ -174,7 +181,7 @@ function DateFilterControls({ from, to, preset, onPreset, onFrom, onTo, extra, l
   );
 }
 
-export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style, extra, min, max }: DateRangeCardProps) {
+export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style, extra, compact, min, max }: DateRangeCardProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -214,11 +221,18 @@ export function DateRangeCard({ from, to, preset, onPreset, onFrom, onTo, style,
         </Modal>
       )}
 
-      {/* ── Desktop : titre à gauche, champs à droite ── */}
+      {/* ── Desktop : titre à gauche, champs à droite — ou l'un sous l'autre en emplacement étroit ── */}
       <div className="hidden md:block">
-        <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
-          right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} min={min} max={max} layout="row" />}
-        >Filtres</CardTitle>
+        {compact ? (
+          <>
+            <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={10}>Filtres</CardTitle>
+            <DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} min={min} max={max} layout="stacked" />
+          </>
+        ) : (
+          <CardTitle icon={<Filter size={12} style={{ color: '#3B82F6' }} />} mb={0}
+            right={<DateFilterControls from={from} to={to} preset={preset} onPreset={onPreset} onFrom={onFrom} onTo={onTo} extra={extra} min={min} max={max} layout="row" />}
+          >Filtres</CardTitle>
+        )}
       </div>
 
     </Card>

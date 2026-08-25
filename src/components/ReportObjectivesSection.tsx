@@ -37,8 +37,19 @@ const MISS = '#B91C1C';
  * Les objectifs non mesurables sur la période (aucun match, indicateur hors domaine) sont
  * affichés comme tels plutôt que comptés en échec — un objectif qu'on n'a pas pu mesurer n'est
  * pas un objectif manqué.
+ *
+ * Seul gabarit commun aux deux périmètres : un objectif se lit de la même façon qu'il soit fixé au
+ * groupe ou à un joueur — la cible, l'atteint, le verdict. Seuls le sujet affiché et deux tournures
+ * changent.
  */
-export function ReportObjectivesSection({ index, data }: { index: number; data: ObjectivesSectionData }) {
+export function ReportObjectivesSection({ index, subject, individual, data }: {
+  index: number | string;
+  /** « Équipe » ou le nom du joueur. */
+  subject: string;
+  /** Bloc individuel : change le vocabulaire, pas la structure. */
+  individual?: boolean;
+  data: ObjectivesSectionData;
+}) {
   const active = data.objectives.filter(o => o.objective.active);
   const measured = active.filter(o => o.met !== null);
   const met    = measured.filter(o => o.met === true).length;
@@ -72,12 +83,16 @@ export function ReportObjectivesSection({ index, data }: { index: number; data: 
 
   return (
     <>
-      <SectionHeading index={index} label="Objectifs"
-        hint="Objectifs actifs, évalués sur la période du rapport. Un objectif sans donnée mesurable sur la période est signalé comme non mesuré, pas comme manqué." />
+      {/* La phrase d'explication n'a de sens qu'une fois : sur un bloc individuel, répété autant
+          de fois qu'il y a de joueurs, elle n'apprend plus rien et coûte une section reportée. */}
+      <SectionHeading index={index} label="Objectifs" subject={subject}
+        hint={individual ? undefined : "Objectifs actifs fixés à l'équipe, évalués sur la période du rapport. Un objectif sans donnée mesurable sur la période est signalé comme non mesuré, pas comme manqué."} />
 
       {active.length === 0 ? (
         <p style={{ fontSize: 11.5, color: FAINT, fontStyle: 'italic' }}>
-          Aucun objectif actif sur la période.
+          {individual
+            ? "Aucun objectif individuel actif n'est fixé à ce joueur pour la saison."
+            : 'Aucun objectif actif sur la période.'}
         </p>
       ) : (
         <>
@@ -97,7 +112,7 @@ export function ReportObjectivesSection({ index, data }: { index: number; data: 
               label="Manqués"
               value={missed}
               tone={missed > 0 ? 'bad' : 'good'}
-              hint={missed > 0 ? 'à revoir avec le groupe' : 'aucun objectif manqué'}
+              hint={missed > 0 ? (individual ? 'à revoir avec lui' : 'à revoir avec le groupe') : 'aucun objectif manqué'}
             />
             <StatBlock
               label="Taux d'atteinte"
@@ -108,12 +123,12 @@ export function ReportObjectivesSection({ index, data }: { index: number; data: 
             />
           </StatRow>
 
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 14 }}>
             <BlockTitle>Détail des objectifs</BlockTitle>
-            <DataTable columns={cols} rows={orderObjectives(active)} cap={12} />
+            <DataTable columns={cols} rows={orderObjectives(active)} cap={individual ? 7 : 12} />
           </div>
 
-          <Findings items={objectivesFindings(active, met, missed, rate)} />
+          <Findings items={objectivesFindings(active, met, missed, rate).slice(0, individual ? 3 : 4)} />
         </>
       )}
     </>

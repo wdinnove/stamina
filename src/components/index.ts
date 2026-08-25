@@ -92,12 +92,19 @@ export { ArchetypeSelect } from './ArchetypeSelect';
 export { ChannelToggle } from './ChannelToggle';
 export {
   ReportPage, ReportTitle, SectionHeading, BlockTitle, StatBlock, StatRow, Findings,
-  DataTable, BarList, SplitRow, Tag, A4, REPORT_PAGE_CLASS,
+  DataTable, BarList, SplitRow, KeyValueRow, Tag, A4, REPORT_PAGE_CLASS,
+  REPORT_CONTENT_WIDTH, REPORT_PAGE_AVAILABLE, REPORT_BLOCK_GAP,
   reportDate, reportDateNum, reportInt, reportDec,
 } from './ReportKit';
 export { ReportSummary } from './ReportSummary';
+export type { SummaryEntry } from './ReportSummary';
+export { PlayerIdentity, PlayerStrip } from './ReportPlayerIdentity';
 export { ReportRpeSection, rpeFindings } from './ReportRpeSection';
 export { ReportWellnessSection, wellnessFindings } from './ReportWellnessSection';
 export { ReportMedicalSection, medicalFindings } from './ReportMedicalSection';
 export { ReportStatsSection, statsFindings } from './ReportStatsSection';
 export { ReportObjectivesSection, objectivesFindings } from './ReportObjectivesSection';
+export { ReportPlayerRpeSection, playerRpeFindings } from './ReportPlayerRpeSection';
+export { ReportPlayerWellnessSection, playerWellnessFindings } from './ReportPlayerWellnessSection';
+export { ReportPlayerMedicalSection, playerMedicalFindings } from './ReportPlayerMedicalSection';
+export { ReportPlayerStatsSection, playerStatsFindings } from './ReportPlayerStatsSection';

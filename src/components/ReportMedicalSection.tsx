@@ -45,7 +45,7 @@ const STATUS_PRINT: Record<string, { label: string; color: string }> = {
  * période (blessures survenues, jours perdus) et l'état de l'effectif À CE JOUR (qui est
  * disponible pour le prochain match). Le gabarit les sépare explicitement.
  */
-export function ReportMedicalSection({ index, data }: { index: number; data: MedicalSectionData }) {
+export function ReportMedicalSection({ index, data }: { index: number | string; data: MedicalSectionData }) {
   const injuries = data.events.filter(e => e.record.type === 'injury');
   const total = sumInjuryDays(injuries.map(e => e.record));
 
@@ -92,7 +92,7 @@ export function ReportMedicalSection({ index, data }: { index: number; data: Med
 
   return (
     <>
-      <SectionHeading index={index} label="Médical"
+      <SectionHeading index={index} label="Médical" subject="Équipe"
         hint="Événements survenus pendant la période, et disponibilité de l'effectif à la date d'établissement du rapport." />
 
       <StatRow>

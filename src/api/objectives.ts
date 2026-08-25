@@ -3,6 +3,9 @@ import type { Objective, ObjectiveImportance, ObjectiveComparator } from '../dat
 
 export interface ListObjectivesFilters {
   playerId?: string;
+  /** Plusieurs joueurs d'un coup — un rapport couvrant tout l'effectif ne doit pas déclencher
+   *  une requête par joueur. Ignoré si `playerId` est fourni. */
+  playerIds?: string[];
   teamId?: string;
   /** Saison — un objectif appartient à une saison, pas à l'équipe en général. */
   seasonId?: string;
@@ -15,6 +18,10 @@ export const objectivesApi = {
     if (filters.teamId)   query = query.eq('team_id', filters.teamId);
     if (filters.seasonId) query = query.eq('season_id', filters.seasonId);
     if (filters.playerId) query = query.eq('player_id', filters.playerId);
+    else if (filters.playerIds) {
+      if (filters.playerIds.length === 0) return [];
+      query = query.in('player_id', filters.playerIds);
+    }
     if (filters.active !== undefined) query = query.eq('active', filters.active);
     const { data, error } = await query.order('created_at');
     if (error) throw error;

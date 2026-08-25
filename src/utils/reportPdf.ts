@@ -13,7 +13,13 @@
 const A4_WIDTH_MM  = 210;
 const A4_HEIGHT_MM = 297;
 
-export async function exportPagesToPdf(pages: HTMLElement[], filename: string): Promise<void> {
+export async function exportPagesToPdf(
+  pages: HTMLElement[],
+  filename: string,
+  /** Appelé avant chaque page — un rapport couvrant tout l'effectif peut en compter cinquante,
+   *  et une attente d'une minute sans retour ressemble à un plantage. */
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
   if (pages.length === 0) throw new Error('Rien à exporter.');
 
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -24,6 +30,7 @@ export async function exportPagesToPdf(pages: HTMLElement[], filename: string): 
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
   for (const [i, page] of pages.entries()) {
+    onProgress?.(i, pages.length);
     const canvas = await html2canvas(page, {
       // Une capture à l'échelle 1 donne un texte visiblement flou une fois remis à la taille
       // d'une page A4 imprimée.
@@ -39,6 +46,7 @@ export async function exportPagesToPdf(pages: HTMLElement[], filename: string): 
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
   }
 
+  onProgress?.(pages.length, pages.length);
   pdf.save(filename);
 }
 

@@ -28,7 +28,7 @@ function avgOf<T>(rows: T[], get: (r: T) => number | null | undefined): number |
  * (`ratioFromSums`), jamais en moyennant les pourcentages match par match — sinon un match à
  * trois tirs pèserait autant qu'un match à soixante.
  */
-export function ReportStatsSection({ index, data }: { index: number; data: StatsSectionData }) {
+export function ReportStatsSection({ index, data }: { index: number | string; data: StatsSectionData }) {
   const games = data.teamStats;
   const wins   = games.filter(g => g.result === 'win').length;
   const losses = games.length - wins;
@@ -89,7 +89,7 @@ export function ReportStatsSection({ index, data }: { index: number; data: Stats
 
   return (
     <>
-      <SectionHeading index={index} label="Statistiques basket"
+      <SectionHeading index={index} label="Statistiques basket" subject="Équipe"
         hint="Matchs joués sur la période. Les pourcentages agrègent les tentatives de tous les matchs, ils ne moyennent pas les pourcentages match par match." />
 
       {games.length === 0 ? (

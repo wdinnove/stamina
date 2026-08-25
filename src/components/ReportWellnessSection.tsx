@@ -35,7 +35,7 @@ function scorePrint(v: number): { color: string; tone: Tone; label: string } {
  * réponses ne dit rien de l'équipe. Le taux de réponse est donc traité comme un chiffre clé à
  * part entière, pas comme une note de bas de page.
  */
-export function ReportWellnessSection({ index, data }: { index: number; data: WellnessSectionData }) {
+export function ReportWellnessSection({ index, data }: { index: number | string; data: WellnessSectionData }) {
   const avg       = teamWellnessAvg(data.entries);
   const seasonAvg = teamWellnessAvg(data.seasonEntries);
   const delta = avg.value !== null && seasonAvg.value !== null
@@ -71,7 +71,7 @@ export function ReportWellnessSection({ index, data }: { index: number; data: We
 
   return (
     <>
-      <SectionHeading index={index} label="Bien-être"
+      <SectionHeading index={index} label="Bien-être" subject="Équipe"
         hint="Ressenti déclaré par les joueurs, sur 10. Toutes les dimensions sont ramenées dans le même sens : plus le score est haut, mieux c'est." />
 
       {data.entries.length === 0 ? (
