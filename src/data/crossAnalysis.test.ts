@@ -10,7 +10,7 @@ const match = (date: string, o: Partial<MatchStat> = {}): MatchStat => ({
   opponent: 'X', starter: true, min: 30, pts: 0,
   fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
   ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,
-  eval: null, plusMinus: null, homeAway: 'home', result: 'win',
+  eval: null, plusMinus: null, homeAway: 'home', kind: 'official', result: 'win',
   ...o,
 } as MatchStat);
 
@@ -23,7 +23,7 @@ const player = (matchStats: MatchStat[]): PlayerCrossData => ({
  *  mapper : les valeurs de période se recalculent depuis les compteurs bruts, pas depuis eux. */
 const teamMatch = (date: string, o: Partial<TeamMatchStat> = {}): TeamMatchStat => ({
   id: `t-${date}-${o.scoreUs ?? 0}-${o.fg3a ?? 0}`, matchId: `m-${date}-${o.scoreUs ?? 0}-${o.fg3a ?? 0}`,
-  date, opponent: 'X', homeAway: 'home', result: 'win',
+  date, opponent: 'X', homeAway: 'home', kind: 'official', result: 'win',
   scoreUs: 0, scoreThem: 0,
   fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
   ro: 0, rd: 0, rt: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,

@@ -4,7 +4,7 @@ import { pearsonPValue, SIGNIFICANCE_ALPHA } from '../utils/correlation';
 import type { MatchStat, Player, TeamMatchStat } from './types';
 
 const teamMatch = (date: string, result: 'win' | 'loss', o: Partial<TeamMatchStat> = {}): TeamMatchStat => ({
-  id: `t-${date}`, matchId: `m-${date}`, date, opponent: 'X', homeAway: 'home', result,
+  id: `t-${date}`, matchId: `m-${date}`, date, opponent: 'X', homeAway: 'home', kind: 'official', result,
   scoreUs: 60, scoreThem: 60,
   fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
   ro: 0, rd: 0, rt: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,
@@ -18,7 +18,7 @@ const teamMatch = (date: string, result: 'win' | 'loss', o: Partial<TeamMatchSta
 
 const playerStat = (date: string, result: 'win' | 'loss', evalValue: number): MatchStat => ({
   id: `s-${date}`, matchId: `m-${date}`, playerId: 'p1', date, opponent: 'X',
-  homeAway: 'home', competition: 'NF2', result, scoreUs: 60, scoreThem: 60,
+  homeAway: 'home', competition: 'NF2', kind: 'official', result, scoreUs: 60, scoreThem: 60,
   starter: true, min: 30, pts: 0,
   fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
   ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,

@@ -3,7 +3,7 @@ import type { PlayerArchetypeReport, PlayerPositionInfo, RawPlayerStats } from '
 import { aggregateRawStats, computeArchetypesForSquad } from '../data/archetypes';
 import { statsApi } from './stats';
 import { playersApi } from './players';
-import { matchesApi } from './matches';
+import { matchesApi, type MatchScope } from './matches';
 
 /** Suffixe qui identifie une entrée "historique" (saisons précédentes de la même équipe) dans
  *  le pool de comparaison — jamais retourné dans les rapports, seulement dans le calcul des
@@ -18,11 +18,17 @@ const realId = (poolId: string) => poolId.endsWith(HISTORY_SUFFIX) ? poolId.slic
  * aujourd'hui — pas de matérialisation nécessaire au vu du volume de données d'une équipe.
  */
 export const archetypesApi = {
-  async computeForSeason(teamId: string, seasonId: string): Promise<PlayerArchetypeReport[]> {
+  /**
+   * `scope` s'applique aux TROIS lectures d'un bloc, saison courante comme historique : le pool
+   * de comparaison et les stats évaluées doivent être de même nature. Mesurer un joueur amicaux
+   * compris contre un pool amicaux exclus décalerait tous ses percentiles sans que rien ne le
+   * signale — c'est le seul défaut qu'un percentile ne rend pas visible.
+   */
+  async computeForSeason(teamId: string, seasonId: string, scope: MatchScope = 'official'): Promise<PlayerArchetypeReport[]> {
     const [currentSeasonMatches, allMatchStats, allTeamMatchStats, currentPlayers] = await Promise.all([
-      matchesApi.listBySeason(teamId, seasonId),
-      statsApi.listAllStatsByTeam(teamId),
-      statsApi.listTeamStatsByTeam(teamId),
+      matchesApi.listBySeason(teamId, seasonId, scope),
+      statsApi.listAllStatsByTeam(teamId, scope),
+      statsApi.listTeamStatsByTeam(teamId, scope),
       playersApi.listBySeason(seasonId),
     ]);
 

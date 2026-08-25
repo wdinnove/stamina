@@ -8,7 +8,7 @@ const SEASON_START = '2026-01-01';
 const SEASON_END   = '2026-06-30';
 
 const teamMatch = (date: string, o: Partial<TeamMatchStat> = {}): TeamMatchStat => ({
-  id: `t-${date}`, matchId: `m-${date}`, date, opponent: 'X', homeAway: 'home', result: 'win',
+  id: `t-${date}`, matchId: `m-${date}`, date, opponent: 'X', homeAway: 'home', kind: 'official', result: 'win',
   scoreUs: 0, scoreThem: 0,
   fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
   ro: 0, rd: 0, rt: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,

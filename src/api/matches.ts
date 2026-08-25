@@ -1,16 +1,40 @@
 import { supabase } from './client';
-import type { Match } from '../data/types';
+import type { Match, MatchKind } from '../data/types';
+
+/**
+ * Périmètre d'une lecture de matchs. `'all'` mélange officiels et amicaux — réservé aux écrans
+ * qui listent ou recherchent, jamais à ceux qui agrègent.
+ *
+ * Le défaut est `'official'` PARTOUT, et volontairement : c'est l'oubli du filtre, pas son ajout,
+ * qui doit être visible. Un futur écran qui appelle sans y penser exclut les amicaux — l'inverse
+ * les laisserait entrer en silence dans un bilan.
+ */
+export type MatchScope = MatchKind | 'all';
 
 export const matchesApi = {
-  async listBySeason(teamId: string, seasonId: string): Promise<Match[]> {
-    const { data, error } = await supabase
+  async listBySeason(teamId: string, seasonId: string, scope: MatchScope = 'official'): Promise<Match[]> {
+    let query = supabase
       .from('matches')
       .select('*')
       .eq('team_id', teamId)
-      .eq('season_id', seasonId)
-      .order('date', { ascending: false });
+      .eq('season_id', seasonId);
+    if (scope !== 'all') query = query.eq('kind', scope);
+    const { data, error } = await query.order('date', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(toMatch);
+  },
+
+  /** Combien de matchs d'une nature donnée sur la saison. Requête `head` : compte seul, aucune
+   *  ligne transférée — sert à n'afficher l'interrupteur « amicaux » qu'aux équipes qui en ont. */
+  async countByKind(teamId: string, seasonId: string, kind: MatchKind): Promise<number> {
+    const { count, error } = await supabase
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('team_id', teamId)
+      .eq('season_id', seasonId)
+      .eq('kind', kind);
+    if (error) throw error;
+    return count ?? 0;
   },
 
   async getById(id: string): Promise<Match | null> {
@@ -34,6 +58,7 @@ export const matchesApi = {
         opponent:    input.opponent,
         home_away:   input.homeAway,
         competition: input.competition,
+        kind:        input.kind,
         result:      input.result,
         score_us:       input.scoreUs,
         score_them:     input.scoreThem,
@@ -52,6 +77,7 @@ export const matchesApi = {
     if (input.opponent    !== undefined) row.opponent    = input.opponent;
     if (input.homeAway    !== undefined) row.home_away   = input.homeAway;
     if (input.competition !== undefined) row.competition = input.competition;
+    if (input.kind        !== undefined) row.kind        = input.kind;
     if (input.result      !== undefined) row.result      = input.result;
     if (input.scoreUs       !== undefined) row.score_us       = input.scoreUs;
     if (input.scoreThem     !== undefined) row.score_them     = input.scoreThem;
@@ -76,6 +102,7 @@ function toMatch(row: Record<string, unknown>): Match {
     opponent:    row.opponent    as string,
     homeAway:    row.home_away   as Match['homeAway'],
     competition: row.competition as string,
+    kind:        (row.kind as MatchKind | null) ?? 'official',
     result:      row.result      as Match['result'],
     scoreUs:       row.score_us       as number,
     scoreThem:     row.score_them     as number,

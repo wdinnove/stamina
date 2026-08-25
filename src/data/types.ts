@@ -36,6 +36,14 @@ export interface Season {
   isCurrent: boolean;
 }
 
+/**
+ * Nature d'un match. Un amical ne se compare pas à un officiel — règles aménagées, adversaire
+ * d'une autre division, rotations testées plutôt que subies — et n'entre donc dans AUCUN agrégat
+ * de saison par défaut : bilan V-D, moyennes, PCA, archétypes, corrélations, objectifs.
+ * L'inclusion est un geste explicite de l'utilisateur (`includeFriendlies`), jamais le défaut.
+ */
+export type MatchKind = 'official' | 'friendly';
+
 export interface Match {
   id: string;
   teamId: string;
@@ -45,6 +53,7 @@ export interface Match {
   opponent: string;
   homeAway: 'home' | 'away';
   competition: string;
+  kind: MatchKind;
   result: 'win' | 'loss';
   scoreUs: number;
   scoreThem: number;
@@ -272,6 +281,9 @@ export interface MatchStat {
   opponent: string;
   homeAway: 'home' | 'away';
   competition: string;
+  /** Dénormalisé depuis `matches` (trigger `sync_match_stats_from_match`) — permet de filtrer les
+   *  amicaux sans jointure, y compris sur les requêtes qui n'interrogent que `match_stats`. */
+  kind: MatchKind;
   result: 'win' | 'loss';
   scoreUs: number;
   scoreThem: number;
@@ -295,6 +307,9 @@ export interface TeamMatchStat {
   date: string;
   opponent: string;
   homeAway: 'home' | 'away';
+  /** Exposé par la vue `team_match_stats_full` (colonne `m.kind`) — sert à distinguer visuellement
+   *  les amicaux quand l'utilisateur les réintègre volontairement dans une analyse. */
+  kind: MatchKind;
   result: 'win' | 'loss';
   scoreUs: number;
   scoreThem: number;

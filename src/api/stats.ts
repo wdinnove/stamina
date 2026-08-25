@@ -1,5 +1,18 @@
 import { supabase } from './client';
-import type { Match, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
+import type { MatchScope } from './matches';
+import type { Match, MatchKind, MatchStat, TeamMatchStat, OpponentMatchStat } from '../data/types';
+
+/**
+ * TOUTES les lectures agrégées de ce fichier partent d'un `SELECT id FROM matches` scopé équipe
+ * et/ou saison : c'est LE point de passage par lequel les stats de match rejoignent le bilan V-D,
+ * les moyennes de saison, la PCA, les archétypes, les corrélations et les objectifs. Un filtre
+ * ici suffit donc à tenir les amicaux hors de tous ces calculs à la fois — et le défaut
+ * `'official'` fait que l'oubli du paramètre exclut au lieu d'inclure (voir `MatchScope`).
+ *
+ * `getPlayerStats` et `getPlayerStatsGroupedBySeason` n'interrogent que `match_stats`, sans
+ * jointure : elles s'appuient sur la colonne `kind` dénormalisée par le trigger côté base.
+ */
+const DEFAULT_SCOPE: MatchScope = 'official';
 
 export interface BulkStatRow {
   playerId: string;
@@ -47,6 +60,8 @@ export interface ListMatchStatsFilters {
   from?: string;
   to?: string;
   result?: 'win' | 'loss';
+  /** Officiels seuls par défaut — `'all'` pour mélanger officiels et amicaux. */
+  scope?: MatchScope;
 }
 
 export interface ListTeamMatchStatsFilters {
@@ -64,26 +79,31 @@ export const statsApi = {
     if (filters.from)     query = query.gte('date', filters.from);
     if (filters.to)       query = query.lte('date', filters.to);
     if (filters.result)   query = query.eq('result', filters.result);
+    const scope = filters.scope ?? DEFAULT_SCOPE;
+    if (scope !== 'all')  query = query.eq('kind', scope);
     const { data, error } = await query.order('date', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(toMatchStat);
   },
 
-  async getPlayerStats(playerId: string): Promise<MatchStat[]> {
-    const { data, error } = await supabase
+  async getPlayerStats(playerId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<MatchStat[]> {
+    let query = supabase
       .from('match_stats')
       .select('*')
-      .eq('player_id', playerId)
-      .order('date', { ascending: false });
+      .eq('player_id', playerId);
+    if (scope !== 'all') query = query.eq('kind', scope);
+    const { data, error } = await query.order('date', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(toMatchStat);
   },
 
-  async getPlayerStatsBySeason(playerId: string, seasonId: string): Promise<MatchStat[]> {
-    const { data: matchRows, error: matchErr } = await supabase
+  async getPlayerStatsBySeason(playerId: string, seasonId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<MatchStat[]> {
+    let matchQuery = supabase
       .from('matches')
       .select('id, score_us, score_them, result')
       .eq('season_id', seasonId);
+    if (scope !== 'all') matchQuery = matchQuery.eq('kind', scope);
+    const { data: matchRows, error: matchErr } = await matchQuery;
     if (matchErr) throw matchErr;
     const matchScoreMap = new Map(
       (matchRows ?? []).map((m: { id: string; score_us: number; score_them: number; result: string }) =>
@@ -198,6 +218,7 @@ export const statsApi = {
       opponent:    match.opponent,
       home_away:   match.homeAway,
       competition: match.competition,
+      kind:        match.kind,
       result:      match.result,
       score_us:    match.scoreUs,
       score_them:  match.scoreThem,
@@ -296,12 +317,14 @@ export const statsApi = {
     if (error) throw error;
   },
 
-  async getPlayerStatsGroupedBySeason(playerId: string): Promise<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]> {
-    const { data: statsData, error: statsErr } = await supabase
+  async getPlayerStatsGroupedBySeason(playerId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]> {
+    let statsQuery = supabase
       .from('match_stats')
       .select('*')
       .eq('player_id', playerId)
       .not('match_id', 'is', null);
+    if (scope !== 'all') statsQuery = statsQuery.eq('kind', scope);
+    const { data: statsData, error: statsErr } = await statsQuery;
     if (statsErr) throw statsErr;
     const stats = (statsData ?? []).map(toMatchStat);
     const matchIds = [...new Set(stats.map(s => s.matchId).filter(Boolean) as string[])];
@@ -332,11 +355,13 @@ export const statsApi = {
     return [...grouped.values()].sort((a, b) => b.seasonLabel.localeCompare(a.seasonLabel));
   },
 
-  async getTeamStatsGroupedBySeason(teamId: string): Promise<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: TeamMatchStat[] }[]> {
-    const { data: matchRows, error: matchErr } = await supabase
+  async getTeamStatsGroupedBySeason(teamId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: TeamMatchStat[] }[]> {
+    let matchQuery = supabase
       .from('matches')
       .select('id, season_id, seasons(label, teams(name))')
       .eq('team_id', teamId);
+    if (scope !== 'all') matchQuery = matchQuery.eq('kind', scope);
+    const { data: matchRows, error: matchErr } = await matchQuery;
     if (matchErr) throw matchErr;
     const matchSeasonMap = new Map<string, { seasonId: string; seasonLabel: string; teamName: string }>();
     for (const m of matchRows ?? []) {
@@ -366,12 +391,14 @@ export const statsApi = {
     return [...grouped.values()].sort((a, b) => b.seasonLabel.localeCompare(a.seasonLabel));
   },
 
-  async listAllStatsBySeason(teamId: string, seasonId: string): Promise<MatchStat[]> {
-    const { data: matchRows, error: matchErr } = await supabase
+  async listAllStatsBySeason(teamId: string, seasonId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<MatchStat[]> {
+    let matchQuery = supabase
       .from('matches')
       .select('id')
       .eq('team_id', teamId)
       .eq('season_id', seasonId);
+    if (scope !== 'all') matchQuery = matchQuery.eq('kind', scope);
+    const { data: matchRows, error: matchErr } = await matchQuery;
     if (matchErr) throw matchErr;
     const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
     if (matchIds.length === 0) return [];
@@ -384,12 +411,14 @@ export const statsApi = {
     return (data ?? []).map(toMatchStat);
   },
 
-  async listTeamStatsBySeason(teamId: string, seasonId: string): Promise<TeamMatchStat[]> {
-    const { data: matchRows, error: matchErr } = await supabase
+  async listTeamStatsBySeason(teamId: string, seasonId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<TeamMatchStat[]> {
+    let matchQuery = supabase
       .from('matches')
       .select('id')
       .eq('team_id', teamId)
       .eq('season_id', seasonId);
+    if (scope !== 'all') matchQuery = matchQuery.eq('kind', scope);
+    const { data: matchRows, error: matchErr } = await matchQuery;
     if (matchErr) throw matchErr;
     const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
     if (matchIds.length === 0) return [];
@@ -405,11 +434,13 @@ export const statsApi = {
   /** Comme `listAllStatsBySeason`, mais sur TOUTES les saisons de l'équipe — sert à élargir le
    *  pool de comparaison du moteur d'archétypes (archetypesApi.computeForSeason) au-delà de la
    *  seule saison courante, sans inclure les autres équipes du club. */
-  async listAllStatsByTeam(teamId: string): Promise<MatchStat[]> {
-    const { data: matchRows, error: matchErr } = await supabase
+  async listAllStatsByTeam(teamId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<MatchStat[]> {
+    let matchQuery = supabase
       .from('matches')
       .select('id')
       .eq('team_id', teamId);
+    if (scope !== 'all') matchQuery = matchQuery.eq('kind', scope);
+    const { data: matchRows, error: matchErr } = await matchQuery;
     if (matchErr) throw matchErr;
     const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
     if (matchIds.length === 0) return [];
@@ -423,11 +454,13 @@ export const statsApi = {
   },
 
   /** Idem `listTeamStatsBySeason`, toutes saisons de l'équipe. */
-  async listTeamStatsByTeam(teamId: string): Promise<TeamMatchStat[]> {
-    const { data: matchRows, error: matchErr } = await supabase
+  async listTeamStatsByTeam(teamId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<TeamMatchStat[]> {
+    let matchQuery = supabase
       .from('matches')
       .select('id')
       .eq('team_id', teamId);
+    if (scope !== 'all') matchQuery = matchQuery.eq('kind', scope);
+    const { data: matchRows, error: matchErr } = await matchQuery;
     if (matchErr) throw matchErr;
     const matchIds = (matchRows ?? []).map((m: { id: string }) => m.id);
     if (matchIds.length === 0) return [];
@@ -507,6 +540,7 @@ function toMatchStat(row: Record<string, unknown>): MatchStat {
     opponent:    row.opponent    as string,
     homeAway:    row.home_away   as MatchStat['homeAway'],
     competition: row.competition as string,
+    kind:        (row.kind as MatchKind | null) ?? 'official',
     result:      row.result      as MatchStat['result'],
     scoreUs:     row.score_us    as number,
     scoreThem:   row.score_them  as number,
@@ -549,6 +583,7 @@ function toTeamMatchStat(row: Record<string, unknown>): TeamMatchStat {
     date:          row.date            as string,
     opponent:      row.opponent        as string,
     homeAway:      row.home_away       as TeamMatchStat['homeAway'],
+    kind:          (row.kind as MatchKind | null) ?? 'official',
     result:        row.result          as TeamMatchStat['result'],
     scoreUs:       n('score_us'),
     scoreThem:     n('score_them'),

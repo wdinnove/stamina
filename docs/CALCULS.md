@@ -776,6 +776,46 @@ Corollaire d'écriture : dans un mapper, distinguer deux lecteurs — `n()` pour
 
 ---
 
+## 15. Périmètre des matchs : officiels vs amicaux
+
+Fichiers source : [`src/api/matches.ts`](../src/api/matches.ts) (`MatchScope`), [`src/api/stats.ts`](../src/api/stats.ts), [`src/hooks/usePerformanceData.ts`](../src/hooks/usePerformanceData.ts)
+
+> **Aucun calcul de ce document ne compte les matchs amicaux, sauf geste explicite du staff.**
+
+Un amical ne se compare pas à un match officiel : règles aménagées, adversaire souvent d'une autre division, rotations testées plutôt que subies, effectif volontairement déséquilibré. Le compter fausse tout ce qui suit — bilan V-D, moyennes de saison, facteurs de victoire (§ 5), corrélations (§ 3), objectifs (§ 10), archétypes (§ 12). Concrètement : une défaite de présaison contre une N1 dégraderait le bilan présenté au comité directeur.
+
+`matches.kind` (`'official'` | `'friendly'`) porte la distinction, et elle est **dénormalisée dans `match_stats`** ainsi que dans la vue `team_match_stats_full`, au même titre que `date`/`opponent`/`competition`/`result`.
+
+### Pourquoi la dénormalisation plutôt qu'une jointure
+
+`statsApi.getPlayerStats` et `getPlayerStatsGroupedBySeason` interrogent `match_stats` **sans passer par `matches`**. Un filtre qui exigerait la jointure les laisserait comme fuites : les amicaux rentreraient par ces deux portes seulement, ce qui est pire qu'une exclusion franche ou qu'une inclusion franche — deux écrans afficheraient des moyennes différentes du même joueur sans que rien ne l'explique.
+
+Le trigger `sync_match_stats_from_match` propage `kind` comme les autres colonnes dénormalisées : requalifier un match après coup met à jour ses stats.
+
+### Le point de passage unique
+
+Toutes les lectures agrégées de `statsApi` partent d'un `SELECT id FROM matches` scopé équipe et/ou saison. C'est **le** point par lequel les stats rejoignent l'ensemble des calculs de ce document, et un filtre y suffit à couvrir toutes les surfaces d'un coup.
+
+Le défaut est `'official'` **partout**, y compris sur les fonctions qui ne prennent pas encore le paramètre : c'est l'oubli du filtre qui doit être visible, pas son ajout. Un futur écran qui appelle sans y penser exclut les amicaux ; le défaut inverse les aurait laissés entrer en silence dans un bilan.
+
+### La réintégration volontaire
+
+`usePerformanceData({ includeFriendlies })` bascule tout le jeu de données d'un coup — les deux pages Performance l'exposent via un interrupteur partagé (`useFriendliesScope`, persisté dans `localStorage`, donc identique en collectif et en individuel).
+
+Le cas d'usage est la présaison : en septembre, les amicaux sont les seules données existantes, et une analyse vide n'aide personne. Le périmètre fait partie de la clé du cache de `usePerformanceData` — avec et sans amicaux sont deux jeux de données distincts, jamais confondus.
+
+Cas particulier des **archétypes** (§ 12) : le périmètre s'applique aux trois lectures du calcul — saison courante *et* pool de comparaison historique (toutes saisons de l'équipe). Un joueur mesuré amicaux compris contre un pool amicaux exclus verrait tous ses percentiles décalés sans que rien ne le signale : c'est le seul défaut qu'un percentile ne rend pas visible de lui-même.
+
+Trois surfaces gardent un périmètre imposé, indépendant de l'interrupteur :
+
+| Surface | Périmètre | Raison |
+|---|---|---|
+| Rapports ([`useReportData`](../src/hooks/useReportData.ts)) | officiels seuls | Un rapport sort du club — le bilan qu'il présente doit être celui du championnat |
+| Fiche match, onglet « Saison » | même nature que le match consulté | Situer un amical parmi des officiels ne veut rien dire, et l'inverse polluerait la référence d'un officiel |
+| Palette de commandes, page Matchs | tout | Écrans de navigation : rien n'y est calculé, un match introuvable serait un bug |
+
+---
+
 ## Récapitulatif des seuils & constantes clés
 
 | Constante | Valeur | Usage |

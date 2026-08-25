@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { X, AlertCircle, Trash2 } from 'lucide-react';
 import { Modal } from './Modal';
 import { matchesApi } from '../api/matches';
-import type { Match } from '../data/types';
+import type { Match, MatchKind } from '../data/types';
+
+/** Libellé de compétition posé d'office sur un amical : `competition` est NOT NULL en base et le
+ *  champ libre est masqué dans ce mode — un amical n'appartient à aucun championnat. */
+const FRIENDLY_COMPETITION = 'Amical';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
@@ -23,6 +27,7 @@ interface MatchFormValues {
   date: string;
   opponent: string;
   homeAway: 'home' | 'away';
+  kind: MatchKind;
   competition: string;
   result: 'win' | 'loss';
   scoreUs: string;
@@ -36,6 +41,7 @@ function emptyForm(): MatchFormValues {
     date:          new Date().toLocaleDateString('sv'),
     opponent:      '',
     homeAway:      'home',
+    kind:          'official',
     competition:   'NF2',
     result:        'win',
     scoreUs:       '0',
@@ -50,6 +56,7 @@ function formFromMatch(m: Match): MatchFormValues {
     date:          m.date,
     opponent:      m.opponent,
     homeAway:      m.homeAway,
+    kind:          m.kind,
     competition:   m.competition,
     result:        m.result,
     scoreUs:       String(m.scoreUs),
@@ -84,15 +91,19 @@ export function MatchFormModal({ match, teamId, seasonId, onClose, onSaved, onRe
     setSaving(true);
     setFormError('');
     try {
+      const isFriendly = form.kind === 'friendly';
       const payload = {
         date:        form.date,
         opponent:    form.opponent.trim(),
         homeAway:    form.homeAway,
-        competition: form.competition.trim() || 'NF2',
+        kind:        form.kind,
+        // Journée et compétition n'ont pas de sens hors championnat : on les neutralise au lieu de
+        // laisser traîner un « J14 / NF2 » saisi avant que le match ne soit requalifié en amical.
+        competition: isFriendly ? FRIENDLY_COMPETITION : (form.competition.trim() || 'NF2'),
         result:      form.result,
         scoreUs:       parseInt(form.scoreUs),
         scoreThem:     parseInt(form.scoreThem),
-        gameNumber:    form.gameNumber ? parseInt(form.gameNumber) : undefined,
+        gameNumber:    isFriendly || !form.gameNumber ? undefined : parseInt(form.gameNumber),
         quarterScores: form.quarterScores.map(q => ({ us: parseInt(q.us) || 0, them: parseInt(q.them) || 0 })),
       };
       if (match) {
@@ -125,15 +136,44 @@ export function MatchFormModal({ match, teamId, seasonId, onClose, onSaved, onRe
       )}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
+        {/* Nature du match, en tête : elle commande l'affichage des champs de championnat en
+            dessous, et surtout l'entrée (ou non) du match dans les analyses de la saison. */}
+        <div>
+          <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Nature</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([['official', 'Officiel'], ['friendly', 'Amical']] as const).map(([k, label]) => {
+              const on = form.kind === k;
+              return (
+                <button key={k} type="button" onClick={() => setForm(f => ({ ...f, kind: k }))}
+                  style={{ flex: 1, padding: '8px', borderRadius: 6, border: '1px solid', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                    borderColor:     on ? (k === 'friendly' ? '#F59E0B' : '#475569') : '#2A2F3A',
+                    backgroundColor: on ? (k === 'friendly' ? 'rgba(245,158,11,0.12)' : '#1E2229') : '#1E2229',
+                    color:           on ? (k === 'friendly' ? '#F59E0B' : '#F1F5F9') : '#94A3B8',
+                  }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {form.kind === 'friendly' && (
+            <p style={{ color: '#F59E0B', fontSize: '0.72rem', margin: '6px 0 0', lineHeight: 1.45 }}>
+              Exclu du bilan et des analyses de la saison. Le boxscore reste saisissable normalement,
+              et Performance permet de réintégrer les amicaux à la demande.
+            </p>
+          )}
+        </div>
+
+        <div className={form.kind === 'friendly' ? undefined : 'grid grid-cols-1 sm:grid-cols-2'} style={{ gap: 10 }}>
           <div>
             <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Date *</label>
             <input type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
           </div>
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Journée</label>
-            <input type="number" min={1} placeholder="J14…" value={form.gameNumber} onChange={e => setForm(f => ({ ...f, gameNumber: e.target.value }))} style={inputStyle} />
-          </div>
+          {form.kind === 'official' && (
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Journée</label>
+              <input type="number" min={1} placeholder="J14…" value={form.gameNumber} onChange={e => setForm(f => ({ ...f, gameNumber: e.target.value }))} style={inputStyle} />
+            </div>
+          )}
         </div>
 
         <div>
@@ -141,7 +181,7 @@ export function MatchFormModal({ match, teamId, seasonId, onClose, onSaved, onRe
           <input type="text" required placeholder="Nom de l'équipe adverse" value={form.opponent} onChange={e => setForm(f => ({ ...f, opponent: e.target.value }))} style={inputStyle} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
+        <div className={form.kind === 'friendly' ? undefined : 'grid grid-cols-1 sm:grid-cols-2'} style={{ gap: 10 }}>
           <div>
             <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Lieu</label>
             <select value={form.homeAway} onChange={e => setForm(f => ({ ...f, homeAway: e.target.value as 'home' | 'away' }))} style={inputStyle}>
@@ -149,10 +189,12 @@ export function MatchFormModal({ match, teamId, seasonId, onClose, onSaved, onRe
               <option value="away">Extérieur</option>
             </select>
           </div>
-          <div>
-            <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compétition</label>
-            <input type="text" placeholder="NF2" value={form.competition} onChange={e => setForm(f => ({ ...f, competition: e.target.value }))} style={inputStyle} />
-          </div>
+          {form.kind === 'official' && (
+            <div>
+              <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Compétition</label>
+              <input type="text" placeholder="NF2" value={form.competition} onChange={e => setForm(f => ({ ...f, competition: e.target.value }))} style={inputStyle} />
+            </div>
+          )}
         </div>
 
         <div>

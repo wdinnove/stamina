@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router';
 import { BarChart2, ChevronDown, ChevronUp, ChevronRight, Activity, Heart, UserCheck, CheckSquare, ShieldAlert } from 'lucide-react';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
+import { useFriendliesScope } from '../hooks/useFriendliesScope';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
 import { useArchetypes } from '../hooks/useArchetypes';
 import { aggregateTeamWellnessDaily, wellnessTier, teamWellnessAvg } from '../utils/wellness';
 import { teamPresenceRate, presenceColor } from '../utils/attendance';
 import { actionsApi, statsApi, matchesApi } from '../api';
 import {
-  Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, MiniStatCard,
+  Card, CardTitle, EmptyState, DateRangeCard, useDateRange, TeamStatsHero, Badge, MiniStatCard, FriendliesToggle,
   PCABiplot, WinFactorsList, PlayerImpactList, RPEPlayerRankingTable, RiskAlertsList, RiskVerdictCard, ChargeRpeComboChart,
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
@@ -197,10 +198,13 @@ export default function PerformanceCollectivePage() {
   const activeTab: Tab = TAB_SLUGS[tabSlug ?? ''] ?? 'overview';
   const setActiveTab = (slug: string) => navigate(`/performance-collective/${slug}`, { replace: true });
 
-  const { data, loading, doneSteps, seasonStart, seasonEnd } = usePerformanceData();
+  // Périmètre des analyses : officiels seuls par défaut, amicaux réintégrables à la demande.
+  // Traverse TOUT le contenu de la page — moyennes, bilan, corrélations, PCA, objectifs.
+  const { includeFriendlies, setIncludeFriendlies, friendlyCount } = useFriendliesScope(selected?.team.id, selected?.season.id);
+  const { data, loading, doneSteps, seasonStart, seasonEnd } = usePerformanceData({ includeFriendlies });
   // Chargé une fois par équipe/saison, indépendamment de l'onglet actif (même pattern que
   // PerformanceIndividuellePage) — le calcul couvre tout l'effectif d'un coup.
-  const { reports: archetypeReports } = useArchetypes(selected?.team.id, selected?.season.id);
+  const { reports: archetypeReports } = useArchetypes(selected?.team.id, selected?.season.id, includeFriendlies ? 'all' : 'official');
   // Staff de l'équipe — chargé une fois par équipe, pour l'onglet Personnalité staff.
   const [staff, setStaff] = useState<StaffMember[]>([]);
   useEffect(() => {
@@ -634,15 +638,17 @@ export default function PerformanceCollectivePage() {
   const [teamSeasonGroupedStats, setTeamSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: TeamMatchStat[] }[]>([]);
   useEffect(() => {
     if (!selected) { setTeamSeasonGroupedStats([]); return; }
-    statsApi.getTeamStatsGroupedBySeason(selected.team.id).then(setTeamSeasonGroupedStats).catch(() => {});
-  }, [selected?.team.id]);
+    statsApi.getTeamStatsGroupedBySeason(selected.team.id, includeFriendlies ? 'all' : 'official')
+      .then(setTeamSeasonGroupedStats).catch(() => {});
+  }, [selected?.team.id, includeFriendlies]);
 
   // ── QT par QT — matchs de la saison avec détail quart-temps ───────────────
   const [seasonMatches, setSeasonMatches] = useState<Match[]>([]);
   useEffect(() => {
     if (!selected) { setSeasonMatches([]); return; }
-    matchesApi.listBySeason(selected.team.id, selected.season.id).then(setSeasonMatches).catch(() => {});
-  }, [selected?.team.id, selected?.season.id]);
+    matchesApi.listBySeason(selected.team.id, selected.season.id, includeFriendlies ? 'all' : 'official')
+      .then(setSeasonMatches).catch(() => {});
+  }, [selected?.team.id, selected?.season.id, includeFriendlies]);
   const filteredSeasonMatches = useMemo(
     () => from ? seasonMatches.filter(m => m.date >= from && m.date <= to) : seasonMatches,
     [seasonMatches, from, to],
@@ -718,7 +724,10 @@ export default function PerformanceCollectivePage() {
 
   return (
     <div className="p-4 md:p-6">
-      <h1 style={{ color: '#F1F5F9', margin: '0 0 16px' }}>Performance collective</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <h1 style={{ color: '#F1F5F9', margin: 0 }}>Performance collective</h1>
+        <FriendliesToggle include={includeFriendlies} onChange={setIncludeFriendlies} count={friendlyCount} />
+      </div>
 
       <TeamStatsHero
         teamName={selected.team.name} category={selected.team.category} seasonLabel={selected.season.label}

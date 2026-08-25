@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {  } from 'lucide-react';
-import { matchesApi } from '../api/matches';
+import { matchesApi, type MatchScope } from '../api/matches';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { Modal, DropzoneEmptyState, MatchFormModal, EmptyState, AddButton } from '../components';
+import { Modal, DropzoneEmptyState, MatchFormModal, EmptyState, AddButton, MatchKindBadge, FRIENDLY_COLOR } from '../components';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3 } from '../utils/dateFormat';
 import type { Match } from '../data/types';
 import { notify } from '../api/notifications';
@@ -30,6 +30,11 @@ export default function MatchesPage() {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
+  /** Périmètre affiché. La page liste TOUT par défaut — c'est le journal des matchs de l'équipe,
+   *  aucun bilan n'y est calculé, donc rien à fausser. Le filtre n'apparaît que si des amicaux
+   *  existent : une équipe qui n'en saisit jamais ne voit pas un contrôle qui ne lui sert à rien. */
+  const [scope, setScope] = useState<MatchScope>('all');
+
   const [showModal, setShowModal] = useState(false);
   const [editMatch, setEditMatch] = useState<Match | null>(null);
 
@@ -41,16 +46,19 @@ export default function MatchesPage() {
     setLoading(true);
     setError('');
     matchesApi
-      .listBySeason(selected.team.id, selected.season.id)
+      .listBySeason(selected.team.id, selected.season.id, 'all')
       .then(setMatches)
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [selected?.team.id, selected?.season.id]);
 
+  const hasFriendly = matches.some(m => m.kind === 'friendly');
+  const visibleMatches = scope === 'all' ? matches : matches.filter(m => m.kind === scope);
+
   // Group by month
   const grouped: { monthLabel: string; matches: Match[] }[] = [];
   const seenMonths = new Set<string>();
-  for (const m of matches) {
+  for (const m of visibleMatches) {
     const { monthKey, monthLabel } = fmtDate(m.date);
     if (!seenMonths.has(monthKey)) {
       seenMonths.add(monthKey);
@@ -78,7 +86,8 @@ export default function MatchesPage() {
       return next.sort((a, b) => b.date.localeCompare(a.date));
     });
     if (isNew) {
-      notify(selected?.team.id, 'match_added', `Match planifié — vs ${saved.opponent}`, { body: saved.date, entityType: 'match', entityId: saved.id });
+      const label = saved.kind === 'friendly' ? 'Amical planifié' : 'Match planifié';
+      notify(selected?.team.id, 'match_added', `${label} — vs ${saved.opponent}`, { body: saved.date, entityType: 'match', entityId: saved.id });
     }
     setShowModal(false);
   }
@@ -114,6 +123,25 @@ export default function MatchesPage() {
         </div>
       )}
 
+      {selected && hasFriendly && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          {([['all', 'Tous'], ['official', 'Officiels'], ['friendly', 'Amicaux']] as const).map(([value, label]) => {
+            const on = scope === value;
+            const accent = value === 'friendly' ? FRIENDLY_COLOR : '#00E5A0';
+            return (
+              <button key={value} type="button" onClick={() => setScope(value)}
+                style={{ padding: '5px 12px', borderRadius: 999, fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                  border: `1px solid ${on ? accent : '#2A2F3A'}`,
+                  backgroundColor: on ? `${accent}1F` : '#161920',
+                  color: on ? accent : '#94A3B8',
+                }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {!selected ? (
         <p style={{ color: '#475569', fontSize: '0.85rem' }}>Sélectionnez une équipe et une saison.</p>
       ) : loading ? (
@@ -121,8 +149,12 @@ export default function MatchesPage() {
           <div style={{ width: 24, height: 24, border: '3px solid #1E2229', borderTopColor: '#00E5A0', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
-      ) : matches.length === 0 ? (
-        canEditTeamData ? (
+      ) : visibleMatches.length === 0 ? (
+        // Un filtre sans résultat n'est pas une saison vide : proposer « ajouter un match » ici
+        // ferait croire qu'il n'y en a aucun alors qu'ils sont simplement masqués.
+        matches.length > 0 ? (
+          <EmptyState message={scope === 'friendly' ? 'Aucun match amical sur cette saison.' : 'Aucun match officiel sur cette saison.'} size="lg" />
+        ) : canEditTeamData ? (
           <DropzoneEmptyState label="Cliquer pour ajouter un match" onClick={openAdd} />
         ) : (
           <EmptyState message="Aucun match. Seuls les rôles Admin et Éditeur peuvent en créer." size="lg" />
@@ -161,7 +193,10 @@ export default function MatchesPage() {
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                       >
                         <td className="px-3 sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#F1F5F9', fontWeight: 600, fontSize: '0.88rem' }}>
-                          {match.opponent}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            {match.opponent}
+                            <MatchKindBadge kind={match.kind} />
+                          </span>
                         </td>
                         <td className="hidden sm:table-cell sm:px-5" style={{ paddingTop: 12, paddingBottom: 12, color: '#475569', fontSize: '0.82rem' }}>
                           {match.gameNumber ? `J${match.gameNumber}` : '—'}

@@ -8,7 +8,7 @@ import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
 import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalEventsApi } from '../api/tacticalEvents';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -221,7 +221,10 @@ export default function MatchDetailPage() {
   useEffect(() => {
     if (activeTab !== 'comp_matches' || !match || seasonTeamStats.length > 0 || loadingSeasonStats) return;
     setLoadingSeasonStats(true);
-    matchesApi.listBySeason(match.teamId, match.seasonId)
+    // Comparé aux matchs de MÊME nature : situer un amical parmi des officiels n'a pas de sens
+    // (règles aménagées, adversaire hors division), et l'inverse ferait entrer les amicaux dans
+    // la référence de saison d'un officiel.
+    matchesApi.listBySeason(match.teamId, match.seasonId, match.kind)
       .then(matches => statsApi.listTeamStatsByMatchIds(matches.map(m => m.id)))
       .then(stats => setSeasonTeamStats(stats))
       .catch(() => {})
@@ -545,9 +548,13 @@ export default function MatchDetailPage() {
           <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, color: match.homeAway === 'home' ? '#3B82F6' : '#A855F7', backgroundColor: match.homeAway === 'home' ? '#3B82F615' : '#A855F715' }}>
             {match.homeAway === 'home' ? 'Domicile' : 'Extérieur'}
           </span>
-          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, color: '#64748B', backgroundColor: '#1E2229' }}>
-            {match.competition}
-          </span>
+          {match.kind === 'friendly' ? (
+            <MatchKindBadge kind={match.kind} size="md" />
+          ) : (
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, color: '#64748B', backgroundColor: '#1E2229' }}>
+              {match.competition}
+            </span>
+          )}
           {match.gameNumber && (
             <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: 4, color: '#F59E0B', backgroundColor: '#F59E0B12' }}>
               J{match.gameNumber}

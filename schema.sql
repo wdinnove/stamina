@@ -4636,3 +4636,90 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 -- aucune séquence existante ne doit se retrouver sur 'très basse' (valeur ajoutée, pas migrée) :
 --   SELECT SUM(load_ua) FROM session_blocks;                             -- à comparer à l'avant
 --   SELECT COUNT(*) FROM session_blocks WHERE intensity = 'très basse';   -- 0 juste après
+
+-- Matchs amicaux — nature du match (`kind`) et isolement des agrégats de saison
+--
+-- Un amical ne se compare pas à un match officiel : règles aménagées, adversaire d'une autre
+-- division, rotations testées plutôt que subies. Le compter dans le bilan V-D, les moyennes de
+-- saison, la PCA, les archétypes ou les corrélations fausse tout — une défaite de présaison
+-- contre une N1 dégraderait le bilan affiché au club. `kind` porte cette distinction.
+--
+-- TEXT + CHECK plutôt qu'un ENUM comme `home_away`/`match_result` : ajouter une valeur à un énum
+-- impose deux passages séparés par un COMMIT (cf. la migration `block_intensity` plus haut), et
+-- cette liste est appelée à s'allonger (tournoi, coupe, match de gala). Le CHECK se modifie en
+-- une instruction.
+--
+-- `kind` est dénormalisé dans `match_stats` comme le sont déjà date/opponent/competition/result :
+-- `statsApi.getPlayerStats` interroge `match_stats` SANS passer par `matches`, et resterait donc
+-- une fuite si le filtre exigeait une jointure. Le trigger `sync_match_stats_from_match` existant
+-- est étendu pour le tenir à jour lorsqu'un match change de nature après coup.
+--
+-- ALTER TABLE matches     ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'official'
+--   CHECK (kind IN ('official', 'friendly'));
+-- ALTER TABLE match_stats ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'official'
+--   CHECK (kind IN ('official', 'friendly'));
+--
+-- CREATE INDEX IF NOT EXISTS matches_team_season_kind_date_idx ON matches (team_id, season_id, kind, date DESC);
+-- CREATE INDEX IF NOT EXISTS match_stats_kind_idx              ON match_stats (kind);
+--
+-- -- UNIQUE (team_id, date, opponent) garde un officiel d'être saisi deux fois, mais interdit le
+-- -- cas normal du tournoi de présaison : deux rencontres courtes le même jour, parfois contre le
+-- -- même adversaire. L'unicité devient partielle — conservée sur les officiels, levée sur les
+-- -- amicaux.
+-- ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_team_id_date_opponent_key;
+-- CREATE UNIQUE INDEX IF NOT EXISTS matches_official_unique
+--   ON matches (team_id, date, opponent) WHERE kind = 'official';
+--
+-- CREATE OR REPLACE FUNCTION sync_match_stats_from_match()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--   IF (NEW.date, NEW.opponent, NEW.home_away, NEW.competition, NEW.result, NEW.score_us, NEW.score_them, NEW.kind)
+--      IS DISTINCT FROM
+--      (OLD.date, OLD.opponent, OLD.home_away, OLD.competition, OLD.result, OLD.score_us, OLD.score_them, OLD.kind) THEN
+--     UPDATE match_stats SET
+--       date        = NEW.date,
+--       opponent    = NEW.opponent,
+--       home_away   = NEW.home_away::TEXT,
+--       competition = NEW.competition,
+--       result      = NEW.result::TEXT,
+--       score_us    = NEW.score_us,
+--       score_them  = NEW.score_them,
+--       kind        = NEW.kind
+--     WHERE match_id = NEW.id;
+--   END IF;
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+--
+-- La vue `team_match_stats_full` expose `kind` pour que les stats collectives puissent, elles
+-- aussi, être filtrées ou badgées sans jointure supplémentaire. CREATE OR REPLACE n'autorise
+-- l'ajout de colonnes qu'EN FIN de liste : `kind` vient donc après `def_rating`, et le reste de
+-- la définition doit être recopié à l'identique.
+--
+-- CREATE OR REPLACE VIEW team_match_stats_full AS
+-- SELECT
+--   tms.*,
+--   m.score_us,
+--   m.score_them,
+--   m.date,
+--   m.opponent,
+--   m.home_away,
+--   m.competition,
+--   m.result,
+--   m.game_number,
+--   m.team_id,
+--   m.season_id,
+--   CASE WHEN tms.possessions > 0
+--     THEN ROUND(m.score_us::NUMERIC   / tms.possessions * 100, 1)
+--     ELSE NULL END AS off_rating,
+--   CASE WHEN COALESCE(tms.opp_possessions, tms.possessions) > 0
+--     THEN ROUND(m.score_them::NUMERIC / COALESCE(tms.opp_possessions, tms.possessions) * 100, 1)
+--     ELSE NULL END AS def_rating,
+--   m.kind
+-- FROM team_match_stats tms
+-- JOIN matches m ON m.id = tms.match_id;
+--
+-- Vérification — additif : tout l'existant est 'official', donc aucun agrégat ne bouge.
+--   SELECT kind, COUNT(*) FROM matches GROUP BY kind;        -- que des 'official' juste après
+--   SELECT COUNT(*) FROM match_stats ms JOIN matches m ON m.id = ms.match_id
+--     WHERE ms.kind IS DISTINCT FROM m.kind;                 -- 0 : dénormalisation cohérente

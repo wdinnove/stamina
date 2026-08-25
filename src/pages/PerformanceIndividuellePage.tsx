@@ -4,10 +4,11 @@ import { Activity, ShieldAlert, BarChart2, Heart, CheckSquare, UserCheck, Ambula
 import { statsApi, actionsApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePerformanceData } from '../hooks/usePerformanceData';
+import { useFriendliesScope } from '../hooks/useFriendliesScope';
 import { usePlayerAllTimeHistory } from '../hooks/usePlayerAllTimeHistory';
 import { useArchetypes } from '../hooks/useArchetypes';
 import {
-  Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, MiniStatCard, Badge,
+  Card, CardTitle, EmptyState, PlayerSelect, PlayerHero, MiniStatCard, Badge, FriendliesToggle,
   PlayerMedicalOverview, ChargeRpeComboChart, PlayerTrendHero,
   DateRangeCard, useDateRange, PlayerDynStatTab, PlayerCompareByMatch, PlayerCompareBySeason, PlayerCompareByPlayer, PlayerStatsPanel, PlayerLoadPanel, WellnessPomsPanel,
   CorrelationsPanel, RiskAlertsList, RiskVerdictCard, ResponsiveTabNav, ObjectivesPanel, PlayerArchetypesPanel, LoadingSteps,
@@ -112,7 +113,10 @@ export default function PerformanceIndividuellePage() {
   const setActiveTab = (slug: string) => { if (id) navigate(`/performance-individuelle/${id}/${slug}`, { replace: true }); };
 
   // ── Données équipe (roster + saison courante), partagées par corrélations/médical/KPIs ──
-  const { data, loading, doneSteps, seasonStart, seasonEnd } = usePerformanceData();
+  // Même périmètre « amicaux » que Performance collective (partagé via localStorage) : passer
+  // d'une page à l'autre ne doit pas changer silencieusement les moyennes affichées.
+  const { includeFriendlies, setIncludeFriendlies, friendlyCount } = useFriendliesScope(selected?.team.id, selected?.season.id);
+  const { data, loading, doneSteps, seasonStart, seasonEnd } = usePerformanceData({ includeFriendlies });
   const roster = data?.players ?? [];
   const pd: PlayerCrossData | undefined = roster.find(p => p.player.id === id);
 
@@ -130,7 +134,7 @@ export default function PerformanceIndividuellePage() {
   const { rpe, wellness } = usePlayerAllTimeHistory(id);
   // Chargé une fois par équipe/saison (pas par joueur) — évite de relancer le calcul de tout
   // l'effectif à chaque changement de joueur via le sélecteur.
-  const { reports: archetypeReports, loading: archetypesLoading, error: archetypesError } = useArchetypes(selected?.team.id, selected?.season.id);
+  const { reports: archetypeReports, loading: archetypesLoading, error: archetypesError } = useArchetypes(selected?.team.id, selected?.season.id, includeFriendlies ? 'all' : 'official');
   const [seasonGroupedStats, setSeasonGroupedStats] = useState<{ seasonId: string; seasonLabel: string; teamId: string; teamName: string; stats: MatchStat[] }[]>([]);
   const [matchStats, setMatchStats] = useState<MatchStat[]>([]);
   const [teamStatsMap, setTeamStatsMap] = useState<Map<string, TeamMatchStat>>(new Map());
@@ -141,14 +145,14 @@ export default function PerformanceIndividuellePage() {
   useEffect(() => {
     if (!id) return;
     actionsApi.getByPlayer(id).then(setActions);
-    statsApi.getPlayerStatsGroupedBySeason(id).then(setSeasonGroupedStats);
-  }, [id]);
+    statsApi.getPlayerStatsGroupedBySeason(id, includeFriendlies ? 'all' : 'official').then(setSeasonGroupedStats);
+  }, [id, includeFriendlies]);
 
   useEffect(() => {
     if (!id || !selected) return;
     setMatchStats([]);
-    statsApi.getPlayerStatsBySeason(id, selected.season.id).then(setMatchStats);
-  }, [id, selected]);
+    statsApi.getPlayerStatsBySeason(id, selected.season.id, includeFriendlies ? 'all' : 'official').then(setMatchStats);
+  }, [id, selected, includeFriendlies]);
 
   // Fetch sur tout l'historique du joueur (toutes saisons/équipes confondues), pour que
   // teamStatsMap couvre les entrées nécessaires quel que soit le sélecteur saison/équipe
@@ -279,7 +283,10 @@ export default function PerformanceIndividuellePage() {
     <div className="p-4 md:p-6">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <h1 style={{ color: '#F1F5F9', margin: 0 }}>Performance individuelle</h1>
-        {playerSelect}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <FriendliesToggle include={includeFriendlies} onChange={setIncludeFriendlies} count={friendlyCount} />
+          {playerSelect}
+        </div>
       </div>
 
       <PlayerHero player={pd.player} />

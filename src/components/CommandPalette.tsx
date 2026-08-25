@@ -75,7 +75,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     attendanceApi.listSessions(team.id, season.id)
       .then(list => setSessions([...list].sort((a, b) => b.date.localeCompare(a.date))))
       .catch(() => setSessions([]));
-    matchesApi.listBySeason(team.id, season.id)
+    // 'all' : la palette sert à NAVIGUER, pas à calculer. Un amical qu'on ne retrouve pas à la
+    // recherche serait un match introuvable, pas un match écarté d'un bilan.
+    matchesApi.listBySeason(team.id, season.id, 'all')
       .then(list => setMatches([...list].sort((a, b) => b.date.localeCompare(a.date))))
       .catch(() => setMatches([]));
 

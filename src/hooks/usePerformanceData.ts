@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { playersApi, statsApi, wellnessApi, medicalApi, rpeApi, attendanceApi } from '../api';
+import type { MatchScope } from '../api/matches';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalEventsApi } from '../api/tacticalEvents';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -7,6 +8,12 @@ import { isoToday } from '../components/DateRangeCard';
 import type { TeamCrossData } from '../data/crossAnalysis';
 
 export interface UsePerformanceDataOptions {
+  /** Réintègre les matchs amicaux dans TOUTES les analyses de la page (moyennes, bilan, PCA,
+   *  corrélations, objectifs). `false` par défaut : un amical se joue avec des règles aménagées,
+   *  contre un adversaire d'une autre division, en testant des rotations — le mélanger aux
+   *  officiels fausse les moyennes autant que le bilan. L'inclusion reste utile en présaison,
+   *  quand les amicaux sont les seules données existantes : c'est un geste explicite du staff. */
+  includeFriendlies?: boolean;
   /** Charge aussi la config + les événements tactiques de la saison (2 requêtes de plus) —
    *  activé par défaut car Performance collective/individuelle en ont besoin pour "Tendances
    *  tactiques" et les attributs "Rentabilité de ..." d'Objectifs/Corrélations. Le Dashboard ne
@@ -35,18 +42,24 @@ export type LoadStep = typeof LOAD_STEPS[number];
  * sur d'autres pages entre deux visites.
  */
 const CACHE = new Map<string, TeamCrossData>();
-const cacheKey = (teamId: string, seasonId: string, tactical: boolean) =>
-  `${teamId}:${seasonId}:${tactical ? 'tac' : 'notac'}`;
+// `friendlies` fait partie de la clé : avec et sans amicaux, ce sont deux jeux de données
+// différents. Les confondre servirait des moyennes incluant les amicaux à un écran qui les exclut.
+const cacheKey = (teamId: string, seasonId: string, tactical: boolean, friendlies: boolean) =>
+  `${teamId}:${seasonId}:${tactical ? 'tac' : 'notac'}:${friendlies ? 'amicaux' : 'officiels'}`;
 
 /** Vide le cache d'une équipe/saison — appelé par `reload()`. */
 export function invalidatePerformanceData(teamId: string, seasonId: string) {
-  CACHE.delete(cacheKey(teamId, seasonId, true));
-  CACHE.delete(cacheKey(teamId, seasonId, false));
+  for (const tactical of [true, false]) {
+    for (const friendlies of [true, false]) {
+      CACHE.delete(cacheKey(teamId, seasonId, tactical, friendlies));
+    }
+  }
 }
 
 /** Charge toutes les données de la saison sélectionnée, fusionnées par joueur (croisement multi-domaines). */
 export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
-  const { tactical: includeTactical = true } = options;
+  const { tactical: includeTactical = true, includeFriendlies = false } = options;
+  const scope: MatchScope = includeFriendlies ? 'all' : 'official';
   const { selected } = useTeamSeason();
   const [data, setData] = useState<TeamCrossData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +74,7 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
     if (!selected) return;
     let cancelled = false;
     const { team, season } = selected;
-    const key = cacheKey(team.id, season.id, includeTactical);
+    const key = cacheKey(team.id, season.id, includeTactical, includeFriendlies);
 
     // Copie en cache : on l'affiche tout de suite et on rafraîchit en silence derrière.
     const cached = CACHE.get(key);
@@ -75,8 +88,8 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
     const markDone = (step: LoadStep) => { if (!cancelled && !cached) setDoneSteps(prev => [...prev, step]); };
     Promise.all([
       playersApi.listBySeason(season.id),
-      statsApi.listAllStatsBySeason(team.id, season.id),
-      statsApi.listTeamStatsBySeason(team.id, season.id),
+      statsApi.listAllStatsBySeason(team.id, season.id, scope),
+      statsApi.listTeamStatsBySeason(team.id, season.id, scope),
       rpeApi.list({ seasonId: season.id }),
       attendanceApi.listSessions(team.id, season.id),
       includeTactical ? tacticalConfigApi.getForTeam(team.id) : Promise.resolve(null),
@@ -145,7 +158,7 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
       setLoading(false);
     }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [selected?.team.id, selected?.season.id, includeTactical, reloadToken]);
+  }, [selected?.team.id, selected?.season.id, includeTactical, includeFriendlies, reloadToken]);
 
   return {
     data, loading, seasonStart: selected?.season.startDate, seasonEnd: selected?.season.endDate,

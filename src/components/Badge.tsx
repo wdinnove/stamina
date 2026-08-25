@@ -1,4 +1,5 @@
 import type { ReactNode, CSSProperties } from 'react';
+import type { MatchKind } from '../data/types';
 
 /** Couleur de repli d'une catégorie sans couleur définie (exercices, séances) — le gris neutre
  *  de l'app. Partagée pour ne pas laisser un `undefined` produire des styles invalides du type
@@ -50,4 +51,19 @@ export function CategoryBadge({ name, color, size = 'md', style }: {
       size={size}
       style={style} />
   );
+}
+
+/** Ambre : la couleur des matchs amicaux dans toute l'app. Elle signale une donnée hors
+ *  championnat, exclue des bilans et des analyses tant que le staff ne la réintègre pas. */
+export const FRIENDLY_COLOR = '#F59E0B';
+
+/** Pastille « Amical ». Ne rend RIEN sur un match officiel : l'officiel est la norme, seule
+ *  l'exception mérite un marqueur — un badge sur chaque ligne ne signalerait plus rien. */
+export function MatchKindBadge({ kind, size = 'sm', style }: {
+  kind: MatchKind;
+  size?: 'sm' | 'md';
+  style?: CSSProperties;
+}) {
+  if (kind !== 'friendly') return null;
+  return <Badge color={FRIENDLY_COLOR} label="Amical" size={size} style={style} />;
 }
