@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Modal } from './Modal';
 import type { AppNotification } from '../api/notifications';
-import { getNotificationCategory, getNotificationType, urlFor } from '../../shared/notifications.js';
+import { getNotificationCategory, getNotificationType, urlFor, prettifyDates } from '../../shared/notifications.js';
+import { useTeamSeason } from '../contexts/TeamSeasonContext';
 
 /* ── Helpers ── */
 
@@ -106,7 +107,11 @@ export function NotificationBell() {
 
 /* ── Notification item ── */
 
-function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: string) => void }) {
+function NotifItem({ n, teamName, onNavigate }: {
+  n: AppNotification;
+  teamName: string | null;
+  onNavigate: (n: AppNotification, url: string) => void;
+}) {
   const color = notifColor(n);
   const label = typeLabel(n);
   // Un type absent du registre (notification antérieure à son ajout, ou type renommé) n'a pas de
@@ -117,7 +122,7 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
 
   return (
     <div
-      onClick={clickable ? () => onNavigate(url!) : undefined}
+      onClick={clickable ? () => onNavigate(n, url!) : undefined}
       title={clickable ? undefined : "Cette notification n'a pas de page associée"}
       style={{
         display: 'flex', alignItems: 'stretch',
@@ -144,12 +149,25 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
 
         {/* Contenu */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Catégorie + temps */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-            <span style={{ fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color }}>
-              {label}
-            </span>
-            <span style={{ fontSize: '0.7rem', color: '#475569', flexShrink: 0, marginLeft: 8 }}>
+          {/* Catégorie + équipe + temps */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3, gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color, flexShrink: 0 }}>
+                {label}
+              </span>
+              {teamName && (
+                <span
+                  title={teamName}
+                  style={{
+                    fontSize: '0.68rem', fontWeight: 500, color: '#475569',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  · {teamName}
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: '0.7rem', color: '#475569', flexShrink: 0 }}>
               {timeAgo(n.created_at)}
             </span>
           </div>
@@ -160,7 +178,7 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
             lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block',
           }}>
-            {n.title}
+            {prettifyDates(n.title)}
           </span>
 
           {/* Body */}
@@ -170,7 +188,7 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
               margin: '3px 0 0', lineHeight: 1.4,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {n.body}
+              {prettifyDates(n.body)}
             </p>
           )}
         </div>
@@ -190,10 +208,32 @@ function NotifItem({ n, onNavigate }: { n: AppNotification; onNavigate: (url: st
 
 export function NotificationCenter() {
   const { notifications, isOpen, closeCenter } = useNotifications();
+  const { options, selected, selectAndGo } = useTeamSeason();
   const navigate = useNavigate();
 
-  function handleNavigate(url: string) {
+  // `options` ne contient que les équipes accessibles — donc exactement celles qui ont pu
+  // produire une notification pour cet utilisateur. Pas de requête supplémentaire à faire.
+  const teamNames = new Map(options.map(o => [o.team.id, o.team.name]));
+
+  /**
+   * Une notification peut porter sur une autre équipe que celle affichée. Naviguer sans
+   * basculer ouvrait une page vide : la ressource visée n'appartient pas à l'équipe courante.
+   * `selectAndGo` mémorise l'équipe, la pose dans l'URL et charge la destination d'un seul coup.
+   *
+   * La table `notifications` ne porte pas de saison : on vise la saison en cours de l'équipe.
+   * Une notification sur une saison passée retombe donc sur la saison courante — c'est le
+   * choix le moins surprenant, et le seul possible sans nouvelle colonne.
+   */
+  function handleNavigate(n: AppNotification, url: string) {
     closeCenter();
+    const teamId = n.team_id;
+    if (teamId && selected && teamId !== selected.team.id) {
+      const target = options.find(o => o.team.id === teamId && o.season.isCurrent)
+                  ?? options.find(o => o.team.id === teamId);
+      // Sans option correspondante (accès à l'équipe retiré depuis), on navigue quand même :
+      // la page dira mieux que nous ce qui manque.
+      if (target) return selectAndGo(target, url);
+    }
     navigate(url);
   }
 
@@ -283,7 +323,14 @@ export function NotificationCenter() {
                 </div>
               ) : (
                 <>
-                  {notifications.map(n => <NotifItem key={n.id} n={n} onNavigate={handleNavigate} />)}
+                  {notifications.map(n => (
+                    <NotifItem
+                      key={n.id}
+                      n={n}
+                      teamName={(n.team_id && teamNames.get(n.team_id)) || null}
+                      onNavigate={handleNavigate}
+                    />
+                  ))}
                 </>
               )}
             </div>

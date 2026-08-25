@@ -1,4 +1,4 @@
-import { getNotificationType, urlFor } from '../../shared/notifications.js'
+import { getNotificationType, urlFor, prettifyDates } from '../../shared/notifications.js'
 import { configureWebPush, sendPushToUsers } from './push.js'
 
 /**
@@ -40,6 +40,13 @@ export async function dispatch(admin, {
 }) {
   const def = getNotificationType(type)
   if (!def) throw new Error(`Type de notification inconnu : ${type}`)
+
+  // Seul point par lequel passent TOUTES les notifications — pages, crons, formulaire public.
+  // Y réécrire les dates ISO garantit qu'aucun « 2026-08-24 » ne s'affiche, sans avoir à y
+  // penser sur chaque appel, et couvre le push au passage : sa bannière ne repasse par aucun
+  // rendu React qui pourrait rattraper le coup.
+  title = prettifyDates(title)
+  body = prettifyDates(body)
 
   let targets = recipients ?? await teamRecipients(admin, teamId, def.category)
 

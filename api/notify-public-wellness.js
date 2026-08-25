@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from './_lib/supabaseAdmin.js'
 import { dispatch, claimDispatch } from './_lib/notify.js'
-import { isWellnessAlerting } from '../shared/notifications.js'
+import { isWellnessAlerting, formatNotifDate } from '../shared/notifications.js'
 
 /**
  * POST /api/notify-public-wellness
@@ -11,6 +11,14 @@ import { isWellnessAlerting } from '../shared/notifications.js'
  * non authentifié, mais ne fait confiance à rien de ce que le client envoie : il relit
  * l'entrée côté serveur et recalcule lui-même le franchissement de seuil. Il est de plus
  * idempotent via le journal de diffusion, donc le rejouer ne crée pas de doublon.
+ *
+ * Deux notifications distinctes, et pas une :
+ * - `wellness_added` à CHAQUE saisie — le staff doit voir remonter les questionnaires au fil
+ *   de l'eau, exactement comme quand la saisie est faite depuis l'app (cf. WellnessPage) ;
+ *   c'est justement ce qui manquait pour les saisies venues du lien joueur.
+ * - `wellness_alert` en plus, seulement au franchissement de seuil. Elle a sa propre catégorie
+ *   de réglage et son propre canal push : la fusionner avec la précédente rendrait impossible
+ *   de couper le flux quotidien sans couper aussi les alertes.
  */
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,16 +39,7 @@ export default async function handler(req, res) {
       .eq('date', date)
       .single()
 
-    if (!entry || !isWellnessAlerting(entry)) return res.status(200).json({ ok: true, skipped: true })
-
-    // Idempotence définitive pour cette entrée : la clé est datée du jour de l'entrée,
-    // pas du jour courant, donc un rejeu même tardif ne renotifie jamais.
-    // Volontairement basée sur le journal de diffusion et non sur `notifications` :
-    // si l'équipe a coupé l'in-app sur la catégorie, aucune ligne n'y serait écrite
-    // et cet endpoint non authentifié redeviendrait un vecteur de spam push.
-    if (!await claimDispatch(admin, `wellness_alert:${entry.id}`, date)) {
-      return res.status(200).json({ ok: true, duplicate: true })
-    }
+    if (!entry) return res.status(200).json({ ok: true, skipped: true })
 
     const { data: player } = await admin
       .from('players')
@@ -53,17 +52,44 @@ export default async function handler(req, res) {
     if (!teamId) return res.status(200).json({ ok: true, skipped: true })
 
     const name = `${player.first_name} ${player.last_name}`.trim()
-    const result = await dispatch(admin, {
-      teamId,
-      orgId: player.organization_id,
-      type: 'wellness_alert',
-      title: `Bien-être préoccupant — ${name}`,
-      body: `Score ${entry.score}/10 le ${date}`,
-      entityType: 'wellness_entry',
-      entityId: entry.id,
-    })
+    const prettyDate = formatNotifDate(date)
+    const out = { ok: true }
 
-    return res.status(200).json({ ok: true, ...result })
+    // Idempotence définitive pour chaque entrée : la clé est datée du jour de l'ENTRÉE,
+    // pas du jour courant, donc un rejeu même tardif ne renotifie jamais. Une clé par type,
+    // sinon la saisie du jour empêcherait l'alerte (ou l'inverse) de partir.
+    // Volontairement basée sur le journal de diffusion et non sur `notifications` :
+    // si l'équipe a coupé l'in-app sur la catégorie, aucune ligne n'y serait écrite
+    // et cet endpoint non authentifié redeviendrait un vecteur de spam push.
+    if (await claimDispatch(admin, `wellness_added:${entry.id}`, date)) {
+      // `entityId` = le JOUEUR, pas l'entrée : c'est ce que `urlFor` sait transformer en
+      // route (/bien-etre/joueur/:id). Même convention que la saisie faite depuis l'app.
+      out.added = await dispatch(admin, {
+        teamId,
+        orgId: player.organization_id,
+        type: 'wellness_added',
+        title: `Bien-être saisi — ${name}`,
+        body: `${prettyDate} · saisie depuis le lien joueur`,
+        entityType: 'player',
+        entityId: playerId,
+      })
+    } else {
+      out.duplicate = true
+    }
+
+    if (isWellnessAlerting(entry) && await claimDispatch(admin, `wellness_alert:${entry.id}`, date)) {
+      out.alert = await dispatch(admin, {
+        teamId,
+        orgId: player.organization_id,
+        type: 'wellness_alert',
+        title: `Bien-être préoccupant — ${name}`,
+        body: `Score ${entry.score}/10 le ${prettyDate}`,
+        entityType: 'wellness_entry',
+        entityId: entry.id,
+      })
+    }
+
+    return res.status(200).json(out)
   } catch (err) {
     console.error('[notify-public-wellness]', err)
     return res.status(500).json({ error: "Erreur lors de l'envoi de l'alerte" })

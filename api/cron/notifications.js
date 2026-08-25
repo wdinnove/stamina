@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
 import { dispatch, teamRecipients, claimDispatch, pruneDispatchLog } from '../_lib/notify.js'
 import { sendMail } from '../_lib/mailer.js'
+import { formatNotifDate } from '../../shared/notifications.js'
 
 /**
  * RÈGLE ABSOLUE — aucun email ni push automatique ne part vers un joueur.
@@ -144,7 +145,7 @@ async function notifyRtpUpcoming(admin, team, rosterIds, roster, today) {
       orgId: team.organization_id,
       type: 'rtp_upcoming',
       title: `Retour au jeu prévu — ${player ? fullName(player) : 'joueur'}`,
-      body: `Date de reprise : ${record.rtp_date}`,
+      body: `Date de reprise : ${formatNotifDate(record.rtp_date)}`,
       entityType: 'medical_record',
       entityId: record.id,
     })
@@ -177,7 +178,7 @@ async function notifySessionGaps(admin, team, seasonId, rosterIds, roster, today
         orgId: team.organization_id,
         type: 'rpe_missing',
         title: `RPE manquant — ${missing.length} joueur${missing.length > 1 ? 's' : ''}`,
-        body: `Séance du ${session.date} : ${missing.map(fullName).join(', ')}`,
+        body: `Séance du ${formatNotifDate(session.date)} : ${missing.map(fullName).join(', ')}`,
         entityType: 'session',
         entityId: session.id,
       })
@@ -190,7 +191,7 @@ async function notifySessionGaps(admin, team, seasonId, rosterIds, roster, today
         orgId: team.organization_id,
         type: 'attendance_missing',
         title: 'Présence incomplète',
-        body: `Séance du ${session.date} : ${attendance?.length ?? 0}/${rosterIds.length} joueurs renseignés`,
+        body: `Séance du ${formatNotifDate(session.date)} : ${attendance?.length ?? 0}/${rosterIds.length} joueurs renseignés`,
         entityType: 'session',
         entityId: session.id,
       })
@@ -254,7 +255,7 @@ async function notifyTasksDue(admin, team, today) {
       orgId: team.organization_id,
       type: 'task_due_soon',
       title,
-      body: `À faire pour le ${action.due_date}`,
+      body: `À faire pour le ${formatNotifDate(action.due_date)}`,
       entityType: 'player_action',
       entityId: action.id,
       assigneeUserIds: [profileId],
@@ -302,7 +303,7 @@ async function notifyWeeklyWellness(admin, team, roster, rosterIds, today) {
     await safeMail({
       to: staffEmails,
       subject: `Bilan bien-être — ${team.name}`,
-      text: `Depuis le ${weekStart}, ${missing.length} joueur(s) n'ont rempli aucun questionnaire bien-être : ${names}.\n\n`
+      text: `Depuis le ${formatNotifDate(weekStart)}, ${missing.length} joueur(s) n'ont rempli aucun questionnaire bien-être : ${names}.\n\n`
           + `Aucun rappel ne leur a été envoyé automatiquement : utilisez le bouton d'envoi des liens depuis la page Bien-être.`,
     })
   }

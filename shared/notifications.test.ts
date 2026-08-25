@@ -9,6 +9,8 @@ import {
   urlFor,
   isWellnessAlerting,
   WELLNESS_ALERT,
+  formatNotifDate,
+  prettifyDates,
 } from './notifications.js';
 
 describe('registre des notifications', () => {
@@ -148,5 +150,58 @@ describe('seuil d\'alerte bien-être', () => {
 
   it('ne se déclenche pas sur des dimensions non inversées élevées (mood/motivation/sleep hauts = bon)', () => {
     expect(isWellnessAlerting({ ...ok, mood: 10, motivation: 10, sleep: 10 })).toBe(false);
+  });
+});
+
+describe('dates des notifications', () => {
+  // Année fixe : sans référence explicite, les attentes changeraient au 1er janvier.
+  const ref = new Date('2026-06-15T12:00:00Z');
+
+  it('écrit une date métier en toutes lettres', () => {
+    expect(formatNotifDate('2026-08-24', ref)).toBe('lundi 24 août');
+    expect(formatNotifDate('2026-01-01', ref)).toBe('jeudi 1 janvier');
+  });
+
+  it("n'ajoute l'année que si elle diffère de l'année courante", () => {
+    expect(formatNotifDate('2026-12-31', ref)).toBe('jeudi 31 décembre');
+    expect(formatNotifDate('2027-01-04', ref)).toBe('lundi 4 janvier 2027');
+  });
+
+  /**
+   * `new Date('2026-08-24')` vaut minuit UTC : formatée dans un fuseau à l'ouest de
+   * Greenwich, elle affiche le 23. Un cron tourne en UTC, un navigateur non — d'où le
+   * calcul en accesseurs UTC uniquement, vérifié ici depuis un fuseau négatif.
+   */
+  it('ne décale pas la date selon le fuseau', () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      expect(formatNotifDate('2026-08-24', ref)).toBe('lundi 24 août');
+    } finally {
+      process.env.TZ = tz;
+    }
+  });
+
+  it("garde l'heure quand elle est présente", () => {
+    expect(formatNotifDate('2026-08-24T18:30', ref)).toBe('lundi 24 août à 18h30');
+    expect(formatNotifDate('2026-08-24T09:00', ref)).toBe('lundi 24 août à 9h');
+  });
+
+  it('laisse passer ce qui n\'est pas une date', () => {
+    expect(formatNotifDate('Séance du matin', ref)).toBe('Séance du matin');
+    expect(formatNotifDate('2026-13-40', ref)).toBe('2026-13-40');
+    expect(formatNotifDate(null as unknown as string, ref)).toBe('');
+  });
+
+  it('réécrit les dates au milieu d\'un texte déjà composé', () => {
+    expect(prettifyDates('Séance du 2026-08-24 : Paul Dupont', ref))
+      .toBe('Séance du lundi 24 août : Paul Dupont');
+    expect(prettifyDates('Du 2026-08-24 au 2026-08-26', ref))
+      .toBe('Du lundi 24 août au mercredi 26 août');
+  });
+
+  it('ne touche pas un texte sans date, et supporte un corps absent', () => {
+    expect(prettifyDates('RPE saisi — 12 joueurs', ref)).toBe('RPE saisi — 12 joueurs');
+    expect(prettifyDates(null, ref)).toBeNull();
   });
 });

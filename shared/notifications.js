@@ -184,3 +184,62 @@ export function isWellnessAlerting(entry) {
     dim => typeof entry[dim] === 'number' && entry[dim] >= WELLNESS_ALERT.invertedDimensionMin,
   );
 }
+
+/* ── Dates ───────────────────────────────────────────────────────────────────
+ *
+ * Une notification lue dans un menu déroulant ou une bannière push n'est pas un
+ * export de données : « 2026-08-24 » y demande un effort de lecture que
+ * « lundi 24 août » n'exige pas. Le formatage vit ici parce que les titres et
+ * corps sont écrits des DEUX côtés — pages React (src/**) et crons (api/**) —
+ * et que `src/utils/dateFormat.ts` n'est pas importable depuis une fonction
+ * serverless en JS pur.
+ *
+ * Volontairement sans `Intl` ni objet `Date` pour l'affichage : une date métier
+ * « 2026-08-24 » n'a pas de fuseau, et `new Date('2026-08-24')` la place à
+ * minuit UTC — un serveur à l'ouest de Greenwich afficherait donc la veille.
+ * Seul le jour de la semaine passe par `Date`, en accesseurs UTC.
+ */
+
+const NOTIF_WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const NOTIF_MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/** Date ISO, avec l'heure optionnelle : « 2026-08-24 » comme « 2026-08-24T18:30 ». */
+const ISO_DATE_RE = /(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/;
+
+/**
+ * « 2026-08-24 » → « lundi 24 août ». L'année n'est ajoutée que si elle diffère de
+ * celle de `reference` : la porter sur une échéance à trois jours est du bruit,
+ * l'omettre sur une date de reprise en janvier prochain est une ambiguïté.
+ * Une chaîne qui n'est pas une date est renvoyée telle quelle.
+ */
+export function formatNotifDate(iso, reference = new Date()) {
+  if (typeof iso !== 'string') return '';
+  const m = ISO_DATE_RE.exec(iso);
+  if (!m || m.index !== 0) return iso;
+
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return iso;
+
+  const weekday = NOTIF_WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
+  let out = `${weekday} ${day} ${NOTIF_MONTHS[month - 1]}`;
+  if (year !== reference.getFullYear()) out += ` ${year}`;
+  if (m[4]) out += ` à ${Number(m[4])}h${m[5] === '00' ? '' : m[5]}`;
+  return out;
+}
+
+/**
+ * Réécrit toutes les dates ISO trouvées dans un texte déjà composé.
+ *
+ * Appliquée à deux endroits, pour deux raisons distinctes :
+ * - dans `dispatch()` (api/_lib/notify.js) — seul passage obligé de toute notification,
+ *   donc l'endroit où normaliser plutôt que sur chaque `notify(...)` d'écran ;
+ * - au rendu du centre de notifications — les lignes DÉJÀ en base ont leur corps figé,
+ *   et resteraient sinon en « 2026-08-24 » à l'écran.
+ */
+export function prettifyDates(text, reference = new Date()) {
+  if (typeof text !== 'string') return text;
+  return text.replace(new RegExp(ISO_DATE_RE, 'g'), match => formatNotifDate(match, reference));
+}
