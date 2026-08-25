@@ -44,6 +44,17 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
 
+/** Séance sur laquelle ouvrir la grille : celle du jour, sinon la dernière passée — c'est
+ *  celle qu'on vient de vivre et qu'il reste à pointer —, sinon la première à venir.
+ *  `sessions` arrive trié par date croissante. */
+function focusSessionIndex(list: { date: string }[]) {
+  const exact = list.findIndex(s => s.date === TODAY);
+  if (exact !== -1) return exact;
+  let lastPast = -1;
+  for (let i = 0; i < list.length && list[i].date < TODAY; i++) lastPast = i;
+  return lastPast !== -1 ? lastPast : 0;
+}
+
 const NAME_W = 200;
 const CELL_W = 44;
 
@@ -51,6 +62,7 @@ export default function AttendancePage() {
   const navigate = useNavigate();
   const { selected, canEditTeamData } = useTeamSeason();
   const popoverRef        = useRef<HTMLDivElement>(null);
+  const gridRef           = useRef<HTMLDivElement>(null);
 
   const [players,       setPlayers]       = useState<Player[]>([]);
   const [sessions,      setSessions]      = useState<TrainingSession[]>([]);
@@ -155,6 +167,41 @@ export default function AttendancePage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [activeCell]);
+
+  // Cadrage initial : on arrive sur la séance du jour, pas sur le début de saison. Une seule
+  // fois par équipe/saison — passé ce premier rendu, la position de scroll appartient à
+  // l'utilisateur et on ne la lui reprend plus.
+  const scrolledForRef = useRef('');
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || loading || !sessions.length) return;
+    const key = `${selected?.team.id}:${selected?.season.id}`;
+    if (scrolledForRef.current === key) return;
+    scrolledForRef.current = key;
+    // Largeur réelle de la colonne des noms (elle rétrécit en mobile) : collée à gauche, elle
+    // ampute d'autant la zone où la séance visée doit apparaître.
+    const nameW = el.querySelector('thead th')?.getBoundingClientRect().width ?? NAME_W;
+    const centered = focusSessionIndex(sessions) * CELL_W - Math.max(0, (el.clientWidth - nameW - CELL_W) / 2);
+    el.scrollLeft = Math.max(0, Math.min(centered, el.scrollWidth - el.clientWidth));
+  }, [loading, sessions, selected?.team.id, selected?.season.id]);
+
+  // Molette : une souris n'a pas d'axe horizontal, et quand l'effectif tient dans la hauteur,
+  // le geste vertical ne sert à rien — on le bascule alors en défilement des séances. Listener
+  // natif car React pose `wheel` en passif, où preventDefault serait ignoré.
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;   // geste déjà horizontal (trackpad)
+      if (el.scrollHeight > el.clientHeight) return;          // le vertical a encore du sens
+      if (el.scrollWidth <= el.clientWidth) return;
+      e.preventDefault();
+      // Firefox compte en lignes (deltaMode 1) : quelques pixels par cran sinon.
+      el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [loading, sessions.length]);
 
   function handleCellClick(e: React.MouseEvent, sessionId: string, playerId: string) {
     e.stopPropagation();
@@ -382,8 +429,21 @@ export default function AttendancePage() {
 
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
       {selected && !loading && sessions.length > 0 && (
-        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 160px)', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
-          <style>{`@media (max-width: 767px) { .att-name-col { width: 110px !important; } }`}</style>
+        <div ref={gridRef} className="att-grid" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 160px)', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
+          {/* Les scrollbars sont masquées partout (globals.css) : au trackpad on s'en passe, à la
+              souris la grille devient inatteignable latéralement. On la rétablit, fine, sur ce
+              seul conteneur et seulement pour un pointeur précis. */}
+          <style>{`
+            @media (max-width: 767px) { .att-name-col { width: 110px !important; } }
+            @media (pointer: fine) {
+              .att-grid { scrollbar-width: thin; scrollbar-color: #2A2F3A transparent; }
+              .att-grid::-webkit-scrollbar { display: block; width: 10px; height: 10px; }
+              .att-grid::-webkit-scrollbar-track { background: transparent; }
+              .att-grid::-webkit-scrollbar-thumb { background: #2A2F3A; border: 2px solid #161920; border-radius: 5px; }
+              .att-grid::-webkit-scrollbar-thumb:hover { background: #3A4150; }
+              .att-grid::-webkit-scrollbar-corner { background: transparent; }
+            }
+          `}</style>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: NAME_W + sessions.length * CELL_W }}>
             <colgroup>
               <col className="att-name-col" style={{ width: NAME_W }} />
