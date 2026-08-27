@@ -6,6 +6,7 @@ import { playersApi } from '../api/players';
 import { staffApi }   from '../api/staff';
 import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlState } from '../hooks/useUrlState';
 import { useLocation, useNavigate } from 'react-router';
 import { categoryConfig, priorityConfig } from '../data/config';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -58,10 +59,18 @@ export default function ActionsPage() {
   const [staffError,   setStaffError]   = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Action | null>(null);
   const [deleting,      setDeleting]      = useState(false);
-  const [playerFilter,   setPlayerFilter]   = useState<string>(locState?.playerId ?? '');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
-  const [search,         setSearch]         = useState('');
+  const [playerFilter,   setPlayerFilter]   = useUrlState('joueur', '');
+  const [categoryFilter, setCategoryFilter] = useUrlState('categorie', '');
+  const [priorityFilter, setPriorityFilter] = useUrlState('priorite', '');
+  const [search,         setSearch]         = useUrlState('recherche', '');
+
+  // Arrivée depuis la fiche d'un joueur : le filtre part sur lui, et l'adresse le dit comme
+  // n'importe quel filtre posé à la main. Au montage seulement — ensuite il s'efface comme les
+  // autres. `locState` ne survit pas à un rafraîchissement, l'URL si.
+  useEffect(() => {
+    if (locState?.playerId && !playerFilter) setPlayerFilter(locState.playerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!selected) return;

@@ -8,6 +8,7 @@ import { InjuryRecordCard } from './InjuryRecordCard';
 import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { MedicalRecordFormModal } from './MedicalRecordFormModal';
 import { MedicalRecordStatusModal } from './MedicalRecordStatusModal';
+import { useUrlState } from '../hooks/useUrlState';
 import type { MedicalStatusAction } from './MedicalRecordStatusModal';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { MedicalRecord, Player } from '../data/types';
@@ -18,6 +19,9 @@ export interface PlayerMedicalViewHandle {
   openRecord: (record: MedicalRecord) => void;
 }
 
+/** Valeurs acceptées dans l'URL pour le filtre de type — une autre y ramène « tous ». */
+const TYPE_FILTERS = ['all', 'injury', 'checkup', 'treatment'] as const;
+
 export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId: string; onUpdated?: () => void }>(({ playerId, onUpdated }, ref) => {
   const navigate = useNavigate();
   const { selected, canEditTeamData } = useTeamSeason();
@@ -25,7 +29,7 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
   const [records, setRecords]   = useState<MedicalRecord[]>([]);
   const [player, setPlayer]     = useState<Player | null>(null);
   const [version, setVersion]   = useState(0);
-  const [typeFilter, setTypeFilter] = useState<'all' | MedicalRecord['type']>('all');
+  const [typeFilter, setTypeFilter] = useUrlState<'all' | MedicalRecord['type']>('type', 'all', { allowed: TYPE_FILTERS });
 
   const [statusAction, setStatusAction] = useState<{ action: MedicalStatusAction; record: MedicalRecord } | null>(null);
   const [detailRecord, setDetailRecord] = useState<MedicalRecord | null>(null);

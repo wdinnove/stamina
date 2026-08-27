@@ -13,6 +13,7 @@ import type { MedicalStatusAction } from './MedicalRecordStatusModal';
 import { playerStatusColor, playerStatusLabel } from './PlayerHero';
 import { severityConfig, typeLabels } from './MedicalCard';
 import { rtpDaysLeft, injuryDays, sumInjuryDays } from '../utils/medical';
+import { useUrlState, useUrlPatch, useUrlSort } from '../hooks/useUrlState';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -22,6 +23,15 @@ import { AddButton } from './AddButton';
 const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
 };
+
+/** Valeurs acceptées dans l'URL pour le récap saison — une autre y ramène le défaut. Mêmes noms
+ *  de paramètres que le récap de la page Médicale : c'est le même tableau, sur une autre route. */
+const RECAP_TYPES     = ['', 'injury', 'treatment', 'checkup'] as const;
+type  RecapType       = typeof RECAP_TYPES[number];
+const RECAP_STATUSES  = ['', 'active', 'resolved'] as const;
+type  RecapStatus     = typeof RECAP_STATUSES[number];
+const RECAP_SORT_KEYS = ['date', 'player', 'description', 'type', 'severity', 'status'] as const;
+type  RecapSortKey    = typeof RECAP_SORT_KEYS[number];
 
 
 interface TeamMedicalOverviewProps {
@@ -46,12 +56,13 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
   const [seasonAllRecords, setSeasonAllRecords] = useState<MedicalRecord[]>([]);
   const [version, setVersion] = useState(0);
 
-  const [recapSearch,       setRecapSearch]       = useState('');
-  const [recapTypeFilter,   setRecapTypeFilter]   = useState('');
-  const [recapPlayerFilter, setRecapPlayerFilter] = useState('');
-  const [recapStatusFilter, setRecapStatusFilter] = useState('');
-  const [recapSortKey, setRecapSortKey] = useState<'date' | 'player' | 'description' | 'type' | 'severity' | 'status'>('date');
-  const [recapSortDir, setRecapSortDir] = useState<'asc' | 'desc'>('desc');
+  const [recapSearch,       setRecapSearch]       = useUrlState('recherche', '');
+  const [recapTypeFilter,   setRecapTypeFilter]   = useUrlState('type',   '', { allowed: RECAP_TYPES });
+  const [recapPlayerFilter, setRecapPlayerFilter] = useUrlState('joueur', '');
+  const [recapStatusFilter, setRecapStatusFilter] = useUrlState('statut', '', { allowed: RECAP_STATUSES });
+  const { sortKey: recapSortKey, sortDir: recapSortDir, toggleSort } =
+    useUrlSort<RecapSortKey>({ key: 'date', dir: 'desc' }, { allowed: RECAP_SORT_KEYS });
+  const patchRecap = useUrlPatch();
   const [detailRecord, setDetailRecord] = useState<MedicalRecord | null>(null);
 
   const [statusAction, setStatusAction] = useState<{ action: MedicalStatusAction; record: MedicalRecord } | null>(null);
@@ -135,14 +146,6 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
     }
   });
 
-  const toggleSort = (key: typeof recapSortKey) => {
-    if (recapSortKey === key) {
-      setRecapSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setRecapSortKey(key);
-      setRecapSortDir('desc');
-    }
-  };
   const sortArrow = (key: typeof recapSortKey) => recapSortKey === key
     ? <span style={{ fontSize: '0.6rem', marginLeft: 3 }}>{recapSortDir === 'asc' ? '▲' : '▼'}</span>
     : null;
@@ -311,7 +314,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
               style={{ width: '100%', padding: '7px 10px 7px 28px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
-          <select value={recapTypeFilter} onChange={e => setRecapTypeFilter(e.target.value)}
+          <select value={recapTypeFilter} onChange={e => setRecapTypeFilter(e.target.value as RecapType)}
             className="w-full sm:w-auto"
             style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapTypeFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}>
             <option value="">Tous types</option>
@@ -325,7 +328,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
             <option value="">Tous joueurs</option>
             {players.map(p => <option key={p.id} value={p.id}>{playerNameFull(p)}</option>)}
           </select>
-          <select value={recapStatusFilter} onChange={e => setRecapStatusFilter(e.target.value)}
+          <select value={recapStatusFilter} onChange={e => setRecapStatusFilter(e.target.value as RecapStatus)}
             className="w-full sm:w-auto"
             style={{ padding: '7px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: recapStatusFilter ? '#F1F5F9' : '#475569', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}>
             <option value="">Tous statuts</option>
@@ -333,7 +336,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
             <option value="resolved">Clôturé</option>
           </select>
           {hasFilter && (
-            <button onClick={() => { setRecapSearch(''); setRecapTypeFilter(''); setRecapPlayerFilter(''); setRecapStatusFilter(''); }}
+            <button onClick={() => patchRecap({ recherche: null, type: null, joueur: null, statut: null })}
               className="w-full sm:w-auto"
               style={{ padding: '7px 10px', backgroundColor: 'transparent', border: '1px solid #2A2F3A', borderRadius: 6, color: '#475569', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               <X size={12} /> Effacer

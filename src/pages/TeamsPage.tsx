@@ -4,6 +4,7 @@ import { Search, Users, Edit, X, AlertCircle, Calendar, CheckCircle } from 'luci
 import { teamsApi, seasonsApi } from '../api';
 import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlState } from '../hooks/useUrlState';
 import { Breadcrumb, EmptyState, Modal, AccessRestricted, AddButton } from '../components';
 import type { Team, Season } from '../data/types';
 
@@ -307,7 +308,7 @@ function TeamsList() {
   const [teams,       setTeams]       = useState<Team[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [fetchError,  setFetchError]  = useState('');
-  const [search,      setSearch]      = useState('');
+  const [search,      setSearch]      = useUrlState('recherche', '');
   const [showForm,    setShowForm]    = useState(false);
   const [form,        setForm]        = useState({ name: '', category: '', color: '#3B82F6' });
   const [saving,      setSaving]      = useState(false);

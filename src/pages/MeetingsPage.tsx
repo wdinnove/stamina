@@ -4,6 +4,7 @@ import { X, AlertCircle, Clock, ChevronRight } from 'lucide-react';
 import { meetingsApi } from '../api/meetings';
 import { teamCategoriesApi } from '../api/categories';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlState } from '../hooks/useUrlState';
 import { notify } from '../api/notifications';
 import RichTextEditor from '../components/RichTextEditor';
 import { Modal, DropzoneEmptyState, EmptyState, AddButton, CategoryBadge } from '../components';
@@ -36,7 +37,7 @@ export default function MeetingsPage() {
   const [meetSaving,    setMeetSaving]    = useState(false);
   const [meetFormError, setMeetFormError] = useState('');
   const [categories,    setCategories]    = useState<TeamCategory[]>([]);
-  const [filterCat,     setFilterCat]     = useState('');
+  const [filterCat,     setFilterCat]     = useUrlState('categorie', '');
 
   useEffect(() => {
     if (!selected) return;

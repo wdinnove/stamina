@@ -6,6 +6,7 @@ import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
 import { Modal } from './Modal';
 import { AddButton } from './AddButton';
+import { useUrlState } from '../hooks/useUrlState';
 import RichTextEditor from './RichTextEditor';
 import { notesApi } from '../api';
 import { notify } from '../api/notifications';
@@ -44,14 +45,18 @@ const emptyForm = (playerId = ''): FormState => ({
   playerId, date: todayIso(), category: 'entretien', content: '',
 });
 
+/** Valeurs acceptées dans l'URL pour le filtre de catégorie — une autre y ramène « toutes ». */
+const NOTE_CATEGORY_FILTERS = ['', 'entretien', 'comportement', 'perso', 'match', 'autre'] as const;
+
 export function PlayerNotesPanel({ playerId, roster, teamId, seasonId }: PlayerNotesPanelProps) {
   const { canEditTeamData } = useTeamSeason();
   const { notes, loading, reload } = usePlayerNotes({ seasonId, playerId });
 
   // Filtres — vue collective uniquement : en vue individuelle le joueur est déjà fixé.
-  const [playerFilter, setPlayerFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<NoteCategory | ''>('');
-  const [search, setSearch] = useState('');
+  // Portés par l'URL comme partout ailleurs (cf. useUrlState) : un suivi filtré se partage.
+  const [playerFilter, setPlayerFilter] = useUrlState('joueur', '');
+  const [categoryFilter, setCategoryFilter] = useUrlState<NoteCategory | ''>('categorie', '', { allowed: NOTE_CATEGORY_FILTERS });
+  const [search, setSearch] = useUrlState('recherche', '');
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PlayerNote | null>(null);

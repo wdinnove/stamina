@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, ChevronUp, Pencil, Check, X, AlertCircle, Pl
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { normalizeTacticalName } from '../utils/tacticalCsvParser';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
+import { useUrlState } from '../hooks/useUrlState';
 import { ConfigCard } from './ConfigCard';
 
 function friendlyDeleteError(e: unknown, itemLabel: string): string {
@@ -251,7 +252,7 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useUrlState('recherche', '');
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set());
   const [lastDeleted, setLastDeleted] = useState<DeletedSnapshot | null>(null);

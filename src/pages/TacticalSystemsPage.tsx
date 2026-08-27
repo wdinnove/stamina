@@ -4,6 +4,8 @@ import { Search, Pencil, Trash2 } from 'lucide-react';
 import { tacticalSystemsApi } from '../api/tacticalSystems';
 import { teamCategoriesApi, NEW_CATEGORY_PALETTE } from '../api/categories';
 import { teamFoldersApi, countByFolder } from '../api/folders';
+import { useFolderParam } from '../hooks/useFolderParam';
+import { useUrlState, useUrlPatch } from '../hooks/useUrlState';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { Badge, DropzoneEmptyState, EmptyState, DiagramThumb, Spinner, AddButton, FolderCard, NewFolderCard, FolderBreadcrumb, FolderRenameModal, FolderDeleteModal } from '../components';
 import { createScene } from '../utils/diagram';
@@ -50,9 +52,11 @@ export default function TacticalSystemsPage() {
   const [folders,        setFolders]        = useState<TeamFolder[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState('');
-  const [search,         setSearch]         = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [activeFolder,   setActiveFolder]   = useState<string | null>(null);
+  const [search,         setSearch]         = useUrlState('recherche', '');
+  const [categoryFilter, setCategoryFilter] = useUrlState('categorie', '');
+  const clearFilters = useUrlPatch();
+  const [foldersLoaded,  setFoldersLoaded]  = useState(false);
+  const [activeFolder,   setActiveFolder]   = useFolderParam(folders, foldersLoaded);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderEditing,  setFolderEditing]  = useState(false);
   const [folderDeleting, setFolderDeleting] = useState(false);
@@ -73,7 +77,12 @@ export default function TacticalSystemsPage() {
   useEffect(() => {
     if (!selected) return;
     teamCategoriesApi.list(selected.team.id, 'system').then(setCategories).catch(() => {});
-    teamFoldersApi.list(selected.team.id, 'system').then(setFolders).catch(() => {});
+    setFoldersLoaded(false);
+    teamFoldersApi.list(selected.team.id, 'system')
+      .then(setFolders)
+      .catch(() => setFolders([]))
+      // Chargés — ou en échec : dans les deux cas l'identifiant de l'URL devient vérifiable.
+      .finally(() => setFoldersLoaded(true));
   }, [selected?.team.id]);
 
   const needle = search.trim().toLowerCase();
@@ -112,7 +121,7 @@ export default function TacticalSystemsPage() {
     await teamFoldersApi.remove(folder.id);
     setFolders(prev => prev.filter(f => f.id !== folder.id));
     setSystems(prev => prev.map(sys => sys.folderId === folder.id ? { ...sys, folderId: undefined } : sys));
-    setActiveFolder(prev => prev === folder.id ? null : prev);
+    if (activeFolder === folder.id) setActiveFolder(null, { replace: true });
   }
 
   async function moveToFolder(itemId: string, folderId: string | null) {
@@ -146,7 +155,7 @@ export default function TacticalSystemsPage() {
                 </button>
               </>
             ) : (
-              <AddButton label="Ajouter un dossier" variant="soft" onClick={() => { setSearch(''); setCategoryFilter(''); setCreatingFolder(true); }} />
+              <AddButton label="Ajouter un dossier" variant="soft" onClick={() => { clearFilters({ recherche: null, categorie: null }); setCreatingFolder(true); }} />
             )}
             <AddButton label="Ajouter un système"
               onClick={() => navigate('/systemes/nouveau', activeFolder ? { state: { folderId: activeFolder } } : undefined)} />

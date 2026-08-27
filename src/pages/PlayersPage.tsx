@@ -4,9 +4,13 @@ import { Search, X, AlertCircle } from 'lucide-react';
 import { playersApi } from '../api';
 import { StatusBadge, PlayerAvatar, EmptyState, Modal, AddButton } from '../components';
 import { playerNameFull } from '../utils/playerName';
+import { useUrlState } from '../hooks/useUrlState';
 import type { Player } from '../data/types';
 
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
+/** Valeurs acceptées dans l'URL pour le filtre de statut — une autre y ramène « tous ». */
+const STATUS_FILTERS = ['all', 'active', 'injured', 'limited', 'suspended', 'unavailable'] as const;
+type StatusFilter = typeof STATUS_FILTERS[number];
 
 const STATUSES: { value: Player['status']; label: string }[] = [
   { value: 'active',      label: 'Actif' },
@@ -37,8 +41,8 @@ export default function PlayersPage() {
   const [players,      setPlayers]      = useState<Player[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [fetchError,   setFetchError]   = useState('');
-  const [search,       setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [search,       setSearch]       = useUrlState('recherche', '');
+  const [statusFilter, setStatusFilter] = useUrlState('statut', 'all', { allowed: STATUS_FILTERS });
 
   const [showForm,  setShowForm]  = useState(false);
   const [form,      setForm]      = useState(emptyForm);
@@ -114,7 +118,7 @@ export default function PlayersPage() {
           />
         </div>
         <div className="w-full md:w-auto" style={{ position: 'relative' }}>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)}
             style={{ width: '100%', padding: statusFilter !== 'all' ? '8px 52px 8px 12px' : '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
             <option value="all">Tous statuts</option>
             <option value="active">Actif</option>

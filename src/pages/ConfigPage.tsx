@@ -8,6 +8,7 @@ import { playersApi } from '../api/players';
 import { staffApi } from '../api/staff';
 import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlState } from '../hooks/useUrlState';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
 import { buildWeekTiers, DEFAULT_THRESHOLDS } from '../utils/weeklyLoad';
 import { ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, StatusBadge, CategoryManager, EmptyState, Modal, PlayerEditModal, PlayerAvatar, WellnessMethodPreview, AddButton } from '../components';
@@ -373,7 +374,7 @@ function RosterTab() {
   const [players, setPlayers]     = useState<Player[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
+  const [search, setSearch]       = useUrlState('recherche', '');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [unlinkTarget, setUnlinkTarget] = useState<Player | null>(null);

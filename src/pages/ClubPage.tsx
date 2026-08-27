@@ -7,11 +7,15 @@ import type { AssignableProfile } from '../api/teamRoles';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { PlayerAvatar, StatusBadge, EmptyState, ConfigCard, ConfigStack, ConfigAction, ConfigSaveAction, ConfigMessage, Modal, PlayerEditModal } from '../components';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
+import { useUrlState } from '../hooks/useUrlState';
 import type { Team, Player, Organization, StaffMember, TeamRole, TeamRoleAssignment } from '../data/types';
 import { LAYER } from '../styles/layers';
 
 const PRESET_COLORS = ['#3B82F6','#00E5A0','#F59E0B','#8B5CF6','#EF4444','#EC4899','#06B6D4','#F97316'];
 const POSITIONS: Player['position'][] = ['Meneur', 'Arrière', 'Ailier', 'Ailier Fort', 'Pivot'];
+/** Valeurs acceptées dans l'URL pour le filtre de statut — une autre y ramène « tous ». */
+const STATUS_FILTERS = ['all', 'active', 'injured', 'limited', 'suspended', 'unavailable'] as const;
+type StatusFilter = typeof STATUS_FILTERS[number];
 const STATUSES: { value: Player['status']; label: string }[] = [
   { value: 'active',      label: 'Actif' },
   { value: 'injured',     label: 'Blessé' },
@@ -55,7 +59,7 @@ function TeamsTab() {
   const [teams,     setTeams]     = useState<Team[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [fetchErr,  setFetchErr]  = useState('');
-  const [search,    setSearch]    = useState('');
+  const [search,    setSearch]    = useUrlState('recherche', '');
   const [showForm,  setShowForm]  = useState(false);
   const [form,      setForm]      = useState({ name: '', category: '', color: '#3B82F6' });
   const [saving,    setSaving]    = useState(false);
@@ -204,8 +208,8 @@ function PlayersTab() {
   const [players,  setPlayers]  = useState<Player[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [fetchErr, setFetchErr] = useState('');
-  const [search,   setSearch]   = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [search,   setSearch]   = useUrlState('recherche', '');
+  const [statusFilter, setStatusFilter] = useUrlState('statut', 'all', { allowed: STATUS_FILTERS });
 
   const [showForm, setShowForm] = useState(false);
   const [form,     setForm]     = useState(emptyPlayerForm);
@@ -298,7 +302,7 @@ function PlayersTab() {
           <input placeholder="Rechercher un joueur…" value={search} onChange={e => setSearch(e.target.value)}
             style={{ ...inputStyle, paddingLeft: 32 }} />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full sm:w-auto"
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)} className="w-full sm:w-auto"
           style={{ padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', minWidth: 140 }}>
           <option value="all">Tous statuts</option>
           <option value="active">Actif</option>
@@ -769,7 +773,7 @@ function StaffTab() {
   const [teams,    setTeams]    = useState<Team[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [fetchErr, setFetchErr] = useState('');
-  const [search,   setSearch]   = useState('');
+  const [search,   setSearch]   = useUrlState('recherche', '');
 
   useEffect(() => {
     Promise.all([staffApi.listByOrganization(), teamsApi.list()])

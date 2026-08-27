@@ -4,7 +4,13 @@ import { Search } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { StatusBadge, PlayerAvatar, EmptyState } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlState } from '../hooks/useUrlState';
 import type { Player } from '../data/types';
+
+/** Valeurs acceptées dans l'URL pour le filtre de statut — une autre y ramène « tous ». */
+const STATUS_FILTERS = ['all', 'active', 'injured', 'limited', 'suspended', 'unavailable'] as const;
+type StatusFilter = typeof STATUS_FILTERS[number];
+
 
 export default function RosterPage() {
   const navigate = useNavigate();
@@ -12,8 +18,8 @@ export default function RosterPage() {
   const [players, setPlayers]     = useState<Player[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch]       = useUrlState('recherche', '');
+  const [statusFilter, setStatusFilter] = useUrlState('statut', 'all', { allowed: STATUS_FILTERS });
 
   function loadRoster(seasonId: string) {
     setLoading(true);
@@ -67,7 +73,7 @@ export default function RosterPage() {
                 style={{ width: '100%', padding: '8px 10px 8px 32px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)}
               className="w-full md:w-auto"
               style={{ padding: '8px 12px', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
               <option value="all">Tous statuts</option>
