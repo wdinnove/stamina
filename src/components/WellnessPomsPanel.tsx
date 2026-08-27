@@ -5,6 +5,7 @@ import { Heart, TrendingUp, Smile, Meh, Frown } from 'lucide-react';
 import { Card, CardTitle } from '../components';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, wellnessDimColor, wellnessStatus, wellnessRawValue, teamWellnessAvg, type WellnessDimension, type WellnessMetric } from '../utils/wellness';
 import { fmt1 } from '../utils/format';
+import { useUrlSort } from '../hooks/useUrlState';
 import type { WellnessEntry } from '../data/types';
 
 const dimensions = WELLNESS_DIMENSIONS;
@@ -54,13 +55,16 @@ interface WellnessPomsPanelProps {
 }
 
 type EvoSortKey = 'date' | 'score' | WellnessDimension['key'];
+/** Clés acceptées dans l'URL : les deux colonnes fixes, plus une par dimension. */
+const EVO_SORT_KEYS = [...['date', 'score'], ...WELLNESS_DIMENSIONS.map(d => d.key)] as const;
 
 export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDiff, subjectLabel }: WellnessPomsPanelProps) {
   // Courbes par dimension du graphique "Évolution › Global" : masquées par défaut, affichées au clic sur la légende
   const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
   const [hiddenDimCurves, setHiddenDimCurves] = useState<Set<string>>(() => new Set(dimensions.map(d => d.key)));
-  const [evoSortKey, setEvoSortKey] = useState<EvoSortKey>('date');
-  const [evoSortDir, setEvoSortDir] = useState<'asc' | 'desc'>('desc');
+  // `ns` : le classement bien-être partage cette page et porte lui aussi un tri.
+  const { sortKey: evoSortKey, sortDir: evoSortDir, toggleSort: toggleEvoSort } =
+    useUrlSort<EvoSortKey>({ key: 'date', dir: 'desc' }, { ns: 'evolution', allowed: EVO_SORT_KEYS });
 
   const historyAsc = [...(series ?? entries)].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -107,15 +111,6 @@ export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDi
     if (evoSortKey === 'score') return (a.score - b.score) * evoDir;
     return (a[evoSortKey] - b[evoSortKey]) * evoDir;
   });
-
-  function toggleEvoSort(key: EvoSortKey) {
-    if (evoSortKey === key) {
-      setEvoSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setEvoSortKey(key);
-      setEvoSortDir('desc');
-    }
-  }
 
   const evoSortArrow = (key: EvoSortKey) => evoSortKey === key
     ? <span style={{ fontSize: '0.6rem', marginLeft: 3 }}>{evoSortDir === 'asc' ? '▲' : '▼'}</span>

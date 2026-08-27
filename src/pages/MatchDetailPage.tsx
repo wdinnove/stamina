@@ -12,6 +12,7 @@ import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestrict
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlSort } from '../hooks/useUrlState';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
@@ -197,10 +198,13 @@ export default function MatchDetailPage() {
   const [tacticalLoaded, setTacticalLoaded]         = useState(false);
   const [loadingTactical, setLoadingTactical]       = useState(false);
 
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [oppSortCol, setOppSortCol] = useState<string | null>(null);
-  const [oppSortDir, setOppSortDir] = useState<'asc' | 'desc'>('desc');
+  // Les deux feuilles de stats s'affichent ensemble : sans espace de noms distinct, trier la
+  // nôtre trierait aussi celle de l'adversaire. Colonne vide = ordre d'origine, d'où le `|| null`.
+  const { sortKey: sortColParam, sortDir, toggleSort } = useUrlSort<string>({ key: '', dir: 'desc' });
+  const { sortKey: oppSortColParam, sortDir: oppSortDir, toggleSort: toggleOppSort } =
+    useUrlSort<string>({ key: '', dir: 'desc' }, { ns: 'adversaire' });
+  const sortCol    = sortColParam    || null;
+  const oppSortCol = oppSortColParam || null;
   // L'onglet actif est porté par l'URL, plus par un état local : une fiche match est partageable
   // onglet compris, et un lien de notification peut viser directement la vue tactique.
   const activeTab = (tabBySlug(tabSlug) ?? DEFAULT_MATCH_TAB).key;
@@ -374,11 +378,6 @@ export default function MatchDetailPage() {
   const isWin = match.result === 'win';
   const playerById = new Map(players.map(p => [p.id, p]));
 
-  function toggleSort(col: string) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(col); setSortDir('desc'); }
-  }
-
   function getSortVal(s: MatchStat, col: string): number {
     const p = playerById.get(s.playerId);
     switch (col) {
@@ -422,11 +421,6 @@ export default function MatchDetailPage() {
       {label}{sortCol === col ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}
     </th>
   );
-
-  function toggleOppSort(col: string) {
-    if (oppSortCol === col) setOppSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setOppSortCol(col); setOppSortDir('desc'); }
-  }
 
   // Contexte "équipe" vu du côté adverse : ses propres totaux sont les colonnes opp_* de
   // team_match_stats, et ses rebonds "adversaire" sont les nôtres.

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { buildCategoryReport, rentabiliteColor, categoryThresholds } from '../data/tacticalAnalysis';
+import { useUrlSort } from '../hooks/useUrlState';
 import type { DimensionTable, DimensionOptionRow, RentabiliteThresholds } from '../data/tacticalAnalysis';
 
 export interface TacticalMatchRef {
@@ -36,7 +37,8 @@ function fmtValeur(v: number | null) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
-type SortKey = keyof Pick<DimensionOptionRow, 'label' | 'actions' | 'sharePct' | 'valeur' | 'rentabilite'>;
+const SORT_KEYS = ['label', 'actions', 'sharePct', 'valeur', 'rentabilite'] as const;
+type SortKey = typeof SORT_KEYS[number];
 type SortDir = 'asc' | 'desc';
 
 function compareRows(a: DimensionOptionRow, b: DimensionOptionRow, key: SortKey, dir: SortDir): number {
@@ -82,22 +84,15 @@ export function DimensionRowsTable({ label, rows, totalActions, totalValeur, tot
   thresholds?: RentabiliteThresholds;
   borderColor?: string;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey | null>('sharePct');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  // Onglets tactiques = segments d'URL : les deux rapports d'une feuille de match ne coexistent
+  // jamais sur la même adresse, pas d'espace de noms nécessaire.
+  const { sortKey, sortDir, toggleSort: handleSort } =
+    useUrlSort<SortKey>({ key: 'sharePct', dir: 'desc' }, { allowed: SORT_KEYS, dirFor: () => 'asc' });
 
   const sortedRows = useMemo(() => {
     if (!sortKey) return rows;
     return [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir));
   }, [rows, sortKey, sortDir]);
-
-  function handleSort(key: SortKey) {
-    if (key === sortKey) {
-      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
-    }
-  }
 
   if (rows.length === 0) return null;
   return (

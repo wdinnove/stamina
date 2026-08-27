@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ListOrdered } from 'lucide-react';
 import type { PlayerRank } from '../data/types';
 import { rpeColor } from '../utils/rpe';
 import { getWeekTier } from '../utils/weeklyLoad';
 import { fmt1 } from '../utils/format';
+import { useUrlSort } from '../hooks/useUrlState';
 import { Badge } from './Badge';
 
 interface RPEPlayerRankingTableProps {
@@ -18,7 +18,8 @@ interface RPEPlayerRankingTableProps {
   hideHeader?: boolean;
 }
 
-type SortKey = 'name' | 'rpe' | 'surcharge' | 'elevee' | 'soutenu' | 'legere' | 'charge';
+const SORT_KEYS = ['name', 'rpe', 'surcharge', 'elevee', 'soutenu', 'legere', 'charge'] as const;
+type SortKey = typeof SORT_KEYS[number];
 type SortDir = 'asc' | 'desc';
 
 function ZoneDot({ color }: { color: string }) {
@@ -26,8 +27,7 @@ function ZoneDot({ color }: { color: string }) {
 }
 
 export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNormal, lightMax, normalMax, hideHeader }: RPEPlayerRankingTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('rpe');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const { sortKey, sortDir, toggleSort } = useUrlSort<SortKey>({ key: 'rpe', dir: 'desc' }, { allowed: SORT_KEYS });
 
   const rows = players.map(p => {
     const uaPerSession = p.nbSessions > 0 ? Math.round(p.totalLoad / p.nbSessions) : 0;
@@ -61,15 +61,6 @@ export function RPEPlayerRankingTable({ players, sessionLoadLight, sessionLoadNo
       default:          return 0;
     }
   });
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDir('desc');
-    }
-  }
 
   const sortArrow = (key: SortKey) => sortKey === key
     ? <span style={{ fontSize: '0.6rem', marginLeft: 3 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>

@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { PlayerAvatar } from './PlayerAvatar';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { IndicatorDef } from '../data/crossAnalysis';
 import type { Player } from '../data/types';
+import { useUrlSort } from '../hooks/useUrlState';
 
 export interface RankingRow {
   player: Player;
@@ -25,7 +25,8 @@ interface PlayerRankingTableProps {
   onOpenPlayer: (playerId: string) => void;
 }
 
-type SortKey = 'name' | 'position' | 'min' | 'eval' | 'value';
+const SORT_KEYS = ['name', 'position', 'min', 'eval', 'value'] as const;
+type SortKey = typeof SORT_KEYS[number];
 type SortDir = 'asc' | 'desc';
 
 const TH: CSSProperties = {
@@ -60,13 +61,11 @@ function fmtValue(def: IndicatorDef, v: number): string {
 
 /** Classement des joueurs sur un facteur choisi, avec repères constants (minutes, éval) */
 export function PlayerRankingTable({ rows, def, teamAvg, normalized25, onOpenPlayer }: PlayerRankingTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('value');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
-
-  const toggleSort = (key: SortKey) => {
-    if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir(key === 'name' || key === 'position' ? 'asc' : 'desc'); }
-  };
+  const { sortKey, sortDir, toggleSort } = useUrlSort<SortKey>(
+    { key: 'value', dir: 'desc' },
+    // Un nom et un poste se lisent de A à Z ; un chiffre, du plus grand au plus petit.
+    { allowed: SORT_KEYS, dirFor: key => (key === 'name' || key === 'position' ? 'asc' : 'desc') },
+  );
 
   const dir = sortDir === 'asc' ? 1 : -1;
   const sorted = [...rows].sort((x, y) => {

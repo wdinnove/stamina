@@ -4,6 +4,7 @@ import { Card, CardTitle, EmptyState } from '../components';
 import { evalColor, ortgColor, shotPct } from '../data';
 import { indicatorByKey } from '../data/crossAnalysis';
 import { StatInfo } from './StatInfo';
+import { useUrlSort } from '../hooks/useUrlState';
 import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
@@ -36,8 +37,12 @@ export function PlayerStatsPanel({
   view: statsView, seasonGroupedStats, teamStatsMap, statThresholds, from, to,
 }: PlayerStatsPanelProps) {
   const [normalize25, setNormalize25] = useState(false);
-  const [basicSort, setBasicSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
-  const [advSort, setAdvSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
+  // Les deux tableaux vivent sur des adresses différentes (onglets Stats simples / avancées),
+  // mais gardent des paramètres distincts : leurs colonnes n'ont rien à voir entre elles.
+  const basic = useUrlSort<string>({ key: 'date', dir: 'desc' });
+  const adv   = useUrlSort<string>({ key: 'date', dir: 'desc' }, { ns: 'avance' });
+  const basicSort = { col: basic.sortKey, dir: basic.sortDir };
+  const advSort   = { col: adv.sortKey,   dir: adv.sortDir };
 
   // Historique complet (toutes saisons/équipes confondues) filtré par la plage de dates affichée —
   // remplace l'ancien filtre Saison/Équipe pour rester cohérent avec la période des autres onglets.
@@ -103,12 +108,8 @@ export function PlayerStatsPanel({
             sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
           const thC = (col: string, sort: { col: string; dir: 'asc' | 'desc' }) =>
             sort.col === col ? '#CBD5E1' : '#475569';
-          const toggleB = (col: string) => setBasicSort(prev =>
-            prev.col === col ? { ...prev, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }
-          );
-          const toggleA = (col: string) => setAdvSort(prev =>
-            prev.col === col ? { ...prev, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }
-          );
+          const toggleB = basic.toggleSort;
+          const toggleA = adv.toggleSort;
           const sum = (key: keyof MatchStat) => rows.reduce((acc, m) => acc + (((m[key] as number) || 0)), 0);
           const n = rows.length;
           const avg = (key: keyof MatchStat) => n > 0 ? Math.round(sum(key) / n * 10) / 10 : 0;

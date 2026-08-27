@@ -7,6 +7,7 @@ import { staffApi } from '../api/staff';
 import { profileApi } from '../api/profile';
 import { supabase } from '../api/client';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
+import { useUrlSort } from '../hooks/useUrlState';
 import { usePerformanceData } from '../hooks/usePerformanceData';
 import { detectRiskAlerts, type PlayerCrossData } from '../data/crossAnalysis';
 import { roundedAvg } from '../utils/avg';
@@ -370,7 +371,8 @@ const STATUS_SORT_RANK: Record<Player['status'], number> = {
  * calculés sur la saison entière). Colonne joueur fixe au scroll horizontal, comme les autres
  * tableaux de l'app.
  */
-type OverviewSortKey = 'name' | 'status' | 'risk' | 'rpe' | 'wellness' | 'attention' | 'eval';
+const OVERVIEW_SORT_KEYS = ['name', 'status', 'risk', 'rpe', 'wellness', 'attention', 'eval'] as const;
+type OverviewSortKey = typeof OVERVIEW_SORT_KEYS[number];
 type SortDir = 'asc' | 'desc';
 
 function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, redAlertPlayerIds, onOpenPlayer }: {
@@ -381,13 +383,7 @@ function PlayerOverviewTable({ players, acwrByPlayer, wellnessStatsByPlayer, red
   redAlertPlayerIds: Set<string>;
   onOpenPlayer: (id: string) => void;
 }) {
-  const [sortKey, setSortKey] = useState<OverviewSortKey>('name');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
-
-  const toggleSort = (key: OverviewSortKey) => {
-    if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('asc'); }
-  };
+  const { sortKey, sortDir, toggleSort } = useUrlSort<OverviewSortKey>({ key: 'name', dir: 'asc' }, { allowed: OVERVIEW_SORT_KEYS });
   const arrow = (key: OverviewSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
   const rows = players.map(pd => {

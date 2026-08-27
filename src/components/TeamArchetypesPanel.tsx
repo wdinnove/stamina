@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { Player } from '../data/types';
+import { useUrlSort } from '../hooks/useUrlState';
 import type { PlayerArchetypeReport, ArchetypeSelection } from '../data/archetypes';
 import { confidenceNote } from '../data/archetypes';
 import type { RankingRow } from './PlayerRankingTable';
@@ -9,7 +10,8 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 
-type SortKey = 'name' | 'position' | 'min' | 'eval' | 'score';
+const SORT_KEYS = ['name', 'position', 'min', 'eval', 'score'] as const;
+type SortKey = typeof SORT_KEYS[number];
 type SortDir = 'asc' | 'desc';
 
 interface Row {
@@ -40,8 +42,11 @@ const RANK_WIDTH = 36;
  *  trier. Même structure que PlayerRankingTable (colonnes, tri, styles) pour rester cohérent avec
  *  l'onglet "Classement joueurs" sur la même page. */
 export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, normalized25, onOpenPlayer }: TeamArchetypesPanelProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('score');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const { sortKey, sortDir, toggleSort } = useUrlSort<SortKey>(
+    { key: 'score', dir: 'desc' },
+    // Un nom et un poste se lisent de A à Z ; un chiffre, du plus grand au plus petit.
+    { allowed: SORT_KEYS, dirFor: key => (key === 'name' || key === 'position' ? 'asc' : 'desc') },
+  );
 
   const rows: Row[] = useMemo(() => {
     const playerById = new Map(roster.map(p => [p.id, p]));
@@ -69,10 +74,6 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
 
   const teamAvg = roundedAvg(rows.map(r => r.score));
 
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir(key === 'name' || key === 'position' ? 'asc' : 'desc'); }
-  };
 
   const dir = sortDir === 'asc' ? 1 : -1;
   const sorted = [...rows].sort((a, b) => {

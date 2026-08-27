@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
 import { roundedAvg } from '../utils/avg';
 import type { Player, WellnessEntry } from '../data/types';
 import { WELLNESS_DIMENSIONS, wellnessDimColor, wellnessScoreColor, type WellnessDimension } from '../utils/wellness';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
+import { useUrlSort } from '../hooks/useUrlState';
 
 interface WellnessPlayerRankingTableProps {
   entries: WellnessEntry[];
@@ -12,10 +12,12 @@ interface WellnessPlayerRankingTableProps {
 }
 
 type SortKey = 'name' | 'score' | WellnessDimension['key'];
+/** Clés acceptées dans l'URL : les deux colonnes fixes, plus une par dimension. */
+const SORT_KEYS = [...['name', 'score'], ...WELLNESS_DIMENSIONS.map(d => d.key)] as const;
 
 export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRankingTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('score');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // `ns` : le panneau POMS, sur la même page, porte son propre tableau triable.
+  const { sortKey, sortDir, toggleSort } = useUrlSort<SortKey>({ key: 'score', dir: 'desc' }, { ns: 'classement', allowed: SORT_KEYS });
 
   const rows = roster
     .map(player => {
@@ -39,15 +41,6 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
     if (sortKey === 'name') return playerNameShort(a.player).localeCompare(playerNameShort(b.player)) * dir;
     return (a.avg[sortKey] - b.avg[sortKey]) * dir;
   });
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDir('desc');
-    }
-  }
 
   const sortArrow = (key: SortKey) => sortKey === key
     ? <span style={{ fontSize: '0.6rem', marginLeft: 3 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>
