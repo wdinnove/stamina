@@ -1,4 +1,4 @@
-import { X, Pencil, Check, Bandage, Stethoscope, Pill } from 'lucide-react';
+import { Pencil, Check, RotateCcw, Bandage, Stethoscope, Pill } from 'lucide-react';
 import { Modal } from './Modal';
 import { severityConfig, typeLabels } from './MedicalCard';
 import { daysBetween, isNoStopInjury } from '../utils/medical';
@@ -13,13 +13,17 @@ const typeColors: Record<string, string> = {
 };
 const typeIconComponents = { injury: Bandage, checkup: Stethoscope, treatment: Pill };
 
-export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCloseRecord }: {
+export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCloseRecord, onReopen, canEdit = true }: {
   record: MedicalRecord;
   player?: Player;
   onClose: () => void;
   onEdit: () => void;
-  /** Fourni uniquement pour une entrée active clôturable (blessure/traitement) */
+  /** Fourni pour une entrée active — tous types confondus */
   onCloseRecord?: () => void;
+  /** Fourni pour une entrée clôturée : la déclôture la remet en cours */
+  onReopen?: () => void;
+  /** Faux = consultation seule : seul « Fermer » subsiste */
+  canEdit?: boolean;
 }) {
   const col = typeColors[record.type] ?? '#94A3B8';
   const sev = record.severity ? severityConfig[record.severity] : null;
@@ -43,18 +47,15 @@ export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCl
 
   return (
     <Modal onClose={onClose} maxWidth={500} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: col + '1c', border: `1.5px solid ${col}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <TypeIcon size={19} color={col} />
-          </div>
-          <div>
-            <span style={{ color: col, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{typeLabels[record.type]}</span>
-            <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1.05rem', margin: '3px 0 0', lineHeight: 1.3 }}>{record.description}</p>
-          </div>
+      {/* Header — plus de croix : la fermeture vit dans la barre d'actions, en bas. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: col + '1c', border: `1.5px solid ${col}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <TypeIcon size={19} color={col} />
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4, flexShrink: 0 }}><X size={18} /></button>
+        <div>
+          <span style={{ color: col, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{typeLabels[record.type]}</span>
+          <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '1.05rem', margin: '3px 0 0', lineHeight: 1.3 }}>{record.description}</p>
+        </div>
       </div>
 
       {/* Grille de détails */}
@@ -77,24 +78,41 @@ export function MedicalRecordDetailModal({ record, player, onClose, onEdit, onCl
         </div>
       )}
 
-      {/* Actions */}
+      {/* Actions — « Fermer » referme la modale, « Clôturer »/« Rouvrir » agit sur l'entrée.
+          Les deux mots se ressemblent, d'où la séparation nette : Fermer à gauche, en gris. */}
       <div style={{ display: 'flex', gap: 10 }}>
-        <button
-          onClick={onCloseRecord}
-          disabled={!onCloseRecord}
-          style={{
-            flex: 1, padding: '10px', borderRadius: 6, fontSize: '0.85rem', fontWeight: 700,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            backgroundColor: onCloseRecord ? 'rgba(0,229,160,0.1)' : '#1E2229',
-            border: `1px solid ${onCloseRecord ? 'rgba(0,229,160,0.3)' : '#2A2F3A'}`,
-            color: onCloseRecord ? '#00E5A0' : '#475569',
-            cursor: onCloseRecord ? 'pointer' : 'not-allowed',
-          }}>
-          <Check size={13} /> Clôturer
+        <button onClick={onClose} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+          Fermer
         </button>
-        <button onClick={onEdit} style={{ flex: 1, padding: '10px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>
-          <Pencil size={13} /> Modifier
-        </button>
+        {canEdit && onCloseRecord && (
+          <button
+            onClick={onCloseRecord}
+            style={{
+              flex: 1, padding: '10px', borderRadius: 6, fontSize: '0.85rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              backgroundColor: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.3)',
+              color: '#00E5A0', cursor: 'pointer',
+            }}>
+            <Check size={13} /> Clôturer
+          </button>
+        )}
+        {canEdit && onReopen && (
+          <button
+            onClick={onReopen}
+            style={{
+              flex: 1, padding: '10px', borderRadius: 6, fontSize: '0.85rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+              color: '#F59E0B', cursor: 'pointer',
+            }}>
+            <RotateCcw size={13} /> Rouvrir
+          </button>
+        )}
+        {canEdit && (
+          <button onClick={onEdit} style={{ flex: 1, padding: '10px', backgroundColor: '#00E5A0', border: 'none', borderRadius: 6, color: '#0D0F14', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>
+            <Pencil size={13} /> Modifier
+          </button>
+        )}
       </div>
     </Modal>
   );

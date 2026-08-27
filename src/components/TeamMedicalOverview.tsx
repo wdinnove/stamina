@@ -2,15 +2,14 @@ import { useState, useEffect } from 'react';
 import { X, Search } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { medicalApi } from '../api/medical';
-import { playersApi } from '../api/players';
-import { notify } from '../api/notifications';
-import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { RpeKpiCard } from './RpeKpiCard';
 import { EmptyState } from './EmptyState';
 import { PlayerAvatar } from './PlayerAvatar';
 import { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 import { MedicalRecordFormModal } from './MedicalRecordFormModal';
+import { MedicalRecordStatusModal } from './MedicalRecordStatusModal';
+import type { MedicalStatusAction } from './MedicalRecordStatusModal';
 import { playerStatusColor, playerStatusLabel } from './PlayerHero';
 import { severityConfig, typeLabels } from './MedicalCard';
 import { rtpDaysLeft, injuryDays, sumInjuryDays } from '../utils/medical';
@@ -18,16 +17,12 @@ import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { MedicalRecord, Player } from '../data/types';
-import { LAYER } from '../styles/layers';
 import { AddButton } from './AddButton';
 
 const typeColors: Record<string, string> = {
   injury: '#EF4444', checkup: '#3B82F6', treatment: '#00E5A0',
 };
 
-const TODAY = new Date().toISOString().split('T')[0];
-const labelStyle: React.CSSProperties = { color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 };
-const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' };
 
 interface TeamMedicalOverviewProps {
   /** Effectif de l'équipe/saison courante */
@@ -43,7 +38,7 @@ interface TeamMedicalOverviewProps {
  * page Médicale et l'onglet Médical de Performance collective, pour garantir un rendu identique.
  */
 export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }: TeamMedicalOverviewProps) {
-  const { selected } = useTeamSeason();
+  const { selected, canEditTeamData } = useTeamSeason();
   const teamId = selected?.team.id;
   const navigate = useNavigate();
   const [activeInjuries, setActiveInjuries]     = useState<MedicalRecord[]>([]);
@@ -59,8 +54,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
   const [recapSortDir, setRecapSortDir] = useState<'asc' | 'desc'>('desc');
   const [detailRecord, setDetailRecord] = useState<MedicalRecord | null>(null);
 
-  const [closeModal, setCloseModal] = useState<{ recordId: string; playerId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
-  const [closeSaving, setCloseSaving] = useState(false);
+  const [statusAction, setStatusAction] = useState<{ action: MedicalStatusAction; record: MedicalRecord } | null>(null);
 
   const [showForm, setShowForm]           = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
@@ -106,25 +100,6 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
   const openEdit = (record: MedicalRecord) => {
     setEditingRecord(record);
     setShowForm(true);
-  };
-
-  const confirmClose = async () => {
-    if (!closeModal) return;
-    setCloseSaving(true);
-    try {
-      const { recordId, playerId } = closeModal;
-      await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
-      const player = players.find(p => p.id === playerId);
-      if (player) await playersApi.setStatus(player, closeModal.playerStatus, teamId);
-      const playerName = player ? playerNameShort(player) : undefined;
-      notify(teamId, 'medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, { entityType: 'player', entityId: playerId });
-      setCloseModal(null);
-      refresh();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erreur lors de la clôture');
-    } finally {
-      setCloseSaving(false);
-    }
   };
 
   // ── Récap saison — filtres + tri ──────────────────────────────────────────
@@ -406,7 +381,7 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
                             <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? <><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></> : '—'}</span>
                           </div>
                         </td>
-                        <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', textDecoration: r.status === 'resolved' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {r.description}
                         </td>
                         <td style={{ padding: '8px 8px' }}>
@@ -435,65 +410,26 @@ export function TeamMedicalOverview({ players, onUpdated, showAddButton = true }
           player={players.find(pl => pl.id === detailRecord.playerId)}
           onClose={() => setDetailRecord(null)}
           onEdit={() => { const r = detailRecord; setDetailRecord(null); openEdit(r); }}
-          onCloseRecord={detailRecord.status === 'active' && detailRecord.type !== 'checkup'
-            ? () => { const r = detailRecord; setDetailRecord(null); setCloseModal({ recordId: r.id, playerId: r.playerId, date: TODAY, playerStatus: 'active' }); }
+          canEdit={canEditTeamData}
+          onCloseRecord={detailRecord.status === 'active'
+            ? () => { const r = detailRecord; setDetailRecord(null); setStatusAction({ action: 'close', record: r }); }
+            : undefined}
+          onReopen={detailRecord.status === 'resolved'
+            ? () => { const r = detailRecord; setDetailRecord(null); setStatusAction({ action: 'reopen', record: r }); }
             : undefined}
         />
       )}
 
-      {/* ── CLOSE MODAL ── */}
-      {closeModal && (
-        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Clôturer l'entrée</h2>
-            <button onClick={() => setCloseModal(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>Date de fin</label>
-            <input
-              type="date"
-              value={closeModal.date}
-              onChange={e => setCloseModal({ ...closeModal, date: e.target.value })}
-              style={inputStyle}
-            />
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Statut après retour</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              {([
-                { val: 'active'      as const, label: 'Actif',        color: '#00E5A0' },
-                { val: 'limited'     as const, label: 'Limité',       color: '#F59E0B' },
-                { val: 'injured'     as const, label: 'Blessé',       color: '#EF4444' },
-                { val: 'unavailable' as const, label: 'Indisponible', color: '#6B7280' },
-              ] as const).map(({ val, label, color }) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setCloseModal({ ...closeModal, playerStatus: val })}
-                  style={{
-                    padding: '8px',
-                    borderRadius: 6,
-                    border: `1px solid ${closeModal.playerStatus === val ? color : '#2A2F3A'}`,
-                    backgroundColor: closeModal.playerStatus === val ? color + '18' : 'transparent',
-                    color: closeModal.playerStatus === val ? color : '#94A3B8',
-                    cursor: 'pointer', fontSize: '0.8rem',
-                    fontWeight: closeModal.playerStatus === val ? 700 : 400,
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setCloseModal(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.88rem' }}>
-              Annuler
-            </button>
-            <button onClick={confirmClose} disabled={closeSaving || !closeModal.date} style={{ flex: 2, padding: '10px', borderRadius: 6, border: 'none', backgroundColor: closeSaving || !closeModal.date ? '#1E2229' : '#00E5A0', color: closeSaving || !closeModal.date ? '#475569' : '#0D0F14', cursor: closeSaving || !closeModal.date ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}>
-              {closeSaving ? 'Clôture…' : 'Confirmer'}
-            </button>
-          </div>
-        </Modal>
+      {/* ── CLOSE / REOPEN MODAL ── */}
+      {statusAction && (
+        <MedicalRecordStatusModal
+          action={statusAction.action}
+          record={statusAction.record}
+          player={players.find(pl => pl.id === statusAction.record.playerId)}
+          teamId={teamId}
+          onCancel={() => setStatusAction(null)}
+          onDone={refresh}
+        />
       )}
 
       {/* ── FORM MODAL ── */}

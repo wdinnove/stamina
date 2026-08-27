@@ -45,9 +45,13 @@ export interface MedicalRecordFormModalProps {
  * page Médicale, la vue équipe et l'historique joueur, qui en portaient trois copies divergentes.
  *
  * Cas « sans arrêt » : une blessure sans indisponibilité (0 jour). Elle est enregistrée avec
- * `daysAbsent = 0` et `rtpDate = date` — les agrégations de jours passent toutes par `rtpDate`, pas
- * par `daysAbsent` — et clôturée immédiatement pour ne pas rester à traiter dans les blessures en
- * cours, tout en comptant dans le nombre de blessures de la saison.
+ * `daysAbsent = 0` et `rtpDate = date` — les deux marqueurs que lit `isNoStopInjury` — et le joueur
+ * passe LIMITÉ, pas actif : il joue, mais quelque chose le gêne et doit rester sous les yeux du
+ * staff. L'entrée reste EN COURS jusqu'à une clôture manuelle : « sans arrêt » décrit l'absence
+ * d'indisponibilité, pas un dossier réglé. C'est la clôture qui remet le joueur actif.
+ *
+ * Cas « bilan de santé » : un constat daté, pas un dossier à suivre — il naît donc clôturé,
+ * quitte à être rouvert ensuite depuis la fiche détail.
  */
 export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerId, record, onClose, onSaved }: MedicalRecordFormModalProps) {
   const { selected } = useTeamSeason();
@@ -66,9 +70,9 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
   const [fRtpDate, setFRtpDate]   = useState(editing?.rtpDate ?? '');
   const [fNoStop, setFNoStop]     = useState(wasNoStop);
   const [fPlayerStatus, setFPlayerStatus] = useState<PlayerStatus>(() => {
-    if (wasNoStop) return 'active';
     const current = players.find(p => p.id === (lockedPlayerId ?? editing?.playerId));
     if (editing) return current?.status ?? (editing.type === 'injury' ? 'injured' : 'active');
+    // Création : blessé par défaut. Cocher « sans arrêt » bascule sur limité (cf. toggleNoStop).
     return 'injured';
   });
   const [saving, setSaving]       = useState(false);
@@ -81,7 +85,7 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
     if (on) {
       setFDays('0');
       setFRtpDate(fDate);
-      setFPlayerStatus('active');
+      setFPlayerStatus('limited');
     } else {
       setFDays('');
       setFRtpDate('');
@@ -125,19 +129,14 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
       const typeLabel = typeLabels[formType] ?? formType;
 
       if (editing) {
-        // Cocher « sans arrêt » clôture l'entrée le jour même ; la décocher la rouvre.
-        const statusPatch =
-          noStop && editing.status === 'active'
-            ? { status: 'resolved' as const, resolvedDate: fDate }
-            : (!noStop && wasNoStop && editing.status === 'resolved')
-              ? { status: 'active' as const, resolvedDate: null }
-              : {};
-        await medicalApi.update(editing.id, { ...payload, ...statusPatch });
+        // Le statut de l'entrée ne se pilote QUE depuis la clôture/déclôture : cocher ou décocher
+        // « sans arrêt » décrit la blessure, ça ne referme ni ne rouvre le dossier.
+        await medicalApi.update(editing.id, payload);
         notify(teamId, 'medical_updated', `${typeLabel} modifié${playerName ? ` — ${playerName}` : ''}`, { entityType: 'player', entityId: fPlayerId });
       } else {
         await medicalApi.create({
           ...payload,
-          ...(noStop
+          ...(formType === 'checkup'
             ? { status: 'resolved' as const, resolvedDate: fDate }
             : { status: 'active' as const }),
         });
@@ -282,7 +281,7 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
                   Sans arrêt
                 </span>
                 <span style={{ display: 'block', color: '#64748B', fontSize: '0.74rem', marginTop: 2 }}>
-                  0 jour d'arrêt — le joueur reste disponible et l'entrée est clôturée le jour même
+                  0 jour d'arrêt — le joueur reste disponible, l'entrée reste en cours jusqu'à sa clôture
                 </span>
               </span>
             </label>
@@ -333,9 +332,9 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
         {/* Statut du joueur — blessure et traitement */}
         {(formType === 'injury' || formType === 'treatment') && (
           <div>
-            <label style={{ ...labelStyle, ...(noStop ? { opacity: 0.5 } : null) }}>
+            <label style={labelStyle}>
               Statut du joueur
-              {noStop && <span style={{ color: '#475569', fontWeight: 400 }}> — actif, la blessure n'entraîne pas d'arrêt</span>}
+              {noStop && <span style={{ color: '#475569', fontWeight: 400 }}> — limité par défaut, la blessure n'entraîne pas d'arrêt</span>}
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {([
@@ -347,7 +346,6 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
                 <button
                   key={val}
                   type="button"
-                  disabled={noStop}
                   onClick={() => setFPlayerStatus(val)}
                   style={{
                     padding: '8px 0',
@@ -357,7 +355,7 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
                     color: fPlayerStatus === val ? color : '#94A3B8',
                     fontSize: '0.78rem',
                     fontWeight: fPlayerStatus === val ? 700 : 400,
-                    ...(noStop ? offStyle : { cursor: 'pointer' }),
+                    cursor: 'pointer',
                   }}
                 >
                   {label}
@@ -403,7 +401,7 @@ export function MedicalRecordFormModal({ players, lockedPlayerId, defaultPlayerI
             cursor: saving || !fDesc ? 'not-allowed' : 'pointer',
             fontWeight: 700, fontSize: '0.88rem',
           }}>
-            {saving ? 'Enregistrement…' : editing ? 'Mettre à jour' : 'Enregistrer'}
+            {saving ? 'Enregistrement…' : editing ? 'Modifier' : 'Enregistrer'}
           </button>
         </div>
       </form>

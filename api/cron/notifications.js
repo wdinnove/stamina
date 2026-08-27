@@ -56,6 +56,15 @@ export function taskReminderReason(dueDate, today, { notifyJ1 = true, notifyJJ =
 }
 
 /**
+ * Blessure « sans arrêt » : elle porte une date de reprise égale à sa date de survenue, pour dire
+ * une indisponibilité nulle, et reste ouverte jusqu'à sa clôture manuelle. Miroir serveur de
+ * `isNoStopInjury` (src/utils/medical.ts), qui accepte en plus `days_absent = 0`.
+ */
+export function isNoStopRecord(record) {
+  return !!record.rtp_date && record.rtp_date === record.date
+}
+
+/**
  * GET /api/cron/notifications — déclenché quotidiennement par Vercel Cron.
  * Traite les rappels calculés (qui dépendent d'une date, pas d'une action utilisateur),
  * et y ajoute le bilan hebdomadaire le vendredi.
@@ -129,7 +138,7 @@ async function runForTeam(admin, team, today, isFriday) {
 async function notifyRtpUpcoming(admin, team, rosterIds, roster, today) {
   const { data: records } = await admin
     .from('medical_records')
-    .select('id, player_id, rtp_date')
+    .select('id, player_id, date, rtp_date')
     .in('player_id', rosterIds)
     .neq('status', 'resolved')
     .gte('rtp_date', isoDate(today))
@@ -137,6 +146,9 @@ async function notifyRtpUpcoming(admin, team, rosterIds, roster, today) {
 
   let sent = 0
   for (const record of records ?? []) {
+    // Annoncer un « retour au jeu prévu » pour un joueur qui n'a jamais quitté le terrain
+    // n'apprendrait rien à personne.
+    if (isNoStopRecord(record)) continue
     if (!await claimDispatch(admin, `rtp_upcoming:${record.id}`, isoDate(today))) continue
     const player = roster.find(p => p.id === record.player_id)
     sent += 1

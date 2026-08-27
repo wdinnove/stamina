@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { NOTIFICATION_TYPES } from '../../shared/notifications.js'
-import { taskReminderReason } from './notifications.js'
+import { taskReminderReason, isNoStopRecord } from './notifications.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -150,5 +150,24 @@ describe('cadence de relance des tâches', () => {
 
   it('la relance hebdomadaire ignore les cases J-1/J-J', () => {
     expect(taskReminderReason('2026-07-16', lundi, { notifyJ1: false, notifyJJ: false })).toBe('relance hebdomadaire')
+  })
+})
+
+/**
+ * Une blessure sans arrêt reste OUVERTE jusqu'à sa clôture manuelle (cf. MedicalRecordFormModal) :
+ * sans cette garde, chacune déclencherait un « Retour au jeu prévu » le jour de sa saisie, pour un
+ * joueur qui n'a jamais quitté le terrain.
+ */
+describe('relance du retour au jeu', () => {
+  it('ignore une blessure sans arrêt (reprise le jour même)', () => {
+    expect(isNoStopRecord({ date: '2026-08-24', rtp_date: '2026-08-24' })).toBe(true)
+  })
+
+  it('relance une blessure dont la reprise est postérieure', () => {
+    expect(isNoStopRecord({ date: '2026-08-24', rtp_date: '2026-08-27' })).toBe(false)
+  })
+
+  it('relance une blessure sans date de reprise connue', () => {
+    expect(isNoStopRecord({ date: '2026-08-24', rtp_date: null })).toBe(false)
   })
 })

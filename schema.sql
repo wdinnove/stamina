@@ -574,6 +574,11 @@ CREATE TABLE medical_records (
   status        medical_status   NOT NULL DEFAULT 'active',
   rtp_date      DATE,
   resolved_date DATE,
+  -- Jours d'arrêt SAISIS dans le formulaire, à ne pas confondre avec le calcul de la vue
+  -- `medical_records_full` ci-dessous. Le front écrit et lit cette colonne (src/api/medical.ts) ;
+  -- elle sert notamment de marqueur « sans arrêt » à 0. Elle manquait à ce script alors qu'elle
+  -- existe en base : le rejouer tel quel produisait une app cassée sur toute blessure chiffrée.
+  days_absent   SMALLINT,
   rtp_step      SMALLINT DEFAULT 0 CHECK (rtp_step  >= 0),
   rtp_total     SMALLINT DEFAULT 6 CHECK (rtp_total  > 0),
   treatment     TEXT,
@@ -593,10 +598,15 @@ CREATE TRIGGER trg_medical_records_updated_at
   BEFORE UPDATE ON medical_records
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Vue utilitaire : jours d'absence calculés depuis les dates
+-- Vue utilitaire : jours d'absence calculés depuis les dates.
+-- Colonnes listées une à une, et non `SELECT *` : la table porte déjà un `days_absent` saisi, et
+-- l'étoile ferait doublon de nom. Cette vue n'est lue par aucun code applicatif — le front tape
+-- la table directement — elle reste pour les requêtes d'analyse à la main.
 CREATE VIEW medical_records_full AS
 SELECT
-  *,
+  id, player_id, date, type, description, location, severity, status,
+  rtp_date, resolved_date, rtp_step, rtp_total, treatment,
+  created_by, updated_by, created_at, updated_at,
   CASE
     WHEN type = 'injury' AND resolved_date IS NOT NULL THEN resolved_date - date
     WHEN type = 'injury' AND rtp_date      IS NOT NULL THEN rtp_date      - date
@@ -4723,3 +4733,29 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --   SELECT kind, COUNT(*) FROM matches GROUP BY kind;        -- que des 'official' juste après
 --   SELECT COUNT(*) FROM match_stats ms JOIN matches m ON m.id = ms.match_id
 --     WHERE ms.kind IS DISTINCT FROM m.kind;                 -- 0 : dénormalisation cohérente
+
+
+-- Bilans de santé : clôturés par défaut
+--
+-- Un bilan (`type = 'checkup'`) est un CONSTAT daté, pas un dossier à suivre : il n'a ni date de
+-- reprise, ni durée, rien à surveiller une fois saisi. Il naissait pourtant `active`, alors que
+-- les trois écrans médicaux interdisaient explicitement de clôturer un bilan — l'existant était
+-- donc bloqué en « En cours », sans aucun geste possible pour le refermer.
+--
+-- Depuis, le formulaire crée les bilans directement clôturés, et la clôture comme la déclôture
+-- sont ouvertes aux trois types : plus rien ne peut rester coincé dans un état sans issue.
+-- Cette migration aligne l'existant. `resolved_date` est obligatoire dès que le statut passe à
+-- `resolved` (contrainte `resolved_needs_date`) : à défaut de mieux, la date du bilan lui-même
+-- fait foi — c'est le jour où le constat a été posé.
+--
+-- UPDATE medical_records
+-- SET    status = 'resolved',
+--        resolved_date = COALESCE(resolved_date, date)
+-- WHERE  type = 'checkup' AND status = 'active';
+--
+-- Vérification — plus aucun bilan en cours, et la contrainte tient :
+--   SELECT status, COUNT(*) FROM medical_records WHERE type = 'checkup' GROUP BY status;
+--   SELECT COUNT(*) FROM medical_records WHERE status = 'resolved' AND resolved_date IS NULL;  -- 0
+--
+-- Les blessures et traitements ne sont PAS touchés : une blessure « sans arrêt » reste désormais
+-- ouverte jusqu'à sa clôture manuelle, et c'est précisément le comportement recherché.

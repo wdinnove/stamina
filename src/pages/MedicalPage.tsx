@@ -2,16 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Search, Pill, Ambulance, Users } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
-import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useNavigate, useParams } from 'react-router';
-import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalOverview, InjuryRecordCard, MedicalRecordDetailModal, MedicalRecordFormModal, RpeKpiCard, Card, CardTitle, Modal, Badge, playerStatusColor, playerStatusLabel, AddButton } from '../components';
-import type { PlayerMedicalViewHandle } from '../components';
+import { PlayerAvatar, PlayerSelect, EmptyState, PlayerMedicalOverview, InjuryRecordCard, MedicalRecordDetailModal, MedicalRecordFormModal, MedicalRecordStatusModal, RpeKpiCard, Card, CardTitle, Badge, playerStatusColor, playerStatusLabel, AddButton } from '../components';
+import type { PlayerMedicalViewHandle, MedicalStatusAction } from '../components';
 import { rtpDaysLeft, sumInjuryDays } from '../utils/medical';
 import { fmtDate } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { MedicalRecord, Player } from '../data/types';
-import { LAYER } from '../styles/layers';
 
 const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
@@ -35,7 +33,6 @@ const TAB_SLUGS: Record<string, Tab> = {
   equipe:     'team',
 };
 
-const TODAY = new Date().toISOString().split('T')[0];
 
 export default function MedicalPage() {
   const { selected, canEditTeamData } = useTeamSeason();
@@ -74,9 +71,8 @@ export default function MedicalPage() {
   const [recordView, setRecordView]           = useState<'section' | 'date'>('date');
   const playerMedicalViewRef = useRef<PlayerMedicalViewHandle>(null);
 
-  // clôture modal
-  const [closeModal, setCloseModal] = useState<{ recordId: string; playerId: string; date: string; playerStatus: 'active' | 'limited' | 'injured' | 'unavailable' } | null>(null);
-  const [closeSaving, setCloseSaving] = useState(false);
+  // Clôture / déclôture d'une entrée — la modale porte l'écriture (cf. MedicalRecordStatusModal).
+  const [statusAction, setStatusAction] = useState<{ action: MedicalStatusAction; record: MedicalRecord } | null>(null);
 
   // form
   const [showForm, setShowForm]       = useState(false);
@@ -173,25 +169,6 @@ export default function MedicalPage() {
     setShowForm(true);
   };
 
-  const confirmClose = async () => {
-    if (!closeModal) return;
-    setCloseSaving(true);
-    try {
-      const { recordId, playerId } = closeModal;
-      await medicalApi.update(recordId, { status: 'resolved', resolvedDate: closeModal.date });
-      const player = teamPlayers.find(p => p.id === playerId);
-      if (player) await playersApi.setStatus(player, closeModal.playerStatus, selected?.team.id);
-      const playerName = player ? playerNameFull(player) : undefined;
-      notify(selected?.team.id, 'medical_resolved', `Blessure clôturée${playerName ? ` — ${playerName}` : ''}`, { entityType: 'player', entityId: playerId });
-      setCloseModal(null);
-      setVersion(v => v + 1);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erreur lors de la clôture');
-    } finally {
-      setCloseSaving(false);
-    }
-  };
-
   if (!selected) {
     return (
       <div className="p-4 md:p-6">
@@ -273,7 +250,7 @@ export default function MedicalPage() {
               record={record}
               player={player}
               onEdit={() => { if (canEditTeamData) openEdit(record); }}
-              onClose={canEditTeamData ? () => setCloseModal({ recordId: record.id, playerId: record.playerId, date: TODAY, playerStatus: 'active' }) : undefined}
+              onClose={canEditTeamData ? () => setStatusAction({ action: 'close', record }) : undefined}
               onClick={() => setDetailRecord(record)}
               navigate={navigate}
             />
@@ -612,7 +589,7 @@ export default function MedicalPage() {
                                         <span style={{ color: '#94A3B8', fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? <><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></> : '—'}</span>
                                       </div>
                                     </td>
-                                    <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', textDecoration: r.status === 'resolved' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <td style={{ padding: '8px 8px', color: r.status === 'resolved' ? '#475569' : '#F1F5F9', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {r.description}
                                     </td>
                                     <td style={{ padding: '8px 8px' }}>
@@ -666,65 +643,26 @@ export default function MedicalPage() {
           player={teamPlayers.find(pl => pl.id === detailRecord.playerId)}
           onClose={() => setDetailRecord(null)}
           onEdit={() => { if (!canEditTeamData) return; const r = detailRecord; setDetailRecord(null); openEdit(r); }}
-          onCloseRecord={canEditTeamData && detailRecord.status === 'active' && detailRecord.type !== 'checkup'
-            ? () => { const r = detailRecord; setDetailRecord(null); setCloseModal({ recordId: r.id, playerId: r.playerId, date: TODAY, playerStatus: 'active' }); }
+          canEdit={canEditTeamData}
+          onCloseRecord={detailRecord.status === 'active'
+            ? () => { const r = detailRecord; setDetailRecord(null); setStatusAction({ action: 'close', record: r }); }
+            : undefined}
+          onReopen={detailRecord.status === 'resolved'
+            ? () => { const r = detailRecord; setDetailRecord(null); setStatusAction({ action: 'reopen', record: r }); }
             : undefined}
         />
       )}
 
-      {/* ── CLOSE MODAL ── */}
-      {closeModal && (
-        <Modal onClose={() => setCloseModal(null)} maxWidth={360} zIndex={LAYER.modalOverModal} scrollOverlay={false} style={{ padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Clôturer l'entrée</h2>
-              <button onClick={() => setCloseModal(null)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Date de fin</label>
-              <input
-                type="date"
-                value={closeModal.date}
-                onChange={e => setCloseModal({ ...closeModal, date: e.target.value })}
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Statut après retour</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {([
-                  { val: 'active'      as const, label: 'Actif',        color: '#00E5A0' },
-                  { val: 'limited'     as const, label: 'Limité',       color: '#F59E0B' },
-                  { val: 'injured'     as const, label: 'Blessé',       color: '#EF4444' },
-                  { val: 'unavailable' as const, label: 'Indisponible', color: '#6B7280' },
-                ] as const).map(({ val, label, color }) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => setCloseModal({ ...closeModal, playerStatus: val })}
-                    style={{
-                      padding: '8px',
-                      borderRadius: 6,
-                      border: `1px solid ${closeModal.playerStatus === val ? color : '#2A2F3A'}`,
-                      backgroundColor: closeModal.playerStatus === val ? color + '18' : 'transparent',
-                      color: closeModal.playerStatus === val ? color : '#94A3B8',
-                      cursor: 'pointer', fontSize: '0.8rem',
-                      fontWeight: closeModal.playerStatus === val ? 700 : 400,
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setCloseModal(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#94A3B8', cursor: 'pointer', fontSize: '0.88rem' }}>
-                Annuler
-              </button>
-              <button onClick={confirmClose} disabled={closeSaving || !closeModal.date} style={{ flex: 2, padding: '10px', borderRadius: 6, border: 'none', backgroundColor: closeSaving || !closeModal.date ? '#1E2229' : '#00E5A0', color: closeSaving || !closeModal.date ? '#475569' : '#0D0F14', cursor: closeSaving || !closeModal.date ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}>
-                {closeSaving ? 'Clôture…' : 'Confirmer'}
-              </button>
-            </div>
-        </Modal>
+      {/* ── CLOSE / REOPEN MODAL ── */}
+      {statusAction && (
+        <MedicalRecordStatusModal
+          action={statusAction.action}
+          record={statusAction.record}
+          player={teamPlayers.find(pl => pl.id === statusAction.record.playerId)}
+          teamId={selected?.team.id}
+          onCancel={() => setStatusAction(null)}
+          onDone={() => setVersion(v => v + 1)}
+        />
       )}
 
       {/* ── FORM MODAL ── */}
@@ -741,5 +679,3 @@ export default function MedicalPage() {
   );
 }
 
-const labelStyle: React.CSSProperties = { color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 4 };
-const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' };

@@ -39,6 +39,8 @@ export { PlayerMedicalOverview } from './PlayerMedicalOverview';
 export { InjuryRecordCard }    from './InjuryRecordCard';
 export { MedicalRecordDetailModal } from './MedicalRecordDetailModal';
 export { MedicalRecordFormModal } from './MedicalRecordFormModal';
+export { MedicalRecordStatusModal } from './MedicalRecordStatusModal';
+export type { MedicalStatusAction } from './MedicalRecordStatusModal';
 export { PlayerDynStatTab }    from './PlayerDynStatTab';
 export { PlayerTrendHero, TeamTrendHero } from './TrendHero';
 export { ResponsiveTabNav }    from './ResponsiveTabNav';
