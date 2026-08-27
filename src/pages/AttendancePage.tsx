@@ -1,11 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { X, Check, Clock, Minus, AlertCircle } from 'lucide-react';
+import { X, Check, Clock, Minus, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { EmptyState, Modal, DropzoneEmptyState, AddButton } from '../components';
-import { attendanceApi, playersApi, rpeApi, teamCategoriesApi } from '../api';
+import { attendanceApi, playersApi, teamCategoriesApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_ABBR3, DAYS_ABBR3, DAYS_FULL, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
+import {
+  initialSessionWindow, expandSessionWindow, windowAround, pivotSessionIndex, WINDOW_SIZE,
+  type SessionWindow,
+} from '../utils/sessionWindow';
 import type { Player, TrainingSession, TrainingAttendance, TeamCategory } from '../data/types';
 import { LAYER } from '../styles/layers';
 
@@ -38,22 +42,26 @@ function fmtDate(dateStr: string) {
   return { dow: DAYS_ABBR3[d.getDay()], day: d.getDate(), month: MONTHS_ABBR3[d.getMonth()] };
 }
 
+/** « 12 sept » — pour annoncer les bornes de la fenêtre affichée. */
+function fmtDayMonth(dateStr: string) {
+  const fd = fmtDate(dateStr);
+  return `${fd.day} ${fd.month}`;
+}
+
+const windowBtnStyle = (enabled: boolean): React.CSSProperties => ({
+  display: 'flex', alignItems: 'center', gap: 5,
+  padding: '6px 10px', borderRadius: 6,
+  backgroundColor: '#1E2229', border: '1px solid #2A2F3A',
+  color: enabled ? '#94A3B8' : '#3A4150',
+  cursor: enabled ? 'pointer' : 'not-allowed',
+  fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+});
+
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', backgroundColor: '#1E2229',
   border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9',
   fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box',
 };
-
-/** Séance sur laquelle ouvrir la grille : celle du jour, sinon la dernière passée — c'est
- *  celle qu'on vient de vivre et qu'il reste à pointer —, sinon la première à venir.
- *  `sessions` arrive trié par date croissante. */
-function focusSessionIndex(list: { date: string }[]) {
-  const exact = list.findIndex(s => s.date === TODAY);
-  if (exact !== -1) return exact;
-  let lastPast = -1;
-  for (let i = 0; i < list.length && list[i].date < TODAY; i++) lastPast = i;
-  return lastPast !== -1 ? lastPast : 0;
-}
 
 const NAME_W = 200;
 const CELL_W = 44;
@@ -67,10 +75,19 @@ export default function AttendancePage() {
   const [players,       setPlayers]       = useState<Player[]>([]);
   const [sessions,      setSessions]      = useState<TrainingSession[]>([]);
   const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceStatus>>({});
-  const [rpeMap,        setRpeMap]        = useState<Record<string, number>>({});
   const [categories,    setCategories]    = useState<TeamCategory[]>([]);
   const [loading,       setLoading]       = useState(false);
+  const [loadingMore,   setLoadingMore]   = useState(false);
   const [error,         setError]         = useState('');
+
+  /** Séances effectivement affichées, en index dans `sessions` (bornes d'un `slice`). */
+  const [range, setRange] = useState<SessionWindow>({ start: 0, end: 0 });
+  /** Séances dont les présences sont déjà en mémoire — on ne les redemande jamais. */
+  const loadedRef       = useRef<Set<string>>(new Set());
+  /** Largeur de la grille avant l'ajout de colonnes à GAUCHE, pour compenser le décalage. */
+  const pendingScrollRef = useRef<number | null>(null);
+  /** Partenaires ajoutés à l'instant, pas encore pointés : leur retrait ne demande rien. */
+  const freshGuestsRef  = useRef<Set<string>>(new Set());
 
   const [activeCell,          setActiveCell]          = useState<{ sessionId: string; playerId: string; x: number; y: number } | null>(null);
   /** Joueurs de l'organisation hors effectif, candidats à une invitation. */
@@ -97,15 +114,39 @@ export default function AttendancePage() {
   const [recSaving,  setRecSaving]  = useState(false);
   const [recError,   setRecError]   = useState('');
 
+  /** Séances affichées — la grille ne rend jamais toute la saison, cf. utils/sessionWindow. */
+  const visibleSessions = sessions.slice(range.start, range.end);
+
   function openAddForm() {
     setAddDefaultStatus('present');
     setShowAddForm(true);
   }
 
+  /**
+   * Charge les présences des séances données, en sautant celles déjà en mémoire. Volontairement
+   * additif : la carte accumule les fenêtres consultées, on ne recharge jamais deux fois la même
+   * séance et le retour en arrière est instantané.
+   */
+  const loadAttendanceFor = useCallback(async (list: TrainingSession[]) => {
+    const missing = list.filter(s => !loadedRef.current.has(s.id));
+    if (!missing.length) return;
+    const rows = await attendanceApi.listAttendance(missing.map(s => s.id));
+    missing.forEach(s => loadedRef.current.add(s.id));
+    setAttendanceMap(prev => {
+      const next = { ...prev };
+      rows.forEach(r => { next[`${r.sessionId}:${r.playerId}`] = r.status; });
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!selected) return;
     setLoading(true);
     setError('');
+    loadedRef.current = new Set();
+    freshGuestsRef.current = new Set();
+    setAttendanceMap({});
+    setRange({ start: 0, end: 0 });
 
     const { team, season } = selected;
 
@@ -118,33 +159,24 @@ export default function AttendancePage() {
     const orgPromise = playersApi.list({ includeLeft: true });
 
     Promise.all([playersPromise, sessionsPromise, orgPromise])
-      .then(([pl, ss, org]) => {
+      .then(async ([pl, ss, org]) => {
         setPlayers(pl);
         setSessions(ss);
         setOrgPlayers(org);
         const ids = ss.map(s => s.id);
-        return Promise.all([
-          attendanceApi.listAttendance(ids),
-          rpeApi.listRpeBySessionIds(ids),
+        // Les partenaires se lisent sur TOUTE la saison : la grille n'affiche qu'une fenêtre,
+        // et une invitée venue une seule fois hors fenêtre doit garder sa ligne.
+        const win = initialSessionWindow(ss, TODAY);
+        const [guestList] = await Promise.all([
+          attendanceApi.listGuestPlayerIds(ids),
+          loadAttendanceFor(ss.slice(win.start, win.end)),
         ]);
-      })
-      .then(([att, rpeRows]) => {
-        const map: Record<string, AttendanceStatus> = {};
-        att.forEach(r => { map[`${r.sessionId}:${r.playerId}`] = r.status; });
-        setAttendanceMap(map);
-        setGuestIds([...new Set(att.filter(r => r.sparring).map(r => r.playerId))]);
-
-        const groups: Record<string, number[]> = {};
-        rpeRows.forEach(r => { (groups[r.sessionId] ??= []).push(r.rpe); });
-        const avgs: Record<string, number> = {};
-        Object.entries(groups).forEach(([sid, rpes]) => {
-          avgs[sid] = Math.round(rpes.reduce((a, b) => a + b, 0) / rpes.length * 10) / 10;
-        });
-        setRpeMap(avgs);
+        setGuestIds(guestList);
+        setRange(win);
       })
       .catch(err => setError(err?.message ?? String(err)))
       .finally(() => setLoading(false));
-  }, [selected?.team.id, selected?.season.id]);
+  }, [selected?.team.id, selected?.season.id, loadAttendanceFor]);
 
   // Catégories de séance de l'équipe — mêmes source et défaut que TrainingSessionsPage.
   useEffect(() => {
@@ -168,22 +200,66 @@ export default function AttendancePage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [activeCell]);
 
-  // Cadrage initial : on arrive sur la séance du jour, pas sur le début de saison. Une seule
-  // fois par équipe/saison — passé ce premier rendu, la position de scroll appartient à
-  // l'utilisateur et on ne la lui reprend plus.
-  const scrolledForRef = useRef('');
+  // Cadrage : on arrive sur la séance du jour, pas sur le bord de la fenêtre. Rejoué à chaque
+  // recentrage explicite (bouton « Aujourd'hui », séance créée), jamais après un simple clic sur
+  // « précédentes »/« suivantes » — là, la position de scroll appartient à l'utilisateur.
+  const [centerOn, setCenterOn] = useState<{ sessionId: string | null; tick: number }>({ sessionId: null, tick: 0 });
   useEffect(() => {
     const el = gridRef.current;
-    if (!el || loading || !sessions.length) return;
-    const key = `${selected?.team.id}:${selected?.season.id}`;
-    if (scrolledForRef.current === key) return;
-    scrolledForRef.current = key;
+    if (!el || loading || !visibleSessions.length) return;
     // Largeur réelle de la colonne des noms (elle rétrécit en mobile) : collée à gauche, elle
     // ampute d'autant la zone où la séance visée doit apparaître.
     const nameW = el.querySelector('thead th')?.getBoundingClientRect().width ?? NAME_W;
-    const centered = focusSessionIndex(sessions) * CELL_W - Math.max(0, (el.clientWidth - nameW - CELL_W) / 2);
+    // Sans séance visée, on vise celle du jour — c'est le cas au chargement.
+    const index = centerOn.sessionId
+      ? sessions.findIndex(s => s.id === centerOn.sessionId)
+      : pivotSessionIndex(sessions, TODAY);
+    const target = Math.max(0, index - range.start);
+    const centered = target * CELL_W - Math.max(0, (el.clientWidth - nameW - CELL_W) / 2);
     el.scrollLeft = Math.max(0, Math.min(centered, el.scrollWidth - el.clientWidth));
-  }, [loading, sessions, selected?.team.id, selected?.season.id]);
+    // `range` volontairement absent des dépendances : étendre la fenêtre ne doit rien recadrer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, centerOn, sessions]);
+
+  // Charger des séances à GAUCHE pousse tout le contenu vers la droite : sans compensation, la
+  // grille sauterait d'une dizaine de colonnes à chaque clic. On rend la largeur ajoutée au
+  // scroll, pour que ce qui était sous les yeux y reste.
+  useLayoutEffect(() => {
+    const el = gridRef.current;
+    if (!el || pendingScrollRef.current === null) return;
+    const delta = el.scrollWidth - pendingScrollRef.current;
+    pendingScrollRef.current = null;
+    if (delta > 0) el.scrollLeft += delta;
+  }, [range]);
+
+  /** Étend la fenêtre d'un lot, après avoir chargé les présences des séances qui s'y ajoutent. */
+  async function extendWindow(direction: 'before' | 'after') {
+    if (loadingMore) return;
+    const next = expandSessionWindow(range, sessions.length, direction);
+    if (next.start === range.start && next.end === range.end) return;
+    setLoadingMore(true);
+    setError('');
+    try {
+      await loadAttendanceFor(sessions.slice(next.start, next.end));
+      if (direction === 'before') pendingScrollRef.current = gridRef.current?.scrollWidth ?? null;
+      setRange(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  /**
+   * Recadre la grille sur une séance précise, ou sur la fenêtre du jour si `index` est négatif.
+   * `list` permet de viser une séance qui vient d'être créée, avant que l'état ne soit à jour.
+   */
+  async function focusWindowOn(index: number, list: TrainingSession[] = sessions) {
+    const next = index < 0 ? initialSessionWindow(list, TODAY) : windowAround(index, list.length);
+    await loadAttendanceFor(list.slice(next.start, next.end));
+    setRange(next);
+    setCenterOn(prev => ({ sessionId: index < 0 ? null : (list[index]?.id ?? null), tick: prev.tick + 1 }));
+  }
 
   // Molette : une souris n'a pas d'axe horizontal, et quand l'effectif tient dans la hauteur,
   // le geste vertical ne sert à rien — on le bascule alors en défilement des séances. Listener
@@ -201,7 +277,7 @@ export default function AttendancePage() {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [loading, sessions.length]);
+  }, [loading, visibleSessions.length]);
 
   function handleCellClick(e: React.MouseEvent, sessionId: string, playerId: string) {
     e.stopPropagation();
@@ -264,8 +340,13 @@ export default function AttendancePage() {
           return next;
         });
       }
-      setSessions(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)));
+      // La séance créée porte déjà ses pointages par défaut : inutile de les relire.
+      loadedRef.current.add(created.id);
+      const nextSessions = [...sessions, created].sort((a, b) => a.date.localeCompare(b.date));
+      setSessions(nextSessions);
       closeAddForm();
+      // Sans recadrage, une séance créée hors de la fenêtre affichée n'apparaîtrait nulle part.
+      await focusWindowOn(nextSessions.findIndex(s => s.id === created.id), nextSessions);
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Erreur.');
     } finally {
@@ -278,30 +359,31 @@ export default function AttendancePage() {
   const invitable = orgPlayers.filter(p => !players.some(r => r.id === p.id) && !guestIds.includes(p.id) && !p.leftDate);
 
   /**
-   * Retire un invité de la grille. Ses pointages sur les séances affichées partent avec
-   * elle : sans ça, elle reviendrait au rechargement, puisque c'est justement l'existence
-   * d'un pointage `sparring` qui la fait apparaître. Ses RPE, eux, restent — la séance a bien
-   * eu lieu pour elle, et sa charge n'appartient pas à cette équipe.
+   * Retire un invité de la grille. Ses pointages partent avec elle sur TOUTE la saison, pas
+   * seulement sur la fenêtre affichée : sans ça, elle reviendrait au rechargement, puisque c'est
+   * justement l'existence d'un pointage `sparring` qui la fait apparaître. Ses RPE, eux, restent
+   * — la séance a bien eu lieu pour elle, et sa charge n'appartient pas à cette équipe.
    */
   async function removeGuest(playerId: string) {
-    const marked = sessions.filter(s => attendanceMap[`${s.id}:${playerId}`]);
     setGuestIds(prev => prev.filter(id => id !== playerId));
+    freshGuestsRef.current.delete(playerId);
     setAttendanceMap(m => {
       const n = { ...m };
-      marked.forEach(s => delete n[`${s.id}:${playerId}`]);
+      for (const key of Object.keys(n)) if (key.endsWith(`:${playerId}`)) delete n[key];
       return n;
     });
     setConfirmGuest(null);
-    for (const s of marked) {
-      await attendanceApi.deleteAttendance(s.id, playerId).catch(() => {});
-    }
+    await attendanceApi.deletePlayerAttendance(playerId, sessions.map(s => s.id)).catch(() => {});
   }
 
-  /** Confirmation seulement s'il y a quelque chose à perdre. */
+  /** Confirmation seulement s'il y a quelque chose à perdre : une invitée ajoutée à l'instant et
+   *  pas encore pointée s'enlève sans question. Au-delà, la fenêtre affichée ne dit rien de ce
+   *  qui existe ailleurs dans la saison — dans le doute, on demande. */
   function askRemoveGuest(player: Player) {
-    const marked = sessions.some(s => attendanceMap[`${s.id}:${player.id}`]);
-    if (marked) setConfirmGuest(player);
-    else removeGuest(player.id);
+    const untouched = freshGuestsRef.current.has(player.id)
+      && !visibleSessions.some(s => attendanceMap[`${s.id}:${player.id}`]);
+    if (untouched) removeGuest(player.id);
+    else setConfirmGuest(player);
   }
 
   function isPresent(sessionId: string, playerId: string): boolean {
@@ -371,8 +453,12 @@ export default function AttendancePage() {
           return next;
         });
       }
-      setSessions(prev => [...prev, ...created].sort((a, b) => a.date.localeCompare(b.date)));
+      created.forEach(s => loadedRef.current.add(s.id));
+      const nextSessions = [...sessions, ...created].sort((a, b) => a.date.localeCompare(b.date));
+      setSessions(nextSessions);
       closeAddForm();
+      const firstCreated = [...created].sort((a, b) => a.date.localeCompare(b.date))[0];
+      await focusWindowOn(nextSessions.findIndex(s => s.id === firstCreated.id), nextSessions);
     } catch (err: unknown) {
       setRecError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -427,9 +513,57 @@ export default function AttendancePage() {
         )
       )}
 
+      {/* ── Fenêtre de séances ──────────────────────────────────────────────────
+          La grille n'affiche pas la saison entière : elle s'ouvre autour de la séance du jour et
+          s'étend à la demande, par lots. C'est ce qui borne la requête de présences (cf.
+          attendanceApi.listAttendance) autant que ce qui rend la grille lisible. */}
+      {selected && !loading && sessions.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => extendWindow('before')}
+            disabled={range.start === 0 || loadingMore}
+            style={windowBtnStyle(range.start > 0 && !loadingMore)}
+            title="Charger les séances précédentes"
+          >
+            <ChevronLeft size={14} /> {WINDOW_SIZE} précédentes
+          </button>
+
+          <span style={{ color: '#64748B', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+            {visibleSessions.length > 0 && (
+              <>
+                <span style={{ color: '#94A3B8', fontWeight: 600 }}>
+                  {fmtDayMonth(visibleSessions[0].date)} → {fmtDayMonth(visibleSessions[visibleSessions.length - 1].date)}
+                </span>
+                {' · '}{visibleSessions.length}/{sessions.length} séance{sessions.length > 1 ? 's' : ''}
+              </>
+            )}
+          </span>
+
+          <button
+            onClick={() => extendWindow('after')}
+            disabled={range.end >= sessions.length || loadingMore}
+            style={windowBtnStyle(range.end < sessions.length && !loadingMore)}
+            title="Charger les séances suivantes"
+          >
+            {WINDOW_SIZE} suivantes <ChevronRight size={14} />
+          </button>
+
+          {sessions.length > WINDOW_SIZE && (
+            <button
+              onClick={() => focusWindowOn(-1)}
+              disabled={loadingMore}
+              style={{ ...windowBtnStyle(!loadingMore), marginLeft: 'auto' }}
+              title="Revenir à la séance du jour"
+            >
+              Aujourd'hui
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── Grille ──────────────────────────────────────────────────────────── */}
       {selected && !loading && sessions.length > 0 && (
-        <div ref={gridRef} className="att-grid" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 160px)', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
+        <div ref={gridRef} className="att-grid" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 202px)', backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10 }}>
           {/* Les scrollbars sont masquées partout (globals.css) : au trackpad on s'en passe, à la
               souris la grille devient inatteignable latéralement. On la rétablit, fine, sur ce
               seul conteneur et seulement pour un pointeur précis. */}
@@ -444,10 +578,10 @@ export default function AttendancePage() {
               .att-grid::-webkit-scrollbar-corner { background: transparent; }
             }
           `}</style>
-          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: NAME_W + sessions.length * CELL_W }}>
+          <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: NAME_W + visibleSessions.length * CELL_W }}>
             <colgroup>
               <col className="att-name-col" style={{ width: NAME_W }} />
-              {sessions.map(s => <col key={s.id} style={{ width: CELL_W }} />)}
+              {visibleSessions.map(s => <col key={s.id} style={{ width: CELL_W }} />)}
             </colgroup>
 
             {/* ── En-tête séances ── */}
@@ -462,7 +596,7 @@ export default function AttendancePage() {
                     Joueur · {players.length}
                   </span>
                 </th>
-                {sessions.map(s => {
+                {visibleSessions.map(s => {
                   const fd = fmtDate(s.date);
                   const isToday = s.date === TODAY;
                   return (
@@ -499,7 +633,7 @@ export default function AttendancePage() {
                 }}>
                   <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</span>
                 </td>
-                {sessions.map(s => {
+                {visibleSessions.map(s => {
                   const total = sessionTotal(s.id);
                   return (
                     <td key={s.id} style={{
@@ -540,7 +674,7 @@ export default function AttendancePage() {
                   </td>
 
                   {/* Cellules présence */}
-                  {sessions.map(s => {
+                  {visibleSessions.map(s => {
                     const status = attendanceMap[`${s.id}:${p.id}`];
                     const cfg = status ? STATUS[status] : null;
                     return (
@@ -569,7 +703,7 @@ export default function AttendancePage() {
                   premier coup d'œil de l'effectif, dont ils ne partagent aucun chiffre. */}
               {(guests.length > 0 || canEditTeamData) && (
                 <tr>
-                  <td colSpan={sessions.length + 1} style={{
+                  <td colSpan={visibleSessions.length + 1} style={{
                     backgroundColor: '#13171E', borderTop: '1px solid #2A2F3A', borderBottom: '1px solid #1E2229',
                     padding: '6px 16px', whiteSpace: 'nowrap',
                   }}>
@@ -609,7 +743,7 @@ export default function AttendancePage() {
                       )}
                     </div>
                   </td>
-                  {sessions.map(s => {
+                  {visibleSessions.map(s => {
                     const status = attendanceMap[`${s.id}:${p.id}`];
                     const cfg = status ? STATUS[status] : null;
                     return (
@@ -639,7 +773,7 @@ export default function AttendancePage() {
                 }}>
                   <span style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Présence</span>
                 </td>
-                {sessions.map(s => {
+                {visibleSessions.map(s => {
                   const pct = sessionPct(s.id);
                   return (
                     <td key={s.id} style={{
@@ -709,7 +843,7 @@ export default function AttendancePage() {
           </p>
           <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {invitable.map(p => (
-              <button key={p.id} onClick={() => { setGuestIds(prev => [...prev, p.id]); setShowGuestPick(false); }}
+              <button key={p.id} onClick={() => { freshGuestsRef.current.add(p.id); setGuestIds(prev => [...prev, p.id]); setShowGuestPick(false); }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', textAlign: 'left',
                   backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6,
@@ -727,8 +861,8 @@ export default function AttendancePage() {
         <Modal maxWidth={380} scrollOverlay={false} style={{ padding: 24 }} onClose={() => setConfirmGuest(null)}>
           <h3 style={{ color: '#F1F5F9', margin: '0 0 8px' }}>Retirer {playerNameFull(confirmGuest)} ?</h3>
           <p style={{ color: '#94A3B8', fontSize: '0.84rem', margin: '0 0 16px', lineHeight: 1.5 }}>
-            Ses pointages sur les séances affichées seront effacés. Ses RPE déjà saisis restent
-            dans sa charge.
+            Ses pointages seront effacés sur toutes les séances de la saison. Ses RPE déjà saisis
+            restent dans sa charge.
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setConfirmGuest(null)}

@@ -1651,7 +1651,8 @@ export default function TrainingSessionDetailPage() {
 
   async function toggleAttendance(playerId: string, status: TrainingAttendance['status']) {
     if (!session) return;
-    const current = attendance.find(a => a.playerId === playerId)?.status;
+    const existing = attendance.find(a => a.playerId === playerId);
+    const current  = existing?.status;
     setAttSavingId(playerId);
     setAttError('');
     try {
@@ -1659,11 +1660,15 @@ export default function TrainingSessionDetailPage() {
         await attendanceApi.deleteAttendance(session.id, playerId);
         setAttendance(prev => prev.filter(a => a.playerId !== playerId));
       } else {
-        // Cette page ne pointe que l'effectif : un partenaire s'invite depuis les présences.
-        await attendanceApi.setAttendance({ sessionId: session.id, playerId, status });
+        // Un partenaire s'invite depuis la grille des présences, jamais d'ici — mais la modale de
+        // cette page permet bien de RETOUCHER son statut (cf. attendanceModalPlayers). Le drapeau
+        // doit alors être reconduit : l'upsert écrase la ligne, et un `sparring` retombé à faux
+        // sortait l'invitée de la grille des présences et du compteur de partenaires.
+        const sparring = existing?.sparring ?? false;
+        await attendanceApi.setAttendance({ sessionId: session.id, playerId, status, sparring });
         setAttendance(prev => [
           ...prev.filter(a => a.playerId !== playerId),
-          { id: `${session.id}:${playerId}`, sessionId: session.id, playerId, status, sparring: false, createdAt: new Date().toISOString() },
+          { id: `${session.id}:${playerId}`, sessionId: session.id, playerId, status, sparring, createdAt: new Date().toISOString() },
         ]);
       }
     } catch (err: unknown) {

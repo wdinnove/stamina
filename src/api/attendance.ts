@@ -33,6 +33,15 @@ function toAttendance(row: Record<string, unknown>): TrainingAttendance {
   };
 }
 
+/** Découpe une liste d'ids : un `in(...)` part dans l'URL, et une saison entière de séances y
+ *  tiendrait mal. 100 UUID ≈ 3,7 ko, largement sous les limites des proxies. */
+const ID_CHUNK = 100;
+function chunked<T>(list: T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += ID_CHUNK) out.push(list.slice(i, i + ID_CHUNK));
+  return out;
+}
+
 export const attendanceApi = {
   async getSession(id: string): Promise<TrainingSession | null> {
     const { data, error } = await supabase
@@ -94,6 +103,14 @@ export const attendanceApi = {
     if (error) throw error;
   },
 
+  /**
+   * Présences des séances demandées.
+   *
+   * À n'appeler que sur un nombre BORNÉ de séances (la grille travaille par fenêtre de 10) : la
+   * réponse est plafonnée côté serveur — 1000 lignes par défaut sur Supabase — et la troncature
+   * est silencieuse. Sur une saison entière, effectif × séances dépasse vite ce seuil et des
+   * séances entières revenaient sans aucune présence, alors qu'elles étaient bien enregistrées.
+   */
   async listAttendance(sessionIds: string[]): Promise<TrainingAttendance[]> {
     if (!sessionIds.length) return [];
     const { data, error } = await supabase
@@ -102,6 +119,28 @@ export const attendanceApi = {
       .in('session_id', sessionIds);
     if (error) throw error;
     return (data ?? []).map(toAttendance);
+  },
+
+  /**
+   * Partenaires d'entraînement de la saison : les joueurs pointés `sparring` sur au moins une
+   * séance, toutes séances confondues.
+   *
+   * Requête à part, et non déduite des présences chargées : la grille n'affiche qu'une fenêtre de
+   * séances, et une partenaire venue une seule fois hors de cette fenêtre doit garder sa ligne.
+   * Le filtre sur `sparring` garde la réponse à quelques dizaines de lignes.
+   */
+  async listGuestPlayerIds(sessionIds: string[]): Promise<string[]> {
+    if (!sessionIds.length) return [];
+    const batches = await Promise.all(chunked(sessionIds).map(async ids => {
+      const { data, error } = await supabase
+        .from('training_attendance')
+        .select('player_id')
+        .eq('sparring', true)
+        .in('session_id', ids);
+      if (error) throw error;
+      return (data ?? []).map(r => r.player_id as string);
+    }));
+    return [...new Set(batches.flat())];
   },
 
   /** `sparring` est écrit à chaque fois : c'est la présence qui porte l'étiquette, et une même
@@ -135,6 +174,18 @@ export const attendanceApi = {
         { onConflict: 'session_id,player_id' },
       );
     if (error) throw error;
+  },
+
+  /** Retire un joueur de toutes les séances données — retrait d'un partenaire de la grille. */
+  async deletePlayerAttendance(playerId: string, sessionIds: string[]): Promise<void> {
+    for (const ids of chunked(sessionIds)) {
+      const { error } = await supabase
+        .from('training_attendance')
+        .delete()
+        .eq('player_id', playerId)
+        .in('session_id', ids);
+      if (error) throw error;
+    }
   },
 
   async deleteAttendance(sessionId: string, playerId: string): Promise<void> {
