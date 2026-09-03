@@ -8,7 +8,7 @@ const DIM_VALUE = 'dim-value';
 const DIM_ISSUE = 'dim-issue';
 
 const dim = (id: string, name: string, sortOrder = 0): TacticalDimension => ({
-  id, teamId: 't1', categoryId: CAT, name, normalizedName: name.toLowerCase(), sortOrder,
+  id, teamId: 't1', categoryId: CAT, name, normalizedName: name.toLowerCase(), sortOrder, slot: sortOrder,
 });
 
 const zoneDim  = dim(DIM_ZONE, 'Zone', 0);
@@ -18,7 +18,7 @@ const issueDim = dim(DIM_ISSUE, 'Issue', 2);
 let seq = 0;
 /** Un événement : libellé de zone, valeur numérique, et éventuellement une issue. */
 const ev = (zone: string, value?: string, issue?: string): TacticalEvent => ({
-  id: `e${++seq}`, matchId: 'm1', categoryId: CAT, sequenceNumber: seq,
+  id: `e${++seq}`, matchId: 'm1', categoryId: CAT, sequenceNumber: seq, playerIds: [],
   values: [
     { dimensionId: DIM_ZONE, label: zone },
     ...(value !== undefined ? [{ dimensionId: DIM_VALUE, label: value }] : []),

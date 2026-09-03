@@ -19,6 +19,8 @@ interface TacticalStatsSectionProps {
   dimensions: TacticalDimension[];
   options?: TacticalDimensionOption[];
   matches: TacticalMatchRef[];
+  /** Effectif indexé par id, pour la table par joueuse du rapport. */
+  playerNameById?: Map<string, string>;
   emptyMessage?: string;
   /** Fige l'affichage sur une seule vue, sans les onglets internes Brutes/Tableau de bord —
    *  pour les pages qui exposent déjà ce choix comme deux onglets de premier niveau (fiche
@@ -35,7 +37,8 @@ interface TacticalStatsSectionProps {
  * n'affiche que la vue demandée (le choix se fait alors en amont, côté page appelante).
  */
 export function TacticalStatsSection({
-  teamId, events, categories, dimensions, options = [], matches, emptyMessage = 'Aucune donnée tactique.', view,
+  teamId, events, categories, dimensions, options = [], matches, playerNameById,
+  emptyMessage = 'Aucune donnée tactique.', view,
 }: TacticalStatsSectionProps) {
   const [tab, setTab] = useState<SubTab>('brutes');
   const activeView = view ?? tab;
@@ -59,7 +62,7 @@ export function TacticalStatsSection({
           )}
 
           {activeView === 'brutes' ? (
-            <TacticalReport events={events} categories={categories} dimensions={dimensions} options={options} />
+            <TacticalReport events={events} categories={categories} dimensions={dimensions} options={options} playerNameById={playerNameById} />
           ) : (
             <TacticalDashboard teamId={teamId} events={events} categories={categories} dimensions={dimensions} options={options} matches={matches} />
           )}

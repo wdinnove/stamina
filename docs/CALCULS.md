@@ -512,13 +512,72 @@ Seuils de coloration de la rentabilité, configurables par catégorie (défauts 
 
 Une **matrice croisée** entre deux dimensions d'une même catégorie ne compte que les actions renseignées sur les deux dimensions à la fois.
 
-### Regroupement par libellé normalisé
+### Les deux formats d'import CSV
 
-Les valeurs d'événements sont stockées **telles qu'elles arrivent du CSV** (`tactical_event_values.label`), contrairement au catalogue (catégories, dimensions, options) qui porte une colonne `normalized_name`/`normalized_label`. Deux exports vidéo écrivant « Panier » et « panier » créent donc deux libellés distincts en base.
+Fichier source : [`src/utils/tacticalCsvParser.ts`](../src/utils/tacticalCsvParser.ts) — la spécification à destination de qui prépare les fichiers est dans [FORMATS_CSV.md](FORMATS_CSV.md).
 
-Tous les regroupements — `buildDimensionTable`, `buildCustomTableRows`, `buildCrossMatrix` — indexent donc par **libellé normalisé** (accents, casse, espaces), comme le faisait déjà `buildTacticalIndicators`. Le libellé affiché est celui du catalogue quand l'option y figure, sinon le premier observé.
+Deux exports du logiciel vidéo sont acceptés, et produisent exactement les mêmes blocs (catégorie + dimensions + lignes d'actions) :
 
-Sans cela, le rapport tactique affichait deux lignes là où l'attribut de rentabilité du même nom n'en voyait qu'une : la ligne du rapport pouvait être verte (rentabilité 1,10 sur 12 actions) et l'objectif bâti sur le même libellé rouge (0,82 sur les 20 actions réunies).
+| Format | Nom de la catégorie | Ligne des dimensions |
+| --- | --- | --- |
+| Un fichier, toutes les catégories | une ligne `Category: <nom>` par système | la ligne qui suit chaque `Category:` |
+| Un fichier par thème | le nom du fichier (`Defense_tout-terrain.csv` → « Defense tout-terrain ») | la ligne d'en-tête du fichier |
+
+Dans le format par thème, le parseur n'écarte rien : il rend **toutes** les colonnes du fichier, et l'écran d'import les fait cocher une par une, fichier par fichier (`buildThemeBlock`). Seule la proposition de départ est calculée — les colonnes de repérage vidéo (`Debut`, `Fin`, `N°`) arrivent décochées, une valeur unique par action n'ayant rien à analyser, mais restent importables. Deux colonnes de même nom, ou une colonne sans titre, sont les seules réellement non sélectionnables : une dimension ne porte qu'une valeur par action, et il faut un nom pour la créer.
+
+La rentabilité ne se calcule que sur une dimension **nommée « Valeur »** (`findValeurDimension`). Ces exports appellent le plus souvent cette colonne « Rentabilite » : l'écran d'import fait donc désigner, fichier par fichier, la colonne portant les points de l'action, et l'importe sous le nom « Valeur ». Une catégorie n'en a jamais deux : si le fichier contient déjà une colonne « Valeur », c'est elle qui fait foi.
+
+L'import par thème ne remplace que les catégories des fichiers déposés (`TacticalReplaceScope`), ce qui permet de constituer un match en plusieurs fois ; l'import du fichier unique remplace, lui, tout le tactique du match.
+
+### CSV de configuration (catégories, dimensions, options)
+
+Fichiers sources : [`parseTacticalConfigCsv`](../src/utils/tacticalCsvParser.ts), [`tacticalConfigApi.importConfig`](../src/api/tacticalConfig.ts)
+
+L'écran de configuration accepte un troisième CSV, qui ne contient aucune action : il pré-crée la taxonomie de l'équipe. Une ligne = une catégorie, une dimension, puis les options attendues de cette dimension :
+
+```
+Categorie;Dimension;Options
+Defense Pick;Forme de jeu;Protect;Step;Switch;Chase
+Defense Pick;Zone;P-TOP 5;P-SIDE 5;P-SIDE 4
+Defense Pick;Valeur
+```
+
+Le format « une ligne par option » (3 colonnes, catégorie et dimension répétées) donne exactement le même résultat : les lignes d'une même catégorie/dimension sont fusionnées dans l'ordre du fichier. Une ligne sans dimension ne crée que la catégorie ; une dimension sans option n'a pas de catalogue. La ligne d'en-tête est facultative — elle est reconnue à sa première cellule (`Categorie`). Le séparateur, lui, est déduit du fichier entier et non de sa première ligne, qui peut légitimement n'avoir qu'une cellule.
+
+L'import est **purement additif, donc rejouable** : catégories, dimensions et options déjà présentes (retrouvées par nom normalisé) sont réutilisées telles quelles, jamais renommées ni supprimées, et les options en base absentes du fichier restent en place. C'est aussi ce qui protège la contrainte `UNIQUE (dimension_id, normalized_label)` du catalogue.
+
+### Stockage : une ligne par action
+
+Fichiers sources : [`schema.sql`](../schema.sql) (`tactical_actions`), [`tacticalHydration.ts`](../src/data/tacticalHydration.ts)
+
+Une action = une ligne, sans identité propre — on n'affiche jamais une action isolée, seulement des agrégats. La clé est naturelle (`match_id, category_id, seq`), et les valeurs tiennent dans deux colonnes :
+
+- `valeur SMALLINT` : les points de l'action, `NULL` pour une action non notée ;
+- `options SMALLINT[]` : un **code d'option** par dimension, `NULL` pour une case non renseignée ;
+- `player_ids UUID[]` : les joueuses rapprochées de l'effectif à l'import.
+
+Deux invariants tiennent tout l'édifice, et sont figés à la création comme l'est déjà `normalized_name` :
+
+| Colonne | Rôle | Ce qui casse si on la change |
+| --- | --- | --- |
+| `tactical_dimensions.slot` | position dans `options` | toutes les actions stockées désignent la mauvaise dimension |
+| `tactical_dimension_options.code` | valeur stockée dans `options` | l'historique bascule d'un libellé à un autre |
+
+Réordonner une dimension ou une option dans l'écran de configuration ne touche donc que `sort_order`, jamais `slot` ni `code`.
+
+Mesures ayant motivé ce modèle, sur un match réel de 212 actions : l'ancien schéma (`tactical_events` + `tactical_event_values`) produisait 952 lignes de valeurs par match, soit ~34 900 lignes et ~8 Mo pour une saison de 30 matchs, avec plus de poids en index qu'en données. Le nouveau : ~6 360 lignes, ~1 Mo, un seul index.
+
+### Regroupement par libellé
+
+`hydrateTacticalActions` retraduit les codes en libellés **du catalogue**, une fois au chargement. Les libellés circulant dans l'analyse sont donc canoniques par construction : deux orthographes du même libellé ne peuvent plus coexister dans les données, puisqu'une valeur ne peut être stockée qu'en référençant une option du catalogue.
+
+Les regroupements — `buildDimensionTable`, `buildCustomTableRows`, `buildCrossMatrix`, `buildTacticalIndicators` — indexent malgré tout par **libellé normalisé** (accents, casse, espaces). C'est désormais une ceinture et non plus la bretelle : ça protège les regroupements manuels du tableau de bord, où le staff saisit des libellés à la main.
+
+### Table par joueuse
+
+`buildPlayerTable` remplace l'ancienne « dimension Joueuses », qui comptait des **combinaisons** et non des joueuses : sur un match réel, 11 joueuses produisaient 101 libellés distincts, et la plus impliquée (46 actions) n'apparaissait nulle part en tête du tableau parce qu'elle était presque toujours taguée avec quelqu'un d'autre.
+
+Une action taguée à deux joueuses compte pour chacune : la part se lit « part des actions de la catégorie où la joueuse est impliquée », et la somme des parts dépasse 100 %. Le total en pied de table est celui de la catégorie, pas la somme des lignes.
 
 ---
 

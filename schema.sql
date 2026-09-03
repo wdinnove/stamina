@@ -4759,3 +4759,130 @@ CREATE INDEX IF NOT EXISTS objectives_season_idx
 --
 -- Les blessures et traitements ne sont PAS touchés : une blessure « sans arrêt » reste désormais
 -- ouverte jusqu'à sa clôture manuelle, et c'est précisément le comportement recherché.
+
+
+-- ================================================================
+-- MIGRATION — Stockage tactique compact : une ligne par action
+-- Script exécutable tel quel dans le SQL Editor de Supabase.
+-- ================================================================
+--
+-- POURQUOI
+-- Le modèle précédent (`tactical_events` + `tactical_event_values`) stockait une ligne par
+-- VALEUR : mesuré sur un match réel, 212 actions produisaient 952 lignes de valeurs, soit
+-- ~34 900 lignes et ~8 Mo pour une saison de 30 matchs — dont plus de la moitié en index, l'un
+-- d'eux (`dimension_id, label`) n'étant interrogé par aucune requête. Le libellé texte était
+-- répété à chaque action, et devait être re-normalisé à chaque lecture pour être regroupé.
+--
+-- Or on n'affiche JAMAIS une action isolée : uniquement des agrégats. L'action n'a donc besoin
+-- d'aucune identité propre — d'où la disparition de l'UUID par action et de la table de valeurs.
+-- Une action = une ligne, ses valeurs = un tableau de codes d'options.
+-- Cible mesurée : ~6 360 lignes et ~1 Mo pour 30 matchs, un seul index.
+--
+-- DEUX INVARIANTS À NE JAMAIS CASSER
+-- 1. `tactical_dimensions.slot` adresse la position dans `tactical_actions.options`. Il est FIGÉ
+--    à la création, comme `normalized_name`. Réordonner les dimensions dans l'écran de config
+--    change `sort_order` (l'affichage), JAMAIS `slot` — sinon toutes les actions déjà stockées
+--    désigneraient la mauvaise dimension.
+-- 2. `tactical_dimension_options.code` est attribué à la création et n'est JAMAIS réattribué,
+--    même après suppression d'une option : un code libéré puis réutilisé ferait basculer
+--    l'historique d'un libellé à un autre.
+
+-- 1. Adressage figé des dimensions
+ALTER TABLE tactical_dimensions ADD COLUMN IF NOT EXISTS slot SMALLINT;
+
+UPDATE tactical_dimensions d
+SET    slot = s.rn - 1
+FROM  (SELECT id, ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY sort_order, created_at) AS rn
+       FROM tactical_dimensions) s
+WHERE s.id = d.id AND d.slot IS NULL;
+
+ALTER TABLE tactical_dimensions ALTER COLUMN slot SET NOT NULL;
+-- Index unique plutôt que contrainte de table : même garantie, mais `IF NOT EXISTS` existe ici,
+-- ce qui rend le script rejouable sans erreur (ADD CONSTRAINT n'a pas d'équivalent).
+CREATE UNIQUE INDEX IF NOT EXISTS tactical_dimensions_slot_key ON tactical_dimensions (category_id, slot);
+
+-- 2. Codes d'options (numérotés à partir de 1 : NULL dans `options` = pas de valeur)
+ALTER TABLE tactical_dimension_options ADD COLUMN IF NOT EXISTS code SMALLINT;
+
+UPDATE tactical_dimension_options o
+SET    code = s.rn
+FROM  (SELECT id, ROW_NUMBER() OVER (PARTITION BY dimension_id ORDER BY sort_order, created_at) AS rn
+       FROM tactical_dimension_options) s
+WHERE s.id = o.id AND o.code IS NULL;
+
+ALTER TABLE tactical_dimension_options ALTER COLUMN code SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS tactical_dimension_options_code_key ON tactical_dimension_options (dimension_id, code);
+
+-- 3. Les actions
+-- Pas de colonne id : la clé naturelle (match, catégorie, rang) suffit et son index sert aussi
+-- les lectures par match. `category_id` reste SANS CASCADE, comme avant : supprimer une
+-- catégorie déjà utilisée doit échouer plutôt que d'effacer l'historique en silence.
+CREATE TABLE IF NOT EXISTS tactical_actions (
+  match_id    UUID       NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  category_id UUID       NOT NULL REFERENCES tactical_categories(id),
+  seq         SMALLINT   NOT NULL,
+  valeur      SMALLINT,              -- points de l'action ; NULL = action sans score
+  options     SMALLINT[] NOT NULL DEFAULT '{}',   -- options[slot+1] = code, NULL = non renseigné
+  player_ids  UUID[],                -- joueuses rapprochées de l'effectif ; NULL = aucune
+  PRIMARY KEY (match_id, category_id, seq)
+);
+
+ALTER TABLE tactical_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "tactical_actions_select" ON tactical_actions;
+CREATE POLICY "tactical_actions_select" ON tactical_actions
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "tactical_actions_write" ON tactical_actions;
+CREATE POLICY "tactical_actions_write" ON tactical_actions
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 4. Import transactionnel
+-- Remplace le delete + N inserts en requêtes HTTP séparées : une coupure réseau ne peut plus
+-- laisser un match vide ou à moitié importé. `jsonb_populate_recordset` fait correspondre les
+-- clés JSON aux colonnes, tableaux compris — l'appariement valeur/action ne dépend donc plus
+-- de l'ordre de retour d'un INSERT.
+-- SECURITY INVOKER (défaut) : la RLS ci-dessus s'applique bien à l'appelant.
+CREATE OR REPLACE FUNCTION import_tactical_actions(
+  p_match_id     UUID,
+  p_replace_all  BOOLEAN,
+  p_category_ids UUID[],
+  p_actions      JSONB
+) RETURNS INTEGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_inserted INTEGER;
+BEGIN
+  IF p_replace_all THEN
+    DELETE FROM tactical_actions WHERE match_id = p_match_id;
+  ELSE
+    DELETE FROM tactical_actions
+     WHERE match_id = p_match_id
+       AND category_id = ANY (COALESCE(p_category_ids, '{}'::UUID[]));
+  END IF;
+
+  INSERT INTO tactical_actions (match_id, category_id, seq, valeur, options, player_ids)
+  SELECT p_match_id, r.category_id, r.seq, r.valeur,
+         COALESCE(r.options, '{}'), NULLIF(r.player_ids, '{}')
+  FROM   jsonb_populate_recordset(NULL::tactical_actions, p_actions) r;
+
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+  RETURN v_inserted;
+END;
+$$;
+
+-- 5. Anciennes tables — on repart de zéro sur les actions (choix explicite du staff : les CSV
+-- sont réimportés). Le catalogue (catégories, dimensions, options, couleurs, seuils) est CONSERVÉ.
+DROP TABLE IF EXISTS tactical_event_values;
+DROP TABLE IF EXISTS tactical_events;
+
+-- Vérification
+--   SELECT COUNT(*) FROM tactical_dimensions WHERE slot IS NULL;                    -- 0
+--   SELECT COUNT(*) FROM tactical_dimension_options WHERE code IS NULL;             -- 0
+--   SELECT category_id, COUNT(*), COUNT(DISTINCT slot) FROM tactical_dimensions
+--     GROUP BY category_id HAVING COUNT(*) <> COUNT(DISTINCT slot);                 -- aucune ligne
+--   SELECT to_regclass('tactical_events'), to_regclass('tactical_event_values');    -- NULL, NULL

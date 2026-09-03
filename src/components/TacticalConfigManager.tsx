@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronRight, ChevronUp, Pencil, Check, X, AlertCircle, Plus, Trash2, Search, ListChecks, Video } from 'lucide-react';
+import { Pencil, Check, X, AlertCircle, Plus, Trash2, Search, ListChecks, Video, Upload, Download, GripVertical } from 'lucide-react';
 import { tacticalConfigApi } from '../api/tacticalConfig';
-import { normalizeTacticalName } from '../utils/tacticalCsvParser';
+import type { TacticalConfigImportResult } from '../api/tacticalConfig';
+import { tacticalActionsApi } from '../api/tacticalEvents';
+import { normalizeTacticalName, serializeTacticalConfigCsv } from '../utils/tacticalCsvParser';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { useUrlState } from '../hooks/useUrlState';
-import { ConfigCard } from './ConfigCard';
+import { ConfigCard, ConfigAction } from './ConfigCard';
+import { TacticalConfigImportModal } from './TacticalConfigImportModal';
 
 function friendlyDeleteError(e: unknown, itemLabel: string): string {
   const message = e instanceof Error ? e.message : String(e);
@@ -42,19 +45,6 @@ function EditableLabel({ value, onSave, bold }: { value: string; onSave: (v: str
       </button>
       <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
         <X size={13} />
-      </button>
-    </span>
-  );
-}
-
-function ReorderButtons({ onUp, onDown, canUp, canDown }: { onUp: () => void; onDown: () => void; canUp: boolean; canDown: boolean }) {
-  return (
-    <span style={{ display: 'inline-flex', gap: 2 }}>
-      <button onClick={onUp} disabled={!canUp} style={{ background: 'none', border: 'none', color: canUp ? '#94A3B8' : '#2A2F3A', cursor: canUp ? 'pointer' : 'default', padding: 2 }}>
-        <ChevronUp size={13} />
-      </button>
-      <button onClick={onDown} disabled={!canDown} style={{ background: 'none', border: 'none', color: canDown ? '#94A3B8' : '#2A2F3A', cursor: canDown ? 'pointer' : 'default', padding: 2 }}>
-        <ChevronDown size={13} />
       </button>
     </span>
   );
@@ -194,36 +184,90 @@ function ThresholdsEditor({ category, onSave, onInverseeChange }: {
   );
 }
 
-function OptionsEditor({ dimensionId, options, onAdd, onAddMany, onRename, onMove, onDelete }: {
+/** Une option en pastille : clic pour renommer, croix pour supprimer, glisser pour réordonner. */
+function OptionChip({ option, onRename, onDelete, onDragStart, onDragOver, onDrop, dragging }: {
+  option: TacticalDimensionOption;
+  onRename: (label: string) => void;
+  onDelete: () => void;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  dragging: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(option.label);
+
+  if (editing) {
+    return (
+      <input
+        value={draft} autoFocus
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => { onRename(draft); setEditing(false); }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { onRename(draft); setEditing(false); }
+          if (e.key === 'Escape') { setDraft(option.label); setEditing(false); }
+        }}
+        style={{ padding: '2px 8px', backgroundColor: '#1E2229', border: '1px solid #00E5A040', borderRadius: 4, color: '#F1F5F9', fontSize: '0.74rem', width: Math.max(70, draft.length * 7 + 24) }}
+      />
+    );
+  }
+  return (
+    <span
+      draggable
+      onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 4px 2px 8px', borderRadius: 4,
+        border: '1px solid #2A2F3A', backgroundColor: '#1E2229', color: '#CBD5E1', fontSize: '0.74rem',
+        cursor: 'grab', opacity: dragging ? 0.4 : 1,
+      }}>
+      <span onClick={() => { setDraft(option.label); setEditing(true); }} style={{ cursor: 'text' }}>{option.label}</span>
+      <button onClick={onDelete} title={`Supprimer ${option.label}`}
+        style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 0, display: 'flex' }}>
+        <X size={11} />
+      </button>
+    </span>
+  );
+}
+
+/**
+ * Catalogue d'une dimension. Les options sont des pastilles plutôt qu'une liste verticale de
+ * lignes à chevrons : une dimension en compte couramment une dizaine, et réordonner coûtait
+ * autant de clics — et autant d'écritures — que de rangs à franchir. Un glisser-déposer, une
+ * seule écriture.
+ */
+function OptionsEditor({ dimensionId, options, onAdd, onAddMany, onRename, onReorder, onDelete }: {
   dimensionId: string;
   options: TacticalDimensionOption[];
   onAdd: (label: string) => void;
   onAddMany: (labels: string[]) => Promise<void>;
   onRename: (option: TacticalDimensionOption, label: string) => void;
-  onMove: (siblings: TacticalDimensionOption[], index: number, direction: -1 | 1) => void;
+  onReorder: (siblings: TacticalDimensionOption[], from: number, to: number) => void;
   onDelete: (option: TacticalDimensionOption) => void;
 }) {
   const sorted = options.filter(o => o.dimensionId === dimensionId).sort((a, b) => a.sortOrder - b.sortOrder);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   return (
-    <div style={{ marginTop: 6, paddingLeft: 4 }}>
-      <p style={{ color: '#334155', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 4px' }}>
-        Options attendues
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
         {sorted.map((opt, i) => (
-          <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <EditableLabel value={opt.label} onSave={label => onRename(opt, label)} />
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
-              <ReorderButtons onUp={() => onMove(sorted, i, -1)} onDown={() => onMove(sorted, i, 1)} canUp={i > 0} canDown={i < sorted.length - 1} />
-              <button onClick={() => onDelete(opt)} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
-                <X size={12} />
-              </button>
-            </span>
-          </div>
+          <OptionChip
+            key={opt.id}
+            option={opt}
+            dragging={dragIndex === i}
+            onRename={label => onRename(opt, label)}
+            onDelete={() => onDelete(opt)}
+            onDragStart={() => setDragIndex(i)}
+            onDragOver={e => { if (dragIndex !== null) e.preventDefault(); }}
+            onDrop={e => { e.preventDefault(); if (dragIndex !== null) onReorder(sorted, dragIndex, i); setDragIndex(null); }}
+          />
         ))}
-        {sorted.length === 0 && <span style={{ color: '#334155', fontSize: '0.74rem' }}>Aucune — toute valeur du CSV sera acceptée sans avertissement.</span>}
-        <AddItemRow placeholder="Nouvelle option…" addLabel="Ajouter une option" onAdd={onAdd} />
+        {sorted.length === 0 && (
+          <span style={{ color: '#334155', fontSize: '0.74rem' }}>Aucune option — toute valeur du CSV sera acceptée et ajoutée ici.</span>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <AddItemRow placeholder="Nouvelle option…" addLabel="Ajouter" onAdd={onAdd} />
         <BulkPasteOptions onAddMany={onAddMany} />
       </div>
     </div>
@@ -251,11 +295,17 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
   const [options, setOptions] = useState<TacticalDimensionOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useUrlState('recherche', '');
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set());
   const [lastDeleted, setLastDeleted] = useState<DeletedSnapshot | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importSummary, setImportSummary] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragCategory, setDragCategory] = useState<number | null>(null);
+  const [dragDimension, setDragDimension] = useState<number | null>(null);
+  /** Nombre d'actions importées sur la catégorie affichée — sert à prévenir avant une suppression. */
+  const [selectedActionCount, setSelectedActionCount] = useState(0);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -267,14 +317,56 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
       .finally(() => setLoading(false));
   }, [teamId]);
 
+  /** Recharge tout après un import de configuration : les créations viennent de la base
+   *  (identifiants, rangs), pas d'un état local reconstruit à la main. */
+  async function handleConfigImported(result: TacticalConfigImportResult) {
+    setShowImport(false);
+    setError('');
+    const created = [
+      result.createdCategories && `${result.createdCategories} catégorie${result.createdCategories > 1 ? 's' : ''}`,
+      result.createdDimensions && `${result.createdDimensions} dimension${result.createdDimensions > 1 ? 's' : ''}`,
+      result.createdOptions && `${result.createdOptions} option${result.createdOptions > 1 ? 's' : ''}`,
+    ].filter(Boolean).join(', ');
+    const existing = result.existingCategories + result.existingDimensions + result.existingOptions;
+    setImportSummary(
+      `Configuration importée — ${created || 'rien'} créé${existing > 0 ? ` (${existing} élément${existing > 1 ? 's' : ''} déjà présent${existing > 1 ? 's' : ''}, conservé${existing > 1 ? 's' : ''})` : ''}.`,
+    );
+    try {
+      const config = await tacticalConfigApi.getForTeam(teamId);
+      setCategories(config.categories); setDimensions(config.dimensions); setOptions(config.options);
+    } catch (e) { reportError(e); }
+  }
+
+
+
   useEffect(() => () => { if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current); }, []);
 
-  function toggle(id: string) {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  /** Exporte la configuration au format lu par l'import : aller-retour vers un tableur. */
+  function handleExportCsv() {
+    const csv = serializeTacticalConfigCsv(
+      [...categories].sort((a, b) => a.sortOrder - b.sortOrder).map(category => ({
+        name: category.name,
+        dimensions: dimensions
+          .filter(d => d.categoryId === category.id)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map(dimension => ({
+            name: dimension.name,
+            options: options
+              .filter(o => o.dimensionId === dimension.id)
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map(o => o.label),
+          })),
+      })),
+    );
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'configuration_tactique.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function toggleCategorySelected(id: string) {
@@ -357,23 +449,32 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
           rentabiliteSeuilAmbre: snapshot.category.rentabiliteSeuilAmbre,
           rentabiliteInversee: snapshot.category.rentabiliteInversee,
         }]);
+        // Slot et code sont calculés sur les frères DÉJÀ créés : l'état React n'étant pas encore
+        // à jour dans la boucle, on accumule localement, sinon toutes les dimensions de la
+        // catégorie restaurée réclameraient le slot 0.
+        const restoredDims: TacticalDimension[] = [];
+        const restoredOpts: TacticalDimensionOption[] = [];
         for (const dim of snapshot.dims) {
-          const newDim = await tacticalConfigApi.createDimension(teamId, newCat.id, dim.name, dim.sortOrder);
+          const newDim = await tacticalConfigApi.createDimension(teamId, newCat.id, dim.name, dim.sortOrder, restoredDims);
+          restoredDims.push(newDim);
           setDimensions(prev => [...prev, newDim]);
           for (const opt of snapshot.opts.filter(o => o.dimensionId === dim.id)) {
-            const newOpt = await tacticalConfigApi.createOption(teamId, newDim.id, opt.label, opt.sortOrder);
+            const newOpt = await tacticalConfigApi.createOption(teamId, newDim.id, opt.label, opt.sortOrder, restoredOpts);
+            restoredOpts.push(newOpt);
             setOptions(prev => [...prev, newOpt]);
           }
         }
       } else if (snapshot.kind === 'dimension') {
-        const newDim = await tacticalConfigApi.createDimension(teamId, snapshot.dimension.categoryId, snapshot.dimension.name, snapshot.dimension.sortOrder);
+        const newDim = await tacticalConfigApi.createDimension(teamId, snapshot.dimension.categoryId, snapshot.dimension.name, snapshot.dimension.sortOrder, dimensions);
         setDimensions(prev => [...prev, newDim]);
+        const restoredOpts: TacticalDimensionOption[] = [];
         for (const opt of snapshot.opts) {
-          const newOpt = await tacticalConfigApi.createOption(teamId, newDim.id, opt.label, opt.sortOrder);
+          const newOpt = await tacticalConfigApi.createOption(teamId, newDim.id, opt.label, opt.sortOrder, restoredOpts);
+          restoredOpts.push(newOpt);
           setOptions(prev => [...prev, newOpt]);
         }
       } else {
-        const newOpt = await tacticalConfigApi.createOption(teamId, snapshot.option.dimensionId, snapshot.option.label, snapshot.option.sortOrder);
+        const newOpt = await tacticalConfigApi.createOption(teamId, snapshot.option.dimensionId, snapshot.option.label, snapshot.option.sortOrder, options);
         setOptions(prev => [...prev, newOpt]);
       }
     } catch (e) { reportError(e); }
@@ -385,16 +486,6 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
     try { await tacticalConfigApi.renameCategory(cat.id, name); } catch (e) { reportError(e); }
   }
 
-  async function handleMoveCategory(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= categories.length) return;
-    const prevCategories = categories;
-    const reordered = [...categories];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-    const orderMap = new Map(reordered.map((c, i) => [c.id, i]));
-    setCategories(prev => prev.map(c => orderMap.has(c.id) ? { ...c, sortOrder: orderMap.get(c.id)! } : c));
-    try { await tacticalConfigApi.reorderCategories(reordered.map(c => c.id)); } catch (e) { setCategories(prevCategories); reportError(e); }
-  }
 
   async function handleThresholds(cat: TacticalCategory, t: { vert: number; bleu: number; ambre: number }) {
     setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, rentabiliteSeuilVert: t.vert, rentabiliteSeuilBleu: t.bleu, rentabiliteSeuilAmbre: t.ambre } : c));
@@ -416,7 +507,7 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
     const siblings = dimensions.filter(d => d.categoryId === categoryId);
     const nextOrder = siblings.reduce((max, d) => Math.max(max, d.sortOrder), -1) + 1;
     try {
-      const created = await tacticalConfigApi.createDimension(teamId, categoryId, name, nextOrder);
+      const created = await tacticalConfigApi.createDimension(teamId, categoryId, name, nextOrder, dimensions);
       setDimensions(prev => [...prev, created]);
     } catch (e) { reportError(e); }
   }
@@ -442,32 +533,24 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
     try { await tacticalConfigApi.renameDimension(dim.id, name); } catch (e) { reportError(e); }
   }
 
-  async function handleMoveDimension(categoryId: string, siblings: TacticalDimension[], index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= siblings.length) return;
-    const prevDimensions = dimensions;
-    const reordered = [...siblings];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-    const orderMap = new Map(reordered.map((d, i) => [d.id, i]));
-    setDimensions(prev => prev.map(d => orderMap.has(d.id) ? { ...d, sortOrder: orderMap.get(d.id)! } : d));
-    try { await tacticalConfigApi.reorderDimensions(reordered.map(d => d.id)); } catch (e) { setDimensions(prevDimensions); reportError(e); }
-  }
 
   async function handleAddOption(dimensionId: string, label: string) {
     const siblings = options.filter(o => o.dimensionId === dimensionId);
     const nextOrder = siblings.reduce((max, o) => Math.max(max, o.sortOrder), -1) + 1;
     try {
-      const created = await tacticalConfigApi.createOption(teamId, dimensionId, label, nextOrder);
+      const created = await tacticalConfigApi.createOption(teamId, dimensionId, label, nextOrder, options);
       setOptions(prev => [...prev, created]);
     } catch (e) { reportError(e); }
   }
 
-  /** Ajout séquentiel (pas Promise.all) : chaque création doit voir le sort_order des
-   *  précédentes pour ne pas toutes calculer le même rang et entrer en collision. */
+  /** Une seule requête pour toute la liste collée — les rangs et les codes sont calculés en
+   *  série côté API sur le catalogue courant, donc sans collision. */
   async function handleAddManyOptions(dimensionId: string, labels: string[]) {
-    for (const label of labels) {
-      await handleAddOption(dimensionId, label);
-    }
+    setError('');
+    try {
+      const created = await tacticalConfigApi.createOptions(teamId, labels.map(label => ({ dimensionId, label })), options);
+      setOptions(prev => [...prev, ...created]);
+    } catch (e) { reportError(e); }
   }
 
   async function handleRenameOption(option: TacticalDimensionOption, label: string) {
@@ -476,16 +559,6 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
     try { await tacticalConfigApi.renameOption(option.id, label); } catch (e) { reportError(e); }
   }
 
-  async function handleMoveOption(siblings: TacticalDimensionOption[], index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= siblings.length) return;
-    const prevOptions = options;
-    const reordered = [...siblings];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-    const orderMap = new Map(reordered.map((o, i) => [o.id, i]));
-    setOptions(prev => prev.map(o => orderMap.has(o.id) ? { ...o, sortOrder: orderMap.get(o.id)! } : o));
-    try { await tacticalConfigApi.reorderOptions(reordered.map(o => o.id)); } catch (e) { setOptions(prevOptions); reportError(e); }
-  }
 
   async function handleDeleteOption(option: TacticalDimensionOption) {
     const prevOptions = options;
@@ -499,17 +572,117 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
     }
   }
 
+  /**
+   * Déplacement d'un rang à un autre, appliqué en UNE écriture par geste — les chevrons
+   * précédents écrivaient à chaque clic, soit autant d'allers-retours que de rangs franchis.
+   */
+  function reordered<T>(list: T[], from: number, to: number): T[] {
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  }
+
+  async function handleReorderCategories(from: number, to: number) {
+    if (from === to) return;
+    const prevCategories = categories;
+    const next = reordered([...categories].sort((a, b) => a.sortOrder - b.sortOrder), from, to);
+    const orderMap = new Map(next.map((c, i) => [c.id, i]));
+    setCategories(prev => prev.map(c => ({ ...c, sortOrder: orderMap.get(c.id) ?? c.sortOrder })));
+    try { await tacticalConfigApi.reorderCategories(next.map(c => c.id)); } catch (e) { setCategories(prevCategories); reportError(e); }
+  }
+
+  async function handleReorderDimensions(siblings: TacticalDimension[], from: number, to: number) {
+    if (from === to) return;
+    const prevDimensions = dimensions;
+    const next = reordered(siblings, from, to);
+    const orderMap = new Map(next.map((d, i) => [d.id, i]));
+    // sortOrder seulement : `slot` est figé, c'est lui qui adresse les valeurs déjà stockées.
+    setDimensions(prev => prev.map(d => orderMap.has(d.id) ? { ...d, sortOrder: orderMap.get(d.id)! } : d));
+    try { await tacticalConfigApi.reorderDimensions(next.map(d => d.id)); } catch (e) { setDimensions(prevDimensions); reportError(e); }
+  }
+
+  async function handleReorderOptions(siblings: TacticalDimensionOption[], from: number, to: number) {
+    if (from === to) return;
+    const prevOptions = options;
+    const next = reordered(siblings, from, to);
+    const orderMap = new Map(next.map((o, i) => [o.id, i]));
+    setOptions(prev => prev.map(o => orderMap.has(o.id) ? { ...o, sortOrder: orderMap.get(o.id)! } : o));
+    try { await tacticalConfigApi.reorderOptions(next.map(o => o.id)); } catch (e) { setOptions(prevOptions); reportError(e); }
+  }
+
+
   const sortedCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
   const normalizedSearch = normalizeTacticalName(search);
   const filteredCategories = normalizedSearch
     ? sortedCategories.filter(c => normalizeTacticalName(c.name).includes(normalizedSearch))
     : sortedCategories;
 
+  const selected = sortedCategories.find(c => c.id === selectedId) ?? filteredCategories[0] ?? null;
+
+  // Compte chargé à la catégorie affichée, pas pour toute l'équipe : un HEAD qui ne rend qu'un
+  // entier, là où compter côté client aurait rapatrié une ligne par action. Purement informatif,
+  // donc un échec ne doit pas empêcher de configurer.
+  const selectedCategoryId = selected?.id ?? null;
+  useEffect(() => {
+    if (!selectedCategoryId) { setSelectedActionCount(0); return; }
+    let cancelled = false;
+    tacticalActionsApi.countForCategory(selectedCategoryId)
+      .then(n => { if (!cancelled) setSelectedActionCount(n); })
+      .catch(() => { if (!cancelled) setSelectedActionCount(0); });
+    return () => { cancelled = true; };
+  }, [selectedCategoryId]);
+  const selectedDimensions = selected
+    ? dimensions.filter(d => d.categoryId === selected.id).sort((a, b) => a.sortOrder - b.sortOrder)
+    : [];
+
   return (
     <ConfigCard
       icon={<Video size={14} color="#00E5A0" />}
       title="Statistiques tactiques"
-      description={"Catégories et dimensions sont créées automatiquement lors de l'import d'un CSV de match, mais peuvent aussi être ajoutées ici à la main — cet écran permet de créer/renommer/réordonner/supprimer, de régler les seuils de couleur de la rentabilité par catégorie, et de définir par dimension les options attendues (facultatif : sans catalogue, toute valeur du CSV est acceptée telle quelle)."}>
+      action={
+        <>
+          <ConfigAction icon={<Download size={14} />} tone="neutral" hideLabelOnMobile onClick={handleExportCsv}>
+            Exporter
+          </ConfigAction>
+          <ConfigAction icon={<Upload size={14} />} tone="neutral" hideLabelOnMobile onClick={() => { setImportSummary(''); setShowImport(true); }}>
+            Importer un CSV
+          </ConfigAction>
+        </>
+      }
+      description={
+        <>
+          {categories.length} catégorie{categories.length > 1 ? 's' : ''} · {dimensions.length} dimension{dimensions.length > 1 ? 's' : ''} · {options.length} option{options.length > 1 ? 's' : ''}
+          {' — '}les catégories et dimensions sont aussi créées automatiquement à l'import d'un CSV de match, et une valeur
+          inconnue rencontrée à l'import est ajoutée au catalogue. Tenir ce catalogue à jour ici évite qu'une faute de frappe
+          y entre toute seule, et fait apparaître les options sans action dans les rapports.
+        </>
+      }>
+
+      <style>{`
+        .tactical-config-panes { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+        @media (max-width: 860px) { .tactical-config-panes { grid-template-columns: minmax(0, 1fr); } }
+      `}</style>
+
+      {showImport && (
+        <TacticalConfigImportModal
+          teamId={teamId}
+          categories={categories}
+          dimensions={dimensions}
+          options={options}
+          onClose={() => setShowImport(false)}
+          onImported={handleConfigImported}
+        />
+      )}
+
+      {importSummary && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, backgroundColor: 'rgba(0,229,160,0.06)', border: '1px solid rgba(0,229,160,0.2)', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
+          <span style={{ color: '#00E5A0', fontSize: '0.8rem', flex: 1 }}>{importSummary}</span>
+          <button onClick={() => setImportSummary('')} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2 }}>
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {loading && <p style={{ color: '#475569', fontSize: '0.82rem' }}>Chargement…</p>}
       {error && (
@@ -529,106 +702,139 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
 
       {!loading && sortedCategories.length === 0 && (
         <p style={{ color: '#475569', fontSize: '0.82rem' }}>
-          Aucune catégorie tactique pour l'instant — importez un premier CSV de match, ou créez-en une ci-dessous.
+          Aucune catégorie tactique pour l'instant — importez un CSV de configuration, un premier CSV de match, ou créez-en une ci-dessous.
         </p>
       )}
 
-      {!loading && sortedCategories.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 260 }}>
-            <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-            <input
-              value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher une catégorie…"
-              style={{ width: '100%', padding: '6px 8px 6px 26px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.8rem', boxSizing: 'border-box' }}
-            />
-          </div>
-          <button
-            onClick={() => { setBulkMode(v => !v); setSelectedCategoryIds(new Set()); }}
-            style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, color: bulkMode ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.76rem', padding: '6px 10px' }}
-          >
-            {bulkMode ? 'Terminer la sélection' : 'Sélectionner plusieurs'}
-          </button>
-          {bulkMode && selectedCategoryIds.size > 0 && (
-            <button onClick={handleBulkDeleteCategories} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, color: '#EF4444', cursor: 'pointer', fontSize: '0.76rem', padding: '6px 10px' }}>
-              <Trash2 size={12} /> Supprimer ({selectedCategoryIds.size})
-            </button>
-          )}
-        </div>
-      )}
+      {!loading && (
+        <div className="tactical-config-panes">
+          {/* ── Volet gauche : les catégories ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+            {sortedCategories.length > 0 && (
+              <div style={{ position: 'relative' }}>
+                <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
+                <input
+                  value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher une catégorie…"
+                  style={{ width: '100%', padding: '6px 8px 6px 26px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 5, color: '#F1F5F9', fontSize: '0.8rem', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
 
-      {!loading && sortedCategories.length > 0 && filteredCategories.length === 0 && (
-        <p style={{ color: '#475569', fontSize: '0.82rem' }}>Aucune catégorie ne correspond à « {search} ».</p>
-      )}
+            {sortedCategories.length > 0 && filteredCategories.length === 0 && (
+              <p style={{ color: '#475569', fontSize: '0.8rem' }}>Aucune catégorie ne correspond à « {search} ».</p>
+            )}
 
-      {!loading && filteredCategories.map(cat => {
-        const i = sortedCategories.indexOf(cat);
-        const catDimensions = dimensions.filter(d => d.categoryId === cat.id).sort((a, b) => a.sortOrder - b.sortOrder);
-        const isOpen = expanded.has(cat.id);
-        return (
-          <div key={cat.id} style={{ border: '1px solid #2A2F3A', borderRadius: 6, marginBottom: 8, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', backgroundColor: '#161920', flexWrap: 'wrap' }}>
-              {bulkMode ? (
-                <input type="checkbox" checked={selectedCategoryIds.has(cat.id)} onChange={() => toggleCategorySelected(cat.id)}
-                  style={{ accentColor: '#00E5A0', cursor: 'pointer', flexShrink: 0 }} />
-              ) : (
-                <button onClick={() => toggle(cat.id)} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2 }}>
-                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </button>
-              )}
-              <input type="color" value={cat.color} onChange={e => handleColorChange(cat, e.target.value)} title="Couleur de la catégorie"
-                style={{ width: 22, height: 22, border: '1px solid #2A2F3A', borderRadius: 5, padding: 1, backgroundColor: '#1E2229', cursor: 'pointer', flexShrink: 0 }} />
-              <EditableLabel value={cat.name} bold onSave={name => handleRenameCategory(cat, name)} />
-              <span style={{ color: '#475569', fontSize: '0.72rem' }}>· {catDimensions.length} dimension{catDimensions.length > 1 ? 's' : ''}</span>
-              {!bulkMode && (
-                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <ReorderButtons
-                    onUp={() => handleMoveCategory(i, -1)} onDown={() => handleMoveCategory(i, 1)}
-                    canUp={i > 0} canDown={i < sortedCategories.length - 1}
-                  />
-                  <ConfirmableDeleteButton onDelete={() => handleDeleteCategory(cat)} itemLabel={cat.name} />
-                </span>
-              )}
-            </div>
-            {isOpen && !bulkMode && (
-              <div style={{ padding: '10px 12px 12px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <ThresholdsEditor category={cat} onSave={t => handleThresholds(cat, t)} onInverseeChange={v => handleInverseeChange(cat, v)} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {catDimensions.map((dim, di) => (
-                    <div key={dim.id} style={{ borderTop: '1px solid rgba(42,47,58,0.6)', paddingTop: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <EditableLabel value={dim.name} onSave={name => handleRenameDimension(dim, name)} />
-                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <ReorderButtons
-                            onUp={() => handleMoveDimension(cat.id, catDimensions, di, -1)}
-                            onDown={() => handleMoveDimension(cat.id, catDimensions, di, 1)}
-                            canUp={di > 0} canDown={di < catDimensions.length - 1}
-                          />
-                          <ConfirmableDeleteButton onDelete={() => handleDeleteDimension(dim)} itemLabel={dim.name} />
-                        </span>
-                      </div>
-                      <OptionsEditor
-                        dimensionId={dim.id}
-                        options={options}
-                        onAdd={label => handleAddOption(dim.id, label)}
-                        onAddMany={labels => handleAddManyOptions(dim.id, labels)}
-                        onRename={handleRenameOption}
-                        onMove={handleMoveOption}
-                        onDelete={handleDeleteOption}
-                      />
-                    </div>
-                  ))}
-                  {catDimensions.length === 0 && <span style={{ color: '#475569', fontSize: '0.78rem' }}>Aucune dimension.</span>}
-                  <AddItemRow placeholder="Nouvelle dimension…" addLabel="Ajouter une dimension" onAdd={name => handleAddDimension(cat.id, name)} />
+            {filteredCategories.map(cat => {
+              const index = sortedCategories.indexOf(cat);
+              const catDimensions = dimensions.filter(d => d.categoryId === cat.id);
+              const catOptions = options.filter(o => catDimensions.some(d => d.id === o.dimensionId));
+              const isSelected = selected?.id === cat.id;
+              return (
+                <div
+                  key={cat.id}
+                  draggable={!bulkMode && !normalizedSearch}
+                  onDragStart={() => setDragCategory(index)}
+                  onDragOver={e => { if (dragCategory !== null) e.preventDefault(); }}
+                  onDrop={e => { e.preventDefault(); if (dragCategory !== null) handleReorderCategories(dragCategory, index); setDragCategory(null); }}
+                  onClick={() => { if (!bulkMode) setSelectedId(cat.id); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6,
+                    border: `1px solid ${isSelected ? '#00E5A040' : '#2A2F3A'}`,
+                    backgroundColor: isSelected ? 'rgba(0,229,160,0.06)' : '#161920',
+                    cursor: bulkMode ? 'default' : 'pointer', opacity: dragCategory === index ? 0.4 : 1,
+                  }}>
+                  {bulkMode && (
+                    <input type="checkbox" checked={selectedCategoryIds.has(cat.id)} onChange={() => toggleCategorySelected(cat.id)}
+                      style={{ accentColor: '#00E5A0', cursor: 'pointer', flexShrink: 0 }} />
+                  )}
+                  <span style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: cat.color, flexShrink: 0 }} />
+                  <span style={{ color: isSelected ? '#F1F5F9' : '#CBD5E1', fontWeight: isSelected ? 700 : 500, fontSize: '0.84rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {cat.name}
+                  </span>
+                  <span style={{ color: '#475569', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                    {catDimensions.length} dim · {catOptions.length} opt
+                  </span>
                 </div>
+              );
+            })}
+
+            {!bulkMode && <AddItemRow placeholder="Nouvelle catégorie…" addLabel="Ajouter une catégorie" onAdd={handleAddCategory} />}
+
+            {sortedCategories.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                <button
+                  onClick={() => { setBulkMode(v => !v); setSelectedCategoryIds(new Set()); }}
+                  style={{ background: 'none', border: '1px solid #2A2F3A', borderRadius: 5, color: bulkMode ? '#00E5A0' : '#94A3B8', cursor: 'pointer', fontSize: '0.74rem', padding: '5px 9px' }}
+                >
+                  {bulkMode ? 'Terminer la sélection' : 'Sélectionner plusieurs'}
+                </button>
+                {bulkMode && selectedCategoryIds.size > 0 && (
+                  <button onClick={handleBulkDeleteCategories} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, color: '#EF4444', cursor: 'pointer', fontSize: '0.74rem', padding: '5px 9px' }}>
+                    <Trash2 size={12} /> Supprimer ({selectedCategoryIds.size})
+                  </button>
+                )}
               </div>
             )}
           </div>
-        );
-      })}
 
-      {!loading && !bulkMode && (
-        <div style={{ marginTop: 8 }}>
-          <AddItemRow placeholder="Nouvelle catégorie…" addLabel="Ajouter une catégorie" onAdd={handleAddCategory} />
+          {/* ── Volet droit : la catégorie choisie ── */}
+          {selected && !bulkMode && (
+            <div style={{ border: '1px solid #2A2F3A', borderRadius: 8, padding: '14px 16px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <input type="color" value={selected.color} onChange={e => handleColorChange(selected, e.target.value)} title="Couleur de la catégorie"
+                  style={{ width: 22, height: 22, border: '1px solid #2A2F3A', borderRadius: 5, padding: 1, backgroundColor: '#1E2229', cursor: 'pointer', flexShrink: 0 }} />
+                <EditableLabel value={selected.name} bold onSave={name => handleRenameCategory(selected, name)} />
+                <span style={{ marginLeft: 'auto' }}>
+                  <ConfirmableDeleteButton onDelete={() => handleDeleteCategory(selected)} itemLabel={selected.name} />
+                </span>
+              </div>
+
+              <ThresholdsEditor
+                category={selected}
+                onSave={t => handleThresholds(selected, t)}
+                onInverseeChange={v => handleInverseeChange(selected, v)}
+              />
+
+              {selectedActionCount > 0 && (
+                <p style={{ color: '#64748B', fontSize: '0.72rem', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                  <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+                  {selectedActionCount} action{selectedActionCount > 1 ? 's' : ''} déjà importée{selectedActionCount > 1 ? 's' : ''} sur cette catégorie — supprimer
+                  une dimension ou une option en efface les valeurs des analyses. Renommer, en revanche, est sans effet sur les données.
+                </p>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {selectedDimensions.map((dim, di) => (
+                  <div
+                    key={dim.id}
+                    draggable
+                    onDragStart={() => setDragDimension(di)}
+                    onDragOver={e => { if (dragDimension !== null) e.preventDefault(); }}
+                    onDrop={e => { e.preventDefault(); if (dragDimension !== null) handleReorderDimensions(selectedDimensions, dragDimension, di); setDragDimension(null); }}
+                    style={{ borderTop: '1px solid rgba(42,47,58,0.6)', paddingTop: 10, opacity: dragDimension === di ? 0.4 : 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <GripVertical size={12} color="#334155" style={{ cursor: 'grab', flexShrink: 0 }} />
+                      <EditableLabel value={dim.name} onSave={name => handleRenameDimension(dim, name)} />
+                      <span style={{ marginLeft: 'auto' }}>
+                        <ConfirmableDeleteButton onDelete={() => handleDeleteDimension(dim)} itemLabel={dim.name} />
+                      </span>
+                    </div>
+                    <OptionsEditor
+                      dimensionId={dim.id}
+                      options={options}
+                      onAdd={label => handleAddOption(dim.id, label)}
+                      onAddMany={labels => handleAddManyOptions(dim.id, labels)}
+                      onRename={handleRenameOption}
+                      onReorder={handleReorderOptions}
+                      onDelete={handleDeleteOption}
+                    />
+                  </div>
+                ))}
+                {selectedDimensions.length === 0 && <span style={{ color: '#475569', fontSize: '0.78rem' }}>Aucune dimension.</span>}
+                <AddItemRow placeholder="Nouvelle dimension…" addLabel="Ajouter une dimension" onAdd={name => handleAddDimension(selected.id, name)} />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </ConfigCard>

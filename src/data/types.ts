@@ -395,27 +395,59 @@ export interface TacticalDimension {
   /** Nom normalisé figé à la création — voir `TacticalCategory.normalizedName`. */
   normalizedName: string;
   sortOrder: number;
+  /** Position FIGÉE dans `TacticalAction.options` — attribuée à la création, jamais modifiée par
+   *  un réordonnancement (qui ne touche que `sortOrder`). La changer ferait pointer toutes les
+   *  actions déjà stockées vers la mauvaise dimension. */
+  slot: number;
 }
 
-/** Option attendue d'une dimension — curée à la main, jamais auto-créée par l'import. */
+/** Option attendue d'une dimension. Curée à la main dans l'écran de configuration ou créée en
+ *  masse par le CSV de configuration ; l'import de match y ajoute les valeurs qu'il ne connaît
+ *  pas, puisque c'est le code de l'option qui est stocké sur l'action. */
 export interface TacticalDimensionOption {
   id: string;
   teamId: string;
   dimensionId: string;
   label: string;
   sortOrder: number;
+  /** Code stocké dans `TacticalAction.options`, attribué à la création et JAMAIS réattribué —
+   *  un code réutilisé après suppression ferait basculer l'historique d'un libellé à un autre. */
+  code: number;
 }
 
-/** Une ligne de données du CSV brut, pour une catégorie d'un match. */
+/**
+ * Une action telle qu'elle est STOCKÉE : une ligne, aucune identité propre (on n'affiche jamais
+ * une action isolée), les valeurs réduites à des codes d'options positionnés sur le `slot` de
+ * chaque dimension.
+ */
+export interface TacticalAction {
+  matchId: string;
+  categoryId: string;
+  seq: number;
+  /** Points de l'action (dimension « Valeur ») — null pour une action sans score. */
+  valeur: number | null;
+  /** `options[slot]` = code de l'option, null si la dimension n'est pas renseignée. */
+  options: (number | null)[];
+  /** Joueuses rapprochées de l'effectif à l'import. */
+  playerIds: string[];
+}
+
+/**
+ * Une action REHYDRATÉE pour l'analyse : les codes sont retraduits en libellés du catalogue une
+ * fois au chargement, ce qui laisse toute l'agrégation (`tacticalAnalysis`, `crossAnalysis`,
+ * widgets) travailler sur la même forme qu'avant.
+ */
 export interface TacticalEvent {
+  /** Clé synthétique `match:catégorie:rang` — jamais stockée, seulement une identité de calcul. */
   id: string;
   matchId: string;
   categoryId: string;
   sequenceNumber: number;
   values: TacticalEventValue[];
+  playerIds: string[];
 }
 
-/** La valeur texte d'une dimension pour un événement (libre, pas de contrainte au catalogue d'options). */
+/** La valeur d'une dimension pour une action, sous son libellé de catalogue. */
 export interface TacticalEventValue {
   dimensionId: string;
   label: string;

@@ -1,12 +1,24 @@
 import { supabase } from './client';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { normalizeTacticalName } from '../utils/tacticalCsvParser';
+import type { ParsedConfigCategory } from '../utils/tacticalCsvParser';
 import { NEW_CATEGORY_PALETTE } from './categories';
 
 export interface TacticalTeamConfig {
   categories: TacticalCategory[];
   dimensions: TacticalDimension[];
   options: TacticalDimensionOption[];
+}
+
+/** Ce qu'un import de configuration a réellement fait. Rien n'est jamais écrasé ni supprimé :
+ *  tout ce qui existait déjà (retrouvé par nom normalisé) est laissé intact et compté à part. */
+export interface TacticalConfigImportResult {
+  createdCategories: number;
+  createdDimensions: number;
+  createdOptions: number;
+  existingCategories: number;
+  existingDimensions: number;
+  existingOptions: number;
 }
 
 export const tacticalConfigApi = {
@@ -43,7 +55,7 @@ export const tacticalConfigApi = {
     if (error) throw error;
   },
 
-  // category_id (tactical_events) est volontairement SANS CASCADE (protège l'historique importé) :
+  // category_id (tactical_actions) est volontairement SANS CASCADE (protège l'historique importé) :
   // supprimer une catégorie déjà utilisée dans un import échoue avec une violation de clé étrangère,
   // à afficher comme message clair côté UI plutôt que de bloquer la suppression en amont.
   async deleteCategory(id: string): Promise<void> {
@@ -71,19 +83,24 @@ export const tacticalConfigApi = {
   },
 
   /** Création manuelle depuis l'écran de configuration (dernière position au sein de la catégorie). */
-  async createDimension(teamId: string, categoryId: string, name: string, sortOrder: number): Promise<TacticalDimension> {
+  async createDimension(teamId: string, categoryId: string, name: string, sortOrder: number, siblings: TacticalDimension[]): Promise<TacticalDimension> {
     const { data, error } = await supabase
       .from('tactical_dimensions')
-      .insert({ team_id: teamId, category_id: categoryId, name, normalized_name: normalizeTacticalName(name), sort_order: sortOrder })
+      .insert({
+        team_id: teamId, category_id: categoryId, name,
+        normalized_name: normalizeTacticalName(name), sort_order: sortOrder,
+        slot: nextSlot(siblings, categoryId),
+      })
       .select()
       .single();
     if (error) throw error;
     return toTacticalDimension(data);
   },
 
-  // dimension_id (tactical_event_values) est volontairement SANS CASCADE (protège l'historique
-  // importé) : supprimer une dimension déjà utilisée dans un import échoue avec une violation de
-  // clé étrangère, à afficher comme message clair côté UI plutôt que de bloquer la suppression en amont.
+  // ATTENTION — contrairement aux catégories, plus aucune clé étrangère ne protège ici : les
+  // actions n'adressent les dimensions que par `slot`, un entier. Supprimer une dimension utilisée
+  // RÉUSSIT donc, et rend simplement ses valeurs illisibles (la réhydratation les ignore). C'est
+  // l'écran de configuration qui prévient, à partir du nombre d'actions de la catégorie.
   async deleteDimension(id: string): Promise<void> {
     const { error } = await supabase.from('tactical_dimensions').delete().eq('id', id);
     if (error) throw error;
@@ -99,7 +116,10 @@ export const tacticalConfigApi = {
     const nextOrder = siblings.reduce((max, d) => Math.max(max, d.sortOrder), -1) + 1;
     const { data, error } = await supabase
       .from('tactical_dimensions')
-      .insert({ team_id: teamId, category_id: categoryId, name: rawName, normalized_name: normalized, sort_order: nextOrder })
+      .insert({
+        team_id: teamId, category_id: categoryId, name: rawName, normalized_name: normalized,
+        sort_order: nextOrder, slot: nextSlot(existing, categoryId),
+      })
       .select()
       .single();
     if (error) throw error;
@@ -143,16 +163,99 @@ export const tacticalConfigApi = {
     ));
   },
 
+  /**
+   * Pré-crée la taxonomie d'une équipe depuis un CSV de configuration : catégories,
+   * dimensions, et le catalogue d'options de chaque dimension.
+   *
+   * Purement additif, donc rejouable : une catégorie/dimension/option déjà présente (retrouvée
+   * par nom normalisé, comme à l'import d'un match) est réutilisée telle quelle — jamais
+   * renommée, jamais supprimée, et les options en base absentes du fichier restent en place.
+   * C'est aussi ce qui protège la contrainte d'unicité du catalogue.
+   */
+  async importConfig(teamId: string, parsed: ParsedConfigCategory[]): Promise<TacticalConfigImportResult> {
+    let { categories, dimensions, options } = await tacticalConfigApi.getForTeam(teamId);
+    const result: TacticalConfigImportResult = {
+      createdCategories: 0, createdDimensions: 0, createdOptions: 0,
+      existingCategories: 0, existingDimensions: 0, existingOptions: 0,
+    };
+    const missingOptions: { dimensionId: string; label: string }[] = [];
+
+    // Séquentiel (pas Promise.all) : chaque création doit voir les précédentes, pour le
+    // dédoublonnage comme pour le calcul du prochain sort_order.
+    for (const parsedCategory of parsed) {
+      const { category, created } = await tacticalConfigApi.ensureCategory(teamId, parsedCategory.name, categories);
+      if (created) { categories = [...categories, category]; result.createdCategories++; }
+      else result.existingCategories++;
+
+      for (const parsedDimension of parsedCategory.dimensions) {
+        const { dimension, created: dimensionCreated } =
+          await tacticalConfigApi.ensureDimension(teamId, category.id, parsedDimension.name, dimensions);
+        if (dimensionCreated) { dimensions = [...dimensions, dimension]; result.createdDimensions++; }
+        else result.existingDimensions++;
+
+        const known = new Set(
+          options.filter(o => o.dimensionId === dimension.id).map(o => normalizeTacticalName(o.label)),
+        );
+        for (const label of parsedDimension.options) {
+          if (known.has(normalizeTacticalName(label))) result.existingOptions++;
+          else missingOptions.push({ dimensionId: dimension.id, label });
+        }
+      }
+    }
+
+    // Toutes les options manquantes en une requête, à la fin : un fichier de configuration
+    // complet en crée facilement deux cents, une par requête serait deux cents allers-retours.
+    const createdOptions = await tacticalConfigApi.createOptions(teamId, missingOptions, options);
+    result.createdOptions = createdOptions.length;
+
+    return result;
+  },
+
   // ─── Catalogue d'options attendues (curé à la main, jamais auto-créé par l'import) ────
 
-  async createOption(teamId: string, dimensionId: string, label: string, sortOrder: number): Promise<TacticalDimensionOption> {
+  async createOption(teamId: string, dimensionId: string, label: string, sortOrder: number, siblings: TacticalDimensionOption[]): Promise<TacticalDimensionOption> {
     const { data, error } = await supabase
       .from('tactical_dimension_options')
-      .insert({ team_id: teamId, dimension_id: dimensionId, label, normalized_label: normalizeTacticalName(label), sort_order: sortOrder })
+      .insert({
+        team_id: teamId, dimension_id: dimensionId, label,
+        normalized_label: normalizeTacticalName(label), sort_order: sortOrder,
+        code: nextCode(siblings, dimensionId),
+      })
       .select()
       .single();
     if (error) throw error;
     return toTacticalDimensionOption(data);
+  },
+
+  /**
+   * Crée d'un coup les options manquantes de plusieurs dimensions (import de configuration,
+   * valeurs inconnues rencontrées à l'import d'un match) — une seule requête au lieu d'une par
+   * option. Les libellés déjà présents, comparés en normalisé, sont ignorés.
+   */
+  async createOptions(
+    teamId: string,
+    wanted: { dimensionId: string; label: string }[],
+    existing: TacticalDimensionOption[],
+  ): Promise<TacticalDimensionOption[]> {
+    const pool = [...existing];
+    const rows: Record<string, unknown>[] = [];
+    for (const { dimensionId, label } of wanted) {
+      const siblings = pool.filter(o => o.dimensionId === dimensionId);
+      if (siblings.some(o => normalizeTacticalName(o.label) === normalizeTacticalName(label))) continue;
+      const code = nextCode(pool, dimensionId);
+      const sortOrder = siblings.reduce((max, o) => Math.max(max, o.sortOrder), -1) + 1;
+      // Ajoutée au pool local avant l'insert : deux fois le même libellé dans `wanted` ne doit
+      // produire qu'une ligne, et les rangs suivants doivent voir celui-ci.
+      pool.push({ id: `pending-${dimensionId}-${code}`, teamId, dimensionId, label, sortOrder, code });
+      rows.push({
+        team_id: teamId, dimension_id: dimensionId, label,
+        normalized_label: normalizeTacticalName(label), sort_order: sortOrder, code,
+      });
+    }
+    if (rows.length === 0) return [];
+    const { data, error } = await supabase.from('tactical_dimension_options').insert(rows).select();
+    if (error) throw error;
+    return (data ?? []).map(toTacticalDimensionOption);
   },
 
   async renameOption(id: string, label: string): Promise<void> {
@@ -170,12 +273,29 @@ export const tacticalConfigApi = {
   },
 
   async deleteOption(id: string): Promise<void> {
-    // Sans risque contrairement aux catégories/dimensions : tactical_event_values.label est du
-    // texte libre, jamais lié par clé étrangère au catalogue — l'historique importé est intact.
+    // Même remarque que pour les dimensions : les actions ne stockent que le `code` de l'option,
+    // sans clé étrangère. Supprimer une option utilisée réussit et rend ses valeurs illisibles ;
+    // son code n'est pour autant JAMAIS réattribué, sans quoi l'historique basculerait d'un
+    // libellé à un autre.
     const { error } = await supabase.from('tactical_dimension_options').delete().eq('id', id);
     if (error) throw error;
   },
 };
+
+/** Prochain `slot` libre d'une catégorie. Basé sur le max, jamais sur le nombre de dimensions :
+ *  un slot libéré par une suppression ne doit pas être réattribué (cf. schema.sql). */
+function nextSlot(dimensions: TacticalDimension[], categoryId: string): number {
+  return dimensions
+    .filter(d => d.categoryId === categoryId)
+    .reduce((max, d) => Math.max(max, d.slot), -1) + 1;
+}
+
+/** Prochain `code` libre d'une dimension — codes numérotés à partir de 1, jamais réattribués. */
+function nextCode(options: TacticalDimensionOption[], dimensionId: string): number {
+  return options
+    .filter(o => o.dimensionId === dimensionId)
+    .reduce((max, o) => Math.max(max, o.code), 0) + 1;
+}
 
 function toTacticalCategory(row: Record<string, unknown>): TacticalCategory {
   return {
@@ -200,6 +320,7 @@ function toTacticalDimension(row: Record<string, unknown>): TacticalDimension {
     name:           row.name          as string,
     normalizedName: row.normalized_name as string,
     sortOrder:      row.sort_order    as number,
+    slot:           row.slot          as number,
   };
 }
 
@@ -210,5 +331,6 @@ function toTacticalDimensionOption(row: Record<string, unknown>): TacticalDimens
     dimensionId: row.dimension_id as string,
     label:       row.label        as string,
     sortOrder:   row.sort_order   as number,
+    code:        row.code         as number,
   };
 }

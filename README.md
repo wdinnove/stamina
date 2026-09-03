@@ -21,4 +21,5 @@ npx vercel dev         # dev AVEC les fonctions serverless api/
 | [docs/SETUP.md](docs/SETUP.md) | monter une app comme celle-ci de zéro — guide pas à pas pour débutant |
 | [docs/STACK.md](docs/STACK.md) | la stack : quoi, pourquoi, où — fiche de référence |
 | [docs/CALCULS.md](docs/CALCULS.md) | les formules métier |
+| [docs/FORMATS_CSV.md](docs/FORMATS_CSV.md) | les formats CSV d'import tactique — à donner tel quel à qui prépare les fichiers |
 | [schema.sql](schema.sql) | le schéma Postgres complet (tables, RLS, fonctions, buckets) |

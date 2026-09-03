@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import {
   buildDimensionTable, buildCrossMatrix, buildCategoryEvolution, buildDimensionEvolution, buildCategoryReport,
@@ -93,7 +94,7 @@ export function tacticalWidgetTitle(
   return catName;
 }
 
-interface RenderContext {
+export interface RenderContext {
   events: TacticalEvent[];
   categories: TacticalCategory[];
   dimensions: TacticalDimension[];
@@ -225,3 +226,20 @@ export function renderTacticalWidgetContent(widget: WidgetLike, { events, catego
 
   return null;
 }
+
+
+/**
+ * Contenu d'un bloc, mémoïsé.
+ *
+ * `renderTacticalWidgetContent` agrège toute la période à chaque appel : sur une saison, un
+ * balayage complet des actions par bloc affiché. Sans mémoïsation, le moindre re-rendu du
+ * tableau de bord (déplacer un bloc, ouvrir l'éditeur, changer un filtre) refaisait ce calcul
+ * pour tous les blocs à la fois. `context` doit donc être stable côté appelant — sinon
+ * `React.memo` ne sert à rien.
+ */
+export const TacticalWidgetContent = memo(function TacticalWidgetContent(
+  { widget, context }: { widget: WidgetLike; context: RenderContext },
+) {
+  const content = useMemo(() => renderTacticalWidgetContent(widget, context), [widget, context]);
+  return <>{content}</>;
+});

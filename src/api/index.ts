@@ -18,7 +18,7 @@ export { statsApi }     from './stats';
 export { archetypesApi } from './archetypes';
 export { matchesApi }   from './matches';
 export { tacticalConfigApi } from './tacticalConfig';
-export { tacticalEventsApi } from './tacticalEvents';
+export { tacticalActionsApi } from './tacticalEvents';
 export { tacticalImportApi } from './tacticalImport';
 export { tacticalDashboardApi } from './tacticalDashboard';
 export {

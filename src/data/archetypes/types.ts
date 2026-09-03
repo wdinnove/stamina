@@ -16,7 +16,8 @@ export interface RawPlayerStats {
     plusMinus: number; plusMinusCount: number;
   };
   advancedAgg: PlayerAdvancedStats;
-  /** Phase 2+ : renseigné seulement une fois `tactical_events.player_id` exploitable. */
+  /** Phase 2+ : la donnée source existe désormais (`tactical_actions.player_ids`, rapprochée de
+   *  l'effectif à l'import) ; reste à brancher l'agrégation par joueuse sur le moteur. */
   tacticalAgg?: Record<string, number> | null;
 }
 

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { playersApi, statsApi, wellnessApi, medicalApi, rpeApi, attendanceApi } from '../api';
 import type { MatchScope } from '../api/matches';
 import { tacticalConfigApi } from '../api/tacticalConfig';
-import { tacticalEventsApi } from '../api/tacticalEvents';
+import { tacticalActionsApi } from '../api/tacticalEvents';
+import { hydrateTacticalActions } from '../data/tacticalHydration';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { isoToday } from '../components/DateRangeCard';
 import type { TeamCrossData } from '../data/crossAnalysis';
@@ -110,7 +111,7 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
         players.length
           ? wellnessApi.list({ playerIds: players.map(p => p.id), from: season.startDate, to: season.endDate < isoToday() ? season.endDate : isoToday() })
           : Promise.resolve([]),
-        tacticalConfig ? tacticalEventsApi.getForMatches(seasonMatchIds) : Promise.resolve([]),
+        tacticalConfig ? tacticalActionsApi.getForMatches(seasonMatchIds) : Promise.resolve([]),
       ]);
       if (cancelled) return;
       markDone('Charge & bien-être');
@@ -147,7 +148,9 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
             .map(a => ({ date: sessionDate.get(a.sessionId)!, status: a.status })),
         })),
         tactical: tacticalConfig ? {
-          events: tacticalEvents,
+          // Réhydratation une seule fois ici : les codes stockés redeviennent des libellés de
+          // catalogue, et toute l'analyse en aval garde la forme qu'elle a toujours eue.
+          events: hydrateTacticalActions(tacticalEvents, tacticalConfig.dimensions, tacticalConfig.options),
           categories: tacticalConfig.categories,
           dimensions: tacticalConfig.dimensions,
           options: tacticalConfig.options,

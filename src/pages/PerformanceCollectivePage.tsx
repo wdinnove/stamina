@@ -217,6 +217,11 @@ export default function PerformanceCollectivePage() {
 
   const players    = useMemo(() => data?.players.map(p => p.player) ?? [], [data]);
   const allStats   = useMemo(() => data?.players.flatMap(p => p.matchStats) ?? [], [data]);
+  /** Index nom par id, pour la table par joueuse du rapport tactique. */
+  const playerNameById = useMemo(
+    () => new Map(players.map(p => [p.id, `#${p.number} ${playerNameFull(p)}`])),
+    [players],
+  );
   const teamStats  = data?.teamMatchStats ?? [];
   const teamStatsMap = useMemo(
     () => new Map(teamStats.filter(t => t.matchId).map(t => [t.matchId as string, t])),
@@ -1506,6 +1511,7 @@ export default function PerformanceCollectivePage() {
                 dimensions={tacticalDimensions}
                 options={tacticalOptions}
                 matches={matchRefs}
+                playerNameById={playerNameById}
                 emptyMessage="Aucune donnée tactique pour ces filtres."
               />
             </div>

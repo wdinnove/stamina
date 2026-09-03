@@ -196,6 +196,56 @@ export function buildDimensionTable(
   };
 }
 
+/**
+ * Table Joueuse / Actions / Part / Valeur / Rentabilité d'une catégorie.
+ *
+ * Remplace l'ancienne « dimension Joueuses », qui comptait des COMBINAISONS et non des joueuses :
+ * sur un match réel, 11 joueuses produisaient 101 libellés distincts, et la plus impliquée
+ * (46 actions) n'apparaissait nulle part en tête parce qu'elle était presque toujours taguée
+ * avec quelqu'un d'autre.
+ *
+ * Une action taguée avec deux joueuses compte pour chacune : `sharePct` se lit donc « part des
+ * actions de la catégorie où la joueuse est impliquée », et la somme des parts dépasse 100 %.
+ */
+export function buildPlayerTable(
+  events: TacticalEvent[],
+  categoryId: string,
+  valueByEvent: Map<string, number>,
+  playerNameById: Map<string, string>,
+): DimensionOptionRow[] {
+  const counts = new Map<string, number>();
+  const sums = new Map<string, number>();
+  const sumCounts = new Map<string, number>();
+  let totalActions = 0;
+
+  for (const event of events) {
+    if (event.categoryId !== categoryId) continue;
+    totalActions++;
+    const numeric = valueByEvent.get(event.id);
+    for (const playerId of new Set(event.playerIds)) {
+      counts.set(playerId, (counts.get(playerId) ?? 0) + 1);
+      if (numeric === undefined) continue;
+      sums.set(playerId, (sums.get(playerId) ?? 0) + numeric);
+      sumCounts.set(playerId, (sumCounts.get(playerId) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([playerId, actions]) => {
+      const sc = sumCounts.get(playerId) ?? 0;
+      return {
+        // Une joueuse partie de l'effectif reste comptée : son id n'a plus de nom, pas de raison
+        // pour autant de faire disparaître ses actions du total de la catégorie.
+        label: playerNameById.get(playerId) ?? 'Joueuse retirée',
+        actions,
+        sharePct: totalActions > 0 ? actions / totalActions : 0,
+        valeur: sc > 0 ? sums.get(playerId)! : null,
+        rentabilite: sc > 0 ? sums.get(playerId)! / sc : null,
+      };
+    })
+    .sort((a, b) => b.actions - a.actions);
+}
+
 /** Référence à une option précise d'une dimension d'une catégorie — brique d'une ligne de tableau personnalisé. */
 export interface CustomTableOptionRef {
   categoryId: string;

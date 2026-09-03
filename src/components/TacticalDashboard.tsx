@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, ChevronUp, ChevronDown, Settings2, AlertCircle, Pencil, Copy } from 'lucide-react';
 import { tacticalDashboardApi } from '../api/tacticalDashboard';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption, TacticalDashboardWidget } from '../data/types';
 import type { TacticalMatchRef } from './TacticalReport';
-import { renderTacticalWidgetContent, tacticalWidgetTitle, EmptyNote } from './tacticalWidgetRenderer';
+import { TacticalWidgetContent, tacticalWidgetTitle, EmptyNote } from './tacticalWidgetRenderer';
 import type { WidgetLike } from './tacticalWidgetRenderer';
 import { TacticalWidgetEditorModal } from './TacticalWidgetEditorModal';
 import { AddButton } from './AddButton';
@@ -85,7 +85,12 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
     setEditor(null);
   }
 
-  const renderContext = { events, categories, dimensions, options, matches };
+  // Référence stable : c'est elle qui rend `TacticalWidgetContent` réellement mémoïsable — un
+  // objet recréé à chaque rendu invaliderait tous les blocs à chaque frappe ou déplacement.
+  const renderContext = useMemo(
+    () => ({ events, categories, dimensions, options, matches }),
+    [events, categories, dimensions, options, matches],
+  );
 
   return (
     <div>
@@ -145,7 +150,7 @@ export function TacticalDashboard({ teamId, events, categories, dimensions, opti
                     </span>
                   )}
                 </div>
-                {renderTacticalWidgetContent(widget, renderContext)}
+                <TacticalWidgetContent widget={widget} context={renderContext} />
               </div>
             );
           })}

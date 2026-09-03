@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, ChevronDown } from 'lucide-react';
 import { matchesApi } from '../api/matches';
@@ -7,7 +7,8 @@ import { playersApi } from '../api/players';
 import { MatchStatsImportModal } from '../components/MatchStatsImportModal';
 import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
-import { tacticalEventsApi } from '../api/tacticalEvents';
+import { tacticalActionsApi } from '../api/tacticalEvents';
+import { hydrateTacticalActions } from '../data/tacticalHydration';
 import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
@@ -241,18 +242,26 @@ export default function MatchDetailPage() {
   // mauvais match sous l'en-tête du nouveau.
   const currentMatchIdRef = useRef<string | undefined>(undefined);
 
+  // Index nom par id : la table par joueuse du rapport tactique n'a pas à connaître l'objet Player.
+  const playerNameById = useMemo(
+    () => new Map(players.map(p => [p.id, `#${p.number} ${playerNameFull(p)}`])),
+    [players],
+  );
+
   const loadTactical = useCallback(async (matchId: string, teamId: string) => {
     setLoadingTactical(true);
     try {
-      const [{ categories, dimensions, options }, events] = await Promise.all([
+      // Les deux requêtes restent parallèles ; la traduction des codes en libellés a besoin des
+      // deux réponses, elle se fait donc après, sur des données déjà en mémoire.
+      const [{ categories, dimensions, options }, actions] = await Promise.all([
         tacticalConfigApi.getForTeam(teamId),
-        tacticalEventsApi.getByMatchId(matchId),
+        tacticalActionsApi.getByMatchId(matchId),
       ]);
       if (currentMatchIdRef.current !== matchId) return;
       setTacticalCategories(categories);
       setTacticalDimensions(dimensions);
       setTacticalOptions(options);
-      setTacticalEvents(events);
+      setTacticalEvents(hydrateTacticalActions(actions, dimensions, options));
       setTacticalLoaded(true);
     } finally {
       if (currentMatchIdRef.current === matchId) setLoadingTactical(false);
@@ -345,7 +354,7 @@ export default function MatchDetailPage() {
     if (!match) return;
     setDeletingTactical(true);
     try {
-      await tacticalEventsApi.deleteForMatch(match.id);
+      await tacticalActionsApi.deleteForMatch(match.id);
       setTacticalEvents([]);
       setConfirmDeleteTactical(false);
     } catch (err: unknown) {
@@ -1275,6 +1284,7 @@ export default function MatchDetailPage() {
                 dimensions={tacticalDimensions}
                 options={tacticalOptions}
                 matches={[{ id: match.id, date: match.date, label: `vs ${match.opponent}` }]}
+                playerNameById={playerNameById}
                 emptyMessage="Aucune donnée tactique importée."
               />
             )
@@ -1387,6 +1397,7 @@ export default function MatchDetailPage() {
       {showTacticalImport && match && (
         <TacticalImportModal
           match={match}
+          players={players}
           hasExistingData={tacticalEvents.length > 0}
           onClose={() => setShowTacticalImport(false)}
           onSaved={() => {

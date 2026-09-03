@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
-import { buildCategoryReport, rentabiliteColor, categoryThresholds } from '../data/tacticalAnalysis';
+import { buildCategoryReport, buildPlayerTable, buildValueByEvent, findValueDimension, rentabiliteColor, categoryThresholds } from '../data/tacticalAnalysis';
 import { useUrlSort } from '../hooks/useUrlState';
 import type { DimensionTable, DimensionOptionRow, RentabiliteThresholds } from '../data/tacticalAnalysis';
 
@@ -165,12 +165,14 @@ export function DimensionTableView({ table, thresholds, borderColor }: { table: 
  * fiche match que la vue agrégée saison). L'évolution match par match n'est
  * disponible qu'en widget de tableau de bord, pas dans ce rapport automatique.
  */
-export function TacticalReport({ events, categories, dimensions, options = [] }: {
+export function TacticalReport({ events, categories, dimensions, options = [], playerNameById }: {
   events: TacticalEvent[];
   categories: TacticalCategory[];
   dimensions: TacticalDimension[];
   /** Catalogue d'options attendues (toutes catégories confondues) — fait apparaître des lignes à 0 si configuré. */
   options?: TacticalDimensionOption[];
+  /** Effectif indexé par id — sans lui, la table par joueuse n'est pas affichée. */
+  playerNameById?: Map<string, string>;
 }) {
   if (events.length === 0) return null;
 
@@ -189,6 +191,15 @@ export function TacticalReport({ events, categories, dimensions, options = [] }:
       {orderedCategories.map(category => {
         const report = buildCategoryReport(events, category, dimensions, options);
         const thresholds = categoryThresholds(category);
+        // Une action taguée à deux joueuses compte pour chacune : le total en pied de table est
+        // celui de la catégorie, pas la somme des lignes, qui le dépasse forcément.
+        const playerTable = playerNameById && (() => {
+          const valueDimension = findValueDimension(dimensions, category.id);
+          const valueByEvent = buildValueByEvent(events, category.id, valueDimension);
+          const rows = buildPlayerTable(events, category.id, valueByEvent, playerNameById);
+          const totalValeur = rows.reduce<number | null>((sum, r) => (r.valeur === null ? sum : (sum ?? 0) + r.valeur), null);
+          return { rows, totalValeur };
+        })();
         const globalRentabiliteColor = report.rentabilite !== null ? rentabiliteColor(report.rentabilite, thresholds) : undefined;
         return (
           <div key={category.id} style={{ backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderLeft: `4px solid ${category.color}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
@@ -210,6 +221,17 @@ export function TacticalReport({ events, categories, dimensions, options = [] }:
               {report.dimensionTables.map(table => (
                 <DimensionTableView key={table.dimension.id} table={table} thresholds={thresholds} borderColor={globalRentabiliteColor} />
               ))}
+              {playerTable && playerTable.rows.length > 0 && (
+                <DimensionRowsTable
+                  label="Joueuses"
+                  rows={playerTable.rows}
+                  totalActions={report.totalActions}
+                  totalValeur={playerTable.totalValeur}
+                  totalRentabilite={report.rentabilite}
+                  thresholds={thresholds}
+                  borderColor={globalRentabiliteColor}
+                />
+              )}
             </div>
           </div>
         );
