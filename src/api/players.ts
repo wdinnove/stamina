@@ -12,6 +12,15 @@ export interface ListPlayersFilters {
   includeLeft?: boolean;
 }
 
+/**
+ * Cache d'une photo de joueur : un an, `immutable`. Le fichier est bien écrasé en place
+ * (`upsert`), mais l'URL enregistrée en base porte un `?v=<timestamp>` renouvelé à chaque upload —
+ * l'ancienne version n'est plus jamais demandée, donc rien ne peut rester périmé. Sans ce réglage
+ * Supabase sert `max-age=3600` : passé une heure, tout l'effectif était retéléchargé. Le service
+ * worker double ce cache côté PWA (cf. vite.config.ts).
+ */
+const PHOTO_CACHE_SECONDS = 60 * 60 * 24 * 365;
+
 export const playersApi = {
   async list(filters: ListPlayersFilters = {}): Promise<Player[]> {
     let query = supabase.from('players').select('*');
@@ -106,7 +115,11 @@ export const playersApi = {
     const path = `${playerId}.${ext}`;
     const { error: upErr } = await supabase.storage
       .from('player-photos')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, file, {
+        upsert: true,
+        contentType: file.type,
+        cacheControl: `${PHOTO_CACHE_SECONDS}, immutable`,
+      });
     if (upErr) throw upErr;
     const { data } = supabase.storage.from('player-photos').getPublicUrl(path);
     const url = `${data.publicUrl}?v=${Date.now()}`;

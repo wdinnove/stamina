@@ -30,6 +30,13 @@ export default defineConfig({
       // périodiquement les mises à jour et recharger la page automatiquement,
       // au lieu du simple register() one-shot injecté par défaut.
       injectRegister: false,
+      // Par défaut, `registerSW` ne fait RIEN en dev (`npm run dev`) — le SW, et donc le cache
+      // des photos de joueurs (cf. `workbox.runtimeCaching` plus bas), n'existe qu'en build. Sur
+      // le serveur de dev on retombait sur le cache HTTP nu du navigateur, gouverné par l'en-tête
+      // `Cache-Control` renvoyé par Supabase au moment de l'upload — 1h par défaut pour toute
+      // photo uploadée avant le passage à `immutable` (cf. players.ts), donc rechargement lent
+      // dès que ce délai est dépassé. `enabled: true` active le même SW en dev.
+      devOptions: { enabled: true },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Stamina — Management App',
@@ -58,6 +65,33 @@ export default defineConfig({
         // Gestion des notifications push (listeners push/notificationclick) — fichier séparé pour
         // ne pas mélanger la logique métier avec le SW généré par Workbox.
         importScripts: ['push-sw.js'],
+        runtimeCaching: [
+          {
+            // Photos de joueurs. `CacheFirst` sans réseau : l'URL stockée en base porte déjà un
+            // `?v=<timestamp>` renouvelé à chaque upload (cf. playersApi.uploadPhoto), donc une
+            // photo changée est une AUTRE URL — jamais de risque de servir une version périmée,
+            // et on peut se passer de toute revalidation.
+            //
+            // Fonction plutôt que RegExp : Workbox n'applique une RegExp à une requête d'une
+            // autre origine que si elle matche l'URL depuis le premier caractère, ce qui obligerait
+            // à coder en dur l'URL du projet Supabase.
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/storage/v1/object/public/player-photos/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'player-photos',
+              expiration: {
+                // Large devant un effectif de club, versions successives d'une même photo comprises.
+                maxEntries: 300,
+                maxAgeSeconds: 60 * 60 * 24 * 90,
+                purgeOnQuotaError: true,
+              },
+              // Une balise <img> sans attribut `crossorigin` émet une requête `no-cors` dont la
+              // réponse est opaque, avec un status 0 : sans le 0, rien ne serait jamais mis en cache.
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],
