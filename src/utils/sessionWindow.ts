@@ -1,17 +1,15 @@
 /**
  * Fenêtre de séances affichée par la grille de présences.
  *
- * La grille montrait toute la saison d'un coup, ce qui posait deux problèmes : une colonne par
- * séance à balayer pour trouver celle du jour, et surtout une requête de présences sur toutes les
- * séances à la fois — au-delà de ~1000 lignes (effectif × séances), PostgREST tronque la réponse
- * SANS erreur, et des colonnes entières s'affichaient vides alors que les présences existaient bel
- * et bien en base. Charger par fenêtre borne la requête et règle les deux d'un coup.
+ * La grille montrait toute la saison d'un coup : une colonne par séance à balayer pour trouver
+ * celle du jour, et une requête de présences sur toute la saison. Charger par fenêtre borne la
+ * requête et donne un point d'entrée lisible autour de la séance du jour.
  */
 
 /** Séances AVANT le pivot dans la fenêtre initiale. */
-export const WINDOW_BEFORE = 3;
+export const WINDOW_BEFORE = 6;
 /** Séances APRÈS le pivot dans la fenêtre initiale. */
-export const WINDOW_AFTER = 6;
+export const WINDOW_AFTER = 13;
 /** Taille de la fenêtre initiale, et lot chargé à chaque clic sur « précédentes »/« suivantes ». */
 export const WINDOW_SIZE = WINDOW_BEFORE + 1 + WINDOW_AFTER;
 
@@ -36,8 +34,8 @@ export function pivotSessionIndex(sessions: { date: string }[], today: string): 
 }
 
 /**
- * Fenêtre initiale : 3 séances avant le pivot, le pivot, 6 après. En début ou en fin de saison, le
- * côté qui manque est compensé sur l'autre — on affiche 10 colonnes tant qu'il y a 10 séances,
+ * Fenêtre initiale : 6 séances avant le pivot, le pivot, 13 après. En début ou en fin de saison, le
+ * côté qui manque est compensé sur l'autre — on affiche 20 colonnes tant qu'il y a 20 séances,
  * plutôt qu'une grille à moitié vide.
  */
 export function initialSessionWindow(sessions: { date: string }[], today: string): SessionWindow {

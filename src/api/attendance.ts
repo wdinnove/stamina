@@ -36,6 +36,9 @@ function toAttendance(row: Record<string, unknown>): TrainingAttendance {
 /** Découpe une liste d'ids : un `in(...)` part dans l'URL, et une saison entière de séances y
  *  tiendrait mal. 100 UUID ≈ 3,7 ko, largement sous les limites des proxies. */
 const ID_CHUNK = 100;
+/** Taille d'une page de lignes lues. Sous le plafond serveur (1000), pour que `rows.length <
+ *  ROW_PAGE` signifie bien « dernière page » et non « réponse tronquée ». */
+const ROW_PAGE = 500;
 function chunked<T>(list: T[]): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < list.length; i += ID_CHUNK) out.push(list.slice(i, i + ID_CHUNK));
@@ -106,19 +109,30 @@ export const attendanceApi = {
   /**
    * Présences des séances demandées.
    *
-   * À n'appeler que sur un nombre BORNÉ de séances (la grille travaille par fenêtre de 10) : la
-   * réponse est plafonnée côté serveur — 1000 lignes par défaut sur Supabase — et la troncature
-   * est silencieuse. Sur une saison entière, effectif × séances dépasse vite ce seuil et des
-   * séances entières revenaient sans aucune présence, alors qu'elles étaient bien enregistrées.
+   * Paginée explicitement : la réponse est plafonnée côté serveur — 1000 lignes par défaut sur
+   * Supabase — et la troncature est SILENCIEUSE. Des séances entières revenaient sans aucune
+   * présence alors qu'elles étaient bien en base, dès que effectif × séances passait le seuil.
+   * On boucle donc sur `range` jusqu'à une page incomplète, au lieu de compter sur la taille de
+   * la fenêtre d'affichage pour rester sous la limite.
    */
   async listAttendance(sessionIds: string[]): Promise<TrainingAttendance[]> {
     if (!sessionIds.length) return [];
-    const { data, error } = await supabase
-      .from('training_attendance')
-      .select('*')
-      .in('session_id', sessionIds);
-    if (error) throw error;
-    return (data ?? []).map(toAttendance);
+    const out: TrainingAttendance[] = [];
+    for (const ids of chunked(sessionIds)) {
+      for (let from = 0; ; from += ROW_PAGE) {
+        const { data, error } = await supabase
+          .from('training_attendance')
+          .select('*')
+          .in('session_id', ids)
+          .order('id')
+          .range(from, from + ROW_PAGE - 1);
+        if (error) throw error;
+        const rows = data ?? [];
+        out.push(...rows.map(toAttendance));
+        if (rows.length < ROW_PAGE) break;
+      }
+    }
+    return out;
   },
 
   /**
