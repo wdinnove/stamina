@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Search, Pill, Ambulance, Users } from 'lucide-react';
+import { X, Search, Pill, Ambulance, Users, Activity, BarChart3 } from 'lucide-react';
 import { medicalApi } from '../api/medical';
 import { playersApi } from '../api/players';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -19,6 +19,27 @@ const RECAP_STATUSES  = ['', 'active', 'resolved'] as const;
 type RecapStatus = typeof RECAP_STATUSES[number];
 const RECAP_SORT_KEYS = ['date', 'player', 'description', 'type', 'severity', 'status'] as const;
 type  RecapSortKey    = typeof RECAP_SORT_KEYS[number];
+
+/** Filtre de type de la liste « non clôturé » (onglet Infirmerie) — '' = blessures ET traitements. */
+const INFIRMARY_TYPES = ['', 'injury', 'treatment'] as const;
+type InfirmaryType = typeof INFIRMARY_TYPES[number];
+
+/**
+ * « 1 joueuse concernée » / « 3 joueuses touchées ». Accord au féminin : l'effectif suivi est une
+ * équipe féminine, et le pluriel de l'adjectif suit toujours celui du nom.
+ */
+function playersLabel(n: number, adjective?: string): string {
+  const s = n > 1 ? 's' : '';
+  return `${n} joueuse${s}${adjective ? ` ${adjective}${s}` : ''}`;
+}
+
+/**
+ * Motifs d'indisponibilité, au féminin pluriel. `statusConfig` porte la forme masculine
+ * canonique du statut (« Blessé »), juste pour une pastille d'état mais bancale en prose.
+ */
+const UNAVAILABLE_LABELS: Record<'injured' | 'limited' | 'suspended' | 'unavailable', string> = {
+  injured: 'blessée', limited: 'limitée', suspended: 'suspendue', unavailable: 'indisponible',
+};
 
 const severityConfig = {
   mild:     { label: 'Léger',  color: '#F59E0B' },
@@ -75,6 +96,7 @@ export default function MedicalPage() {
   const [recapStatusFilter, setRecapStatusFilter] = useUrlState('statut', '', { allowed: RECAP_STATUSES });
   const { sortKey: recapSortKey, sortDir: recapSortDir, toggleSort } =
     useUrlSort<RecapSortKey>({ key: 'date', dir: 'desc' }, { allowed: RECAP_SORT_KEYS });
+  const [infirmaryFilter, setInfirmaryFilter] = useUrlState<InfirmaryType>('filtre', '', { allowed: INFIRMARY_TYPES });
   const patchRecap = useUrlPatch();
   const [detailRecord,      setDetailRecord]      = useState<MedicalRecord | null>(null);
   const [version, setVersion]                 = useState(0);
@@ -134,7 +156,18 @@ export default function MedicalPage() {
 
   const teamPlayerIds      = new Set(teamPlayers.map(p => p.id));
   const teamInjuries       = activeInjuries.filter(r => teamPlayerIds.has(r.playerId));
-  const teamSeasonInjuries = seasonInjuries.filter(r => teamPlayerIds.has(r.playerId));
+
+  /**
+   * Entrée située dans la saison sélectionnée. L'effectif suffisait comme filtre tant qu'un club
+   * n'avait qu'une saison ; sur la deuxième, « blessures de la saison » comptait aussi celles de
+   * la précédente pour toute joueuse restée au club. L'historique joueur appliquait déjà ce
+   * cadrage de son côté, et les deux écrans annonçaient donc des totaux différents.
+   */
+  const inSeason = (r: MedicalRecord) =>
+    (!selected?.season.startDate || r.date >= selected.season.startDate) &&
+    (!selected?.season.endDate   || r.date <= selected.season.endDate);
+
+  const teamSeasonInjuries = seasonInjuries.filter(r => teamPlayerIds.has(r.playerId) && inSeason(r));
   const teamActiveAll      = seasonAllRecords
     .filter(r => teamPlayerIds.has(r.playerId) && r.status === 'active' && r.type !== 'checkup')
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -152,21 +185,41 @@ export default function MedicalPage() {
   // seule fonction suffit. `undated` compte les blessures sans date de fin connue, qui étaient
   // silencieusement comptées pour 0 jour.
 
-  // Stats — actif
-  const activeCount    = teamInjuries.length;
-  const activeDaysTotal = sumInjuryDays(teamInjuries);
-  const activePlayers  = new Set(teamInjuries.map(r => r.playerId)).size;
-
   // Stats — saison
   const seasonCount    = teamSeasonInjuries.length;
   const seasonDaysTotal = sumInjuryDays(teamSeasonInjuries);
   const seasonPlayers  = new Set(teamSeasonInjuries.map(r => r.playerId)).size;
 
+  // Stats — infirmerie
+  //
+  // La disponibilité « à l'instant T » se lit sur le STATUT de la joueuse, pas sur ses dossiers
+  // médicaux : une suspension rend indisponible sans aucune entrée médicale, et c'est justement
+  // la clôture d'une entrée qui repose le statut (cf. MedicalRecordStatusModal).
+  const availableCount = teamPlayers.filter(p => p.status === 'active').length;
+  const unavailableBreakdown = (['injured', 'limited', 'suspended', 'unavailable'] as const)
+    .map(status => ({ status, count: teamPlayers.filter(p => p.status === status).length }))
+    .filter(x => x.count > 0);
+
+  const openInjuries   = teamActiveAll.filter(r => r.type === 'injury');
+  const openTreatments = teamActiveAll.filter(r => r.type === 'treatment');
+
+  /** Blessures de la saison par joueuse, la plus touchée en tête. */
+  const injuriesByPlayer = Object.entries(
+    teamSeasonInjuries.reduce<Record<string, MedicalRecord[]>>((acc, r) => {
+      (acc[r.playerId] ??= []).push(r);
+      return acc;
+    }, {}))
+    .map(([playerId, records]) => ({
+      player: teamPlayers.find(p => p.id === playerId),
+      count: records.length,
+      days: sumInjuryDays(records),
+    }))
+    .filter((x): x is typeof x & { player: Player } => !!x.player)
+    .sort((a, b) => b.count - a.count || playerNameFull(a.player).localeCompare(playerNameFull(b.player)));
+  const maxInjuriesForPlayer = injuriesByPlayer[0]?.count ?? 0;
+
   // Stats — joueur sélectionné (onglet Historique joueur)
-  const playerSeasonInjuries = recInjuries.filter(r =>
-    (!selected?.season.startDate || r.date >= selected.season.startDate) &&
-    (!selected?.season.endDate   || r.date <= selected.season.endDate)
-  );
+  const playerSeasonInjuries = recInjuries.filter(inSeason);
   const playerSeasonDays  = sumInjuryDays(playerSeasonInjuries).days;
 
   const openForm = () => {
@@ -242,14 +295,22 @@ export default function MedicalPage() {
       {/* ── INFIRMARY TAB ── */}
       {activeTab === 'infirmary' && (() => {
         // Plus proche date de reprise/fin estimée en premier ; sans date connue, en fin de liste.
+        // C'est l'ordre utile en infirmerie : ce qui revient bientôt se prépare maintenant.
         const byRtpAsc = (a: MedicalRecord, b: MedicalRecord) => {
           if (!a.rtpDate && !b.rtpDate) return 0;
           if (!a.rtpDate) return 1;
           if (!b.rtpDate) return -1;
           return a.rtpDate.localeCompare(b.rtpDate);
         };
-        const activeInjuriesList   = teamActiveAll.filter(r => r.type === 'injury').sort(byRtpAsc);
-        const activeTreatmentsList = teamActiveAll.filter(r => r.type === 'treatment').sort(byRtpAsc);
+        const openList = teamActiveAll
+          .filter(r => !infirmaryFilter || r.type === infirmaryFilter)
+          .sort(byRtpAsc);
+
+        const typeFilters = [
+          { val: ''          as const, label: 'Tout',        color: '#94A3B8', Icon: null,      count: teamActiveAll.length },
+          { val: 'injury'    as const, label: 'Blessures',   color: '#EF4444', Icon: Ambulance, count: openInjuries.length },
+          { val: 'treatment' as const, label: 'Traitements', color: '#00E5A0', Icon: Pill,      count: openTreatments.length },
+        ];
 
         const renderRecord = (record: MedicalRecord) => {
           const player = playerById(record.playerId);
@@ -259,8 +320,11 @@ export default function MedicalPage() {
               key={record.id}
               record={record}
               player={player}
-              onEdit={() => { if (canEditTeamData) openEdit(record); }}
-              onClose={canEditTeamData ? () => setStatusAction({ action: 'close', record }) : undefined}
+              // La liste mélange l'effectif : sans identité, rien ne dit qui est concernée.
+              showPlayerIdentity
+              onClose={canEditTeamData && record.status === 'active'
+                ? () => setStatusAction({ action: 'close', record })
+                : undefined}
               onClick={() => setDetailRecord(record)}
               navigate={navigate}
             />
@@ -268,29 +332,137 @@ export default function MedicalPage() {
         };
 
         return (
-          <div>
-            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
-              <Card accentColor="#EF4444">
-                <CardTitle icon={<Ambulance size={13} color="#EF4444" />}>
-                  Blessures {activeInjuriesList.length > 0 ? `(${activeInjuriesList.length})` : ''}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* KPIs — l'état de l'effectif en une ligne, avant le détail dossier par dossier.
+                Masqués sur mobile : quatre cards avant la moindre entrée poussent la liste des
+                dossiers hors écran sur un petit format. */}
+            <div className="hidden md:grid md:grid-cols-4" style={{ gap: 10 }}>
+              <RpeKpiCard
+                accent={unavailableBreakdown.length === 0 ? '#00E5A0' : '#F59E0B'}
+                label="Disponibles"
+                value={`${availableCount}/${teamPlayers.length}`}
+                sub={unavailableBreakdown.length === 0
+                  ? 'effectif au complet'
+                  : (
+                    <span style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap' }}>
+                      {unavailableBreakdown.map(({ status, count }) => (
+                        <Badge
+                          key={status}
+                          color={playerStatusColor[status]}
+                          bg={`${playerStatusColor[status]}18`}
+                          size="sm"
+                          label={`${count} ${UNAVAILABLE_LABELS[status]}${count > 1 ? 's' : ''}`}
+                          style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: 3 }} />
+                      ))}
+                    </span>
+                  )}
+              />
+              <RpeKpiCard
+                accent={openInjuries.length > 0 ? '#EF4444' : '#00E5A0'}
+                label="Blessures en cours"
+                value={String(openInjuries.length)}
+                sub={playersLabel(new Set(openInjuries.map(r => r.playerId)).size, 'concernée')}
+              />
+              <RpeKpiCard
+                accent="#00E5A0"
+                label="Traitements en cours"
+                value={String(openTreatments.length)}
+                sub={playersLabel(new Set(openTreatments.map(r => r.playerId)).size, 'concernée')}
+              />
+              <RpeKpiCard
+                accent={seasonCount > 0 ? '#F59E0B' : '#00E5A0'}
+                label="Blessures cette saison"
+                value={String(seasonCount)}
+                // Les blessures sans date de fin connue sont hors du cumul de jours : le dire
+                // plutôt que de laisser croire que le total les couvre.
+                sub={`${playersLabel(seasonPlayers, 'touchée')} · ${seasonDaysTotal.days}j${seasonDaysTotal.undated > 0 ? ` · ${seasonDaysTotal.undated} sans fin` : ''}`}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3" style={{ gap: 14, alignItems: 'start' }}>
+
+              {/* Dossiers non clôturés — le cœur de l'écran, sur deux tiers de la largeur : les
+                  cards sont horizontales (photo, nom, description, échéance, action). */}
+              <Card className="lg:col-span-2" accentColor={teamActiveAll.length > 0 ? '#EF4444' : '#00E5A0'}>
+                <CardTitle icon={<Activity size={13} color={teamActiveAll.length > 0 ? '#EF4444' : '#00E5A0'} />}>
+                  Dossiers en cours
                 </CardTitle>
-                {activeInjuriesList.length === 0 ? (
-                  <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucune blessure active</p>
+
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {typeFilters.map(({ val, label, color, Icon, count }) => {
+                    const active = infirmaryFilter === val;
+                    return (
+                      <button
+                        key={val || 'all'}
+                        onClick={() => setInfirmaryFilter(val)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+                          border: `1px solid ${active ? color : '#2A2F3A'}`,
+                          // #1E2229 et non #161920 : la pastille est POSÉE sur une card, elle
+                          // disparaîtrait sur un fond identique au sien.
+                          backgroundColor: active ? `${color}18` : '#1E2229',
+                          color: active ? color : '#94A3B8',
+                          fontSize: '0.8rem', fontWeight: active ? 700 : 500,
+                        }}>
+                        {Icon && <Icon size={13} />}
+                        {label}
+                        <span style={{ fontSize: '0.7rem', opacity: 0.75 }}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {openList.length === 0 ? (
+                  <EmptyState
+                    size="sm"
+                    message={teamActiveAll.length === 0
+                      ? '✓ Aucune blessure ni traitement en cours'
+                      : 'Aucune entrée de ce type en cours'} />
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {activeInjuriesList.map(renderRecord)}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {openList.map(renderRecord)}
                   </div>
                 )}
               </Card>
-              <Card accentColor="#00E5A0">
-                <CardTitle icon={<Pill size={13} color="#00E5A0" />}>
-                  Traitements en cours {activeTreatmentsList.length > 0 ? `(${activeTreatmentsList.length})` : ''}
+
+              {/* Blessures par joueuse — regard rétrospectif sur la saison, à côté de l'instant T. */}
+              <Card accentColor="#F59E0B">
+                <CardTitle icon={<BarChart3 size={13} color="#F59E0B" />} info="saison en cours">
+                  Blessures par joueuse
                 </CardTitle>
-                {activeTreatmentsList.length === 0 ? (
-                  <p style={{ color: '#00E5A0', fontSize: '0.82rem', margin: 0 }}>✓ Aucun traitement en cours</p>
+                {injuriesByPlayer.length === 0 ? (
+                  <EmptyState size="sm" message="✓ Aucune blessure cette saison" />
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {activeTreatmentsList.map(renderRecord)}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {injuriesByPlayer.map(({ player: p, count, days }) => {
+                      // Barre proportionnelle à la joueuse la PLUS touchée, pas au total de
+                      // l'équipe : sur 20 blessures réparties, des barres à 5 % ne comparent rien.
+                      const pct = maxInjuriesForPlayer > 0 ? Math.round((count / maxInjuriesForPlayer) * 100) : 0;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => navigate(`/medical/joueur/${p.id}`)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                          <PlayerAvatar player={p} size={26} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {playerNameFull(p)}
+                            </div>
+                            <div style={{ height: 5, backgroundColor: '#1E2229', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}>
+                              <div style={{ height: '100%', width: `${pct}%`, backgroundColor: '#EF4444', borderRadius: 3, transition: 'width 0.4s ease' }} />
+                            </div>
+                          </div>
+                          <div style={{ flexShrink: 0, textAlign: 'right', minWidth: 34 }}>
+                            <div style={{ color: '#EF4444', fontSize: '0.9rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1.1 }}>{count}</div>
+                            <div style={{ color: '#475569', fontSize: '0.66rem' }}>
+                              {days.days > 0 ? `${days.days}j` : '—'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </Card>
@@ -301,7 +473,6 @@ export default function MedicalPage() {
 
       {/* ── TEAM TAB ── */}
       {activeTab === 'team' && (() => {
-        const injuredIds     = new Set(teamInjuries.map(r => r.playerId));
         const limitedPlayers = teamPlayers.filter(p => p.status === 'limited').length;
 
         const severityCounts = { mild: 0, moderate: 0, severe: 0 };

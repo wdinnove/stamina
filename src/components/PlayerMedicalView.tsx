@@ -117,8 +117,6 @@ export const PlayerMedicalView = forwardRef<PlayerMedicalViewHandle, { playerId:
               key={record.id}
               record={record}
               player={player ?? undefined}
-              showAvatarColumn={false}
-              onEdit={() => openEdit(record)}
               onClose={canEditTeamData && record.status === 'active'
                 ? () => setStatusAction({ action: 'close', record })
                 : undefined}
