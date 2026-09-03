@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { X, AlertCircle, Check, Minus } from 'lucide-react';
+import { X, AlertCircle, Check, Minus, ArrowUp, ArrowDown } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { Modal, DropzoneEmptyState, EmptyState, AddButton, CategoryBadge } from '../components';
 import { rpeApi } from '../api/rpe';
@@ -9,7 +9,7 @@ import { playersApi, teamCategoriesApi } from '../api';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { MONTHS_FULL, DAYS_FULL, DAYS_ABBR3, DAYS_MONDAY_FIRST } from '../utils/dateFormat';
 import { roundedAvg } from '../utils/avg';
-import { estimatedSessionRpe } from '../utils/rpe';
+import { estimatedSessionRpe, rpeColor } from '../utils/rpe';
 import type { TrainingSession, Player, TeamCategory, TrainingAttendance } from '../data/types';
 
 type AttendanceStatus = TrainingAttendance['status'];
@@ -356,16 +356,13 @@ export default function TrainingSessionsPage() {
                     const isToday  = session.date === today;
                     const rowBg    = isNext ? 'rgba(0,229,160,0.05)' : 'transparent';
 
-                    // Couleur de l'écart réel/estimé — sans rapport avec rpeColor() de utils/rpe.ts
-                    // (qui colore une valeur RPE brute 1-10), volontairement renommée pour éviter la confusion.
-                    let deltaColor = '#94A3B8';
-                    if (avg !== undefined && est !== undefined && est > 0) {
-                      const delta = (avg - est) / est;
-                      if (delta > 0.25)       deltaColor = '#EF4444';
-                      else if (delta > 0.10)  deltaColor = '#F59E0B';
-                      else if (delta < -0.10) deltaColor = '#3B82F6';
-                      else                    deltaColor = '#00E5A0';
-                    }
+                    // Tendance réel/estimé : le réel est coloré par son intensité propre
+                    // (rpeColor, l'échelle 0-10 utilisée partout ailleurs) — l'écart, lui, ne se
+                    // lit plus dans sa couleur mais dans une flèche dédiée, rouge vers le haut
+                    // (séance vécue plus dure que prévu) ou verte vers le bas (plus facile).
+                    const trend = avg !== undefined && est !== undefined && est > 0 && avg !== est
+                      ? (avg > est ? 'up' as const : 'down' as const)
+                      : null;
 
                     return (
                       <tr
@@ -414,16 +411,18 @@ export default function TrainingSessionsPage() {
                         </td>
                         <td className="pl-3 pr-2.5 sm:pl-5 sm:pr-4" style={{ paddingTop: 12, paddingBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ color: '#475569', fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ color: '#94A3B8', fontSize: '0.82rem', fontWeight: 700 }}>
                                 {est !== undefined ? est.toFixed(1) : '—'}
                               </span>
                               <span style={{ color: '#334155', fontSize: '0.75rem' }}>→</span>
-                              <span style={{ color: avg !== undefined ? deltaColor : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
+                              <span style={{ color: avg !== undefined ? rpeColor(avg) : '#334155', fontSize: '0.88rem', fontWeight: 700 }}>
                                 {avg !== undefined ? avg.toFixed(1) : '—'}
                               </span>
-                              {avg !== undefined && est !== undefined && est > 0 && (
-                                <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: deltaColor, flexShrink: 0, display: 'inline-block' }} />
+                              {trend && (
+                                trend === 'up'
+                                  ? <ArrowUp size={13} color="#EF4444" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                                  : <ArrowDown size={13} color="#00E5A0" strokeWidth={2.5} style={{ flexShrink: 0 }} />
                               )}
                             </div>
                             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
