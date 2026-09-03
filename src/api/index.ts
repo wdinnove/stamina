@@ -21,6 +21,8 @@ export { tacticalConfigApi } from './tacticalConfig';
 export { tacticalActionsApi } from './tacticalEvents';
 export { tacticalImportApi } from './tacticalImport';
 export { tacticalDashboardApi } from './tacticalDashboard';
+export { playsApi } from './plays';
+export { matchLiveApi } from './matchLive';
 export {
   NotificationService, isPushSupported, getNotificationPermission,
   getExistingSubscription, subscribeToPush, unsubscribeFromPush,

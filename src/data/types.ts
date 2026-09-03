@@ -707,3 +707,68 @@ export interface PlayerRank {
   weekLoads: number[];
 }
 
+// ─── Suivi live : rotations & rentabilité des plays ───────────────────────────
+// Domaine volontairement séparé du tactique (`TacticalAction` ci-dessus) : ici, pointage rapide
+// en direct ou en relecture manuelle (qui est sur le terrain, fin de possession réussie ou non,
+// pour quel play), pas de tag vidéo multi-dimensions a posteriori.
+
+export type LiveSide    = 'offense' | 'defense';
+export type LineupSide  = 'us' | 'them';
+
+/** Un système d'attaque ou de défense nommé, propre à une équipe. */
+export interface Play {
+  id: string;
+  teamId: string;
+  side: LiveSide;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+}
+
+/** Joueuse adverse saisie à la volée pendant un match — aucun effectif adverse n'existe en base. */
+export interface MatchOpponentPlayer {
+  id: string;
+  matchId: string;
+  number?: number;
+  name: string;
+}
+
+/**
+ * Un changement de joueuses, sur l'un ou l'autre banc. `onCourt` est l'instantané complet après
+ * le changement (pas seulement les entrantes/sortantes) : lire le cinq courant ne demande jamais
+ * de rejouer tout l'historique depuis le début du match.
+ */
+export interface MatchLineupEvent {
+  matchId: string;
+  seq: number;
+  side: LineupSide;
+  quarter: number;
+  /** Secondes écoulées depuis le début du quart-temps courant — chrono interne, aucun lien vidéo. */
+  gameTimeSeconds: number;
+  playersIn: string[];
+  playersOut: string[];
+  onCourt: string[];
+}
+
+/**
+ * Fin d'une possession pointée en direct ou en relecture, pour l'équipe qui avait le ballon
+ * (`side`: 'offense' = nous, 'defense' = l'adversaire). `points` porte un sens différent selon
+ * `side` : marqués par nous en attaque, encaissés par nous en défense — les deux flux combinés
+ * donnent un +/- par joueuse et par combinaison de cinq sans calcul supplémentaire.
+ */
+export interface MatchLiveAction {
+  matchId: string;
+  seq: number;
+  quarter: number;
+  gameTimeSeconds: number;
+  side: LiveSide;
+  playId?: string;
+  /** 0 à 4 — la réussite d'une possession se lit directement dessus (0 = ratée, peu importe la
+   *  raison : tir manqué, perte de balle, ballon mort…), pas de colonne d'issue séparée. */
+  points: number;
+  /** Cinq de l'équipe sur le terrain au moment de l'action. */
+  onCourt: string[];
+  /** Cinq adverse sur le terrain, si suivi — vide si non renseigné. */
+  onCourtThem: string[];
+}
+

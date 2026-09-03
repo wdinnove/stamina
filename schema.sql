@@ -4886,3 +4886,143 @@ DROP TABLE IF EXISTS tactical_events;
 --   SELECT category_id, COUNT(*), COUNT(DISTINCT slot) FROM tactical_dimensions
 --     GROUP BY category_id HAVING COUNT(*) <> COUNT(DISTINCT slot);                 -- aucune ligne
 --   SELECT to_regclass('tactical_events'), to_regclass('tactical_event_values');    -- NULL, NULL
+
+
+-- ================================================================
+-- MIGRATION — Suivi live : rotations & rentabilité des plays
+-- Script exécutable tel quel dans le SQL Editor de Supabase.
+-- ================================================================
+--
+-- Nouveau domaine, INDÉPENDANT du tactique ci-dessus (`tactical_actions`) : celui-ci sert au tag
+-- vidéo fin a posteriori, avec un catalogue de dimensions configurable par catégorie. Ici, il
+-- s'agit d'un pointage rapide en direct (ou en relecture manuelle, coach cliquant en suivant la
+-- vidéo sur un autre écran) : qui est sur le terrain, et si la dernière possession attaque/défense
+-- a été un succès, pour combien de points, avec quel play. Granularité et usage trop différents
+-- pour chercher à faire converger les deux — voir aussi les invariants documentés juste au-dessus.
+--
+-- Pas de lien vidéo ni de timecode externe stocké (même choix que le tactique) : le seul repère
+-- temporel est un chrono de match INTERNE (quart-temps + secondes écoulées dans le quart), utile
+-- pour calculer un temps de jeu par combinaison de joueuses — jamais pour pointer un instant dans
+-- un fichier vidéo. `quarter` dépasse 4 pour les prolongations (5 = P1, 6 = P2…), même convention
+-- que `matches.quarter_scores` (cf. `MatchFormModal`, "Q{i+1}" puis "P{i-3}").
+--
+-- Comme `tactical_actions`, pas de colonne `id` sur les deux tables à haut volume
+-- (`match_lineup_events`, `match_live_actions`) : clé naturelle (match, [side], seq) — aucune de
+-- ces lignes n'a besoin d'identité propre, le rang d'insertion suffit à les ordonner.
+
+-- 1. Catalogue des systèmes attaque/défense, par équipe
+CREATE TABLE IF NOT EXISTS plays (
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id    UUID        NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  side       TEXT        NOT NULL CHECK (side IN ('offense', 'defense')),
+  name       TEXT        NOT NULL,
+  active     BOOLEAN     NOT NULL DEFAULT true,
+  sort_order SMALLINT    NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (team_id, side, name)
+);
+
+CREATE INDEX ON plays (team_id, side);
+
+ALTER TABLE plays ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "plays_select" ON plays;
+CREATE POLICY "plays_select" ON plays
+  FOR SELECT TO authenticated
+  USING (team_id IN (SELECT * FROM accessible_team_ids()));
+
+DROP POLICY IF EXISTS "plays_write" ON plays;
+CREATE POLICY "plays_write" ON plays
+  FOR ALL TO authenticated
+  USING (team_id IN (SELECT * FROM writable_team_ids()));
+
+-- 2. Joueuses adverses, saisies à la volée pendant le match (aucun effectif adverse en base)
+CREATE TABLE IF NOT EXISTS match_opponent_players (
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id   UUID        NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  number     SMALLINT,
+  name       TEXT        NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ON match_opponent_players (match_id);
+
+ALTER TABLE match_opponent_players ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "match_opponent_players_select" ON match_opponent_players;
+CREATE POLICY "match_opponent_players_select" ON match_opponent_players
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "match_opponent_players_write" ON match_opponent_players;
+CREATE POLICY "match_opponent_players_write" ON match_opponent_players
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 3. Rotations — une ligne par changement, sur l'un ou l'autre banc ('us' / 'them').
+--    `on_court` est un instantané complet après le changement (pas seulement les entrantes/
+--    sortantes) : lire le cinq courant ne demande jamais de rejouer tout l'historique.
+CREATE TABLE IF NOT EXISTS match_lineup_events (
+  match_id          UUID     NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  seq               SMALLINT NOT NULL,
+  side              TEXT     NOT NULL CHECK (side IN ('us', 'them')),
+  quarter           SMALLINT NOT NULL,
+  game_time_seconds INTEGER  NOT NULL,
+  players_in        UUID[]   NOT NULL DEFAULT '{}',
+  players_out       UUID[]   NOT NULL DEFAULT '{}',
+  on_court          UUID[]   NOT NULL DEFAULT '{}',
+  PRIMARY KEY (match_id, side, seq)
+);
+
+ALTER TABLE match_lineup_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "match_lineup_events_select" ON match_lineup_events;
+CREATE POLICY "match_lineup_events_select" ON match_lineup_events
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "match_lineup_events_write" ON match_lineup_events;
+CREATE POLICY "match_lineup_events_write" ON match_lineup_events
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- 4. Fin de possession — une ligne par possession pointée, pour l'UNE ou l'AUTRE équipe (`side`
+--    'offense' = nous avions le ballon, 'defense' = l'adversaire l'avait). Un panier marqué en
+--    'defense' est donc un panier ENCAISSÉ : les deux flux combinés donnent un +/- par joueuse et
+--    par combinaison de cinq sans rien calculer de plus. `play_id` SANS CASCADE, comme
+--    `tactical_actions.category_id` : supprimer un play déjà utilisé doit échouer plutôt
+--    qu'effacer l'historique en silence.
+--    Pas de colonne d'issue séparée (succès/échec, perte de balle…) : `points` seul suffit,
+--    saisi en un tap (0/2/3/4) — la réussite d'une possession se lit directement dessus
+--    (0 = ratée, peu importe la raison), et rajouter une distinction fine ralentissait la saisie
+--    en match sans qu'elle serve encore à un calcul.
+CREATE TABLE IF NOT EXISTS match_live_actions (
+  match_id          UUID     NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  seq               SMALLINT NOT NULL,
+  quarter           SMALLINT NOT NULL,
+  game_time_seconds INTEGER  NOT NULL,
+  side              TEXT     NOT NULL CHECK (side IN ('offense', 'defense')),
+  play_id           UUID     REFERENCES plays(id),
+  points            SMALLINT NOT NULL DEFAULT 0 CHECK (points BETWEEN 0 AND 4),
+  on_court          UUID[]   NOT NULL DEFAULT '{}',
+  on_court_them     UUID[]   NOT NULL DEFAULT '{}',
+  PRIMARY KEY (match_id, seq)
+);
+
+CREATE INDEX ON match_live_actions (play_id);
+
+ALTER TABLE match_live_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "match_live_actions_select" ON match_live_actions;
+CREATE POLICY "match_live_actions_select" ON match_live_actions
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "match_live_actions_write" ON match_live_actions;
+CREATE POLICY "match_live_actions_write" ON match_live_actions
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- Vérification
+--   SELECT to_regclass('plays'), to_regclass('match_opponent_players'),
+--          to_regclass('match_lineup_events'), to_regclass('match_live_actions');

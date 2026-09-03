@@ -9,7 +9,7 @@ import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
@@ -159,6 +159,9 @@ const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
   { label: 'Tactique', tabs: [
     { key: 'tactical_brutes',    slug: 'tactique',        label: 'Statistiques brutes' },
     { key: 'tactical_dashboard', slug: 'tableau-de-bord', label: 'Tableau de bord' },
+  ]},
+  { label: 'Direct', tabs: [
+    { key: 'live_tracking', slug: 'direct', label: 'Suivi live' },
   ]},
 ];
 
@@ -1308,6 +1311,10 @@ export default function MatchDetailPage() {
                 emptyMessage="Aucune donnée tactique importée."
               />
             )
+          )}
+
+          {activeTab === 'live_tracking' && (
+            <LiveTrackingPanel match={match} players={players} canEdit={canEditTeamData} />
           )}
 
         </div>

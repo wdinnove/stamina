@@ -875,6 +875,28 @@ Trois surfaces gardent un périmètre imposé, indépendant de l'interrupteur :
 
 ---
 
+## 16. Suivi live : rotations & rentabilité des plays
+
+Fichiers source : [`src/data/liveTrackingAnalysis.ts`](../src/data/liveTrackingAnalysis.ts), [`src/components/LiveTrackingPanel.tsx`](../src/components/LiveTrackingPanel.tsx), [`src/api/matchLive.ts`](../src/api/matchLive.ts), [`src/api/plays.ts`](../src/api/plays.ts)
+
+Domaine volontairement **indépendant** du tactique (§ import CSV vidéo, `tactical_actions`) : pointage rapide en direct ou en relecture manuelle (pas de tag vidéo multi-dimensions a posteriori). Deux tables alimentent les calculs : `match_lineup_events` (qui est sur le terrain) et `match_live_actions` (fin de possession — `side` 'offense'/'defense' = qui avait le ballon, `points`, `play`).
+
+**Une possession = un nombre de points**, saisi en un tap (0/2/3/4) — pas de colonne d'issue séparée (succès/échec, perte de balle, ballon mort…) : `points = 0` couvre tout raté, quelle qu'en soit la raison. La distinction plus fine a été essayée puis retirée : elle ralentissait la saisie en match sans encore servir de calcul. Un panier marqué avec `side = 'defense'` est un panier **encaissé** par nous.
+
+**Rentabilité d'un play** = points totaux / nombre de possessions pointées avec ce play (`playStats`). Une possession sans play rattaché reste comptée dans une ligne « Sans play » — jamais écartée, c'est une possession réelle. `successRate` = part des possessions à `points > 0`. Seuils de coloration par défaut : attaque `{vert:1, bleu:0.8, ambre:0.5}` (plus haut = meilleur), défense `{vert:0.5, bleu:0.8, ambre:1}` inversée (plus bas = meilleur, moins de points encaissés).
+
+**+/- d'une combinaison de cinq** (`lineupStats`) = points marqués pendant que ce cinq était sur le terrain en attaque − points encaissés pendant qu'il y était en défense. Une possession sans cinq renseigné (`onCourt` vide) n'entre dans aucune ligne.
+
+**+/- par joueuse** (`playerPlusMinus`) : même mécanique que `lineupStats`, répartie individuellement — pour chaque possession, chaque joueuse présente dans `onCourt` reçoit +points (attaque) ou -points (défense). Une joueuse jamais entrée en jeu n'apparaît pas (distinct d'un +/- à 0, qui signifie qu'elle a joué sans que le score bouge en sa faveur ni en sa défaveur).
+
+**Temps de jeu par joueuse** (`playingTime`) : dérivé de `match_lineup_events`, jamais stocké. Chaque écart entre deux changements de banc consécutifs (ou entre le dernier changement et le repère "maintenant" — `clock.quarter`/`clock.elapsedSeconds`, pour un match en cours) est crédité à chaque joueuse du cinq de l'intervalle. `(quarter, gameTimeSeconds)` est converti en un axe de temps continu via `periodDurationSeconds` — supposé constant sur tout le match, prolongations comprises, même simplification que `useMatchClock` — pour compter juste un intervalle qui chevauche une fin de quart-temps. Comme le repère "maintenant" avance avec le chrono, le temps de jeu affiché progresse tout seul pendant que la partie tourne.
+
+**Suppression depuis l'historique** (`recomputeOnCourtSnapshots`) : une possession se supprime toujours sans effet de bord (elle ne détermine l'état d'aucune autre ligne). Un changement de banc, en revanche, est rejoué : l'instantané `onCourt` de chaque changement suivant sur le même banc, et de chaque possession pointée depuis, est recalculé à partir de ce qui reste — sinon une suppression au milieu du match laisserait le cinq affiché durablement désynchronisé du cinq réel. Le composant ne persiste que les lignes dont `onCourt` a réellement changé.
+
+Pas de lien vidéo ni de timecode externe stocké : le seul repère temporel est un chrono de match interne, affiché en DÉCOMPTE (comme la table de marque, `remainingSeconds = periodDurationSeconds - elapsedSeconds`) mais stocké en temps écoulé — une différence entre deux lignes donne directement une durée. Jamais persisté en tant que chrono : seuls `quarter`/`gameTimeSeconds` sont écrits sur les lignes au moment de leur création (`useMatchClock`). Un rechargement de page remet le chrono à zéro sans affecter l'historique déjà enregistré.
+
+---
+
 ## Récapitulatif des seuils & constantes clés
 
 | Constante | Valeur | Usage |
