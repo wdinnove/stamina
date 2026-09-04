@@ -3,13 +3,21 @@ import { Trash2, Pencil, Check, X } from 'lucide-react';
 import { Modal } from './Modal';
 import { playsApi } from '../api/plays';
 import { LAYER } from '../styles/layers';
-import type { Play, LiveSide } from '../data/types';
+import { playerNameShort } from '../utils/playerName';
+import type { Play, LiveSide, Player } from '../data/types';
 
 export interface PlaysConfigModalProps {
   teamId: string;
   plays: Play[];
   periodDurationSeconds: number;
   onPeriodDurationChange: (seconds: number) => void;
+  /** Tout l'effectif de la saison — le vivier dans lequel se coche la feuille de match. */
+  seasonPlayers: Player[];
+  /** Joueuses retenues. Vide = aucune sélection, donc tout l'effectif est disponible. */
+  rosterIds: string[];
+  /** Joueuses actuellement sur le terrain : décochables interdit, elles sont déjà engagées. */
+  lockedPlayerIds: string[];
+  onRosterChange: (playerIds: string[]) => Promise<void>;
   /** Nombre de lignes de suivi enregistrées sur ce match — affiché avant l'effacement, pour que
    *  le geste ne soit jamais fait à l'aveugle. */
   recordedCount: number;
@@ -49,7 +57,9 @@ const iconBtn: React.CSSProperties = {
  * place, plutôt que de bloquer la suppression en amont sur un simple comptage.
  */
 export function PlaysConfigModal({
-  teamId, plays, periodDurationSeconds, onPeriodDurationChange, recordedCount, onDeleteAll, onClose, onChanged,
+  teamId, plays, periodDurationSeconds, onPeriodDurationChange,
+  seasonPlayers, rosterIds, lockedPlayerIds, onRosterChange,
+  recordedCount, onDeleteAll, onClose, onChanged,
 }: PlaysConfigModalProps) {
   const [newOffense, setNewOffense] = useState('');
   const [newDefense, setNewDefense] = useState('');
@@ -58,6 +68,26 @@ export function PlaysConfigModal({
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Aucune sélection enregistrée = tout l'effectif est retenu : on part donc de la liste complète
+  // cochée, ce qui rend le premier décochage immédiat au lieu d'exiger de tout cocher d'abord.
+  const selectedIds = rosterIds.length > 0 ? new Set(rosterIds) : new Set(seasonPlayers.map(p => p.id));
+  const locked = new Set(lockedPlayerIds);
+
+  async function toggleRosterPlayer(playerId: string) {
+    if (locked.has(playerId)) return;
+    const next = new Set(selectedIds);
+    if (next.has(playerId)) next.delete(playerId); else next.add(playerId);
+    setError('');
+    try {
+      // Tout coché = on efface la sélection plutôt que de figer une liste qui ne filtre rien :
+      // l'effectif suivra ainsi les arrivées ultérieures dans la saison.
+      const ids = next.size === seasonPlayers.length ? [] : [...next];
+      await onRosterChange(ids);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour de la feuille de match');
+    }
+  }
 
   async function deleteAll() {
     setDeleting(true);
@@ -224,6 +254,39 @@ export function PlaysConfigModal({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+          <p style={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+            Joueuses du match
+          </p>
+          <span style={{ color: '#64748B', fontSize: '0.72rem' }}>{selectedIds.size} / {seasonPlayers.length}</span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {seasonPlayers.map(p => {
+            const on = selectedIds.has(p.id);
+            const isLocked = locked.has(p.id);
+            return (
+              <button key={p.id} type="button" onClick={() => toggleRosterPlayer(p.id)} disabled={isLocked}
+                title={isLocked ? 'Sur le terrain — à sortir avant de la retirer de la feuille de match' : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 20,
+                  border: `1px solid ${on ? '#00E5A0' : '#2A2F3A'}`,
+                  backgroundColor: on ? '#00E5A018' : 'transparent',
+                  color: on ? '#00E5A0' : '#64748B',
+                  fontSize: '0.78rem', fontWeight: on ? 600 : 400,
+                  cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.6 : 1,
+                }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{p.number}</span>
+                {playerNameShort(p)}
+              </button>
+            );
+          })}
+          {seasonPlayers.length === 0 && (
+            <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Aucune joueuse dans l'effectif de la saison.</p>
+          )}
         </div>
       </div>
 

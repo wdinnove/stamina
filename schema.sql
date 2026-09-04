@@ -4959,6 +4959,29 @@ CREATE POLICY "match_opponent_players_write" ON match_opponent_players
   FOR ALL TO authenticated
   USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
+-- 2bis. Joueuses de NOTRE équipe retenues pour ce match (la « feuille de match »).
+--    Convention : AUCUNE ligne = tout l'effectif de la saison est disponible. C'est le défaut, et
+--    il évite d'imposer une configuration avant de pouvoir pointer quoi que ce soit ; dès qu'une
+--    ligne existe, seules les joueuses listées sont proposées. Une feuille vide n'aurait de toute
+--    façon aucun sens, l'ambiguïté n'est donc que théorique.
+CREATE TABLE IF NOT EXISTS match_roster (
+  match_id  UUID NOT NULL REFERENCES matches(id)  ON DELETE CASCADE,
+  player_id UUID NOT NULL REFERENCES players(id)  ON DELETE CASCADE,
+  PRIMARY KEY (match_id, player_id)
+);
+
+ALTER TABLE match_roster ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "match_roster_select" ON match_roster;
+CREATE POLICY "match_roster_select" ON match_roster
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "match_roster_write" ON match_roster;
+CREATE POLICY "match_roster_write" ON match_roster
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
 -- 3. Rotations — une ligne par changement, sur l'un ou l'autre banc ('us' / 'them').
 --    `on_court` est un instantané complet après le changement (pas seulement les entrantes/
 --    sortantes) : lire le cinq courant ne demande jamais de rejouer tout l'historique.
@@ -5024,5 +5047,5 @@ CREATE POLICY "match_live_actions_write" ON match_live_actions
   USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- Vérification
---   SELECT to_regclass('plays'), to_regclass('match_opponent_players'),
+--   SELECT to_regclass('plays'), to_regclass('match_opponent_players'), to_regclass('match_roster'),
 --          to_regclass('match_lineup_events'), to_regclass('match_live_actions');

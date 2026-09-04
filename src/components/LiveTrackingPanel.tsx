@@ -103,6 +103,9 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   const [lineupEvents,    setLineupEvents]    = useState<MatchLineupEvent[]>([]);
   const [actions,         setActions]         = useState<MatchLiveAction[]>([]);
   const [plays,           setPlays]           = useState<Play[]>([]);
+  /** Ids des joueuses retenues pour ce match. Vide = aucune sélection enregistrée, donc tout
+   *  l'effectif de la saison est disponible (cf. `match_roster` dans schema.sql). */
+  const [rosterIds, setRosterIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
 
@@ -122,16 +125,18 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
     setLoading(true);
     setError('');
     try {
-      const [opp, events, acts, teamPlays] = await Promise.all([
+      const [opp, events, acts, teamPlays, roster] = await Promise.all([
         matchLiveApi.getOpponentPlayers(match.id),
         matchLiveApi.getLineupEvents(match.id),
         matchLiveApi.getActions(match.id),
         playsApi.getForTeam(match.teamId),
+        matchLiveApi.getRoster(match.id),
       ]);
       setOpponentPlayers(opp);
       setLineupEvents(events);
       setActions(acts);
       setPlays(teamPlays);
+      setRosterIds(roster);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -140,6 +145,27 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   }, [match.id, match.teamId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Barre espace = lancer/arrêter le chrono, le geste le plus urgent du match (coup de sifflet).
+   * Ignorée dès qu'une saisie est en cours (champ de texte, liste déroulante) ou qu'une modale est
+   * ouverte, et quand le focus est sur un bouton — sinon on volerait l'activation clavier native
+   * de ce bouton. `preventDefault` empêche le défilement de la page, comportement par défaut de
+   * l'espace.
+   */
+  useEffect(() => {
+    if (!canEdit || actionModal || showPlaysConfig) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || el?.isContentEditable) return;
+      e.preventDefault();
+      if (clock.running) clock.pause(); else clock.start();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [canEdit, actionModal, showPlaysConfig, clock.running, clock.pause, clock.start]);
 
   const onCourt = useMemo(() => {
     const last: Record<LineupSide, string[]> = { us: [], them: [] };
@@ -154,7 +180,18 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
 
   const nextActionSeq = useMemo(() => actions.reduce((m, a) => Math.max(m, a.seq), 0) + 1, [actions]);
 
-  const usRoster: RosterEntry[]   = useMemo(() => players.map(p => ({ id: p.id, number: p.number, fullName: playerNameFull(p), shortName: playerNameShort(p) })), [players]);
+  /**
+   * Effectif réellement proposé pour ce match. Une joueuse déjà sur le terrain reste incluse même
+   * si elle vient d'être décochée dans la config : la retirer de la liste d'affichage laisserait
+   * un « ? » sur le terrain et dans l'historique déjà enregistré.
+   */
+  const matchPlayers = useMemo(() => {
+    if (rosterIds.length === 0) return players;
+    const kept = new Set([...rosterIds, ...onCourt.us]);
+    return players.filter(p => kept.has(p.id));
+  }, [players, rosterIds, onCourt.us]);
+
+  const usRoster: RosterEntry[]   = useMemo(() => matchPlayers.map(p => ({ id: p.id, number: p.number, fullName: playerNameFull(p), shortName: playerNameShort(p) })), [matchPlayers]);
   // Nom adverse saisi à la volée, en un seul champ libre : aucun raccourci fiable à en tirer,
   // les deux formats sont donc identiques ici (contrairement à notre effectif prénom/nom séparés).
   const themRoster: RosterEntry[] = useMemo(() => opponentPlayers.map(p => ({ id: p.id, number: p.number ?? null, fullName: p.name, shortName: p.name })), [opponentPlayers]);
@@ -402,12 +439,13 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
           <button onClick={clock.previousPeriod} disabled={clock.quarter <= 1} style={{ ...smallBtn, width: 32, justifyContent: 'center', opacity: clock.quarter <= 1 ? 0.4 : 1, cursor: clock.quarter <= 1 ? 'not-allowed' : 'pointer' }} title="Quart-temps précédent">
             <SkipBack size={13} />
           </button>
-          <button onClick={() => clock.adjustRemaining(-10)} style={smallBtn} title="Retirer 10s au temps affiché">-10s</button>
+          <button onClick={() => clock.adjustRemaining(10)} style={smallBtn} title="Rendre 10s au temps affiché — j'ai oublié d'appuyer sur pause">+10s</button>
           <button onClick={clock.running ? clock.pause : clock.start}
+            title={`${clock.running ? 'Arrêter' : 'Lancer'} le chrono (barre espace)`}
             style={{ ...smallBtn, backgroundColor: clock.running ? '#EF444422' : '#00E5A022', borderColor: clock.running ? '#EF4444' : '#00E5A0', color: clock.running ? '#EF4444' : '#00E5A0', width: 36, justifyContent: 'center' }}>
             {clock.running ? <Pause size={14} /> : <PlayIcon size={14} />}
           </button>
-          <button onClick={() => clock.adjustRemaining(10)} style={smallBtn} title="Rendre 10s au temps affiché — j'ai oublié d'appuyer sur pause">+10s</button>
+          <button onClick={() => clock.adjustRemaining(-10)} style={smallBtn} title="Retirer 10s au temps affiché">-10s</button>
           <button onClick={clock.nextPeriod} style={{ ...smallBtn, width: 32, justifyContent: 'center' }} title="Quart-temps / prolongation suivante">
             <SkipForward size={13} />
           </button>
@@ -581,6 +619,8 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
         <PlaysConfigModal
           teamId={match.teamId} plays={plays}
           periodDurationSeconds={clock.periodDurationSeconds} onPeriodDurationChange={clock.setPeriodDuration}
+          seasonPlayers={players} rosterIds={rosterIds} lockedPlayerIds={onCourt.us}
+          onRosterChange={async ids => { await matchLiveApi.setRoster(match.id, ids); setRosterIds(ids); }}
           recordedCount={actions.length + lineupEvents.length + opponentPlayers.length}
           onDeleteAll={deleteAllData}
           onClose={() => setShowPlaysConfig(false)}

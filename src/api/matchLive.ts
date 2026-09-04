@@ -25,6 +25,29 @@ export const matchLiveApi = {
     return toOpponentPlayer(data);
   },
 
+  /** Feuille de match : ids des joueuses retenues. Tableau vide = pas de sélection enregistrée,
+   *  donc tout l'effectif de la saison est disponible (cf. commentaire de `match_roster`). */
+  async getRoster(matchId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('match_roster')
+      .select('player_id')
+      .eq('match_id', matchId);
+    if (error) throw error;
+    return (data ?? []).map(row => row.player_id as string);
+  },
+
+  /** Remplace la feuille de match. Un tableau vide efface la sélection et rend donc tout
+   *  l'effectif à nouveau disponible — c'est le geste « je ne filtre plus ». */
+  async setRoster(matchId: string, playerIds: string[]): Promise<void> {
+    const { error: delError } = await supabase.from('match_roster').delete().eq('match_id', matchId);
+    if (delError) throw delError;
+    if (playerIds.length === 0) return;
+    const { error } = await supabase
+      .from('match_roster')
+      .insert(playerIds.map(playerId => ({ match_id: matchId, player_id: playerId })));
+    if (error) throw error;
+  },
+
   async getLineupEvents(matchId: string): Promise<MatchLineupEvent[]> {
     const { data, error } = await supabase
       .from('match_lineup_events')

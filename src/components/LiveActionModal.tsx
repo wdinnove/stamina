@@ -3,9 +3,9 @@ import { Modal } from './Modal';
 import { LAYER } from '../styles/layers';
 import type { Play } from '../data/types';
 
-/** 0/2/3/4 plutôt que 0 à 4 continu : un lancer franc isolé (1 pt) est trop rare à distinguer
- *  pour valoir un 5e bouton, et 4 couvre le panier + faute (and-one) sur un 3 points. */
-const POINTS_OPTIONS = [0, 2, 3, 4] as const;
+/** 0 à 4 : 0 = possession ratée (peu importe la raison), 1 = lancer franc isolé, 2/3 = panier,
+ *  4 = panier à 3 points + faute convertie. */
+const POINTS_OPTIONS = [0, 1, 2, 3, 4] as const;
 
 /** Play pas encore choisi ('Sans play' inclus, une fois cliqué) — distinct de `null` pour ne
  *  jamais présélectionner "Sans play" avant un vrai clic. */
@@ -75,7 +75,7 @@ export function LiveActionModal({ teamLabel, playsSide, plays, saving, onCancel,
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ color: '#94A3B8', fontSize: '0.78rem', display: 'block', marginBottom: 6 }}>Points marqués</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
           {POINTS_OPTIONS.map(v => (
             <button key={v} type="button" disabled={disabled} onClick={() => pickPoints(v)} style={chipStyle(points === v, '#00E5A0')}>
               {v}
