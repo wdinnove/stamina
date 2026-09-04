@@ -40,8 +40,12 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
     }
   }, [value, editor]);
 
+  // `emitUpdate: false` : sans lui, rendre l'éditeur éditable émet un « update » alors que
+  // personne n'a rien tapé, et `onChange` renvoie au parent le contenu du moment — vide, puisque
+  // l'éditeur naît avant que la valeur chargée n'arrive. Le parent écrasait ainsi ses propres
+  // données à peine reçues (notes de séance invisibles au retour sur la page).
   useEffect(() => {
-    editor?.setEditable(!disabled);
+    editor?.setEditable(!disabled, false);
   }, [disabled, editor]);
 
   function btn(active: boolean, action: () => void, icon: React.ReactNode, title: string) {
