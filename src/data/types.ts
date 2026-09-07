@@ -58,6 +58,8 @@ export interface Match {
   scoreUs: number;
   scoreThem: number;
   quarterScores?: { us: number; them: number }[];
+  /** Retour à chaud du staff — HTML de l'éditeur riche, comme `TrainingSession.notes`. */
+  notes?: string;
 }
 
 /**

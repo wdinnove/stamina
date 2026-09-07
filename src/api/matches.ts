@@ -63,6 +63,7 @@ export const matchesApi = {
         score_us:       input.scoreUs,
         score_them:     input.scoreThem,
         quarter_scores: input.quarterScores ?? null,
+        notes:          input.notes ?? null,
       })
       .select()
       .single();
@@ -82,6 +83,7 @@ export const matchesApi = {
     if (input.scoreUs       !== undefined) row.score_us       = input.scoreUs;
     if (input.scoreThem     !== undefined) row.score_them     = input.scoreThem;
     if (input.quarterScores !== undefined) row.quarter_scores = input.quarterScores ?? null;
+    if (input.notes         !== undefined) row.notes          = input.notes ?? null;
     const { error } = await supabase.from('matches').update(row).eq('id', id);
     if (error) throw error;
   },
@@ -107,5 +109,6 @@ function toMatch(row: Record<string, unknown>): Match {
     scoreUs:       row.score_us       as number,
     scoreThem:     row.score_them     as number,
     quarterScores: row.quarter_scores as { us: number; them: number }[] | undefined,
+    notes:         row.notes as string | undefined,
   };
 }

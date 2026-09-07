@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, ChevronDown, Edit, Save, Check } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { statsApi } from '../api/stats';
 import { playersApi } from '../api/players';
@@ -11,6 +11,7 @@ import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
 import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
+import RichTextEditor from '../components/RichTextEditor';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useUrlSort } from '../hooks/useUrlState';
@@ -163,6 +164,9 @@ const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
   { label: 'Direct', tabs: [
     { key: 'live_tracking', slug: 'direct', label: 'Suivi live' },
   ]},
+  { label: 'Notes', tabs: [
+    { key: 'notes', slug: 'notes', label: 'Retour de match' },
+  ]},
 ];
 
 const MATCH_TABS = MATCH_TAB_GROUPS.flatMap(g => g.tabs);
@@ -184,6 +188,31 @@ export default function MatchDetailPage() {
   const [error,            setError]           = useState('');
 
   const [showEdit,  setShowEdit]  = useState(false);
+
+  const [notesDraft,  setNotesDraft]  = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesSaved,  setNotesSaved]  = useState(false);
+  const [notesError,  setNotesError]  = useState('');
+
+  useEffect(() => {
+    setNotesDraft(match?.notes ?? '');
+  }, [match?.notes]);
+
+  async function handleSaveNotes() {
+    if (!match) return;
+    setNotesSaving(true);
+    setNotesError('');
+    try {
+      await matchesApi.update(match.id, { notes: notesDraft || undefined });
+      setMatch({ ...match, notes: notesDraft || undefined });
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2000);
+    } catch (err: unknown) {
+      setNotesError(err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement.');
+    } finally {
+      setNotesSaving(false);
+    }
+  }
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting,      setDeleting]      = useState(false);
@@ -1315,6 +1344,28 @@ export default function MatchDetailPage() {
 
           {activeTab === 'live_tracking' && (
             <LiveTrackingPanel match={match} players={players} canEdit={canEditTeamData} />
+          )}
+
+          {activeTab === 'notes' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Edit size={15} style={{ color: '#00E5A0' }} />
+                  <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Retour de match</h2>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {notesError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{notesError}</span>}
+                  {canEditTeamData && (
+                  <button type="button" onClick={handleSaveNotes} disabled={notesSaving || notesDraft === (match.notes ?? '')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: notesSaved ? '#1E2229' : (notesSaving || notesDraft === (match.notes ?? '')) ? '#1E2229' : '#00E5A0', border: notesSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: notesSaved ? '#00E5A0' : (notesSaving || notesDraft === (match.notes ?? '')) ? '#475569' : '#0D0F14', cursor: (notesSaving || notesDraft === (match.notes ?? '')) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
+                    {notesSaved ? <><Check size={13} /> Enregistré</> : <><Save size={13} /> {notesSaving ? 'Enregistrement…' : 'Enregistrer'}</>}
+                  </button>
+                  )}
+                </div>
+              </div>
+              <RichTextEditor value={notesDraft} onChange={setNotesDraft} disabled={!canEditTeamData}
+                placeholder="Retour sur le match…" minHeight={160} />
+            </div>
           )}
 
         </div>

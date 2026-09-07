@@ -719,6 +719,8 @@ CREATE TABLE matches (
   score_us       SMALLINT     NOT NULL CHECK (score_us   >= 0),
   score_them     SMALLINT     NOT NULL CHECK (score_them >= 0),
   quarter_scores JSONB,
+  -- Retour à chaud du staff sur le match — HTML de l'éditeur riche, comme staff_meetings.notes.
+  notes          TEXT,
   created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
@@ -5049,3 +5051,18 @@ CREATE POLICY "match_live_actions_write" ON match_live_actions
 -- Vérification
 --   SELECT to_regclass('plays'), to_regclass('match_opponent_players'), to_regclass('match_roster'),
 --          to_regclass('match_lineup_events'), to_regclass('match_live_actions');
+
+
+-- ================================================================
+-- MIGRATION — Notes de match
+-- Script exécutable tel quel dans le SQL Editor de Supabase.
+-- ================================================================
+--
+-- Retour à chaud du staff sur un match — même principe que les notes de séance
+-- (training_sessions.notes) : du texte riche, sans historique ni auteur, réédité en place.
+
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Vérification
+--   SELECT column_name FROM information_schema.columns
+--    WHERE table_name = 'matches' AND column_name = 'notes';   -- notes
