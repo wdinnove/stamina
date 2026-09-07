@@ -15,6 +15,7 @@ import { WellnessPlayerRankingTable } from '../components/WellnessPlayerRankingT
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { WELLNESS_DIMENSIONS, wellnessQuickScale, wellnessScoreColor, wellnessDimColor, wellnessGlobalScore, wellnessRawValue, wellnessBroadcastValues, aggregateTeamWellnessDaily } from '../utils/wellness';
 import { playerNameFull } from '../utils/playerName';
+import { historyPlayerOptions } from '../utils/playerOptions';
 import { fmt1 } from '../utils/format';
 import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
 
@@ -68,6 +69,8 @@ export default function WellnessPage() {
   /** Joueurs du club hors effectif — un partenaire pointé sur la séance du jour en fait partie. */
   const [orgPlayers, setOrgPlayers]       = useState<Player[]>([]);
   const [sparringIds, setSparringIds]     = useState<Set<string>>(new Set());
+  /** Partenaires venus au moins une fois avec CETTE équipe cette saison — cf. `historyPlayers`. */
+  const [seasonGuestIds, setSeasonGuestIds] = useState<string[]>([]);
 
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [values, setValues]       = useState<Record<string, number>>(
@@ -147,6 +150,20 @@ export default function WellnessPage() {
     const guests = orgPlayers.filter(p => sparringIds.has(p.id) && !roster.some(r => r.id === p.id));
     return [...roster, ...guests];
   }, [roster, orgPlayers, sparringIds]);
+
+  // Partenaires de la saison — cf. `historyPlayers`.
+  useEffect(() => {
+    if (!selected) { setSeasonGuestIds([]); return; }
+    attendanceApi.listSeasonGuestPlayerIds(selected.team.id, selected.season.id)
+      .then(setSeasonGuestIds)
+      .catch(() => setSeasonGuestIds([]));
+  }, [selected?.team.id, selected?.season.id]);
+
+  /** Effectif de la saison + partenaires venus avec l'équipe — cf. `historyPlayerOptions`. */
+  const historyPlayers = useMemo(
+    () => historyPlayerOptions(roster, orgPlayers, seasonGuestIds, selectedPlayerId),
+    [roster, orgPlayers, seasonGuestIds, selectedPlayerId],
+  );
 
   useEffect(() => {
     if (activeTab !== 'team' || roster.length === 0) return;
@@ -316,14 +333,14 @@ export default function WellnessPage() {
           </div>
         ) : loadingRoster ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Chargement…</span>
-        ) : (activeTab === 'entry' ? selectablePlayers : orgPlayers).length === 0 ? (
+        ) : (activeTab === 'entry' ? selectablePlayers : historyPlayers).length === 0 ? (
           <span style={{ color: '#475569', fontSize: '0.85rem' }}>Aucun joueur dans l'effectif pour cette saison.</span>
         ) : (
           // La saisie ne propose que l'effectif + les partenaires pointés aujourd'hui (on ne
-          // peut saisir que pour quelqu'un présent) ; l'historique doit au contraire rester
-          // accessible pour un partenaire pointé un autre jour, ou d'une autre équipe — sinon sa
-          // saisie, bien enregistrée, devient introuvable dès qu'il n'est plus pointé le jour même.
-          <PlayerSelect players={activeTab === 'entry' ? selectablePlayers : orgPlayers} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} />
+          // peut saisir que pour quelqu'un présent) ; l'historique élargit aux partenaires de
+          // toute la saison — sinon leur saisie, bien enregistrée, devient introuvable dès
+          // qu'ils ne sont plus pointés le jour même (cf. `historyPlayers`).
+          <PlayerSelect players={activeTab === 'entry' ? selectablePlayers : historyPlayers} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} />
         )}
 
         {activeTab === 'entry' && canEditTeamData && (

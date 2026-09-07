@@ -157,6 +157,34 @@ export const attendanceApi = {
     return [...new Set(batches.flat())];
   },
 
+  /**
+   * Même liste que `listGuestPlayerIds`, mais pour une équipe/saison entière et sans avoir à
+   * charger ses séances au préalable : le filtre voyage dans la jointure (`!inner`), une seule
+   * requête. Sert aux écrans qui n'ont besoin que des NOMS des partenaires — RPE et bien-être,
+   * dont le sélecteur d'historique se limite aux gens de l'équipe.
+   */
+  async listSeasonGuestPlayerIds(teamId: string, seasonId: string): Promise<string[]> {
+    const ids = new Set<string>();
+    // Une ligne par (séance, partenaire) : une poignée de partenaires sur une saison entière
+    // pèse quelques centaines de lignes. On pagine quand même — la troncature serveur est
+    // silencieuse, et un partenaire manquant deviendrait introuvable sans le moindre signe.
+    for (let from = 0; ; from += ROW_PAGE) {
+      const { data, error } = await supabase
+        .from('training_attendance')
+        .select('id, player_id, training_sessions!inner(team_id, season_id)')
+        .eq('sparring', true)
+        .eq('training_sessions.team_id', teamId)
+        .eq('training_sessions.season_id', seasonId)
+        .order('id')
+        .range(from, from + ROW_PAGE - 1);
+      if (error) throw error;
+      const rows = data ?? [];
+      rows.forEach(r => ids.add(r.player_id as string));
+      if (rows.length < ROW_PAGE) break;
+    }
+    return [...ids];
+  },
+
   /** `sparring` est écrit à chaque fois : c'est la présence qui porte l'étiquette, et une même
    *  joueur peut être invité sur une séance et titulaire sur une autre. */
   async setAttendance(input: {

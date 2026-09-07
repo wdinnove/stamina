@@ -23,6 +23,7 @@ import type { TeamDisplayMode } from '../components';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { useTeamRpeHistory } from '../hooks/useTeamRpeHistory';
 import { playerNameFull } from '../utils/playerName';
+import { historyPlayerOptions } from '../utils/playerOptions';
 import type { Player, RPEEntry, TeamCategory, TrainingAttendance } from '../data/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,6 +93,9 @@ export default function RPEPage() {
   const [roster, setRoster]               = useState<Player[]>([]);
   /** Joueurs du club hors effectif : un partenaire invité sur la séance en fait partie. */
   const [orgPlayers,   setOrgPlayers]     = useState<Player[]>([]);
+  /** Partenaires venus au moins une fois avec CETTE équipe cette saison — le reste du club n'a
+   *  rien à faire dans le sélecteur d'historique. */
+  const [seasonGuestIds, setSeasonGuestIds] = useState<string[]>([]);
   const [sessionAtt,   setSessionAtt]     = useState<TrainingAttendance[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
 
@@ -145,6 +149,14 @@ export default function RPEPage() {
     // donc l'org complète, départs compris (le tri "candidats à inviter" se fait ailleurs, sur cette liste).
     playersApi.list({ includeLeft: true }).then(setOrgPlayers).catch(() => {});
   }, [selected?.team.id]);
+
+  // Partenaires de la saison — cf. `historyPlayers`.
+  useEffect(() => {
+    if (!selected) { setSeasonGuestIds([]); return; }
+    attendanceApi.listSeasonGuestPlayerIds(selected.team.id, selected.season.id)
+      .then(setSeasonGuestIds)
+      .catch(() => setSeasonGuestIds([]));
+  }, [selected?.team.id, selected?.season.id]);
 
   /**
    * Catégories de séance de l'équipe — la saisie manuelle crée une séance, elle doit proposer
@@ -294,6 +306,12 @@ export default function RPEPage() {
   const guestIds = useMemo(
     () => new Set(sessionAtt.filter(a => a.sparring).map(a => a.playerId)),
     [sessionAtt],
+  );
+
+  /** Effectif de la saison + partenaires venus avec l'équipe — cf. `historyPlayerOptions`. */
+  const historyPlayers = useMemo(
+    () => historyPlayerOptions(roster, orgPlayers, seasonGuestIds, selectedPlayerId),
+    [roster, orgPlayers, seasonGuestIds, selectedPlayerId],
   );
 
   // ── Derived (collective tab)
@@ -683,10 +701,10 @@ export default function RPEPage() {
       {activeTab === 'individual' && (
         <div>
           <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            {/* L'historique reste accessible pour un partenaire pointé un autre jour, ou d'une
-                autre équipe — se limiter à l'effectif le rendrait introuvable une fois qu'il
-                n'est plus pointé le jour même (même correctif que WellnessPage). */}
-            <PlayerSelect players={orgPlayers} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} style={{ minWidth: 180 }} />
+            {/* Effectif + partenaires de la saison : un partenaire pointé un autre jour reste
+                trouvable, sans pour autant déverser tout le club dans la liste (cf.
+                `historyPlayers`, même règle que WellnessPage). */}
+            <PlayerSelect players={historyPlayers} value={selectedPlayerId ?? ''} onChange={setSelectedPlayerId} style={{ minWidth: 180 }} />
           </div>
 
           <DateRangeCard from={dateRange.from} to={dateRange.to} preset={dateRange.preset}
