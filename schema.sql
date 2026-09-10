@@ -5066,3 +5066,104 @@ ALTER TABLE matches ADD COLUMN IF NOT EXISTS notes TEXT;
 -- Vérification
 --   SELECT column_name FROM information_schema.columns
 --    WHERE table_name = 'matches' AND column_name = 'notes';   -- notes
+
+
+-- ================================================================
+-- MIGRATION — Prise de statistiques en direct (match_events)
+-- Script exécutable tel quel dans le SQL Editor de Supabase.
+-- ================================================================
+--
+-- Une ligne par action de jeu ATTRIBUÉE, par opposition à `match_live_actions` qui est une ligne
+-- par POSSESSION sans auteur. Les deux flux cohabitent sans se recouvrir : celui-ci répond à
+-- « qui a fait quoi, d'où », celui-là à « ce système rapporte-t-il des points ». Voir
+-- docs/STATS_LIVE.md.
+--
+-- Le score, le boxscore, le temps de jeu, le +/- et les zones de tir sont TOUS dérivés de cette
+-- table : aucune valeur agrégée n'y est stockée. `match_stats`, `opponent_match_stats` et
+-- `team_match_stats` ne sont écrites qu'au moment explicite de la publication depuis l'écran de
+-- saisie — jamais en continu, sinon un match en cours polluerait les moyennes de saison, la PCA,
+-- les archétypes et les objectifs avec des demi-vérités.
+--
+-- Coordonnées : repère du DEMI-TERRAIN de `utils/diagram.ts` (u = largeur 0..15, v = profondeur
+-- 0..14, panier en (7.5, 1.575)), en MÈTRES — le même que les schémas d'exercice, donc les mêmes
+-- constantes `HALF` servent au rendu et au calcul de zone. Tous les tirs du match sont ramenés
+-- sur ce demi-terrain unique, quel que soit le panier réellement attaqué.
+--
+-- Pas de colonne `id`, comme `match_live_actions` et `tactical_actions` : clé naturelle
+-- (match, seq), le rang d'insertion suffit à ordonner.
+
+CREATE TABLE IF NOT EXISTS match_events (
+  match_id          UUID     NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  seq               SMALLINT NOT NULL,
+  quarter           SMALLINT NOT NULL,
+  game_time_seconds INTEGER  NOT NULL,
+
+  -- 'us' / 'them' : même convention que match_lineup_events.
+  side              TEXT     NOT NULL CHECK (side IN ('us', 'them')),
+
+  -- Auteur. NULL est un cas NORMAL et fréquent côté 'them' : on suit l'adversaire en agrégé
+  -- (un rebond adverse, un panier encaissé) sans nommer le joueur.
+  player_id          UUID REFERENCES players(id),
+  opponent_player_id UUID REFERENCES match_opponent_players(id) ON DELETE SET NULL,
+
+  type TEXT NOT NULL CHECK (type IN (
+    'shot',        -- tir du champ (2 ou 3 pts, déduit de la position)
+    'ft',          -- lancer franc
+    'reb_off', 'reb_def',
+    'ast',         -- passe décisive
+    'stl',         -- interception
+    'blk',         -- contre
+    'tov',         -- ballon perdu
+    'foul',        -- faute commise
+    'foul_drawn'   -- faute reçue
+  )),
+
+  -- Réussite. Obligatoire pour 'shot' et 'ft', interdite ailleurs.
+  made BOOLEAN,
+
+  -- Position du tir, uniquement pour 'shot'. NULL = tir saisi en mode rapide, sans position :
+  -- il compte au boxscore mais pas à la grille de tir.
+  x NUMERIC(4,2) CHECK (x >= 0 AND x <= 15),
+  y NUMERIC(4,2) CHECK (y >= 0 AND y <= 14),
+
+  -- Valeur 2 ou 3 FIGÉE, uniquement pour un 'shot' sans position. Avec position, elle est
+  -- dérivée par shotValue(x, y) et cette colonne reste NULL — un seul endroit fait autorité.
+  value SMALLINT CHECK (value IN (2, 3)),
+
+  -- Instantanés des DEUX cinq au moment de l'action, comme match_live_actions : lire un +/- ou
+  -- une statistique de combinaison ne demande jamais de rejouer l'historique des changements.
+  on_court      UUID[] NOT NULL DEFAULT '{}',
+  on_court_them UUID[] NOT NULL DEFAULT '{}',
+
+  PRIMARY KEY (match_id, seq),
+
+  CONSTRAINT event_one_author CHECK (player_id IS NULL OR opponent_player_id IS NULL),
+  CONSTRAINT event_made_only_on_shots CHECK (
+    (type IN ('shot', 'ft') AND made IS NOT NULL) OR
+    (type NOT IN ('shot', 'ft') AND made IS NULL)
+  ),
+  CONSTRAINT event_position_only_on_shots CHECK (
+    type = 'shot' OR (x IS NULL AND y IS NULL AND value IS NULL)
+  ),
+  CONSTRAINT event_position_xor_value CHECK (
+    type <> 'shot' OR (x IS NOT NULL AND y IS NOT NULL AND value IS NULL)
+                   OR (x IS NULL AND y IS NULL AND value IS NOT NULL)
+  )
+);
+
+CREATE INDEX ON match_events (match_id, player_id);
+
+ALTER TABLE match_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "match_events_select" ON match_events;
+CREATE POLICY "match_events_select" ON match_events
+  FOR SELECT TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM accessible_team_ids())));
+
+DROP POLICY IF EXISTS "match_events_write" ON match_events;
+CREATE POLICY "match_events_write" ON match_events
+  FOR ALL TO authenticated
+  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- Vérification
+--   SELECT to_regclass('match_events');

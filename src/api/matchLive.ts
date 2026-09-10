@@ -25,6 +25,14 @@ export const matchLiveApi = {
     return toOpponentPlayer(data);
   },
 
+  /** Retire un joueur adverse saisi par erreur. `match_events.opponent_player_id` est en
+   *  ON DELETE SET NULL : une action déjà enregistrée pour lui n'est pas perdue, elle redevient
+   *  anonyme — c'est à l'appelant d'interdire le geste quand ce n'est pas ce qu'on veut. */
+  async deleteOpponentPlayer(id: string): Promise<void> {
+    const { error } = await supabase.from('match_opponent_players').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   /** Feuille de match : ids des joueuses retenues. Tableau vide = pas de sélection enregistrée,
    *  donc tout l'effectif de la saison est disponible (cf. commentaire de `match_roster`). */
   async getRoster(matchId: string): Promise<string[]> {

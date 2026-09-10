@@ -119,14 +119,37 @@ export function playerPlusMinus(actions: MatchLiveAction[]): Map<string, number>
 }
 
 /**
- * Temps de jeu par joueuse, en secondes (un seul banc à la fois : appeler séparément pour 'us' et
- * 'them' si besoin). Dérivé des changements de banc, jamais stocké : chaque écart entre deux
- * changements consécutifs (ou entre le dernier changement et `nowQuarter`/`nowElapsedSeconds`, le
- * repère "maintenant" pour un match en cours) est crédité à chaque joueuse du cinq de l'intervalle.
+ * Découpe le match en intervalles de composition, pour UN banc : entre deux changements
+ * consécutifs, et entre le dernier changement et le repère « maintenant »
+ * (`nowQuarter`/`nowElapsedSeconds`) pour un match en cours.
  *
  * `periodDurationSeconds` est supposé constant sur tout le match, prolongations comprises — même
  * simplification que `useMatchClock` — pour convertir (quarter, gameTimeSeconds) en un axe de
- * temps continu et ainsi compter juste un intervalle qui chevauche une fin de quart-temps.
+ * temps continu et ainsi mesurer juste un intervalle qui chevauche une fin de quart-temps.
+ */
+export function lineupIntervals(
+  lineupEvents: MatchLineupEvent[],
+  side: LineupSide,
+  nowQuarter: number,
+  nowElapsedSeconds: number,
+  periodDurationSeconds: number,
+): { onCourt: string[]; seconds: number }[] {
+  const events = lineupEvents.filter(e => e.side === side).sort((a, b) => a.seq - b.seq);
+  const toAbsolute = (quarter: number, elapsed: number) => (quarter - 1) * periodDurationSeconds + elapsed;
+
+  return events.map((e, i) => {
+    const start = toAbsolute(e.quarter, e.gameTimeSeconds);
+    const end = i + 1 < events.length
+      ? toAbsolute(events[i + 1].quarter, events[i + 1].gameTimeSeconds)
+      : toAbsolute(nowQuarter, nowElapsedSeconds);
+    return { onCourt: e.onCourt, seconds: Math.max(0, end - start) };
+  });
+}
+
+/**
+ * Temps de jeu par joueuse, en secondes (un seul banc à la fois : appeler séparément pour 'us' et
+ * 'them' si besoin). Dérivé des changements de banc, jamais stocké : chaque intervalle de
+ * composition est crédité à chaque joueuse présente pendant celui-ci.
  */
 export function playingTime(
   lineupEvents: MatchLineupEvent[],
@@ -136,20 +159,9 @@ export function playingTime(
   periodDurationSeconds: number,
 ): Map<string, number> {
   const totals = new Map<string, number>();
-  const events = lineupEvents.filter(e => e.side === side).sort((a, b) => a.seq - b.seq);
-  const toAbsolute = (quarter: number, elapsed: number) => (quarter - 1) * periodDurationSeconds + elapsed;
-
-  for (let i = 0; i < events.length; i++) {
-    const start = toAbsolute(events[i].quarter, events[i].gameTimeSeconds);
-    const end = i + 1 < events.length
-      ? toAbsolute(events[i + 1].quarter, events[i + 1].gameTimeSeconds)
-      : toAbsolute(nowQuarter, nowElapsedSeconds);
-    const duration = Math.max(0, end - start);
-    for (const playerId of events[i].onCourt) {
-      totals.set(playerId, (totals.get(playerId) ?? 0) + duration);
-    }
+  for (const { onCourt, seconds } of lineupIntervals(lineupEvents, side, nowQuarter, nowElapsedSeconds, periodDurationSeconds)) {
+    for (const playerId of onCourt) totals.set(playerId, (totals.get(playerId) ?? 0) + seconds);
   }
-
   return totals;
 }
 

@@ -9,7 +9,7 @@ import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import RichTextEditor from '../components/RichTextEditor';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
@@ -163,6 +163,7 @@ const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
   ]},
   { label: 'Direct', tabs: [
     { key: 'live_tracking', slug: 'direct', label: 'Suivi live' },
+    { key: 'stats_tracker', slug: 'saisie', label: 'Saisie des stats' },
   ]},
   { label: 'Notes', tabs: [
     { key: 'notes', slug: 'notes', label: 'Retour de match' },
@@ -1344,6 +1345,10 @@ export default function MatchDetailPage() {
 
           {activeTab === 'live_tracking' && (
             <LiveTrackingPanel match={match} players={players} canEdit={canEditTeamData} />
+          )}
+
+          {activeTab === 'stats_tracker' && (
+            <MatchStatsTracker match={match} players={players} canEdit={canEditTeamData} />
           )}
 
           {activeTab === 'notes' && (

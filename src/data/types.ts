@@ -774,3 +774,44 @@ export interface MatchLiveAction {
   onCourtThem: string[];
 }
 
+
+// ─── Prise de statistiques en direct (boxscore pointé action par action) ─────
+// Flux distinct de `MatchLiveAction` ci-dessus : là une ligne par POSSESSION sans auteur (« ce
+// système rapporte-t-il des points ? »), ici une ligne par action ATTRIBUÉE (« qui a fait quoi,
+// d'où ? »). Le boxscore, le score, le +/- et les zones de tir en sont TOUS dérivés — rien
+// d'agrégé n'est stocké. Voir docs/STATS_LIVE.md.
+
+export type MatchEventType =
+  | 'shot'        // tir du champ — 2 ou 3 pts déduits de la position
+  | 'ft'          // lancer franc
+  | 'reb_off' | 'reb_def'
+  | 'ast'         // passe décisive
+  | 'stl'         // interception
+  | 'blk'         // contre
+  | 'tov'         // ballon perdu
+  | 'foul'        // faute commise
+  | 'foul_drawn'; // faute reçue
+
+export interface MatchEvent {
+  matchId: string;
+  seq: number;
+  quarter: number;
+  gameTimeSeconds: number;
+  side: LineupSide;
+  /** Auteur côté nous. Absent côté adverse suivi en agrégé — le cas NORMAL : on pointe un panier
+   *  encaissé ou un rebond adverse sans nommer la joueuse. */
+  playerId?: string;
+  opponentPlayerId?: string;
+  type: MatchEventType;
+  /** Tirs et lancers francs uniquement. */
+  made?: boolean;
+  /** Position du tir dans le repère du DEMI-terrain de `utils/diagram.ts` (mètres, panier en
+   *  (7.5, 1.575)). Absente = tir saisi sans position : il compte au boxscore, pas au shot chart. */
+  x?: number;
+  y?: number;
+  /** 2 ou 3 FIGÉ, uniquement pour un tir sans position. Avec position, la valeur est dérivée par
+   *  `shotValue` et ce champ reste absent — un seul endroit fait autorité. */
+  value?: 2 | 3;
+  onCourt: string[];
+  onCourtThem: string[];
+}

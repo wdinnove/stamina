@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Play as PlayIcon, Pause, SkipForward, SkipBack, Settings2, Trash2, Check, X, ChevronRight } from 'lucide-react';
+import { Settings2, Trash2, Check, X, ChevronRight } from 'lucide-react';
 import { matchLiveApi } from '../api/matchLive';
 import { playsApi } from '../api/plays';
 import { PlayerAvatar } from './PlayerAvatar';
 import { LiveActionModal, type LiveActionInput } from './LiveActionModal';
 import { PlaysConfigModal } from './PlaysConfigModal';
+import { MatchScoreboard } from './MatchScoreboard';
 import { useMatchClock } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import {
@@ -47,19 +48,6 @@ interface RosterEntry {
 
 const panelSection: React.CSSProperties = {
   backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 16,
-};
-
-/** Table de marque : les trois colonnes (nous / chrono / eux) tiennent TOUJOURS sur une ligne,
- *  y compris sur un téléphone étroit — d'où les tailles fluides plutôt qu'un retour à la ligne
- *  qui casserait la lecture du score en un coup d'œil. */
-const scoreLabel: React.CSSProperties = {
-  fontSize: 'clamp(0.6rem, 2.6vw, 0.78rem)', fontWeight: 700, textTransform: 'uppercase',
-  letterSpacing: '0.04em', margin: '0 0 4px',
-  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-};
-
-const scoreValue: React.CSSProperties = {
-  color: '#F1F5F9', fontSize: 'clamp(1.6rem, 9vw, 2.6rem)', fontWeight: 800, margin: 0, lineHeight: 1,
 };
 
 /** Numéro de maillot — un vrai badge (fond distinct, monospace) plutôt qu'un "#7 " en texte
@@ -408,49 +396,13 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
         </div>
       )}
 
-      {/* Score — le point le plus visible de l'écran, une table de marque avant tout le reste.
-          Le quart-temps/chrono est traité au même gabarit (légende + gros chiffre), au milieu :
-          c'est la même information de match que le score, pas un réglage à part. */}
-      <div style={{ ...panelSection, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(8px, 3vw, 28px)', padding: 'clamp(14px, 4vw, 22px) 12px', flexWrap: 'nowrap' }}>
-        <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: 0 }}>
-          <p style={{ ...scoreLabel, color: teamColor }}>{ourTeamName}</p>
-          <p style={scoreValue}>{scoreUs}</p>
-        </div>
-
-        {/* Le chrono est en monospace sur 5 caractères : il lui faut un peu plus de place que les
-            deux scores, d'où le `flex-grow` supérieur — sinon il se serre le premier. */}
-        <div style={{ textAlign: 'center', flex: '1.4 1 0', minWidth: 0 }}>
-          <p style={{ ...scoreLabel, color: '#00E5A0' }}>{periodLabel(clock.quarter)}</p>
-          <ClockDisplay
-            seconds={clock.remainingSeconds} onSet={clock.setRemainingSeconds} editable={canEdit}
-            fontSize="clamp(1.3rem, 7vw, 2.2rem)"
-          />
-        </div>
-
-        <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: 0 }}>
-          <p style={{ ...scoreLabel, color: '#64748B' }}>{opponentName}</p>
-          <p style={scoreValue}>{scoreThem}</p>
-        </div>
-      </div>
-
-      {/* Contrôles du chrono */}
-      {canEdit && (
-        <div style={{ ...panelSection, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <button onClick={clock.previousPeriod} disabled={clock.quarter <= 1} style={{ ...smallBtn, width: 32, justifyContent: 'center', opacity: clock.quarter <= 1 ? 0.4 : 1, cursor: clock.quarter <= 1 ? 'not-allowed' : 'pointer' }} title="Quart-temps précédent">
-            <SkipBack size={13} />
-          </button>
-          <button onClick={() => clock.adjustRemaining(10)} style={smallBtn} title="Rendre 10s au temps affiché — j'ai oublié d'appuyer sur pause">+10s</button>
-          <button onClick={clock.running ? clock.pause : clock.start}
-            title={`${clock.running ? 'Arrêter' : 'Lancer'} le chrono (barre espace)`}
-            style={{ ...smallBtn, backgroundColor: clock.running ? '#EF444422' : '#00E5A022', borderColor: clock.running ? '#EF4444' : '#00E5A0', color: clock.running ? '#EF4444' : '#00E5A0', width: 36, justifyContent: 'center' }}>
-            {clock.running ? <Pause size={14} /> : <PlayIcon size={14} />}
-          </button>
-          <button onClick={() => clock.adjustRemaining(-10)} style={smallBtn} title="Retirer 10s au temps affiché">-10s</button>
-          <button onClick={clock.nextPeriod} style={{ ...smallBtn, width: 32, justifyContent: 'center' }} title="Quart-temps / prolongation suivante">
-            <SkipForward size={13} />
-          </button>
-        </div>
-      )}
+      {/* Table de marque + chrono : bloc PARTAGÉ avec la prise de statistiques (`MatchScoreboard`).
+          Deux écrans du même produit ouverts pendant le même match ne peuvent pas afficher deux
+          tables de marque différentes. */}
+      <MatchScoreboard
+        ourTeamName={ourTeamName} teamColor={teamColor} opponentName={opponentName}
+        scoreUs={scoreUs} scoreThem={scoreThem} clock={clock} canEdit={canEdit}
+      />
 
       {/* Fin de possession — au-dessus des rotations : c'est le geste le plus répété du match
           (plusieurs fois par minute), il doit rester à portée sans faire défiler les effectifs. */}
@@ -647,38 +599,6 @@ const iconTextBtn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none',
   fontSize: '0.75rem', cursor: 'pointer', padding: 2, flexShrink: 0,
 };
-
-function ClockDisplay({ seconds, onSet, editable, fontSize = '1.3rem' }: { seconds: number; onSet: (s: number) => void; editable: boolean; fontSize?: string }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue]     = useState('');
-
-  if (editing) {
-    return (
-      <input
-        autoFocus value={value} onChange={e => setValue(e.target.value)}
-        onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-        placeholder="mm:ss"
-        style={{ width: '4.2em', padding: '4px 6px', backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize, fontFamily: 'monospace', textAlign: 'center' }}
-      />
-    );
-  }
-
-  function commit() {
-    const m = value.match(/^(\d{1,2}):(\d{2})$/);
-    if (m) onSet(Number(m[1]) * 60 + Number(m[2]));
-    setEditing(false);
-  }
-
-  return (
-    <span
-      onClick={editable ? () => { setValue(formatClock(seconds)); setEditing(true); } : undefined}
-      style={{ color: '#F1F5F9', fontSize, fontFamily: 'monospace', fontWeight: 800, lineHeight: 1, cursor: editable ? 'pointer' : 'default' }}
-      title={editable ? 'Cliquer pour corriger le temps' : undefined}
-    >
-      {formatClock(seconds)}
-    </span>
-  );
-}
 
 interface LineupColumnProps {
   title: string;
