@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, AlertTriangle, X } from 'lucide-react';
 import { DiagramCourt } from './DiagramCourt';
+import { ShotGrid, SHOT_COLORS } from './ShotChart';
 import { PlayerAvatar } from './PlayerAvatar';
 import { Modal } from './Modal';
 import { MatchScoreboard, scoreboardBtn } from './MatchScoreboard';
@@ -123,16 +124,6 @@ export function resolveLineupEntry(last: MatchLineupEvent | undefined, playerId:
     ? { kind: 'amend', seq: last.seq, playersIn: [...last.playersIn, playerId], onCourt }
     : { kind: 'push', onCourt };
 }
-
-/**
- * Marqueurs de tir : la COULEUR dit l'équipe, la FORME dit la réussite (disque = réussi, croix =
- * manqué). Deux dimensions lisibles d'un coup d'œil, y compris sur le terrain de saisie où les
- * deux camps se superposent.
- */
-const SHOT_COLORS = {
-  us:   { made: '#00E5A0', miss: '#EF4444' },
-  them: { made: '#94A3B8', miss: '#64748B' },
-} as const;
 
 /** Ce que la publication va REMPLACER — relevé juste avant d'ouvrir la confirmation, pour que
  *  l'alerte parle du contenu réel du match et pas d'un cas général. */
@@ -1608,41 +1599,6 @@ function PublishModal({ existing, players, opponents, score, saving, matchScoreU
         </button>
       </div>
     </Modal>
-  );
-}
-
-/** Marqueurs d'un camp, dans le repère du demi-terrain — appelé une fois par équipe. */
-function ShotMarkers({ shots, colors }: { shots: MatchEvent[]; colors: { made: string; miss: string } }) {
-  return (
-    <>
-      {shots.map(s => s.made
-        ? <circle key={s.seq} cx={s.x} cy={s.y} r={0.34} fill={colors.made} opacity={0.9} />
-        : <g key={s.seq} stroke={colors.miss} strokeWidth={0.12} strokeLinecap="round" opacity={0.85}>
-            <path d={`M ${s.x! - 0.25} ${s.y! - 0.25} L ${s.x! + 0.25} ${s.y! + 0.25}`} />
-            <path d={`M ${s.x! + 0.25} ${s.y! - 0.25} L ${s.x! - 0.25} ${s.y! + 0.25}`} />
-          </g>)}
-    </>
-  );
-}
-
-/** Grille de tir d'une équipe : le terrain, ses tirs, et le compte en dessous. Les tirs saisis
- *  sans position n'y figurent pas — ils comptent au boxscore, pas à la carte. */
-function ShotGrid({ title, shots, colors }: {
-  title: string; shots: MatchEvent[]; colors: { made: string; miss: string };
-}) {
-  const made = shots.filter(s => s.made).length;
-  const pct = shots.length > 0 ? Math.round((made / shots.length) * 100) : null;
-  return (
-    <div>
-      <p style={{ ...SECTION_TITLE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</p>
-      <svg viewBox={`0 0 ${COURT_SIZE.half.w} ${COURT_SIZE.half.h}`} style={{ width: '100%', display: 'block', borderRadius: 8 }}>
-        <DiagramCourt court="half" />
-        <ShotMarkers shots={shots} colors={colors} />
-      </svg>
-      <p style={{ color: '#64748B', fontSize: '0.75rem', margin: '8px 0 0', textAlign: 'center' }}>
-        {shots.length === 0 ? 'Aucun tir positionné.' : `${made}/${shots.length} · ${pct} %`}
-      </p>
-    </div>
   );
 }
 

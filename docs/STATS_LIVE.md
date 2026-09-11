@@ -533,25 +533,62 @@ Le cœur. Utilisable seul, sans zones, sans offline.
 **Fin de phase 0** : un match peut être saisi de bout en bout sans CSV, et tout l'aval analytique
 existant fonctionne dessus.
 
-### Phase 1 — Zones de tir
+### Phase 1 — Zones de tir ✅
 
 - Tap sur `DiagramCourt` → `x, y` ; `shotValue` déduit 2/3
 - `src/data/shotChart.ts` + tests de géométrie (corner/arc, valeurs limites)
-- Shot chart : tirs bruts (✓ plein / ✗ creux) + tableau par zone (volume, FG%, eFG%)
-- Filtres : joueuse, quart-temps, cinq sur le terrain
-- Shot chart **défensif** : d'où l'adversaire nous marque (nécessite de pointer la position des
-  tirs adverses — optionnel, un tap de plus)
+- Onglet **Grille de tir** ([`MatchShotChartPanel`](../src/components/MatchShotChartPanel.tsx)) :
+  tirs bruts (disque plein = réussi, croix = manqué) + tableau par zone (volume, FG%, eFG%)
+- Filtres : équipe, joueur, réussite, quart-temps. Le tableau par zone ignore volontairement le
+  filtre de réussite — sinon il afficherait toujours 100 %.
+- Shot chart **défensif** : acquis, les tirs adverses se pointent de la même façon
+- Repli « tir sans position » (2/3, réussi/manqué) : compte au boxscore, hors de la carte
 
-### Phase 2 — Fiabilité terrain
+### Phase 1 bis — Analyse des lineups ✅
+
+Onglet dédié ([`MatchLineupsPanel`](../src/components/MatchLineupsPanel.tsx)) : combinaisons de
+cinq avec temps, possessions, points par possession des deux côtés et +/-, plus une lecture par
+joueur (temps de jeu, +/-). Filtre de temps minimum, parce qu'un cinq de trois secondes n'a pas de
+ratio lisible. Les deux onglets lisent `match_events` en lecture seule via
+[`useMatchTracking`](../src/hooks/useMatchTracking.ts) et affichent un état vide explicite pour un
+match importé par feuille de marque, qui n'en a aucun.
+
+### Phase 2 — Fiabilité terrain ✅ (partiel)
 
 Sans cette phase, l'écran est une démo.
 
-- **File d'écriture offline** : la PWA est déjà en place ; il manque un buffer `localStorage` +
-  flush au retour réseau. 400 événements tiennent largement, inutile d'aller chercher IndexedDB.
-- **Collision de `seq`** : `seq` est calculé côté client. Deux personnes qui saisissent le même
-  match s'écrasent mutuellement (le problème existe déjà sur `match_live_actions`). Deux options :
-  verrou « un seul saisisseur à la fois », ou `seq` attribué côté serveur.
-- Export **play-by-play + feuille de match en PDF** (`jspdf` est déjà installé).
+- ✅ **File d'écriture offline** ([`api/matchEventQueue.ts`](../src/api/matchEventQueue.ts)) :
+  buffer `localStorage`, ordre conservé, arrêt au premier échec, reprise sur l'événement `online`.
+  Les règles pures sont dans [`data/eventQueue.ts`](../src/data/eventQueue.ts) — notamment :
+  annuler une action pas encore partie l'efface de la file au lieu d'empiler une suppression
+  orpheline. L'écran affiche le nombre d'actions en attente.
+- ✅ **Chrono persisté** par match, partagé entre les deux écrans du direct.
+- ✅ **Collision de `seq`** : l'insertion reprend un rang libre sur violation de clé (23505) et
+  l'écran se recharge, au lieu de perdre l'action. Le verrou « un seul saisisseur » ou le `seq`
+  côté serveur restent la solution propre si l'usage à deux devient réel.
+- Export **play-by-play + feuille de match en PDF** (`jspdf` est déjà installé) — à faire.
+
+### Vérifier la formule d'évaluation
+
+`evaluation()` (`data/matchEvents.ts`) est la convention FIBA/FFBB, mais `match_stats.eval` vient
+aujourd'hui exclusivement du CSV eMarque : tant que les deux n'ont pas été confrontés sur un match
+réel, la colonne publiée par la saisie peut diverger d'une unité de celle que le staff lit chaque
+semaine. Aucun jeu d'essai eMarque n'est versionné dans le dépôt, la vérification se fait donc
+directement en base, sur un match déjà importé :
+
+```sql
+SELECT player_id, eval AS eval_emarque,
+       (pts + ro + rd + pd + ct + intercepts + fte)
+     - ((fg2a - fg2m) + (fg3a - fg3m) + (fta - ftm) + bp + fpr) AS eval_calcule
+FROM   match_stats
+WHERE  match_id = '<un match importé par CSV>'
+  AND  eval IS NOT NULL
+ORDER  BY 1;
+```
+
+Toute ligne où les deux colonnes diffèrent désigne une composante que l'eMarque compte autrement.
+Tant que ça n'est pas fait, prendre `eval` d'un match saisi avec la même prudence qu'une valeur
+calculée maison. **C'est la dernière inconnue de la publication.**
 
 ### Phase 3 — Analytique dérivée
 

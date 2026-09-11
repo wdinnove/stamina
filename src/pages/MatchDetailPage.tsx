@@ -9,7 +9,7 @@ import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker, MatchLineupsPanel, MatchShotChartPanel } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import RichTextEditor from '../components/RichTextEditor';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
@@ -151,6 +151,13 @@ const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
     { key: 'advanced',     slug: 'avancees',   label: 'Statistiques avancées' },
     { key: 'four_factors', slug: '4-factors',  label: 'Four Factors' },
     { key: 'objectives',   slug: 'objectifs',  label: 'Objectifs' },
+  ]},
+  // Ces deux-là ne lisent QUE `match_events` : un match importé par feuille de marque n'en a
+  // aucun. Les onglets restent visibles avec un état vide qui l'explique, plutôt que d'apparaître
+  // et disparaître d'un match à l'autre — une navigation qui change de forme se cherche.
+  { label: 'Saisie en direct', tabs: [
+    { key: 'lineups',    slug: 'lineups', label: 'Analyse des lineups' },
+    { key: 'shot_chart', slug: 'tirs',    label: 'Grille de tir' },
   ]},
   { label: 'Comparaisons', tabs: [
     { key: 'comp_players', slug: 'joueurs',    label: 'Joueurs' },
@@ -1341,6 +1348,14 @@ export default function MatchDetailPage() {
                 emptyMessage="Aucune donnée tactique importée."
               />
             )
+          )}
+
+          {activeTab === 'lineups' && (
+            <MatchLineupsPanel match={match} players={players} />
+          )}
+
+          {activeTab === 'shot_chart' && (
+            <MatchShotChartPanel match={match} players={players} />
           )}
 
           {activeTab === 'live_tracking' && (
