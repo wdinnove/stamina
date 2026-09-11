@@ -291,13 +291,18 @@ export const statsApi = {
     return (data ?? []).map(toOpponentMatchStat);
   },
 
+  /** Remplacement en bloc, comme `bulkUpsertForMatch` — et comme elle, SANS RIEN TOUCHER quand
+   *  il n'y a rien à écrire. Le `return` était placé après le DELETE : publier un match suivi en
+   *  adversaire anonyme (le cas courant) effaçait un boxscore adverse importé sans le remplacer.
+   *  Pour vider la table, c'est « Supprimer les statistiques » du menu du match, pas un effet de
+   *  bord de la publication. */
   async bulkUpsertOpponentStatsForMatch(matchId: string, rows: OpponentStatInput[]): Promise<void> {
+    if (rows.length === 0) return;
     const { error: delErr } = await supabase
       .from('opponent_match_stats')
       .delete()
       .eq('match_id', matchId);
     if (delErr) throw delErr;
-    if (rows.length === 0) return;
     const { error } = await supabase
       .from('opponent_match_stats')
       .insert(rows.map(r => ({

@@ -99,6 +99,30 @@ export function resolveSubstitution(
     : { kind: 'swap', incoming: current.id, outgoing: playerId };
 }
 
+export type LineupWrite =
+  | { kind: 'push';  onCourt: string[] }
+  | { kind: 'amend'; seq: number; playersIn: string[]; onCourt: string[] };
+
+/**
+ * Que faire quand un joueur entre sur un terrain incomplet — pure, donc testable sans DOM.
+ *
+ * Tant que le cinq SE COMPOSE, la même ligne de rotation est réécrite au lieu d'en empiler une
+ * par joueur. `boxscoreFromEvents` lit les titulaires dans la première ligne du camp : cinq
+ * lignes successives ne lui en donnaient qu'un, et l'analyse des lineups affichait en prime
+ * quatre combinaisons parasites à 1, 2, 3 et 4 joueurs.
+ *
+ * `last` est la dernière ligne du banc concerné. Une ligne en composition se reconnaît à trois
+ * signes réunis : personne n'en sort, quelqu'un y est déjà, et le cinq n'est pas complet. Après
+ * un changement (`playersOut` non vide) on empile toujours.
+ */
+export function resolveLineupEntry(last: MatchLineupEvent | undefined, playerId: string): LineupWrite {
+  const onCourt = [...(last?.onCourt ?? []), playerId];
+  const composing = last && last.playersOut.length === 0 && last.onCourt.length > 0 && last.onCourt.length < 5;
+  return composing
+    ? { kind: 'amend', seq: last.seq, playersIn: [...last.playersIn, playerId], onCourt }
+    : { kind: 'push', onCourt };
+}
+
 /**
  * Marqueurs de tir : la COULEUR dit l'équipe, la FORME dit la réussite (disque = réussi, croix =
  * manqué). Deux dimensions lisibles d'un coup d'œil, y compris sur le terrain de saisie où les
@@ -186,7 +210,7 @@ const EVENT_LABELS: Record<MatchEventType, string> = {
 };
 
 export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTrackerProps) {
-  const clock = useMatchClock();
+  const clock = useMatchClock(match.id);
   const { selected } = useTeamSeason();
   const teamColor    = selected?.team.color ?? '#00E5A0';
   const ourTeamName  = selected?.team.name ?? 'Notre équipe';
@@ -463,6 +487,21 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     persist(() => matchLiveApi.insertLineupEvent(event));
   }
 
+  /** Applique la décision de `resolveLineupEntry` — cette fonction ne décide rien. L'heure de la
+   *  ligne amendée n'est pas rafraîchie : le cinq a commencé au premier tap. */
+  function enterPlayer(side: LineupSide, playerId: string) {
+    const last = lineupEvents.filter(e => e.side === side).sort((a, b) => a.seq - b.seq).at(-1);
+    const write = resolveLineupEntry(last, playerId);
+
+    if (write.kind === 'push') {
+      pushLineup(side, write.onCourt, [playerId], []);
+      return;
+    }
+    const { seq, playersIn, onCourt } = write;
+    setLineupEvents(prev => prev.map(e => e.side === side && e.seq === seq ? { ...e, playersIn, onCourt } : e));
+    persist(() => matchLiveApi.updateLineupEventRoster(match.id, side, seq, playersIn, onCourt));
+  }
+
   /** Applique au terrain la décision de `resolveSubstitution` — cette fonction ne décide rien. */
   function handleRosterTap(side: LineupSide, playerId: string, from: RosterOrigin) {
     if (!canEdit) return;
@@ -478,7 +517,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     switch (move.kind) {
       case 'mark':  setPendingSub({ side, id: move.id, from: move.from }); break;
       case 'clear': setPendingSub(null); break;
-      case 'enter': pushLineup(side, [...sideOnCourt, move.incoming], [move.incoming], []); break;
+      case 'enter': enterPlayer(side, move.incoming); break;
       case 'swap':
         pushLineup(side, sideOnCourt.map(id => id === move.outgoing ? move.incoming : id), [move.incoming], [move.outgoing]);
         setPendingSub(null);
@@ -590,7 +629,12 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       const rowsUs   = boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, clock.elapsedSeconds, 'us');
       const rowsThem = boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, clock.elapsedSeconds, 'them');
       const finalScore = scoreFromEvents(events);
-      const result: 'win' | 'loss' = finalScore.us > finalScore.them ? 'win' : 'loss';
+      // `matches.result` n'a pas de nul, et le basket non plus : à égalité, le match n'est pas
+      // fini. On garde alors le résultat déjà enregistré — l'inscrire en défaite faussait le
+      // bilan de saison à chaque publication d'étape, mi-temps comprise.
+      const result: 'win' | 'loss' = finalScore.us === finalScore.them
+        ? match.result
+        : finalScore.us > finalScore.them ? 'win' : 'loss';
       const matchWithScore = { ...match, scoreUs: finalScore.us, scoreThem: finalScore.them, result };
 
       if (rowsUs.length > 0) {
@@ -1374,7 +1418,11 @@ function PublishModal({ existing, players, opponents, score, saving, onConfirm, 
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const replaces = existing.players > 0 || existing.opponents > 0 || existing.team;
+  // Une catégorie n'est annoncée supprimée que si la publication a réellement de quoi la
+  // remplacer : sans ligne à écrire, `bulkUpsert…` ne touche à rien (cf. api/stats.ts).
+  const replacesPlayers   = existing.players > 0 && players > 0;
+  const replacesOpponents = existing.opponents > 0 && opponents > 0;
+  const replaces = replacesPlayers || replacesOpponents || existing.team;
   return (
     <Modal onClose={saving ? undefined : onCancel} maxWidth={480} style={{ padding: 20 }}>
       <h2 style={{ color: '#F1F5F9', margin: '0 0 14px', fontSize: '1rem', fontWeight: 700 }}>Publier le boxscore</h2>
@@ -1391,8 +1439,8 @@ function PublishModal({ existing, players, opponents, score, saving, onConfirm, 
           <div style={{ color: '#FCA5A5', fontSize: '0.8rem', lineHeight: 1.45 }}>
             <strong style={{ color: '#EF4444' }}>Des statistiques existent déjà pour ce match et seront supprimées :</strong>
             <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-              {existing.players > 0 && <li>{existing.players} ligne{existing.players > 1 ? 's' : ''} de boxscore</li>}
-              {existing.opponents > 0 && <li>{existing.opponents} ligne{existing.opponents > 1 ? 's' : ''} adverse{existing.opponents > 1 ? 's' : ''}</li>}
+              {replacesPlayers && <li>{existing.players} ligne{existing.players > 1 ? 's' : ''} de boxscore</li>}
+              {replacesOpponents && <li>{existing.opponents} ligne{existing.opponents > 1 ? 's' : ''} adverse{existing.opponents > 1 ? 's' : ''}</li>}
               {existing.team && <li>les totaux d'équipe</li>}
               {existing.scoreUs !== null && (
                 <li>le score enregistré ({existing.scoreUs} — {existing.scoreThem})</li>

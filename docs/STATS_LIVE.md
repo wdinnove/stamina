@@ -17,7 +17,7 @@ toujours dépendant d'un fichier eMarque.
 |---|---|---|
 | Boxscore par joueuse | `match_stats` + [`stats.ts`](../src/api/stats.ts) | ✅ complet, alimenté par CSV uniquement |
 | Stats collectives | `team_match_stats` (+ vue `_full`) | ✅ eFG%, FT Rate, %BP, %REB, ratings — tout en colonnes générées |
-| Chrono de match | [`useMatchClock.ts`](../src/hooks/useMatchClock.ts) | ✅ QT + prolongations, ajustable — **non persisté** |
+| Chrono de match | [`useMatchClock.ts`](../src/hooks/useMatchClock.ts) | ✅ QT + prolongations, ajustable, position conservée par match en `localStorage` (repart toujours en pause) |
 | Rotations 2 bancs | `match_lineup_events` | ✅ instantané `on_court` à chaque changement |
 | Temps de jeu | `playingTime()` dans [`liveTrackingAnalysis.ts`](../src/data/liveTrackingAnalysis.ts) | ✅ calculé, **jamais écrit dans `match_stats.min`** |
 | Feuille de match | `match_roster` | ✅ |
@@ -548,8 +548,6 @@ Sans cette phase, l'écran est une démo.
 
 - **File d'écriture offline** : la PWA est déjà en place ; il manque un buffer `localStorage` +
   flush au retour réseau. 400 événements tiennent largement, inutile d'aller chercher IndexedDB.
-- **Chrono persisté** : aujourd'hui un rechargement en plein match repart à Q1 00:00. Tolérable
-  pour 20 possessions pointées, pas pour 90 minutes de saisie.
 - **Collision de `seq`** : `seq` est calculé côté client. Deux personnes qui saisissent le même
   match s'écrasent mutuellement (le problème existe déjà sur `match_live_actions`). Deux options :
   verrou « un seul saisisseur à la fois », ou `seq` attribué côté serveur.

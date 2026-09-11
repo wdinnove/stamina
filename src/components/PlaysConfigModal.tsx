@@ -306,7 +306,8 @@ export function PlaysConfigModal({
           <>
             <p style={{ color: '#94A3B8', fontSize: '0.8rem', lineHeight: 1.5, margin: '0 0 12px' }}>
               Effacer <strong style={{ color: '#F1F5F9' }}>{recordedCount}</strong> ligne{recordedCount > 1 ? 's' : ''} de suivi
-              (possessions, rotations, joueuses adverses) pour ce match ? Les plays configurés ci-dessus sont conservés.
+              (possessions, actions de saisie, rotations, joueuses adverses) pour ce match ? Les plays configurés
+              ci-dessus sont conservés.
               <br />Cette action est définitive.
             </p>
             <div style={{ display: 'flex', gap: 10 }}>

@@ -1,4 +1,5 @@
 import { supabase } from './client';
+import { matchEventsApi } from './matchEvents';
 import type { MatchOpponentPlayer, MatchLineupEvent, MatchLiveAction, LineupSide, LiveSide } from '../data/types';
 
 const LINEUP_COLUMNS = 'match_id, seq, side, quarter, game_time_seconds, players_in, players_out, on_court';
@@ -94,6 +95,18 @@ export const matchLiveApi = {
     if (error) throw error;
   },
 
+  /** Réécrit un changement de banc EN COURS DE COMPOSITION — le seul cas où une ligne déjà
+   *  écrite doit encore bouger. Composer un cinq de départ tap par tap produisait sinon cinq
+   *  lignes, dont la première ne contenait qu'un joueur : `boxscoreFromEvents` y lit les
+   *  titulaires, il n'en trouvait qu'un sur cinq. */
+  async updateLineupEventRoster(matchId: string, side: LineupSide, seq: number, playersIn: string[], onCourt: string[]): Promise<void> {
+    const { error } = await supabase
+      .from('match_lineup_events')
+      .update({ players_in: playersIn, on_court: onCourt })
+      .eq('match_id', matchId).eq('side', side).eq('seq', seq);
+    if (error) throw error;
+  },
+
   /** Corrige l'instantané d'un changement de banc après suppression d'un autre — jamais appelé
    *  pour une écriture "normale" (l'instantané est fixé une fois pour toutes à la création). */
   async updateLineupEventOnCourt(matchId: string, side: LineupSide, seq: number, onCourt: string[]): Promise<void> {
@@ -149,17 +162,23 @@ export const matchLiveApi = {
   },
 
   /**
-   * Efface tout le suivi live d'un match : possessions, rotations, et effectif adverse saisi à la
-   * volée. Le catalogue de plays est CONSERVÉ — il appartient à l'équipe, pas au match, et le
-   * refaire à chaque remise à zéro n'aurait aucun sens.
+   * Efface tout le suivi live d'un match : possessions, ACTIONS DE SAISIE, rotations, et effectif
+   * adverse saisi à la volée. Le catalogue de plays est CONSERVÉ — il appartient à l'équipe, pas
+   * au match, et le refaire à chaque remise à zéro n'aurait aucun sens.
    *
-   * L'ordre compte : les possessions référencent (par tableau d'UUID, sans clé étrangère) les
-   * joueuses adverses ; les supprimer en dernier évite de laisser des identifiants pendants si la
-   * séquence s'interrompt en cours de route.
+   * `match_events` en fait partie parce que les rotations sont PARTAGÉES entre les deux écrans du
+   * direct : les effacer seules laissait les actions de saisie sans minutes, sans +/- et sans
+   * titulaires, en référençant des joueurs adverses supprimés. Tout ou rien.
+   *
+   * L'ordre compte : les possessions et les actions référencent les joueuses adverses (par
+   * tableau d'UUID sans clé étrangère pour les unes, par clé étrangère pour les autres) ; les
+   * supprimer en dernier évite de laisser des identifiants pendants si la séquence s'interrompt.
    */
   async deleteAllForMatch(matchId: string): Promise<void> {
     const { error: actionsError } = await supabase.from('match_live_actions').delete().eq('match_id', matchId);
     if (actionsError) throw actionsError;
+
+    await matchEventsApi.deleteForMatch(matchId);
 
     const { error: lineupError } = await supabase.from('match_lineup_events').delete().eq('match_id', matchId);
     if (lineupError) throw lineupError;

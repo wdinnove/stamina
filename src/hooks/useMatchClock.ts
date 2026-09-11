@@ -29,18 +29,55 @@ export interface MatchClock {
   previousPeriod: () => void;
 }
 
+/** Position du chrono conservée LOCALEMENT (jamais en base) sous cette clé plus l'id du match. */
+const STORAGE_PREFIX = 'stamina.matchClock.';
+
+interface StoredClock { quarter: number; elapsedSeconds: number; periodDurationSeconds: number }
+
+function readStored(matchId?: string): StoredClock | null {
+  if (!matchId) return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_PREFIX + matchId);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<StoredClock>;
+    if (typeof v.quarter !== 'number' || typeof v.elapsedSeconds !== 'number') return null;
+    return {
+      quarter: v.quarter,
+      elapsedSeconds: v.elapsedSeconds,
+      periodDurationSeconds: typeof v.periodDurationSeconds === 'number' ? v.periodDurationSeconds : DEFAULT_PERIOD_SECONDS,
+    };
+  } catch {
+    return null;  // navigation privée, quota, JSON corrompu : on repart de Q1, jamais d'écran cassé
+  }
+}
+
 /**
- * Chrono de match interne : purement une convenance de saisie, jamais persisté tel quel — seuls
- * `quarter`/`gameTimeSeconds` sont écrits sur les lignes de rotation/action au moment où elles
- * sont créées. Un rechargement de page remet donc le chrono à zéro, l'historique déjà enregistré
- * n'est pas affecté (limitation connue de la v1, pas un bug).
+ * Chrono de match interne : une convenance de saisie, jamais écrite en base — seuls
+ * `quarter`/`gameTimeSeconds` partent sur les lignes de rotation/action au moment où elles sont
+ * créées.
+ *
+ * Sa POSITION est conservée en `localStorage` quand `matchId` est fourni, et les deux écrans du
+ * direct passent le même id : ils partagent donc le même chrono, et un rechargement en plein
+ * match le retrouve. Sans ça, on repartait à Q1 00:00 alors que les rotations étaient en Q3 —
+ * l'intervalle en cours mesurait 0, et ces minutes-là sont publiées dans `match_stats`.
+ *
+ * Le chrono revient toujours EN PAUSE : reprendre est un geste volontaire, et le temps passé
+ * hors de l'écran n'est pas du temps de jeu.
  */
-export function useMatchClock(): MatchClock {
-  const [quarter, setQuarter] = useState(1);
+export function useMatchClock(matchId?: string): MatchClock {
+  const stored = useRef<StoredClock | null>(readStored(matchId)).current;
+  const [quarter, setQuarter] = useState(stored?.quarter ?? 1);
   const [running, setRunning] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [periodDurationSeconds, setPeriodDurationSeconds] = useState(DEFAULT_PERIOD_SECONDS);
+  const [elapsedSeconds, setElapsedSeconds] = useState(stored?.elapsedSeconds ?? 0);
+  const [periodDurationSeconds, setPeriodDurationSeconds] = useState(stored?.periodDurationSeconds ?? DEFAULT_PERIOD_SECONDS);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!matchId) return;
+    try {
+      localStorage.setItem(STORAGE_PREFIX + matchId, JSON.stringify({ quarter, elapsedSeconds, periodDurationSeconds }));
+    } catch { /* quota ou navigation privée : le chrono reste utilisable, il ne survivra pas au rechargement */ }
+  }, [matchId, quarter, elapsedSeconds, periodDurationSeconds]);
 
   useEffect(() => {
     if (!running) return;

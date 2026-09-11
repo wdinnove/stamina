@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSubstitution } from './MatchStatsTracker';
+import { resolveSubstitution, resolveLineupEntry } from './MatchStatsTracker';
+import type { MatchLineupEvent } from '../data/types';
 
 const FIVE = ['p1', 'p2', 'p3', 'p4', 'p5'];
 
@@ -41,5 +42,35 @@ describe('resolveSubstitution', () => {
       .toEqual({ kind: 'mark', id: 'o2', from: 'court' });
     expect(resolveSubstitution(oppFive, { side: 'us', id: 'p3', from: 'court' }, 'them', 'o9', 'bench'))
       .toEqual({ kind: 'none' });
+  });
+});
+
+const LINEUP = (over: Partial<MatchLineupEvent>): MatchLineupEvent => ({
+  matchId: 'm1', seq: 1, side: 'us', quarter: 1, gameTimeSeconds: 0,
+  playersIn: [], playersOut: [], onCourt: [], ...over,
+});
+
+describe('resolveLineupEntry', () => {
+  it('empile une ligne pour le premier joueur du match', () => {
+    expect(resolveLineupEntry(undefined, 'p1')).toEqual({ kind: 'push', onCourt: ['p1'] });
+  });
+
+  it('amende la même ligne tant que le cinq se compose', () => {
+    // La régression à ne jamais réintroduire : cinq lignes successives ne laissaient qu'UN
+    // titulaire à `boxscoreFromEvents`, et fabriquaient quatre lineups parasites.
+    const last = LINEUP({ seq: 1, playersIn: ['p1', 'p2'], onCourt: ['p1', 'p2'] });
+    expect(resolveLineupEntry(last, 'p3')).toEqual({
+      kind: 'amend', seq: 1, playersIn: ['p1', 'p2', 'p3'], onCourt: ['p1', 'p2', 'p3'],
+    });
+  });
+
+  it('empile de nouveau une fois le cinq complet', () => {
+    const last = LINEUP({ seq: 1, playersIn: FIVE, onCourt: FIVE });
+    expect(resolveLineupEntry(last, 'p6')).toEqual({ kind: 'push', onCourt: [...FIVE, 'p6'] });
+  });
+
+  it("n'amende jamais un changement : quelqu'un en est sorti", () => {
+    const last = LINEUP({ seq: 2, playersIn: ['p9'], playersOut: ['p3'], onCourt: ['p1', 'p2', 'p9'] });
+    expect(resolveLineupEntry(last, 'p4')).toEqual({ kind: 'push', onCourt: ['p1', 'p2', 'p9', 'p4'] });
   });
 });

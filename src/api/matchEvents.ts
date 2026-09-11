@@ -40,6 +40,17 @@ export const matchEventsApi = {
     if (error) throw error;
   },
 
+  /** Nombre d'actions, sans rapatrier les lignes (`head`) — sert aux confirmations de suppression,
+   *  qui doivent annoncer ce qu'elles effacent. */
+  async countForMatch(matchId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('match_events')
+      .select('seq', { count: 'exact', head: true })
+      .eq('match_id', matchId);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   async deleteForMatch(matchId: string): Promise<void> {
     const { error } = await supabase.from('match_events').delete().eq('match_id', matchId);
     if (error) throw error;

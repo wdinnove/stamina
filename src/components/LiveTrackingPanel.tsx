@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Settings2, Trash2, Check, X, ChevronRight } from 'lucide-react';
 import { matchLiveApi } from '../api/matchLive';
+import { matchEventsApi } from '../api/matchEvents';
 import { playsApi } from '../api/plays';
 import { PlayerAvatar } from './PlayerAvatar';
 import { LiveActionModal, type LiveActionInput } from './LiveActionModal';
@@ -81,7 +82,7 @@ function OpponentAvatar({ name, size = 36 }: { name: string; size?: number }) {
 }
 
 export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanelProps) {
-  const clock = useMatchClock();
+  const clock = useMatchClock(match.id);
   const { selected } = useTeamSeason();
   const teamColor    = selected?.team.color ?? '#00E5A0';
   const ourTeamName  = selected?.team.name ?? 'Notre équipe';
@@ -108,23 +109,28 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   /** Clé de la ligne d'historique en attente de confirmation de suppression — deux clics valent
    *  mieux qu'une modale pour un geste censé rester rapide en plein match. */
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  /** Actions de l'écran de saisie. Cet écran ne les affiche pas, mais la remise à zéro les efface
+   *  aussi (rotations partagées) : la confirmation doit les compter. */
+  const [statEventCount, setStatEventCount] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [opp, events, acts, teamPlays, roster] = await Promise.all([
+      const [opp, events, acts, teamPlays, roster, trackedCount] = await Promise.all([
         matchLiveApi.getOpponentPlayers(match.id),
         matchLiveApi.getLineupEvents(match.id),
         matchLiveApi.getActions(match.id),
         playsApi.getForTeam(match.teamId),
         matchLiveApi.getRoster(match.id),
+        matchEventsApi.countForMatch(match.id),
       ]);
       setOpponentPlayers(opp);
       setLineupEvents(events);
       setActions(acts);
       setPlays(teamPlays);
       setRosterIds(roster);
+      setStatEventCount(trackedCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -325,6 +331,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   async function deleteAllData() {
     await matchLiveApi.deleteAllForMatch(match.id);
     setActions([]);
+    setStatEventCount(0);
     setLineupEvents([]);
     setOpponentPlayers([]);
     setStarters({ us: new Set(), them: new Set() });
@@ -573,7 +580,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
           periodDurationSeconds={clock.periodDurationSeconds} onPeriodDurationChange={clock.setPeriodDuration}
           seasonPlayers={players} rosterIds={rosterIds} lockedPlayerIds={onCourt.us}
           onRosterChange={async ids => { await matchLiveApi.setRoster(match.id, ids); setRosterIds(ids); }}
-          recordedCount={actions.length + lineupEvents.length + opponentPlayers.length}
+          recordedCount={actions.length + lineupEvents.length + opponentPlayers.length + statEventCount}
           onDeleteAll={deleteAllData}
           onClose={() => setShowPlaysConfig(false)}
           onChanged={async () => setPlays(await playsApi.getForTeam(match.teamId))}
