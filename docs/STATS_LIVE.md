@@ -543,6 +543,11 @@ existant fonctionne dessus.
   filtre de réussite — sinon il afficherait toujours 100 %.
 - Shot chart **défensif** : acquis, les tirs adverses se pointent de la même façon
 - Repli « tir sans position » (2/3, réussi/manqué) : compte au boxscore, hors de la carte
+- **Réglage `Saisie des tirs`** (cog → Réglages) : *sur le terrain* ou *boutons seulement*. Choix
+  de l'opérateur, conservé par navigateur (`localStorage`), jamais en base — c'est une habitude de
+  saisie, pas une donnée du match. En mode boutons le terrain disparaît et les quatre boutons
+  prennent sa colonne ; les tirs partent avec une valeur figée et sans position, donc sans grille
+  de tir. Un match peut mélanger les deux : chaque tir porte ce qu'il porte.
 
 ### Phase 1 bis — Analyse des lineups ✅
 

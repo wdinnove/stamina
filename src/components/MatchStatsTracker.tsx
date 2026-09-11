@@ -129,6 +129,26 @@ export function resolveLineupEntry(last: MatchLineupEvent | undefined, playerId:
  *  l'alerte parle du contenu réel du match et pas d'un cas général. */
 interface ExistingStats { players: number; opponents: number; team: boolean; scoreUs: number | null; scoreThem: number | null }
 
+/**
+ * Comment les tirs se saisissent. Choix de l'OPÉRATEUR, pas du match : certains posent chaque tir
+ * sur le terrain, d'autres suivent un match trop rapide pour ça et veulent deux taps. Conservé par
+ * navigateur, jamais en base — c'est une habitude de saisie, pas une donnée du match.
+ *
+ * En mode `buttons`, les tirs partent avec une valeur FIGÉE et sans position : ils comptent au
+ * boxscore, au score et aux totaux, mais pas aux grilles de tir. C'est l'échange assumé.
+ */
+export type ShotInput = 'court' | 'buttons';
+
+const SHOT_INPUT_KEY = 'stamina.shotInput';
+
+function readShotInput(): ShotInput {
+  try {
+    return localStorage.getItem(SHOT_INPUT_KEY) === 'buttons' ? 'buttons' : 'court';
+  } catch {
+    return 'court';
+  }
+}
+
 /** Cible tactile minimale. Un chip de banc à 22 px était la plus petite cible de l'écran alors
  *  qu'elle déclenche une rotation — petite cible, grosse conséquence. */
 const TAP = 44;
@@ -243,6 +263,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [lineupSide, setLineupSide] = useState<LineupSide>('us');
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
+  const [shotInput, setShotInputState] = useState<ShotInput>(readShotInput);
+
+  function setShotInput(mode: ShotInput) {
+    setShotInputState(mode);
+    setPendingShot(null);   // un point posé n'a plus d'endroit où s'afficher
+    try { localStorage.setItem(SHOT_INPUT_KEY, mode); } catch { /* navigation privée */ }
+  }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [publishState, setPublishState] = useState<'idle' | 'checking' | 'saving'>('idle');
@@ -989,6 +1016,33 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
             </button>
           )}
 
+          {shotInput === 'buttons' ? (
+            /* Saisie aux boutons : pas de terrain, donc pas de position. Les quatre boutons
+               prennent la place de la colonne et gagnent la taille qu'ils n'avaient pas en
+               repli sous le terrain. */
+            <div>
+              <p style={SECTION_TITLE}>Tirs</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                {NO_POSITION_SHOTS.map(b => (
+                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit}
+                    aria-pressed={pendingAction?.label === b.label}
+                    aria-label={`${b.value} points ${b.made ? 'réussi' : 'manqué'}`}
+                    style={{
+                      ...paletteStyle(
+                        pendingAction?.label === b.label, true, b.made ? '#00E5A0' : '#EF4444',
+                        pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
+                      ),
+                      height: 56, fontSize: '0.95rem', fontWeight: 700,
+                    }}>
+                    <span className="tracker-action-label">{b.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p style={{ color: '#475569', fontSize: '0.73rem', margin: '8px 0 0', textAlign: 'center' }}>
+                Sans position : ces tirs comptent au boxscore, pas aux grilles de tir.
+              </p>
+            </div>
+          ) : (
           <div className="tracker-court">
             <p style={SECTION_TITLE}>Tirs</p>
 
@@ -1058,6 +1112,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               </div>
             </div>
           </div>
+          )}
 
           <div>
             {/* Une seule ligne, jamais deux : ce titre change à chaque tap, et un libellé qui
@@ -1328,6 +1383,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         <SettingsModal
           periodDurationSeconds={clock.periodDurationSeconds}
           onPeriodDurationChange={clock.setPeriodDuration}
+          shotInput={shotInput}
+          onShotInputChange={setShotInput}
           canEdit={canEdit}
           onClose={() => setShowKeys(false)}
         />
@@ -1368,9 +1425,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
  *  convertit (quart-temps, temps écoulé) en axe de temps continu, donc elle détermine les minutes
  *  publiées dans `match_stats`. Une catégorie jeune à 8 min pointée à 10 fausse tout le temps de
  *  jeu. Le réglage est partagé avec le suivi live, comme le chrono lui-même. */
-function SettingsModal({ periodDurationSeconds, onPeriodDurationChange, canEdit, onClose }: {
+function SettingsModal({ periodDurationSeconds, onPeriodDurationChange, shotInput, onShotInputChange, canEdit, onClose }: {
   periodDurationSeconds: number;
   onPeriodDurationChange: (seconds: number) => void;
+  shotInput: ShotInput;
+  onShotInputChange: (mode: ShotInput) => void;
   canEdit: boolean;
   onClose: () => void;
 }) {
@@ -1387,6 +1446,28 @@ function SettingsModal({ periodDurationSeconds, onPeriodDurationChange, canEdit,
           <X size={18} />
         </button>
       </div>
+
+      {canEdit && (
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ ...SECTION_TITLE, margin: '0 0 4px' }}>Saisie des tirs</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {([
+              ['court',   'Sur le terrain',   "Un tap sur le terrain, puis ✓ ou ✗. La position est enregistrée : c'est ce qui alimente les grilles de tir."],
+              ['buttons', 'Boutons seulement', 'Deux taps, sans position. Plus rapide à suivre, mais aucune grille de tir — les paniers comptent au boxscore et au score.'],
+            ] as const).map(([mode, label, help]) => (
+              <button key={mode} onClick={() => onShotInputChange(mode)} aria-pressed={shotInput === mode}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                  border: `1px solid ${shotInput === mode ? '#00E5A0' : '#2A2F3A'}`,
+                  backgroundColor: shotInput === mode ? '#00E5A012' : '#0D0F14',
+                }}>
+                <span style={{ display: 'block', color: shotInput === mode ? '#00E5A0' : '#CBD5E1', fontSize: '0.84rem', fontWeight: 700 }}>{label}</span>
+                <span style={{ display: 'block', color: '#64748B', fontSize: '0.76rem', lineHeight: 1.4, marginTop: 2 }}>{help}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {canEdit && (
         <div style={{ marginBottom: 20 }}>
