@@ -9,6 +9,9 @@ import type { MatchEvent } from '../data/types';
  * plein match. Ce sont `match_stats` / `opponent_match_stats` / `team_match_stats` qui, elles, ne
  * s'écrivent que sur publication explicite — voir docs/STATS_LIVE.md.
  */
+/** Violation de contrainte d'unicité côté Postgres. */
+const DUPLICATE_KEY = '23505';
+
 const EVENT_COLUMNS =
   'match_id, seq, quarter, game_time_seconds, side, player_id, opponent_player_id, type, made, x, y, value, on_court, on_court_them';
 
@@ -25,9 +28,30 @@ export const matchEventsApi = {
     return (data ?? []).map(toMatchEvent);
   },
 
-  async insert(event: MatchEvent): Promise<void> {
+  /**
+   * Insère une action et rend le rang RÉELLEMENT écrit.
+   *
+   * `seq` est calculé côté client : deux personnes qui saisissent le même match visent le même
+   * rang et la seconde se prend une violation de clé primaire. Plutôt que de perdre l'action, on
+   * reprend un rang libre et on le renvoie — à l'appelant de se resynchroniser s'il diffère.
+   */
+  async insert(event: MatchEvent): Promise<number> {
     const { error } = await supabase.from('match_events').insert(toRow(event));
-    if (error) throw error;
+    if (!error) return event.seq;
+    if (error.code !== DUPLICATE_KEY) throw error;
+
+    const { data, error: maxError } = await supabase
+      .from('match_events')
+      .select('seq')
+      .eq('match_id', event.matchId)
+      .order('seq', { ascending: false })
+      .limit(1);
+    if (maxError) throw maxError;
+
+    const seq = ((data?.[0]?.seq as number | undefined) ?? 0) + 1;
+    const { error: retryError } = await supabase.from('match_events').insert(toRow({ ...event, seq }));
+    if (retryError) throw retryError;
+    return seq;
   },
 
   /** Suppression à n'importe quel rang. Sans effet de cascade : contrairement à un changement de

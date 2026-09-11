@@ -5,10 +5,11 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { Modal } from './Modal';
 import { MatchScoreboard, scoreboardBtn } from './MatchScoreboard';
 import { matchEventsApi } from '../api/matchEvents';
+import { enqueueInsert, enqueueDelete, flushQueue, pendingCount, subscribeQueue, takeResyncFlag } from '../api/matchEventQueue';
 import { matchLiveApi } from '../api/matchLive';
 import { statsApi, type BulkStatRow, type OpponentStatInput } from '../api/stats';
 import { matchesApi } from '../api/matches';
-import { useMatchClock } from '../hooks/useMatchClock';
+import { useMatchClock, PERIOD_PRESETS_MIN } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
@@ -204,6 +205,15 @@ const PALETTE_GROUPS: {
   ]},
 ];
 
+/** Repli sous le terrain : un tir dont on n'a pas eu le temps de prendre la position. La valeur
+ *  est figée ici plutôt que déduite de la géométrie — c'est le seul cas où elle l'est. */
+const NO_POSITION_SHOTS: { label: string; made: boolean; value: 2 | 3 }[] = [
+  { label: '2 ✓', made: true,  value: 2 },
+  { label: '2 ✗', made: false, value: 2 },
+  { label: '3 ✓', made: true,  value: 3 },
+  { label: '3 ✗', made: false, value: 3 },
+];
+
 const EVENT_LABELS: Record<MatchEventType, string> = {
   shot: 'Tir', ft: 'LF', reb_off: 'Rebond off.', reb_def: 'Rebond déf.', ast: 'Passe déc.',
   stl: 'Interception', blk: 'Contre', tov: 'Ballon perdu', foul: 'Faute', foul_drawn: 'Faute reçue',
@@ -223,7 +233,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   /** Tir posé sur le terrain, en attente de son auteur et/ou de son ✓/✗. */
   const [pendingShot, setPendingShot] = useState<{ x: number; y: number } | null>(null);
   /** Action choisie avant son auteur — le pendant exact de `pendingShot` pour la palette. */
-  const [pendingAction, setPendingAction] = useState<{ type: MatchEventType; made?: boolean; label: string } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: MatchEventType; made?: boolean; label: string; value?: 2 | 3 } | null>(null);
   const [chain, setChain] = useState<'reb' | 'ast' | null>(null);
   const [subMode, setSubMode] = useState(false);
   const [pendingSub, setPendingSub] = useState<PendingSub>(null);
@@ -247,6 +257,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [publishState, setPublishState] = useState<'idle' | 'checking' | 'saving'>('idle');
   const [publishTarget, setPublishTarget] = useState<ExistingStats | null>(null);
   const [publishedAt, setPublishedAt] = useState<Date | null>(null);
+  /** Actions saisies mais pas encore enregistrées — réseau coupé, ou serveur qui refuse. */
+  const [pending, setPending] = useState(pendingCount());
   const courtRef = useRef<SVGSVGElement>(null);
 
   /**
@@ -275,6 +287,20 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }, [match.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * File d'attente : l'écran affiche ce qui n'est pas encore parti, et se recharge si un rang a dû
+   * être réattribué (deux saisisseurs sur le même match). Un `flushQueue` au montage reprend ce
+   * qu'une session précédente aurait laissé en plan.
+   */
+  useEffect(() => subscribeQueue(() => {
+    setPending(pendingCount());
+    if (takeResyncFlag()) void load();
+  }), [load]);
+
+  useEffect(() => {
+    flushQueue().then(err => { if (err) setError(err.message); });
+  }, []);
 
   /**
    * Écriture au fil de l'eau : l'écran applique le geste tout de suite et enregistre derrière.
@@ -397,8 +423,9 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     };
     setEvents(prev => [...prev, event]);
     setSelection(null);
-    persist(() => matchEventsApi.insert(event));
-  }, [match.id, events, onCourtBySide.us, onCourtBySide.them, persist]);
+    // Passe par la file : une salle sans réseau ne doit pas faire perdre une action (api/matchEventQueue.ts).
+    enqueueInsert(event);
+  }, [match.id, events, onCourtBySide.us, onCourtBySide.them]);
 
   /** Traduit la sélection courante en champs d'événement — le seul endroit qui sait qu'une
    *  joueuse adverse s'écrit dans `opponentPlayerId` et pas dans `playerId`. */
@@ -436,17 +463,17 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    * déjà armée, l'action part tout de suite ; sinon l'action s'arme et attend son auteur. Les deux
    * chemins produisent le même événement en deux taps.
    */
-  function handleActionTap(type: MatchEventType, made: boolean | undefined, label: string) {
+  function handleActionTap(type: MatchEventType, made: boolean | undefined, label: string, value?: 2 | 3) {
     if (!canEdit) return;
     if (selection) {
-      pushEvent({ type, made, ...authorFields(selection) });
-      setChain(type === 'ft' && made === false ? 'reb' : null);
+      pushEvent({ type, made, value, ...authorFields(selection) });
+      setChain((type === 'ft' || type === 'shot') && made === false ? 'reb' : type === 'shot' && made ? 'ast' : null);
       setPendingAction(null);
       return;
     }
     // Une action armée et un tir posé ne peuvent pas attendre le même tap : le second annule le premier.
     setPendingShot(null);
-    setPendingAction(prev => prev?.label === label ? null : { type, made, label });
+    setPendingAction(prev => prev?.label === label ? null : { type, made, label, value });
   }
 
   /**
@@ -455,8 +482,9 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    */
   function selectPlayer(sel: Selection) {
     if (pendingAction) {
-      pushEvent({ type: pendingAction.type, made: pendingAction.made, ...authorFields(sel) });
-      setChain(pendingAction.type === 'ft' && pendingAction.made === false ? 'reb' : null);
+      const { type, made, value } = pendingAction;
+      pushEvent({ type, made, value, ...authorFields(sel) });
+      setChain((type === 'ft' || type === 'shot') && made === false ? 'reb' : type === 'shot' && made ? 'ast' : null);
       setPendingAction(null);
       return;
     }
@@ -465,8 +493,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   const removeEvent = useCallback((seq: number) => {
     setEvents(prev => prev.filter(e => e.seq !== seq));
-    persist(() => matchEventsApi.delete(match.id, seq));
-  }, [match.id, persist]);
+    enqueueDelete(match.id, seq);
+  }, [match.id]);
 
   const undo = useCallback(() => {
     const last = events.at(-1);
@@ -495,11 +523,18 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
     if (write.kind === 'push') {
       pushLineup(side, write.onCourt, [playerId], []);
-      return;
+    } else {
+      const { seq, playersIn, onCourt } = write;
+      setLineupEvents(prev => prev.map(e => e.side === side && e.seq === seq ? { ...e, playersIn, onCourt } : e));
+      persist(() => matchLiveApi.updateLineupEventRoster(match.id, side, seq, playersIn, onCourt));
     }
-    const { seq, playersIn, onCourt } = write;
-    setLineupEvents(prev => prev.map(e => e.side === side && e.seq === seq ? { ...e, playersIn, onCourt } : e));
-    persist(() => matchLiveApi.updateLineupEventRoster(match.id, side, seq, playersIn, onCourt));
+
+    // Le cinq est complet : le mode changement a fini son travail. Y rester est la porte ouverte
+    // au geste de trop — un tap destiné à armer un joueur sort quelqu'un du terrain.
+    if (write.onCourt.length === 5) {
+      setSubMode(false);
+      setPendingSub(null);
+    }
   }
 
   /** Applique au terrain la décision de `resolveSubstitution` — cette fonction ne décide rien. */
@@ -621,7 +656,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     }
   }
 
-  async function confirmPublish() {
+  async function confirmPublish(isFinal: boolean) {
     setPublishState('saving');
     setError('');
     try {
@@ -635,7 +670,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       const result: 'win' | 'loss' = finalScore.us === finalScore.them
         ? match.result
         : finalScore.us > finalScore.them ? 'win' : 'loss';
-      const matchWithScore = { ...match, scoreUs: finalScore.us, scoreThem: finalScore.them, result };
+      // Publication d'étape : les statistiques partent, la fiche du match ne bouge pas. Écrire le
+      // score à la mi-temps le fait remonter tel quel dans le bilan de saison et le classement.
+      const matchWithScore = isFinal
+        ? { ...match, scoreUs: finalScore.us, scoreThem: finalScore.them, result }
+        : match;
 
       if (rowsUs.length > 0) {
         await statsApi.bulkUpsertForMatch(match.id, rowsUs as BulkStatRow[], matchWithScore);
@@ -657,7 +696,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
       await statsApi.upsertTeamStats(match.id, teamTotalsFromEvents(events, 'us'), teamTotalsFromEvents(events, 'them'));
 
-      if (finalScore.us !== match.scoreUs || finalScore.them !== match.scoreThem) {
+      if (isFinal && (finalScore.us !== match.scoreUs || finalScore.them !== match.scoreThem)) {
         await matchesApi.update(match.id, { scoreUs: finalScore.us, scoreThem: finalScore.them, result });
       }
 
@@ -745,6 +784,19 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         </div>
       )}
 
+      {pending > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.78rem' }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>
+            {pending} action{pending > 1 ? 's' : ''} en attente d'enregistrement. Elle{pending > 1 ? 's partiront' : ' partira'} au retour du réseau — ne fermez pas l'onglet.
+          </span>
+          <button onClick={() => { flushQueue().then(err => setError(err ? err.message : '')); }}
+            style={{ ...SMALL_BTN, height: 28, borderColor: '#F59E0B', color: '#F59E0B' }}>
+            Réessayer
+          </button>
+        </div>
+      )}
+
       {publishedAt && (
         <div style={{ backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 6, padding: '7px 12px', color: '#00E5A0', fontSize: '0.76rem' }}>
           Boxscore publié à {publishedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. Les actions enregistrées ensuite ne le seront qu'à la prochaine publication.
@@ -769,7 +821,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               }}>
               <Upload size={14} />{publishState === 'checking' ? 'Vérification…' : 'Publier'}
             </button>
-            <button onClick={() => setShowKeys(true)} aria-label="Raccourcis clavier" title="Raccourcis clavier"
+            <button onClick={() => setShowKeys(true)} aria-label="Réglages et raccourcis" title="Réglages et raccourcis"
               style={{ ...scoreboardBtn, width: 34, justifyContent: 'center' }}>
               <Settings size={15} />
             </button>
@@ -992,6 +1044,28 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 <>Indiquez la position du tir de <span style={{ color: selection.side === 'us' ? teamColor : '#94A3B8' }}>{selectionLabel}</span></>
               ) : `${shotsUs.length} tir${shotsUs.length > 1 ? 's' : ''} · ${shotsThem.length} adverse${shotsThem.length > 1 ? 's' : ''}`}
             </p>
+
+            {/* Repli quand la position n'a pas pu être prise : un tir dans la confusion ne doit
+                pas être perdu. La valeur est alors FIGÉE en base (colonne `value`) au lieu d'être
+                déduite de la géométrie, et ces tirs comptent au boxscore mais restent hors des
+                grilles de tir — c'est le prix de la rapidité, pas un oubli. Volontairement
+                discret et sous le terrain : le chemin normal reste le clic sur le terrain. */}
+            <div style={{ marginTop: 10 }}>
+              <p style={{ ...SECTION_TITLE, fontSize: '0.6rem', margin: '0 0 4px', color: '#475569' }}>Tir sans position</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                {NO_POSITION_SHOTS.map(b => (
+                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit}
+                    aria-pressed={pendingAction?.label === b.label}
+                    aria-label={`${b.value} points ${b.made ? 'réussi' : 'manqué'}, sans position`}
+                    style={paletteStyle(
+                      pendingAction?.label === b.label, true, b.made ? '#00E5A0' : '#EF4444',
+                      pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
+                    )}>
+                    <span className="tracker-action-label">{b.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div>
@@ -1254,11 +1328,19 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           players={boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, coarseElapsed, 'us').length}
           opponents={boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, coarseElapsed, 'them').length}
           score={score} saving={publishState === 'saving'}
+          matchScoreUs={match.scoreUs} matchScoreThem={match.scoreThem}
           onConfirm={confirmPublish} onCancel={() => setPublishTarget(null)}
         />
       )}
 
-      {showKeys && <ShortcutsModal onClose={() => setShowKeys(false)} />}
+      {showKeys && (
+        <SettingsModal
+          periodDurationSeconds={clock.periodDurationSeconds}
+          onPeriodDurationChange={clock.setPeriodDuration}
+          canEdit={canEdit}
+          onClose={() => setShowKeys(false)}
+        />
+      )}
 
       {showOpponentSheet && (
         <OpponentSheetModal
@@ -1291,7 +1373,16 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
  * la barre de commandes en continu et en déportaient les boutons du chrono hors du centre, pour
  * une information qu'on lit une fois.
  */
-function ShortcutsModal({ onClose }: { onClose: () => void }) {
+/** Réglages de l'écran. La durée de quart-temps n'est pas un détail d'affichage : c'est elle qui
+ *  convertit (quart-temps, temps écoulé) en axe de temps continu, donc elle détermine les minutes
+ *  publiées dans `match_stats`. Une catégorie jeune à 8 min pointée à 10 fausse tout le temps de
+ *  jeu. Le réglage est partagé avec le suivi live, comme le chrono lui-même. */
+function SettingsModal({ periodDurationSeconds, onPeriodDurationChange, canEdit, onClose }: {
+  periodDurationSeconds: number;
+  onPeriodDurationChange: (seconds: number) => void;
+  canEdit: boolean;
+  onClose: () => void;
+}) {
   const rows: [string, string][] = [
     ['espace', 'Lancer / arrêter le chrono'],
     ['c',      'Basculer le mode changement'],
@@ -1300,12 +1391,40 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal onClose={onClose} closeOnBackdropClick maxWidth={420} style={{ padding: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Raccourcis clavier</h2>
+        <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Réglages</h2>
         <button onClick={onClose} aria-label="Fermer" style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 4 }}>
           <X size={18} />
         </button>
       </div>
 
+      {canEdit && (
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ ...SECTION_TITLE, margin: '0 0 4px' }}>Durée d'un quart-temps</p>
+          <p style={{ color: '#64748B', fontSize: '0.76rem', margin: '0 0 8px' }}>
+            Sert au calcul des minutes de chaque joueur.
+          </p>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {PERIOD_PRESETS_MIN.map(m => {
+              const active = periodDurationSeconds === m * 60;
+              return (
+                <button key={m} type="button" onClick={() => onPeriodDurationChange(m * 60)}
+                  aria-pressed={active}
+                  style={{
+                    minHeight: TAP, padding: '7px 14px', borderRadius: 6, cursor: 'pointer',
+                    fontSize: '0.82rem', fontWeight: active ? 700 : 400,
+                    border: `1px solid ${active ? '#00E5A0' : '#2A2F3A'}`,
+                    backgroundColor: active ? '#00E5A018' : 'transparent',
+                    color: active ? '#00E5A0' : '#94A3B8',
+                  }}>
+                  {m} min
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p style={{ ...SECTION_TITLE, margin: '0 0 10px' }}>Raccourcis clavier</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {rows.map(([key, label]) => (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1409,15 +1528,23 @@ function OpponentSheetModal({ opponentName, opponents, usedIds, onAdd, onRemove,
  * chemin que l'import CSV, et le dernier geste fait foi. L'alerte annonce donc ce qui va
  * disparaître, chiffres à l'appui, plutôt qu'un avertissement générique.
  */
-function PublishModal({ existing, players, opponents, score, saving, onConfirm, onCancel }: {
+function PublishModal({ existing, players, opponents, score, saving, matchScoreUs, matchScoreThem, onConfirm, onCancel }: {
   existing: ExistingStats;
   players: number;
   opponents: number;
   score: { us: number; them: number };
   saving: boolean;
-  onConfirm: () => void;
+  matchScoreUs: number;
+  matchScoreThem: number;
+  onConfirm: (isFinal: boolean) => void;
   onCancel: () => void;
 }) {
+  /**
+   * Publication d'étape par défaut. Publier à la mi-temps est un usage normal — on veut voir le
+   * boxscore — mais ça ne doit pas inscrire un score de mi-temps dans le bilan de saison et le
+   * classement. Cocher est le geste de fin de match, il se fait une fois.
+   */
+  const [isFinal, setIsFinal] = useState(false);
   // Une catégorie n'est annoncée supprimée que si la publication a réellement de quoi la
   // remplacer : sans ligne à écrire, `bulkUpsert…` ne touche à rien (cf. api/stats.ts).
   const replacesPlayers   = existing.players > 0 && players > 0;
@@ -1429,9 +1556,26 @@ function PublishModal({ existing, players, opponents, score, saving, onConfirm, 
 
       <p style={{ color: '#94A3B8', fontSize: '0.82rem', margin: '0 0 12px' }}>
         Ce match sera enregistré avec <strong style={{ color: '#F1F5F9' }}>{players} joueur{players > 1 ? 's' : ''}</strong>,
-        {' '}<strong style={{ color: '#F1F5F9' }}>{opponents} adverse{opponents > 1 ? 's' : ''}</strong>, les totaux d'équipe
-        et le score <strong style={{ color: '#F1F5F9' }}>{score.us} — {score.them}</strong>.
+        {' '}<strong style={{ color: '#F1F5F9' }}>{opponents} adverse{opponents > 1 ? 's' : ''}</strong> et les totaux d'équipe.
       </p>
+
+      <label style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, padding: 12, borderRadius: 8, cursor: 'pointer',
+        border: `1px solid ${isFinal ? '#00E5A0' : '#2A2F3A'}`, backgroundColor: isFinal ? '#00E5A012' : '#0D0F14',
+      }}>
+        <input type="checkbox" checked={isFinal} onChange={e => setIsFinal(e.target.checked)} disabled={saving}
+          style={{ marginTop: 2, width: 16, height: 16, accentColor: '#00E5A0', cursor: 'pointer' }} />
+        <span style={{ color: isFinal ? '#F1F5F9' : '#94A3B8', fontSize: '0.82rem', lineHeight: 1.45 }}>
+          <strong>Le match est terminé</strong> — enregistre aussi le score{' '}
+          <strong style={{ color: '#F1F5F9' }}>{score.us} — {score.them}</strong> et le résultat sur la fiche du match.
+          <br />
+          <span style={{ color: '#64748B', fontSize: '0.76rem' }}>
+            {isFinal
+              ? `Le score actuellement enregistré (${matchScoreUs} — ${matchScoreThem}) sera remplacé. Le bilan de saison et le classement suivront.`
+              : 'Décoché, la fiche du match et le bilan de saison ne bougent pas : seules les statistiques sont publiées.'}
+          </span>
+        </span>
+      </label>
 
       {replaces && (
         <div style={{ display: 'flex', gap: 10, backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
@@ -1442,7 +1586,7 @@ function PublishModal({ existing, players, opponents, score, saving, onConfirm, 
               {replacesPlayers && <li>{existing.players} ligne{existing.players > 1 ? 's' : ''} de boxscore</li>}
               {replacesOpponents && <li>{existing.opponents} ligne{existing.opponents > 1 ? 's' : ''} adverse{existing.opponents > 1 ? 's' : ''}</li>}
               {existing.team && <li>les totaux d'équipe</li>}
-              {existing.scoreUs !== null && (
+              {isFinal && existing.scoreUs !== null && (
                 <li>le score enregistré ({existing.scoreUs} — {existing.scoreThem})</li>
               )}
             </ul>
@@ -1458,7 +1602,7 @@ function PublishModal({ existing, players, opponents, score, saving, onConfirm, 
           style={{ flex: 1, minHeight: TAP, borderRadius: 6, border: '1px solid #2A2F3A', backgroundColor: '#1E2229', color: '#94A3B8', fontSize: '0.85rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
           Annuler
         </button>
-        <button onClick={onConfirm} disabled={saving}
+        <button onClick={() => onConfirm(isFinal)} disabled={saving}
           style={{ flex: 1, minHeight: TAP, borderRadius: 6, border: 'none', backgroundColor: replaces ? '#EF4444' : '#00E5A0', color: replaces ? '#FFFFFF' : '#0D0F14', fontWeight: 700, fontSize: '0.85rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
           {saving ? 'Publication…' : replaces ? 'Remplacer' : 'Publier'}
         </button>

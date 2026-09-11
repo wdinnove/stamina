@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PERIOD_PRESETS_MIN } from '../hooks/useMatchClock';
 import { Trash2, Pencil, Check, X } from 'lucide-react';
 import { Modal } from './Modal';
 import { playsApi } from '../api/plays';
@@ -28,10 +29,6 @@ export interface PlaysConfigModalProps {
   /** Le parent recharge depuis l'API après chaque mutation — source de vérité unique. */
   onChanged: () => void | Promise<void>;
 }
-
-/** Durées de quart-temps usuelles en club (FFBB) — 8 min pour les jeunes catégories, 10 min en
- *  senior, 12 en municipal/loisir. Purement indicatif : le vrai chrono de table de marque fait foi. */
-const PERIOD_PRESETS_MIN = [8, 10, 12] as const;
 
 /** Vocabulaire basket courant, proposé en un clic plutôt qu'une liste vide à remplir à la main —
  *  déjà utilisé comme nom de catégorie dans le module tactique (ex. "Offense M2M"). */

@@ -5,6 +5,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
  *  simplification assumée (le vrai chrono de table de marque fait foi si besoin d'un écart). */
 const DEFAULT_PERIOD_SECONDS = 10 * 60;
 
+/** Durées usuelles en club (FFBB) — 8 min pour les jeunes catégories, 10 en senior, 12 en
+ *  municipal/loisir. Purement indicatif : le chrono de la table de marque fait foi. */
+export const PERIOD_PRESETS_MIN = [8, 10, 12] as const;
+
 export interface MatchClock {
   quarter: number;
   running: boolean;
