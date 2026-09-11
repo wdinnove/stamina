@@ -29,17 +29,17 @@ const panelSection: React.CSSProperties = {
   backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 16,
 };
 
-/** Table de marque : les trois colonnes (nous / chrono / eux) tiennent TOUJOURS sur une ligne,
- *  y compris sur un téléphone étroit — d'où les tailles fluides plutôt qu'un retour à la ligne
- *  qui casserait la lecture du score en un coup d'œil. */
+/** Table de marque : les trois colonnes (nous / chrono / eux) tiennent TOUJOURS sur une ligne.
+ *  Tailles fixes — l'app est cadrée PC pour l'instant, une taille qui suit la fenêtre décalait le
+ *  chrono par rapport aux deux scores. */
 const scoreLabel: React.CSSProperties = {
-  fontSize: 'clamp(0.6rem, 2.6vw, 0.78rem)', fontWeight: 700, textTransform: 'uppercase',
+  fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase',
   letterSpacing: '0.04em', margin: '0 0 4px',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
 
 const scoreValue: React.CSSProperties = {
-  color: '#F1F5F9', fontSize: 'clamp(1.6rem, 9vw, 2.6rem)', fontWeight: 800, margin: 0, lineHeight: 1,
+  color: '#F1F5F9', fontSize: '2.6rem', fontWeight: 800, margin: 0, lineHeight: 1,
 };
 
 export const scoreboardBtn: React.CSSProperties = {
@@ -53,7 +53,7 @@ export function MatchScoreboard({
 }: MatchScoreboardProps) {
   return (
     <>
-      <div style={{ ...panelSection, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(8px, 3vw, 28px)', padding: 'clamp(14px, 4vw, 22px) 12px', flexWrap: 'nowrap' }}>
+      <div style={{ ...panelSection, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, padding: '22px 12px', flexWrap: 'nowrap' }}>
         <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: 0 }}>
           <p style={{ ...scoreLabel, color: teamColor }}>{ourTeamName}</p>
           <p style={scoreValue}>{scoreUs}</p>
@@ -65,7 +65,7 @@ export function MatchScoreboard({
           <p style={{ ...scoreLabel, color: '#00E5A0' }}>{periodLabel(clock.quarter)}</p>
           <ClockDisplay
             seconds={clock.remainingSeconds} onSet={clock.setRemainingSeconds} editable={canEdit}
-            fontSize="clamp(1.3rem, 7vw, 2.2rem)"
+            fontSize="2.2rem"
           />
         </div>
 

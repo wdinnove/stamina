@@ -502,18 +502,23 @@ C'est le compromis réel d'un opérateur seul, il n'a pas à être présenté co
 
 ### Publication
 
-Un bouton **« Publier le boxscore »**, explicite, jamais automatique. Il écrit `match_stats`,
-`team_match_stats` et `matches.score_us/score_them`.
+Un bouton **« Publier »** dans la barre de commandes, explicite, jamais automatique. Il écrit
+`match_stats`, `opponent_match_stats`, `team_match_stats` et `matches.score_us/score_them`.
 
-⚠️ `bulkUpsertForMatch` fait un **delete-then-insert** sur tout le match. Publier écrase donc un
-boxscore déjà importé par CSV. Il faut un garde-fou : si des `match_stats` existent déjà pour ce
-match, demander confirmation en affichant les deux totaux côte à côte.
+**Le dernier geste fait foi, et l'écran le dit.** Ces écritures sont exactement celles de l'import
+CSV, et elles remplacent en bloc (`bulkUpsertForMatch` fait DELETE puis INSERT, jamais de fusion
+ligne à ligne). Avant d'ouvrir la confirmation, l'écran relève donc ce qui existe déjà pour ce
+match et l'annonce **chiffré** : tant de lignes de boxscore, tant de lignes adverses, les totaux
+d'équipe, le score enregistré. Le bouton de validation passe au rouge et devient « Remplacer »
+quand il y a quelque chose à écraser, avec la mention explicite qu'un import de feuille de marque
+serait perdu.
 
----
+Le tracker publie plus riche que le CSV sur deux colonnes : les **titulaires** (`starter`, en dur à
+`false` à l'import) et les **minutes**, dérivées des rotations réelles.
 
 ## 7. Phases
 
-### Phase 0 — Boxscore live
+### Phase 0 — Boxscore live ✅
 
 Le cœur. Utilisable seul, sans zones, sans offline.
 

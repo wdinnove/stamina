@@ -22,10 +22,15 @@ import type {
 /**
  * Prise de statistiques en direct — l'écran de saisie action par action (docs/STATS_LIVE.md).
  *
- * ⚠️ ÉTAPE VISUELLE : tout est en état LOCAL, rien n'est encore écrit en base. La table
- * `match_events` et son API sont l'étape suivante ; l'agrégation, elle, est déjà la vraie
- * (`data/matchEvents.ts`, testée), donc les boxscores affichés ici sont exactement ceux qui
- * seront publiés dans `match_stats` et `opponent_match_stats`.
+ * DEUX NIVEAUX D'ÉCRITURE, et c'est la clé de l'écran. Les actions partent dans `match_events` au
+ * fil de l'eau — table que personne d'autre ne lit, donc sans conséquence sur aucun calcul, et qui
+ * protège d'un téléphone qui meurt en plein match. `match_stats`, `opponent_match_stats`,
+ * `team_match_stats` et le score, eux, ne s'écrivent que sur PUBLICATION explicite : un match en
+ * cours y mettrait des demi-vérités, et à la mi-temps un joueur à 4 points ferait chuter sa
+ * moyenne de saison.
+ *
+ * Rotations, feuille de match et effectif adverse sont PARTAGÉS avec le suivi live (mêmes tables) :
+ * un cinq posé là-bas est déjà posé ici.
  *
  * L'ORDRE DE SAISIE EST LIBRE, et c'est le principe central de l'écran : la position d'un tir est
  * l'information périssable (on oublie l'endroit exact en deux secondes, jamais qui a tiré), donc
@@ -112,9 +117,10 @@ interface ExistingStats { players: number; opponents: number; team: boolean; sco
  *  qu'elle déclenche une rotation — petite cible, grosse conséquence. */
 const TAP = 44;
 
-/** Actions montrées dans le bandeau sous le score. Au-delà, c'est de la relecture et pas du
- *  contrôle de saisie : ça vit dans le dépliant. */
-const RECENT_COUNT = 5;
+/** Actions montrées dans le bandeau sous le score. Trois tiennent sur la ligne sans la faire
+ *  défiler ; au-delà, c'est de la relecture et pas du contrôle de saisie, ça vit dans le
+ *  dépliant. */
+const RECENT_COUNT = 3;
 
 const PANEL: React.CSSProperties = {
   backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 12,
@@ -349,7 +355,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   clockRef.current = clock;
 
   /** `seq` est calculé ICI et pas dans le setter d'état : React rejoue les updaters en mode
-   *  strict, ce qui insérerait deux fois la même action en base. */
+   *  strict, ce qui insérerait deux fois la même action en base.
+   *
+   *  Enregistrer une action DÉSARME le joueur sélectionné, quel que soit le chemin emprunté : deux
+   *  actions d'affilée sont presque toujours le fait de deux joueurs différents, et une sélection
+   *  qui survit fait attribuer la suivante au mauvais. */
   const pushEvent = useCallback((over: Partial<MatchEvent> & { type: MatchEventType }) => {
     const event: MatchEvent = {
       matchId: match.id,
@@ -362,6 +372,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       ...over,
     };
     setEvents(prev => [...prev, event]);
+    setSelection(null);
     persist(() => matchEventsApi.insert(event));
   }, [match.id, events, onCourtBySide.us, onCourtBySide.them, persist]);
 
@@ -415,15 +426,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }
 
   /**
-   * Tap sur une joueuse hors mode changement. Si une action attend son auteur, elle part ici — et
-   * la joueuse reste armée pour la suite, comme après n'importe quelle saisie.
+   * Tap sur un joueur hors mode changement. Si une action attend son auteur, elle part ici, et
+   * `pushEvent` remet la sélection à zéro dans la foulée.
    */
   function selectPlayer(sel: Selection) {
     if (pendingAction) {
       pushEvent({ type: pendingAction.type, made: pendingAction.made, ...authorFields(sel) });
       setChain(pendingAction.type === 'ft' && pendingAction.made === false ? 'reb' : null);
       setPendingAction(null);
-      setSelection(sel);
       return;
     }
     setSelection(prev => prev?.side === sel.side && prev.id === sel.id ? null : sel);
@@ -639,9 +649,29 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   if (loading) return <div style={{ color: '#64748B', padding: 24 }}>Chargement…</div>;
 
   return (
-    <div className="tracker" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="tracker" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1500, marginInline: 'auto', width: '100%' }}>
       <style>{`
-        @media (max-width: 1080px) { .tracker-top { grid-template-columns: 1fr !important; } }
+        /* Largeurs mesurées, pas devinées. Le terrain est la seule pièce de l'écran dont la
+           hauteur suit la largeur (ratio 15:14) : sans plancher il rétrécit avec la fenêtre
+           jusqu'à devenir impointable, sans plafond il grossit pour rien sur un grand écran.
+           D'où un terrain BORNÉ des deux côtés, et une palette qui prend ce qui reste.
+           Seuils calculés à partir du terrain à 340px, pas choisis : en trois colonnes le centre
+           ne vaut que 56% de la largeur utile, il faut 1400px de fenêtre pour que la palette
+           garde 230px à côté du terrain. En une colonne elle tient jusqu'à 800px, en dessous le
+           terrain passe au-dessus. */
+        .tracker-top  { display: grid; grid-template-columns: 22% minmax(0, 1fr) 22%; gap: 12px; align-items: start; }
+        .tracker-play { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
+        .tracker-court { max-width: 340px; margin-inline: auto; }
+        @media (max-width: 1399px) { .tracker-top  { grid-template-columns: minmax(0, 1fr); } }
+        @media (max-width: 799px)  { .tracker-play { grid-template-columns: minmax(0, 1fr); } }
+        .tracker-shotgrids { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+        .tracker-shotgrids > div { max-width: 420px; }
+        @media (max-width: 700px) { .tracker-shotgrids { grid-template-columns: minmax(0, 1fr); } }
+        /* Boutons d'action à hauteur FIXE : la palette ne doit pas se réorganiser sous le doigt
+           parce qu'un libellé tient sur deux lignes. Deux lignes au plus, puis les points de
+           suspension ; un mot seul trop long est coupé net plutôt que cassé en deux. */
+        .tracker-action-label { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          overflow: hidden; text-overflow: ellipsis; text-align: center; }
         .tracker button:focus-visible { outline: 2px solid #00E5A0; outline-offset: 2px; }
         .tracker-cell { padding: 5px 6px; font-size: 0.72rem; text-align: right; color: #CBD5E1; }
         .tracker-cell:first-child { text-align: left; color: #F1F5F9; }
@@ -703,9 +733,9 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         }
       />
 
-      {/* Accusé de réception : la dernière action pointée s'allume ici, juste sous le score, au
-          centre du regard. Cinq lignes suffisent à vérifier ce qu'on vient de faire ; le reste
-          est de la relecture et vit dans le dépliant. */}
+      {/* Accusé de réception : la dernière action enregistrée s'allume ici, juste sous le score,
+          au centre du regard. Trois suffisent à vérifier ce qu'on vient de faire ; le reste est de
+          la relecture et vit dans le dépliant. */}
       <div style={{ ...PANEL, padding: '10px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ ...SECTION_TITLE, margin: 0, flexShrink: 0 }}>Dernières actions</span>
@@ -768,7 +798,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         )}
       </div>
 
-      <div className="tracker-top" style={{ display: 'grid', gridTemplateColumns: 'minmax(215px, 280px) minmax(340px, 1fr) minmax(215px, 280px)', gap: 12, alignItems: 'start' }}>
+      <div className="tracker-top">
 
         {/* Notre effectif. Le mode changement est explicite et visible : hors mode, aucun tap ne
             peut modifier la composition. */}
@@ -843,32 +873,36 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-        {/* Mode changement : UN seul interrupteur pour les deux bancs, posé au milieu, à distance
-            égale des deux effectifs. Il était dupliqué par colonne alors qu'il n'y a qu'un mode —
-            deux boutons pour un même état, c'est une question de plus à se poser en match. */}
-        {canEdit && (
-          <button onClick={() => { setSubMode(v => !v); setPendingSub(null); }} aria-pressed={subMode}
-            title="Mode changement (c) : hors de ce mode, sélectionner un joueur ne fait que l'armer pour la saisie"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              width: '100%', minHeight: TAP, borderRadius: 10, cursor: 'pointer',
-              border: `1px solid ${subMode ? '#F59E0B' : '#2A2F3A'}`,
-              backgroundColor: subMode ? '#F59E0B1F' : '#161920',
-              color: subMode ? '#F59E0B' : '#64748B', fontSize: '0.82rem', fontWeight: subMode ? 700 : 500,
-            }}>
-            <Repeat2 size={16} />
-            {subMode
-              ? (pendingSub ? 'Changement — sélectionnez le joueur de l\'autre côté' : 'Changement — sélectionnez le sortant, puis l\'entrant')
-              : 'Mode changement'}
-          </button>
-        )}
-
         {/* Terrain et palette côte à côte : le terrain ne sert qu'une seconde par tir, il n'a
-            aucune raison de repousser la palette plus bas. */}
-        <div style={{ ...PANEL, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div style={{ flex: '0 1 340px', minWidth: 260 }}>
+            aucune raison de repousser la palette plus bas. Sa colonne se resserre avant celle des
+            boutons — un intitulé tronqué ne se lit plus, un terrain un peu plus petit reste
+            cliquable. Les deux colonnes sont à parts égales, le terrain plafonné : au-delà de
+            340px il ne gagne aucune précision de clic et écrase la palette ; en dessous de 280px
+            il n'est plus assez précis pour distinguer deux zones voisines. */}
+        <div className="tracker-play" style={PANEL}>
+          {/* Mode changement : UN seul interrupteur pour les deux bancs, posé au milieu, à
+              distance égale des deux effectifs. Il occupe la première rangée du panneau plutôt
+              qu'une boîte à lui : la colonne du milieu a ainsi une bordure et un padding, comme
+              les deux colonnes d'effectif. */}
+          {canEdit && (
+            <button onClick={() => { setSubMode(v => !v); setPendingSub(null); }} aria-pressed={subMode}
+              title="Mode changement (c) : hors de ce mode, sélectionner un joueur ne fait que l'armer pour la saisie"
+              style={{
+                gridColumn: '1 / -1',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                width: '100%', minHeight: TAP, borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${subMode ? '#F59E0B' : '#2A2F3A'}`,
+                backgroundColor: subMode ? '#F59E0B1F' : '#0D0F14',
+                color: subMode ? '#F59E0B' : '#64748B', fontSize: '0.82rem', fontWeight: subMode ? 700 : 500,
+              }}>
+              <Repeat2 size={16} />
+              {subMode
+                ? (pendingSub ? 'Changement — sélectionnez le joueur de l\'autre côté' : 'Changement — sélectionnez le sortant, puis l\'entrant')
+                : 'Mode changement'}
+            </button>
+          )}
+
+          <div className="tracker-court">
             <p style={SECTION_TITLE}>Tirs</p>
 
             <div style={{ position: 'relative' }}>
@@ -878,9 +912,10 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 onClick={handleCourtClick}
                 style={{ width: '100%', display: 'block', borderRadius: 8, cursor: canEdit && !subMode ? 'crosshair' : 'default' }}
               >
+                {/* Terrain de SAISIE : il ne montre que le tir en cours. Les tirs déjà
+                    enregistrés sont dans les grilles du bas — les empiler ici finissait par
+                    masquer le point qu'on vient de poser. */}
                 <DiagramCourt court="half" />
-                <ShotMarkers shots={shotsThem} colors={SHOT_COLORS.them} />
-                <ShotMarkers shots={shotsUs}   colors={{ made: teamColor, miss: SHOT_COLORS.us.miss }} />
                 {pendingShot && (
                   <circle cx={pendingShot.x} cy={pendingShot.y} r={0.42} fill="none" stroke="#F1F5F9" strokeWidth={0.1} strokeDasharray="0.2 0.15" />
                 )}
@@ -915,10 +950,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
             </p>
           </div>
 
-          <div style={{ flex: '1 1 250px', minWidth: 220 }}>
-            <p style={SECTION_TITLE}>
+          <div>
+            {/* Une seule ligne, jamais deux : ce titre change à chaque tap, et un libellé qui
+                passe à la ligne décale toute la palette sous le doigt. Le nom de l'action n'y est
+                pas répété — son bouton est déjà allumé juste en dessous. */}
+            <p style={{ ...SECTION_TITLE, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {pendingAction
-                ? <span style={{ color: '#F59E0B' }}>{pendingAction.label} — sélectionnez un joueur.</span>
+                ? <span style={{ color: '#F59E0B' }}>Sélectionnez un joueur</span>
                 : selection
                   ? <>Action de <span style={{ color: selection.side === 'us' ? teamColor : '#94A3B8' }}>{selectionLabel}</span></>
                   : 'Action'}
@@ -935,7 +973,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                           pendingAction?.label === b.label || (chain !== null && b.chain === chain),
                           true, b.tone, pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
                         )}>
-                        {b.label}
+                        <span className="tracker-action-label">{b.label}</span>
                       </button>
                     ))}
                   </div>
@@ -943,7 +981,6 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               ))}
             </div>
           </div>
-        </div>
         </div>
 
         {/* Effectif adverse : aucun n'existe en base, ils se saisissent à la volée — d'où le
@@ -1160,7 +1197,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         </button>
 
         {showCharts && (
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
+          <div className="tracker-shotgrids">
             <ShotGrid title={ourTeamName} shots={shotsUs}   colors={{ made: teamColor, miss: SHOT_COLORS.us.miss }} />
             <ShotGrid title={opponentName} shots={shotsThem} colors={SHOT_COLORS.them} />
           </div>
@@ -1404,7 +1441,7 @@ function ShotGrid({ title, shots, colors }: {
   const made = shots.filter(s => s.made).length;
   const pct = shots.length > 0 ? Math.round((made / shots.length) * 100) : null;
   return (
-    <div style={{ flex: '1 1 260px', minWidth: 240 }}>
+    <div>
       <p style={{ ...SECTION_TITLE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</p>
       <svg viewBox={`0 0 ${COURT_SIZE.half.w} ${COURT_SIZE.half.h}`} style={{ width: '100%', display: 'block', borderRadius: 8 }}>
         <DiagramCourt court="half" />
@@ -1546,7 +1583,8 @@ function shotChoiceStyle(color: string): React.CSSProperties {
  *  tir (vert, c'est une suggestion). Deux états différents ne peuvent pas avoir la même couleur. */
 function paletteStyle(highlighted: boolean, enabled: boolean, color = '#CBD5E1', accent = '#00E5A0'): React.CSSProperties {
   return {
-    minHeight: TAP, padding: '6px 8px', borderRadius: 6, cursor: enabled ? 'pointer' : 'not-allowed',
+    height: TAP, padding: '6px 8px', borderRadius: 6, cursor: enabled ? 'pointer' : 'not-allowed',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     border: `1px solid ${highlighted ? accent : '#2A2F3A'}`,
     backgroundColor: highlighted ? `${accent}1F` : '#0D0F14',
     color: highlighted ? accent : color,

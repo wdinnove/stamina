@@ -5163,7 +5163,13 @@ CREATE POLICY "match_events_select" ON match_events
 DROP POLICY IF EXISTS "match_events_write" ON match_events;
 CREATE POLICY "match_events_write" ON match_events
   FOR ALL TO authenticated
-  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- Vérification
 --   SELECT to_regclass('match_events');
+--   -- La policy d'écriture doit ressortir avec un `with_check` NON NUL :
+--   SELECT policyname, cmd, qual IS NOT NULL AS a_using, with_check IS NOT NULL AS a_with_check
+--   FROM   pg_policies WHERE tablename = 'match_events';
+--   -- Et le compte doit être editor ou admin sur l'équipe du match :
+--   SELECT count(*) FROM writable_team_ids();
