@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Play as PlayIcon, Pause, SkipForward, SkipBack } from 'lucide-react';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
-import type { MatchClock } from '../hooks/useMatchClock';
+import { useClockSeconds, type MatchClock } from '../hooks/useMatchClock';
 
 /**
  * Table de marque + commandes du chrono — le bloc de tête PARTAGÉ par le suivi live et la prise de
@@ -63,10 +63,7 @@ export function MatchScoreboard({
             deux scores, d'où le `flex-grow` supérieur — sinon il se serre le premier. */}
         <div style={{ textAlign: 'center', flex: '1.4 1 0', minWidth: 0 }}>
           <p style={{ ...scoreLabel, color: '#00E5A0' }}>{periodLabel(clock.quarter)}</p>
-          <ClockDisplay
-            seconds={clock.remainingSeconds} onSet={clock.setRemainingSeconds} editable={canEdit}
-            fontSize="2.2rem"
-          />
+          <ClockDisplay clock={clock} editable={canEdit} fontSize="2.2rem" />
         </div>
 
         <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: 0 }}>
@@ -103,17 +100,25 @@ export function MatchScoreboard({
   );
 }
 
-/** Chrono affiché, corrigeable au clic : la table de marque officielle fait foi, il faut pouvoir
- *  se recaler dessus sans tout refaire. */
-export function ClockDisplay({ seconds, onSet, editable, fontSize = '1.3rem' }: {
-  seconds: number; onSet: (s: number) => void; editable: boolean; fontSize?: string;
+/**
+ * Chrono affiché, corrigeable au clic : la table de marque officielle fait foi, il faut pouvoir se
+ * recaler dessus sans tout refaire.
+ *
+ * C'est le SEUL composant abonné à la seconde (`useClockSeconds`). Le reste de l'écran lit la
+ * valeur arrondie du chrono : sans cette séparation, la palette de saisie et les deux effectifs se
+ * re-rendaient soixante fois par minute, sous le doigt de qui pointe.
+ */
+export function ClockDisplay({ clock, editable, fontSize = '1.3rem' }: {
+  clock: MatchClock; editable: boolean; fontSize?: string;
 }) {
+  const elapsed = useClockSeconds(clock);
+  const seconds = Math.max(0, clock.periodDurationSeconds - elapsed);
   const [editing, setEditing] = useState(false);
   const [value, setValue]     = useState('');
 
   function commit() {
     const m = value.match(/^(\d{1,2}):(\d{2})$/);
-    if (m) onSet(Number(m[1]) * 60 + Number(m[2]));
+    if (m) clock.setRemainingSeconds(Number(m[1]) * 60 + Number(m[2]));
     setEditing(false);
   }
 

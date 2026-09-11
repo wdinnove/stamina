@@ -612,8 +612,12 @@ FROM   match_stats WHERE eval IS NOT NULL;
 ### Phase 3 — Analytique dérivée
 
 - On/off et statistiques de cinq **au point près** (aujourd'hui à la possession)
-- Courbe d'écart et détection des runs (`scoreTimeline`)
-- Splits par quart-temps
+- ✅ Courbe d'écart, séries sans réponse et splits par quart-temps
+  ([`data/matchFlow.ts`](../src/data/matchFlow.ts), onglet *Déroulé du match*). La courbe est en
+  ESCALIER : le score saute au panier, une interpolation entre deux paniers laisserait lire des
+  écarts qui n'ont jamais existé. Une série est définie strictement comme des paniers consécutifs
+  d'un seul camp (« un 8-0 ») : un « 10-2 » dépendrait d'une tolérance que personne ne saurait
+  justifier.
 - ✅ Shot chart **agrégé sur la saison** ([`SeasonShotChartPanel`](../src/components/SeasonShotChartPanel.tsx),
   onglet *Statistiques joueurs → Grille de tir* de Performance collective) : suit la période et le
   filtre amicaux de la page. Le rendu et les filtres sont partagés avec la vue match

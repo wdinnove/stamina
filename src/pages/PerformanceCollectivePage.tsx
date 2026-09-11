@@ -102,13 +102,14 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
          | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'staff-mbti' | 'notes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'tactical-brutes' | 'tactical-dashboard'
-         | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives';
+         | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives' | 'shot-chart';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':            'overview',
   'stats-joueurs':           'players-basic',
   'stats-joueuses':          'players-basic', // ancien slug — conservé pour ne pas casser les liens existants
   'stats-joueurs-avancees':  'players-advanced',
+  'grille-de-tir':           'shot-chart',
   'stats-matchs':            'matches-basic',
   'stats-matchs-avancees':   'matches-advanced',
   'qt-par-qt':               'matches-quarters',
@@ -193,6 +194,7 @@ const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
+  'shot-chart': 'saison',
 };
 
 export default function PerformanceCollectivePage() {

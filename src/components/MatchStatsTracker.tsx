@@ -381,12 +381,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const opponentById = useMemo(() => new Map(opponents.map(p => [p.id, p])), [opponents]);
 
   /**
-   * Repère « maintenant » ARRONDI À 20 s pour le boxscore. Le chrono avance à la seconde ; brancher
-   * les minutes dessus relançait l'agrégation complète et le rendu du tableau 60 fois par minute,
-   * sous le doigt de qui saisit. Les minutes affichées accusent donc jusqu'à 20 s de retard —
-   * invisible à l'usage, et la publication utilisera la valeur exacte.
+   * Repère « maintenant » pour le boxscore : la valeur ARRONDIE du chrono, qui ne change que
+   * toutes les cinq secondes (cf. `useMatchClock`). Les minutes affichées accusent donc jusqu'à
+   * cinq secondes de retard — invisible à l'usage, et la publication prend la valeur exacte.
    */
-  const coarseElapsed = Math.floor(clock.elapsedSeconds / 20) * 20;
+  const coarseElapsed = clock.elapsedSeconds;
 
   const boxscore = useMemo(
     () => boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, coarseElapsed, boxscoreSide),
@@ -430,7 +429,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       matchId: match.id,
       seq: events.reduce((m, e) => Math.max(m, e.seq), 0) + 1,
       quarter: clockRef.current.quarter,
-      gameTimeSeconds: clockRef.current.elapsedSeconds,
+      gameTimeSeconds: clockRef.current.getElapsedSeconds(),
       side: 'us',
       onCourt: onCourtBySide.us,
       onCourtThem: onCourtBySide.them,
@@ -523,7 +522,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     const event: MatchLineupEvent = {
       matchId: match.id,
       seq: lineupEvents.filter(e => e.side === side).reduce((m, e) => Math.max(m, e.seq), 0) + 1,
-      side, quarter: clock.quarter, gameTimeSeconds: clock.elapsedSeconds,
+      side, quarter: clock.quarter, gameTimeSeconds: clock.getElapsedSeconds(),
       playersIn, playersOut, onCourt: nextOnCourt,
     };
     setLineupEvents(prev => [...prev, event]);
@@ -676,8 +675,9 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     setError('');
     try {
       // Chrono exact ici, pas l'arrondi d'affichage : les minutes publiées font autorité.
-      const rowsUs   = boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, clock.elapsedSeconds, 'us');
-      const rowsThem = boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, clock.elapsedSeconds, 'them');
+      const nowSeconds = clock.getElapsedSeconds();
+      const rowsUs   = boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, nowSeconds, 'us');
+      const rowsThem = boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, nowSeconds, 'them');
       const finalScore = scoreFromEvents(events);
       // `matches.result` n'a pas de nul, et le basket non plus : à égalité, le match n'est pas
       // fini. On garde alors le résultat déjà enregistré — l'inscrire en défaite faussait le

@@ -22,6 +22,7 @@ export { MatchStatsTracker } from './MatchStatsTracker';
 export { MatchLineupsPanel } from './MatchLineupsPanel';
 export { MatchShotChartPanel } from './MatchShotChartPanel';
 export { SeasonShotChartPanel } from './SeasonShotChartPanel';
+export { MatchFlowPanel } from './MatchFlowPanel';
 export { ShotChartExplorer } from './ShotChartExplorer';
 export { MatchScoreboard } from './MatchScoreboard';
 export { LiveActionModal } from './LiveActionModal';

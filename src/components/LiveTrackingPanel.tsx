@@ -201,7 +201,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
     if (ids.length === 0) return;
     const seq = nextLineupSeq(side);
     const event: MatchLineupEvent = {
-      matchId: match.id, seq, side, quarter: clock.quarter, gameTimeSeconds: clock.elapsedSeconds,
+      matchId: match.id, seq, side, quarter: clock.quarter, gameTimeSeconds: clock.getElapsedSeconds(),
       playersIn: ids, playersOut: [], onCourt: ids,
     };
     await matchLiveApi.insertLineupEvent(event);
@@ -222,7 +222,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
     const nextOnCourt = current.map(id => id === outgoing ? incoming : id);
     const seq = nextLineupSeq(side);
     const event: MatchLineupEvent = {
-      matchId: match.id, seq, side, quarter: clock.quarter, gameTimeSeconds: clock.elapsedSeconds,
+      matchId: match.id, seq, side, quarter: clock.quarter, gameTimeSeconds: clock.getElapsedSeconds(),
       playersIn: [incoming], playersOut: [outgoing], onCourt: nextOnCourt,
     };
     await matchLiveApi.insertLineupEvent(event);
@@ -267,7 +267,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
     try {
       const seq = nextActionSeq;
       const action: MatchLiveAction = {
-        matchId: match.id, seq, quarter: clock.quarter, gameTimeSeconds: clock.elapsedSeconds,
+        matchId: match.id, seq, quarter: clock.quarter, gameTimeSeconds: clock.getElapsedSeconds(),
         side: actionModal, playId: input.playId, points: input.points,
         onCourt: onCourt.us, onCourtThem: onCourt.them,
       };

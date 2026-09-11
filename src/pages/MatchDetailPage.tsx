@@ -9,7 +9,7 @@ import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker, MatchLineupsPanel, MatchShotChartPanel } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker, MatchLineupsPanel, MatchShotChartPanel, MatchFlowPanel } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import RichTextEditor from '../components/RichTextEditor';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
@@ -156,6 +156,7 @@ const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
   // aucun. Les onglets restent visibles avec un état vide qui l'explique, plutôt que d'apparaître
   // et disparaître d'un match à l'autre — une navigation qui change de forme se cherche.
   { label: 'Saisie en direct', tabs: [
+    { key: 'match_flow', slug: 'deroule', label: 'Déroulé du match' },
     { key: 'lineups',    slug: 'lineups', label: 'Analyse des lineups' },
     { key: 'shot_chart', slug: 'tirs',    label: 'Grille de tir' },
   ]},
@@ -1348,6 +1349,10 @@ export default function MatchDetailPage() {
                 emptyMessage="Aucune donnée tactique importée."
               />
             )
+          )}
+
+          {activeTab === 'match_flow' && (
+            <MatchFlowPanel match={match} />
           )}
 
           {activeTab === 'lineups' && (

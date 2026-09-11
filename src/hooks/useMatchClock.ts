@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 
 /** 10 minutes — durée standard FFBB d'un quart-temps senior. Réglable dans l'écran (8/10/12 min
  *  pour coller aux autres catégories) ; les prolongations gardent la même durée en v1, une
@@ -9,15 +9,30 @@ const DEFAULT_PERIOD_SECONDS = 10 * 60;
  *  municipal/loisir. Purement indicatif : le chrono de la table de marque fait foi. */
 export const PERIOD_PRESETS_MIN = [8, 10, 12] as const;
 
+/**
+ * Granularité du `elapsedSeconds` EXPOSÉ EN ÉTAT. Le chrono avance à la seconde, mais republier
+ * cette seconde dans l'état React re-rendait tout l'écran de saisie — palette, deux effectifs,
+ * historique — soixante fois par minute, sous le doigt de qui pointe.
+ *
+ * Les consommateurs de cette valeur sont des agrégations (minutes de jeu, boxscore) auxquelles
+ * cinq secondes de retard ne changent rien à l'écran. Qui a besoin de la seconde exacte prend
+ * `getElapsedSeconds()` (au moment d'écrire une action) ou s'abonne via `useClockSeconds`
+ * (l'affichage du chrono).
+ */
+const COARSE_SECONDS = 5;
+
 export interface MatchClock {
   quarter: number;
   running: boolean;
-  /** Secondes écoulées depuis le début du quart-temps courant — ce qui est stocké en base
-   *  (`gameTimeSeconds`) : une différence entre deux actions donne directement une durée. */
+  /** Secondes écoulées depuis le début du quart-temps, ARRONDIES à `COARSE_SECONDS`. C'est la
+   *  valeur des agrégations, jamais celle qu'on écrit en base. */
   elapsedSeconds: number;
-  /** Temps restant affiché à l'écran — ce que montre la table de marque. Dérivé, jamais stocké. */
-  remainingSeconds: number;
   periodDurationSeconds: number;
+  /** Valeur EXACTE à la seconde — à lire au moment de créer une action ou une rotation, et à la
+   *  publication. Ne déclenche aucun rendu. */
+  getElapsedSeconds: () => number;
+  /** S'abonne au tic de seconde. Réservé à l'affichage du chrono (cf. `useClockSeconds`). */
+  subscribeSeconds: (fn: () => void) => () => void;
   setPeriodDuration: (seconds: number) => void;
   start: () => void;
   pause: () => void;
@@ -70,54 +85,87 @@ function readStored(matchId?: string): StoredClock | null {
  */
 export function useMatchClock(matchId?: string): MatchClock {
   const stored = useRef<StoredClock | null>(readStored(matchId)).current;
+
   const [quarter, setQuarter] = useState(stored?.quarter ?? 1);
   const [running, setRunning] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(stored?.elapsedSeconds ?? 0);
   const [periodDurationSeconds, setPeriodDurationSeconds] = useState(stored?.periodDurationSeconds ?? DEFAULT_PERIOD_SECONDS);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    if (!matchId) return;
-    try {
-      localStorage.setItem(STORAGE_PREFIX + matchId, JSON.stringify({ quarter, elapsedSeconds, periodDurationSeconds }));
-    } catch { /* quota ou navigation privée : le chrono reste utilisable, il ne survivra pas au rechargement */ }
-  }, [matchId, quarter, elapsedSeconds, periodDurationSeconds]);
+  /** Source de vérité du temps écoulé : une ref, pour que la seconde qui avance ne rende rien. */
+  const elapsedRef = useRef(stored?.elapsedSeconds ?? 0);
+  const [coarseElapsed, setCoarseElapsed] = useState(() => coarse(elapsedRef.current));
+
+  const listeners = useRef(new Set<() => void>()).current;
+
+  const setElapsed = useCallback((next: number) => {
+    const value = Math.max(0, Math.round(next));
+    elapsedRef.current = value;
+    for (const fn of listeners) fn();
+    setCoarseElapsed(prev => (coarse(value) === prev ? prev : coarse(value)));
+  }, [listeners]);
 
   useEffect(() => {
     if (!running) return;
-    intervalRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running]);
+    const id = setInterval(() => setElapsed(elapsedRef.current + 1), 1000);
+    return () => clearInterval(id);
+  }, [running, setElapsed]);
 
-  const remainingSeconds = Math.max(0, periodDurationSeconds - elapsedSeconds);
+  // La position persistée suit la valeur GROSSIÈRE : écrire dans localStorage à chaque seconde
+  // coûterait plus cher que tout ce qu'on vient d'économiser, pour cinq secondes de précision au
+  // rechargement.
+  useEffect(() => {
+    if (!matchId) return;
+    try {
+      localStorage.setItem(STORAGE_PREFIX + matchId, JSON.stringify({
+        quarter, elapsedSeconds: elapsedRef.current, periodDurationSeconds,
+      }));
+    } catch { /* quota ou navigation privée : le chrono reste utilisable, il ne survivra pas au rechargement */ }
+  }, [matchId, quarter, coarseElapsed, periodDurationSeconds]);
+
+  const getElapsedSeconds = useCallback(() => elapsedRef.current, []);
+
+  const subscribeSeconds = useCallback((fn: () => void) => {
+    listeners.add(fn);
+    return () => { listeners.delete(fn); };
+  }, [listeners]);
 
   const start = useCallback(() => setRunning(true), []);
   const pause = useCallback(() => setRunning(false), []);
 
-  const adjustRemaining = useCallback((delta: number) => {
-    setElapsedSeconds(s => Math.max(0, s - delta));
-  }, []);
+  const adjustRemaining = useCallback((delta: number) => setElapsed(elapsedRef.current - delta), [setElapsed]);
 
   const setRemaining = useCallback((seconds: number) => {
-    setElapsedSeconds(Math.max(0, periodDurationSeconds - Math.max(0, Math.round(seconds))));
-  }, [periodDurationSeconds]);
+    setElapsed(periodDurationSeconds - Math.max(0, Math.round(seconds)));
+  }, [periodDurationSeconds, setElapsed]);
 
   const setPeriodDuration = useCallback((seconds: number) => setPeriodDurationSeconds(Math.max(60, Math.round(seconds))), []);
 
   const nextPeriod = useCallback(() => {
     setRunning(false);
-    setElapsedSeconds(0);
+    setElapsed(0);
     setQuarter(q => q + 1);
-  }, []);
+  }, [setElapsed]);
 
   const previousPeriod = useCallback(() => {
     setRunning(false);
-    setElapsedSeconds(0);
+    setElapsed(0);
     setQuarter(q => Math.max(1, q - 1));
-  }, []);
+  }, [setElapsed]);
 
   return {
-    quarter, running, elapsedSeconds, remainingSeconds, periodDurationSeconds,
+    quarter, running, elapsedSeconds: coarseElapsed, periodDurationSeconds,
+    getElapsedSeconds, subscribeSeconds,
     setPeriodDuration, start, pause, adjustRemaining, setRemainingSeconds: setRemaining, nextPeriod, previousPeriod,
   };
+}
+
+function coarse(seconds: number): number {
+  return Math.floor(seconds / COARSE_SECONDS) * COARSE_SECONDS;
+}
+
+/**
+ * Temps écoulé à la SECONDE, pour le seul composant qui l'affiche. Isoler l'abonnement ici est ce
+ * qui permet au reste de l'écran de ne pas se re-rendre soixante fois par minute.
+ */
+export function useClockSeconds(clock: MatchClock): number {
+  return useSyncExternalStore(clock.subscribeSeconds, clock.getElapsedSeconds, clock.getElapsedSeconds);
 }
