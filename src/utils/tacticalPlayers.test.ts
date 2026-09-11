@@ -38,12 +38,12 @@ describe('matchPlayerToken', () => {
     expect(matchPlayerToken('#8 Eva Ib', squad)?.id).toBe('p8');
   });
 
-  it('retombe sur le prénom quand il ne désigne qu\'une joueuse', () => {
+  it('retombe sur le prénom quand il ne désigne qu\'un joueur', () => {
     expect(matchPlayerToken('Cynthia', squad)?.id).toBe('p0');
     expect(matchPlayerToken('chloe', squad)?.id).toBe('p11');
   });
 
-  it('ne devine pas quand un prénom est porté par deux joueuses', () => {
+  it('ne devine pas quand un prénom est porté par deux joueurs', () => {
     expect(matchPlayerToken('Eva', squad)).toBeNull();
   });
 
@@ -73,7 +73,7 @@ describe('collectPlayerTokens', () => {
     ]);
   });
 
-  it('ignore un bloc sans colonne de joueuses', () => {
+  it('ignore un bloc sans colonne de joueurs', () => {
     expect(collectPlayerTokens([{ dimensionNames: ['Finalite'], rows: [['Scoring']] }])).toEqual([]);
   });
 });

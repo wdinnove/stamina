@@ -111,7 +111,7 @@ survol sur les barres d'axe est le compromis le moins voyant.
 ## Ce qui ne relève pas du camouflage
 
 Effacer la ressemblance règle le risque de marque, pas le droit du travail. Pour des
-joueuses sous contrat, le questionnaire reste une méthode d'évaluation au sens de
+joueurs sous contrat, le questionnaire reste une méthode d'évaluation au sens de
 L.1222-2/-3 : information préalable, consultation du CSE, pertinence. La surface doit
 être dé-brandée, la documentation rester honnête — une mention du type « typologie à
 4 axes, inspirée des modèles de préférences » dans les CGU et en tête du panneau

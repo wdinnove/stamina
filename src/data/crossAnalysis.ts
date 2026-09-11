@@ -474,8 +474,8 @@ const INDICATOR_DOCS: Record<string, { explain: string; formula?: string; sense:
   ct:        { explain: 'Tirs adverses contrés. Mesure la protection du cercle, pas la qualité défensive globale.', sense: 'higher' },
   intercepts:{ explain: "Ballons volés à l'adversaire. Défense active, mais un excès peut signaler des prises de risque.", sense: 'higher' },
   bp:        { explain: 'Possessions perdues sans tir. À rapporter au rythme de jeu via %BP.', sense: 'lower' },
-  fte:       { explain: "Fautes subies : autant d'occasions de lancers francs et de fautes accumulées côté adverse.", sense: 'higher' },
-  fpr:       { explain: "Fautes sifflées contre le joueur. Trop de fautes l'expose à sortir et envoie l'adversaire sur la ligne.", sense: 'lower' },
+  fte:       { explain: "Fautes sifflées contre le joueur. Trop de fautes l'expose à sortir et envoie l'adversaire sur la ligne.", sense: 'lower' },
+  fpr:       { explain: "Fautes subies : autant d'occasions de lancers francs et de fautes accumulées côté adverse.", sense: 'higher' },
 
   // ── Match — avancées ──
   adv_offRating:   { explain: "Points produits pour 100 possessions utilisées par le joueur. Mesure l'efficacité, pas le volume.", formula: 'points × 100 / possessions utilisées', sense: 'higher' },

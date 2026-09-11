@@ -282,7 +282,7 @@ export default function MatchDetailPage() {
   // mauvais match sous l'en-tête du nouveau.
   const currentMatchIdRef = useRef<string | undefined>(undefined);
 
-  // Index nom par id : la table par joueuse du rapport tactique n'a pas à connaître l'objet Player.
+  // Index nom par id : la table par joueur du rapport tactique n'a pas à connaître l'objet Player.
   const playerNameById = useMemo(
     () => new Map(players.map(p => [p.id, `#${p.number} ${playerNameFull(p)}`])),
     [players],

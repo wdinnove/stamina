@@ -25,12 +25,11 @@ const INFIRMARY_TYPES = ['', 'injury', 'treatment'] as const;
 type InfirmaryType = typeof INFIRMARY_TYPES[number];
 
 /**
- * « 1 joueuse concernée » / « 3 joueuses touchées ». Accord au féminin : l'effectif suivi est une
- * équipe féminine, et le pluriel de l'adjectif suit toujours celui du nom.
+ * « 1 joueur concerné » / « 3 joueurs touchés » — le pluriel de l'adjectif suit celui du nom.
  */
 function playersLabel(n: number, adjective?: string): string {
   const s = n > 1 ? 's' : '';
-  return `${n} joueuse${s}${adjective ? ` ${adjective}${s}` : ''}`;
+  return `${n} joueur${s}${adjective ? ` ${adjective}${s}` : ''}`;
 }
 
 /**
@@ -160,7 +159,7 @@ export default function MedicalPage() {
   /**
    * Entrée située dans la saison sélectionnée. L'effectif suffisait comme filtre tant qu'un club
    * n'avait qu'une saison ; sur la deuxième, « blessures de la saison » comptait aussi celles de
-   * la précédente pour toute joueuse restée au club. L'historique joueur appliquait déjà ce
+   * la précédente pour tout joueur resté au club. L'historique joueur appliquait déjà ce
    * cadrage de son côté, et les deux écrans annonçaient donc des totaux différents.
    */
   const inSeason = (r: MedicalRecord) =>
@@ -192,7 +191,7 @@ export default function MedicalPage() {
 
   // Stats — infirmerie
   //
-  // La disponibilité « à l'instant T » se lit sur le STATUT de la joueuse, pas sur ses dossiers
+  // La disponibilité « à l'instant T » se lit sur le STATUT de le joueur, pas sur ses dossiers
   // médicaux : une suspension rend indisponible sans aucune entrée médicale, et c'est justement
   // la clôture d'une entrée qui repose le statut (cf. MedicalRecordStatusModal).
   const availableCount = teamPlayers.filter(p => p.status === 'active').length;
@@ -203,7 +202,7 @@ export default function MedicalPage() {
   const openInjuries   = teamActiveAll.filter(r => r.type === 'injury');
   const openTreatments = teamActiveAll.filter(r => r.type === 'treatment');
 
-  /** Blessures de la saison par joueuse, la plus touchée en tête. */
+  /** Blessures de la saison par joueur, le plus touché en tête. */
   const injuriesByPlayer = Object.entries(
     teamSeasonInjuries.reduce<Record<string, MedicalRecord[]>>((acc, r) => {
       (acc[r.playerId] ??= []).push(r);
@@ -362,13 +361,13 @@ export default function MedicalPage() {
                 accent={openInjuries.length > 0 ? '#EF4444' : '#00E5A0'}
                 label="Blessures en cours"
                 value={String(openInjuries.length)}
-                sub={playersLabel(new Set(openInjuries.map(r => r.playerId)).size, 'concernée')}
+                sub={playersLabel(new Set(openInjuries.map(r => r.playerId)).size, 'concerné')}
               />
               <RpeKpiCard
                 accent="#00E5A0"
                 label="Traitements en cours"
                 value={String(openTreatments.length)}
-                sub={playersLabel(new Set(openTreatments.map(r => r.playerId)).size, 'concernée')}
+                sub={playersLabel(new Set(openTreatments.map(r => r.playerId)).size, 'concerné')}
               />
               <RpeKpiCard
                 accent={seasonCount > 0 ? '#F59E0B' : '#00E5A0'}
@@ -376,7 +375,7 @@ export default function MedicalPage() {
                 value={String(seasonCount)}
                 // Les blessures sans date de fin connue sont hors du cumul de jours : le dire
                 // plutôt que de laisser croire que le total les couvre.
-                sub={`${playersLabel(seasonPlayers, 'touchée')} · ${seasonDaysTotal.days}j${seasonDaysTotal.undated > 0 ? ` · ${seasonDaysTotal.undated} sans fin` : ''}`}
+                sub={`${playersLabel(seasonPlayers, 'touché')} · ${seasonDaysTotal.days}j${seasonDaysTotal.undated > 0 ? ` · ${seasonDaysTotal.undated} sans fin` : ''}`}
               />
             </div>
 
@@ -427,17 +426,17 @@ export default function MedicalPage() {
                 )}
               </Card>
 
-              {/* Blessures par joueuse — regard rétrospectif sur la saison, à côté de l'instant T. */}
+              {/* Blessures par joueur — regard rétrospectif sur la saison, à côté de l'instant T. */}
               <Card accentColor="#F59E0B">
                 <CardTitle icon={<BarChart3 size={13} color="#F59E0B" />} info="saison en cours">
-                  Blessures par joueuse
+                  Blessures par joueur
                 </CardTitle>
                 {injuriesByPlayer.length === 0 ? (
                   <EmptyState size="sm" message="✓ Aucune blessure cette saison" />
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {injuriesByPlayer.map(({ player: p, count, days }) => {
-                      // Barre proportionnelle à la joueuse la PLUS touchée, pas au total de
+                      // Barre proportionnelle au joueur le PLUS touché, pas au total de
                       // l'équipe : sur 20 blessures réparties, des barres à 5 % ne comparent rien.
                       const pct = maxInjuriesForPlayer > 0 ? Math.round((count / maxInjuriesForPlayer) * 100) : 0;
                       return (

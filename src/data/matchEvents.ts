@@ -14,12 +14,12 @@ import { shotEventValue } from './shotChart';
 import type { MatchEvent, MatchLineupEvent, LineupSide } from './types';
 
 /**
- * Une ligne de boxscore par joueuse. Structurellement identique à `BulkStatRow` (api/stats.ts) —
+ * Une ligne de boxscore par joueur. Structurellement identique à `BulkStatRow` (api/stats.ts) —
  * volontairement redéfinie ici plutôt qu'importée : `src/data` ne dépend d'aucun module `src/api`,
  * et l'inverser pour un type ferait entrer la couche réseau dans le domaine.
  */
 export interface PlayerBoxscoreRow {
-  /** Id de la joueuse (`players.id` côté nous, `match_opponent_players.id` côté adverse). */
+  /** Id de le joueur (`players.id` côté nous, `match_opponent_players.id` côté adverse). */
   playerId: string;
   starter: boolean;
   min: number;
@@ -50,8 +50,8 @@ export function scoreFromEvents(events: MatchEvent[]): { us: number; them: numbe
 }
 
 /**
- * +/- par joueuse, AU POINT PRÈS — là où `playerPlusMinus` (suivi live) travaille à la
- * possession. Chaque point marqué ou encaissé est crédité aux joueuses du camp `side` présentes
+ * +/- par joueur, AU POINT PRÈS — là où `playerPlusMinus` (suivi live) travaille à la
+ * possession. Chaque point marqué ou encaissé est crédité aux joueurs du camp `side` présents
  * sur le terrain au moment de l'action, d'après l'instantané porté par l'événement.
  *
  * Côté adverse, le résultat est vide tant que les rotations adverses ne sont pas pointées
@@ -98,8 +98,8 @@ export function evaluation(r: PlayerBoxscoreRow): number {
 }
 
 /**
- * Boxscore d'un camp. Une ligne par joueuse ayant une action pointée OU du temps de jeu : une
- * joueuse entrée 4 minutes sans rien faire a bien joué le match, l'omettre fausserait les minutes
+ * Boxscore d'un camp. Une ligne par joueur ayant une action pointée OU du temps de jeu : un
+ * joueur entré 4 minutes sans rien faire a bien joué le match, l'omettre fausserait les minutes
  * d'effectif (dénominateur du %USG/min).
  *
  * `side` sélectionne le camp : `'us'` alimente `match_stats`, `'them'` alimente
@@ -129,7 +129,7 @@ export function boxscoreFromEvents(
   for (const [playerId, s] of seconds) row(playerId).min = Math.round(s / 6) / 10;
 
   // Cinq de départ : le premier changement enregistré du camp EST sa composition de départ
-  // (cf. `confirmStarters` du suivi live, qui l'écrit sans joueuse sortante).
+  // (cf. `confirmStarters` du suivi live, qui l'écrit sans joueur sortant).
   const first = lineupEvents
     .filter(e => e.side === side)
     .sort((a, b) => a.seq - b.seq)[0];

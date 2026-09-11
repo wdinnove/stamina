@@ -13,9 +13,10 @@ import {
   playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, periodLabel, formatClock,
   rentabiliteColor, OFFENSE_THRESHOLDS, DEFENSE_THRESHOLDS,
 } from '../data/liveTrackingAnalysis';
+import { scoreFromEvents } from '../data/matchEvents';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type {
-  Match, Player, Play, MatchOpponentPlayer, MatchLineupEvent, MatchLiveAction, LineupSide, LiveSide,
+  Match, Player, Play, MatchOpponentPlayer, MatchLineupEvent, MatchLiveAction, MatchEvent, LineupSide, LiveSide,
 } from '../data/types';
 
 export interface LiveTrackingPanelProps {
@@ -34,9 +35,9 @@ type PendingSub = { side: LineupSide; playerId: string; from: 'court' | 'bench' 
 type HistoryRow = { key: string; kind: 'action'; seq: number } | { key: string; kind: 'lineup'; side: LineupSide; seq: number };
 
 /**
- * Roster affichable, uniforme entre nos joueuses (effectif) et les adverses (saisies à la volée).
+ * Roster affichable, uniforme entre nos joueurs (effectif) et les adverses (saisies à la volée).
  * Deux formats de nom : `fullName` ("Prénom NOM", même convention que le reste de l'app —
- * `playerNameFull`) pour une ligne qui n'affiche qu'une seule joueuse, `shortName`
+ * `playerNameFull`) pour une ligne qui n'affiche qu'une seule joueur, `shortName`
  * ("Prénom N.") pour les endroits où plusieurs noms se suivent sur la même ligne (pastilles sur
  * le terrain, historique, combinaisons de cinq) et où le nom complet ferait déborder.
  */
@@ -92,7 +93,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   const [lineupEvents,    setLineupEvents]    = useState<MatchLineupEvent[]>([]);
   const [actions,         setActions]         = useState<MatchLiveAction[]>([]);
   const [plays,           setPlays]           = useState<Play[]>([]);
-  /** Ids des joueuses retenues pour ce match. Vide = aucune sélection enregistrée, donc tout
+  /** Ids des joueurs retenus pour ce match. Vide = aucune sélection enregistrée, donc tout
    *  l'effectif de la saison est disponible (cf. `match_roster` dans schema.sql). */
   const [rosterIds, setRosterIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,9 +110,14 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   /** Clé de la ligne d'historique en attente de confirmation de suppression — deux clics valent
    *  mieux qu'une modale pour un geste censé rester rapide en plein match. */
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
-  /** Actions de l'écran de saisie. Cet écran ne les affiche pas, mais la remise à zéro les efface
-   *  aussi (rotations partagées) : la confirmation doit les compter. */
-  const [statEventCount, setStatEventCount] = useState(0);
+  /**
+   * Actions de l'écran de SAISIE. Cet écran ne les affiche pas, et pourtant elles le concernent
+   * deux fois : la remise à zéro les efface aussi (rotations partagées), et surtout les deux
+   * écrans comptent le score de deux façons qui ne peuvent pas tomber d'accord — ici la somme des
+   * possessions pointées, là-bas le détail des tirs. Deux scores différents sur le même match sans
+   * rien qui l'explique, c'est un bug de confiance.
+   */
+  const [statEvents, setStatEvents] = useState<MatchEvent[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,14 +129,14 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
         matchLiveApi.getActions(match.id),
         playsApi.getForTeam(match.teamId),
         matchLiveApi.getRoster(match.id),
-        matchEventsApi.countForMatch(match.id),
+        matchEventsApi.getByMatchId(match.id),
       ]);
       setOpponentPlayers(opp);
       setLineupEvents(events);
       setActions(acts);
       setPlays(teamPlays);
       setRosterIds(roster);
-      setStatEventCount(trackedCount);
+      setStatEvents(trackedCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -175,7 +181,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   const nextActionSeq = useMemo(() => actions.reduce((m, a) => Math.max(m, a.seq), 0) + 1, [actions]);
 
   /**
-   * Effectif réellement proposé pour ce match. Une joueuse déjà sur le terrain reste incluse même
+   * Effectif réellement proposé pour ce match. Un joueur déjà sur le terrain reste inclus même
    * si elle vient d'être décochée dans la config : la retirer de la liste d'affichage laisserait
    * un « ? » sur le terrain et dans l'historique déjà enregistré.
    */
@@ -225,9 +231,9 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   }
 
   /**
-   * Un seul geste pour les deux sens : premier tap = la joueuse concernée (entrante depuis le banc
+   * Un seul geste pour les deux sens : premier tap = le joueur concerné (entrant depuis le banc
    * ou sortante depuis le terrain), second tap du côté opposé = le changement part. Retaper la
-   * même joueuse annule ; taper une autre du même côté déplace simplement la sélection.
+   * même joueur annule ; taper une autre du même côté déplace simplement la sélection.
    */
   function handleSlotClick(side: LineupSide, id: string, from: 'court' | 'bench') {
     if (!canEdit) return;
@@ -331,7 +337,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
   async function deleteAllData() {
     await matchLiveApi.deleteAllForMatch(match.id);
     setActions([]);
-    setStatEventCount(0);
+    setStatEvents([]);
     setLineupEvents([]);
     setOpponentPlayers([]);
     setStarters({ us: new Set(), them: new Set() });
@@ -362,6 +368,9 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
 
   const scoreUs   = useMemo(() => actions.filter(a => a.side === 'offense').reduce((s, a) => s + a.points, 0), [actions]);
   const scoreThem = useMemo(() => actions.filter(a => a.side === 'defense').reduce((s, a) => s + a.points, 0), [actions]);
+
+  const trackerScore  = useMemo(() => scoreFromEvents(statEvents), [statEvents]);
+  const scoresDiverge = statEvents.length > 0 && (trackerScore.us !== scoreUs || trackerScore.them !== scoreThem);
 
   const history = useMemo(() => {
     type Row = HistoryRow & { quarter: number; time: number; label: string };
@@ -411,6 +420,22 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
         scoreUs={scoreUs} scoreThem={scoreThem} clock={clock} canEdit={canEdit}
       />
 
+      {/* Les deux écrans du direct comptent le score de deux façons qui ne peuvent PAS tomber
+          d'accord : ici la somme des possessions pointées, là-bas le détail des tirs. Ce n'est pas
+          une incohérence à réparer — ce sont deux mesures différentes — mais un écart non expliqué
+          entre deux onglets du même match ruine la confiance dans les deux. */}
+      {scoresDiverge && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.76rem', lineHeight: 1.5 }}>
+          <ChevronRight size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            La saisie des stats compte <strong>{trackerScore.us} — {trackerScore.them}</strong> sur
+            {' '}{statEvents.length} action{statEvents.length > 1 ? 's' : ''}.
+            Ce tableau de marque ne totalise que les possessions pointées ici : c'est l'onglet
+            <strong> Saisie des stats</strong> qui fait foi pour le score et le boxscore.
+          </span>
+        </div>
+      )}
+
       {/* Fin de possession — au-dessus des rotations : c'est le geste le plus répété du match
           (plusieurs fois par minute), il doit rester à portée sans faire défiler les effectifs. */}
       {canEdit && (
@@ -443,7 +468,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
                 style={{ width: 44, padding: '6px 4px', textAlign: 'center', backgroundColor: '#0D0F14', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.8rem' }} />
               <input value={newOpponentName} onChange={e => setNewOpponentName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addOpponentPlayer(); }}
-                placeholder="Ajouter une joueuse adverse…"
+                placeholder="Ajouter un joueur adverse…"
                 style={{ flex: 1, minWidth: 0, padding: '6px 8px', backgroundColor: '#0D0F14', border: '1px dashed #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.8rem' }} />
               <button onClick={addOpponentPlayer} disabled={!newOpponentName.trim()}
                 style={{ padding: '0 10px', borderRadius: 6, border: 'none', backgroundColor: '#00E5A0', color: '#0D0F14', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', opacity: newOpponentName.trim() ? 1 : 0.5 }}>
@@ -529,7 +554,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
 
             <StatCard title={`Temps de jeu & +/- (${ourTeamName})`}>
               <StatTable
-                rows={playerPMRows} keyFn={r => r.player.id} emptyLabel="Aucune joueuse n'a encore été sur le terrain."
+                rows={playerPMRows} keyFn={r => r.player.id} emptyLabel="Aucun joueur n'a encore été sur le terrain."
                 columns={[
                   { header: 'Joueuse', render: r => (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -580,7 +605,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
           periodDurationSeconds={clock.periodDurationSeconds} onPeriodDurationChange={clock.setPeriodDuration}
           seasonPlayers={players} rosterIds={rosterIds} lockedPlayerIds={onCourt.us}
           onRosterChange={async ids => { await matchLiveApi.setRoster(match.id, ids); setRosterIds(ids); }}
-          recordedCount={actions.length + lineupEvents.length + opponentPlayers.length + statEventCount}
+          recordedCount={actions.length + lineupEvents.length + opponentPlayers.length + statEvents.length}
           onDeleteAll={deleteAllData}
           onClose={() => setShowPlaysConfig(false)}
           onChanged={async () => setPlays(await playsApi.getForTeam(match.teamId))}
@@ -624,7 +649,7 @@ interface LineupColumnProps {
   addForm?: React.ReactNode;
 }
 
-/** Ligne joueuse — même gabarit sur le terrain et au banc, hauteur de cible confortable au doigt
+/** Ligne joueur — même gabarit sur le terrain et au banc, hauteur de cible confortable au doigt
  *  (44px, le minimum recommandé sur mobile) : c'est le geste le plus répété de l'écran. */
 function PlayerRow({ selected, accent, canEdit, onClick, children }: {
   selected: boolean;
@@ -680,7 +705,7 @@ function LineupColumn({
                 <span style={{ color: starters.has(r.id) ? '#00E5A0' : '#CBD5E1', fontSize: '0.82rem' }}>{r.fullName}</span>
               </PlayerRow>
             ))}
-            {roster.length === 0 && <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Aucune joueuse disponible.</p>}
+            {roster.length === 0 && <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Aucun joueur disponible.</p>}
           </div>
           {addForm}
           {canEdit && (
@@ -693,11 +718,11 @@ function LineupColumn({
       ) : (
         <>
           {/* Consigne du changement en cours — annonce ce que le prochain tap va faire, et permet
-              de faire marche arrière sans avoir à retrouver la joueuse déjà sélectionnée. */}
+              de faire marche arrière sans avoir à retrouver le joueur déjà sélectionné. */}
           {pending && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '7px 10px', borderRadius: 6, backgroundColor: '#F59E0B18', border: '1px solid #F59E0B55' }}>
               <span style={{ color: '#F59E0B', fontSize: '0.75rem', fontWeight: 700, flex: 1 }}>
-                {pending.from === 'bench' ? 'Touchez la joueuse qui SORT' : 'Touchez la joueuse qui ENTRE'}
+                {pending.from === 'bench' ? 'Touchez le joueur qui SORT' : 'Touchez le joueur qui ENTRE'}
               </span>
               <button onClick={() => onSlotClick(side, pending.playerId, pending.from)}
                 style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }} title="Annuler le changement">

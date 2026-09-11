@@ -179,7 +179,7 @@ describe('documentation des indicateurs', () => {
   });
 
   it('marque comme « plus bas = mieux » ce qui doit baisser', () => {
-    for (const key of ['bp', 'fpr', 'adv_tovPct', 'team_defRating', 'team_ptsAgainst', 'team_opp_efgPct']) {
+    for (const key of ['bp', 'fte', 'adv_tovPct', 'team_defRating', 'team_ptsAgainst', 'team_opp_efgPct']) {
       expect(indicatorByKey(key)!.sense, key).toBe('lower');
     }
   });
@@ -189,7 +189,8 @@ describe('documentation des indicateurs', () => {
     // (élimination), `fpr` monte à 9 et est CRÉDITÉ par l'évaluation de l'eMarque.
     expect(indicatorByKey('fte')!.label).toBe('Fautes commises');
     expect(indicatorByKey('fpr')!.label).toBe('Fautes provoquées');
-    expect(indicatorByKey('fte')!.sense).toBe('higher');
-    expect(indicatorByKey('fpr')!.sense).toBe('lower');
+    // Le sens suit le libellé : commettre des fautes est mauvais, en provoquer est bon.
+    expect(indicatorByKey('fte')!.sense).toBe('lower');
+    expect(indicatorByKey('fpr')!.sense).toBe('higher');
   });
 });

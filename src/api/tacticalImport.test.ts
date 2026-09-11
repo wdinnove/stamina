@@ -50,7 +50,7 @@ describe('buildActionPayloads', () => {
     expect(payload.map(p => p.seq)).toEqual([1, 2, 3]);
   });
 
-  it('rapproche les joueuses, en ignorant les jetons non rapprochés', () => {
+  it('rapproche les joueurs, en ignorant les jetons non rapprochés', () => {
     expect(payload[0].player_ids).toEqual(['p0', 'p9']);
     expect(payload[2].player_ids).toEqual([]);
     const partiel = buildActionPayloads([block], codeByLabel, { '#0 Cynthia': 'p0' });

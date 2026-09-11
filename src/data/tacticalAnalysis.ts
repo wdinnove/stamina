@@ -199,13 +199,13 @@ export function buildDimensionTable(
 /**
  * Table Joueuse / Actions / Part / Valeur / Rentabilité d'une catégorie.
  *
- * Remplace l'ancienne « dimension Joueuses », qui comptait des COMBINAISONS et non des joueuses :
- * sur un match réel, 11 joueuses produisaient 101 libellés distincts, et la plus impliquée
+ * Remplace l'ancienne « dimension Joueuses », qui comptait des COMBINAISONS et non des joueurs :
+ * sur un match réel, 11 joueurs produisaient 101 libellés distincts, et le plus impliqué
  * (46 actions) n'apparaissait nulle part en tête parce qu'elle était presque toujours taguée
  * avec quelqu'un d'autre.
  *
- * Une action taguée avec deux joueuses compte pour chacune : `sharePct` se lit donc « part des
- * actions de la catégorie où la joueuse est impliquée », et la somme des parts dépasse 100 %.
+ * Une action taguée avec deux joueurs compte pour chacun : `sharePct` se lit donc « part des
+ * actions de la catégorie où le joueur est impliqué », et la somme des parts dépasse 100 %.
  */
 export function buildPlayerTable(
   events: TacticalEvent[],
@@ -234,7 +234,7 @@ export function buildPlayerTable(
     .map(([playerId, actions]) => {
       const sc = sumCounts.get(playerId) ?? 0;
       return {
-        // Une joueuse partie de l'effectif reste comptée : son id n'a plus de nom, pas de raison
+        // Un joueur parti de l'effectif reste compté : son id n'a plus de nom, pas de raison
         // pour autant de faire disparaître ses actions du total de la catégorie.
         label: playerNameById.get(playerId) ?? 'Joueuse retirée',
         actions,

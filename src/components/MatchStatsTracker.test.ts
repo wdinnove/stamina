@@ -10,7 +10,7 @@ describe('resolveSubstitution', () => {
   });
 
   it('ne fait rien sur un tap au banc sans sortante désignée', () => {
-    // La régression à ne jamais réintroduire : ce tap sortait la joueuse « armée pour la saisie ».
+    // La régression à ne jamais réintroduire : ce tap sortait le joueur « armé pour la saisie ».
     expect(resolveSubstitution(FIVE, null, 'us', 'p9', 'bench')).toEqual({ kind: 'none' });
   });
 
@@ -25,11 +25,11 @@ describe('resolveSubstitution', () => {
       .toEqual({ kind: 'swap', incoming: 'p9', outgoing: 'p3' });
   });
 
-  it('annule en retapant la même joueuse', () => {
+  it('annule en retapant la même joueur', () => {
     expect(resolveSubstitution(FIVE, { side: 'us', id: 'p3', from: 'court' }, 'us', 'p3', 'court')).toEqual({ kind: 'clear' });
   });
 
-  it('déplace la désignation en tapant une autre joueuse du même côté', () => {
+  it('déplace la désignation en tapant une autre joueur du même côté', () => {
     expect(resolveSubstitution(FIVE, { side: 'us', id: 'p3', from: 'court' }, 'us', 'p4', 'court'))
       .toEqual({ kind: 'mark', id: 'p4', from: 'court' });
   });

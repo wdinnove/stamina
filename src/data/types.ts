@@ -736,7 +736,7 @@ export interface MatchOpponentPlayer {
 }
 
 /**
- * Un changement de joueuses, sur l'un ou l'autre banc. `onCourt` est l'instantané complet après
+ * Un changement de joueurs, sur l'un ou l'autre banc. `onCourt` est l'instantané complet après
  * le changement (pas seulement les entrantes/sortantes) : lire le cinq courant ne demande jamais
  * de rejouer tout l'historique depuis le début du match.
  */
@@ -756,7 +756,7 @@ export interface MatchLineupEvent {
  * Fin d'une possession pointée en direct ou en relecture, pour l'équipe qui avait le ballon
  * (`side`: 'offense' = nous, 'defense' = l'adversaire). `points` porte un sens différent selon
  * `side` : marqués par nous en attaque, encaissés par nous en défense — les deux flux combinés
- * donnent un +/- par joueuse et par combinaison de cinq sans calcul supplémentaire.
+ * donnent un +/- par joueur et par combinaison de cinq sans calcul supplémentaire.
  */
 export interface MatchLiveAction {
   matchId: string;
@@ -799,7 +799,7 @@ export interface MatchEvent {
   gameTimeSeconds: number;
   side: LineupSide;
   /** Auteur côté nous. Absent côté adverse suivi en agrégé — le cas NORMAL : on pointe un panier
-   *  encaissé ou un rebond adverse sans nommer la joueuse. */
+   *  encaissé ou un rebond adverse sans nommer le joueur. */
   playerId?: string;
   opponentPlayerId?: string;
   type: MatchEventType;

@@ -68,7 +68,7 @@ describe('hydrateTacticalActions', () => {
     expect(event.values.some(v => v.dimensionId === 'd-forme')).toBe(false);
   });
 
-  it('reporte les joueuses telles quelles', () => {
+  it('reporte les joueurs tels quels', () => {
     const [event] = hydrateTacticalActions([action({ playerIds: ['p1', 'p2'] })], dimensions, options);
     expect(event.playerIds).toEqual(['p1', 'p2']);
   });

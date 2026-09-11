@@ -149,18 +149,18 @@ casse près). Sinon la catégorie est créée à la volée, sans catalogue d'opt
 - C'est aussi ce qui donne sa valeur au fichier de configuration : catalogue complet, aucune
   option parasite créée à l'import.
 
-### La colonne des joueuses
+### La colonne des joueurs
 
 Une colonne nommée `Joueuses` (ou `Joueurs`, `Players`) n'est pas traitée comme une dimension :
-elle est **découpée en joueuses**. La cellule `#0 Cynthia, #14 Eva Ha` donne deux jetons, et
-l'écran d'import fait rapprocher chaque jeton distinct d'une joueuse de l'effectif via une liste
+elle est **découpée en joueurs**. La cellule `#0 Cynthia, #14 Eva Ha` donne deux jetons, et
+l'écran d'import fait rapprocher chaque jeton distinct d'un joueur de l'effectif via une liste
 déroulante — le rapprochement automatique se fait d'abord sur le numéro de maillot, puis sur le
-prénom s'il ne désigne qu'une seule joueuse.
+prénom s'il ne désigne qu'une seule joueur.
 
 - Écrire le **numéro de maillot en tête** de chaque jeton (`#0 Cynthia`) : c'est la seule donnée
-  que l'export vidéo et l'application partagent de façon fiable. Deux joueuses prénommées Eva ne
+  que l'export vidéo et l'application partagent de façon fiable. Deux joueurs prénommés Eva ne
   se distinguent que par là.
-- Séparer les joueuses par des **virgules**.
+- Séparer les joueurs par des **virgules**.
 - Un jeton laissé « hors effectif » n'est pas enregistré ; le reste de l'action l'est quand même.
 
 ### Portée de l'import
@@ -203,7 +203,7 @@ Valeur,Temps fort,Finalité,Reconquête
    orthographe et accents compris.
 4. Une dimension `Valeur` déclarée dans la configuration de chaque catégorie à rentabilité.
 5. Colonne des points en `0`–`4` ; laisser vide seulement une action réellement non notée.
-6. Numéro de maillot en tête de chaque joueuse, joueuses séparées par des virgules.
+6. Numéro de maillot en tête de chaque joueur, joueurs séparés par des virgules.
 7. Aucune colonne dupliquée, aucune colonne sans titre.
 8. Valeurs prises dans le catalogue d'options ; toute nouvelle valeur légitime ajoutée d'abord au
    fichier de configuration, pour éviter qu'une faute de frappe y entre toute seule.

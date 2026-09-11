@@ -51,7 +51,7 @@ export function useReportData(from: string, to: string) {
   const inRange = (d: string) => d >= from && d <= to;
 
   // Les objectifs individuels de tout l'effectif en une requête — un rapport couvrant douze
-  // joueuses ne doit pas en déclencher douze.
+  // joueurs ne doit pas en déclencher douze.
   const rosterKey = players.map(p => p.player.id).join(',');
   useEffect(() => {
     const ids = rosterKey ? rosterKey.split(',') : [];

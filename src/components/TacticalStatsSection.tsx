@@ -19,7 +19,7 @@ interface TacticalStatsSectionProps {
   dimensions: TacticalDimension[];
   options?: TacticalDimensionOption[];
   matches: TacticalMatchRef[];
-  /** Effectif indexé par id, pour la table par joueuse du rapport. */
+  /** Effectif indexé par id, pour la table par joueur du rapport. */
   playerNameById?: Map<string, string>;
   emptyMessage?: string;
   /** Fige l'affichage sur une seule vue, sans les onglets internes Brutes/Tableau de bord —

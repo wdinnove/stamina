@@ -129,14 +129,14 @@ const newBadgeStyle: CSSProperties = {
 
 interface Props {
   match: Match;
-  /** Effectif de la saison, pour rapprocher les joueuses taguées dans les CSV. */
+  /** Effectif de la saison, pour rapprocher les joueurs tagués dans les CSV. */
   players: Player[];
   hasExistingData: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-/** Valeur du select « joueuse » signifiant « ce jeton n'est pas dans l'effectif, ne rien stocker ». */
+/** Valeur du select « joueur » signifiant « ce jeton n'est pas dans l'effectif, ne rien stocker ». */
 const SKIP_PLAYER = '__skip';
 
 export function TacticalImportModal({ match, players, hasExistingData, onClose, onSaved }: Props) {
@@ -148,7 +148,7 @@ export function TacticalImportModal({ match, players, hasExistingData, onClose, 
   const [singleBlocks, setSingleBlocks] = useState<ParsedCategoryBlock[] | null>(null);
   const [themeFiles, setThemeFiles] = useState<ThemeFileEntry[]>([]);
   const [fileError, setFileError] = useState('');
-  /** jeton du CSV -> id de joueuse, ou SKIP_PLAYER. Global à l'import : le même « #0 Cynthia »
+  /** jeton du CSV -> id de joueur, ou SKIP_PLAYER. Global à l'import : le même « #0 Cynthia »
    *  revient dans tous les fichiers, il ne se rapproche qu'une fois. */
   const [playerIdByToken, setPlayerIdByToken] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -236,7 +236,7 @@ export function TacticalImportModal({ match, players, hasExistingData, onClose, 
     return { blocks, excludedRows: excluded };
   }, [sourceBlocks]);
 
-  // Colonne des joueuses : reconnue à son nom, la même dans tous les fichiers d'un export vidéo.
+  // Colonne des joueurs : reconnue à son nom, la même dans tous les fichiers d'un export vidéo.
   const playersColumnName = blocks?.flatMap(b => b.dimensionNames).find(isPlayerColumnName) ?? null;
   const playerTokens = useMemo(
     () => (blocks ? collectPlayerTokens(blocks).sort((a, b) => b.actions - a.actions) : []),
@@ -297,7 +297,7 @@ export function TacticalImportModal({ match, players, hasExistingData, onClose, 
     return !dimensions.some(d => d.categoryId === cat.id && normalizeTacticalName(d.name) === normalizeTacticalName(dimName));
   };
 
-  // La colonne des joueuses n'étant plus une dimension, ses valeurs n'ont pas à être rapprochées
+  // La colonne des joueurs n'étant plus une dimension, ses valeurs n'ont pas à être rapprochées
   // d'un catalogue : on la retire de l'analyse des valeurs inconnues.
   const unexpectedValues = blocks
     ? computeUnexpectedValues(
@@ -491,10 +491,10 @@ export function TacticalImportModal({ match, players, hasExistingData, onClose, 
         {playerTokens.length > 0 && (
           <div style={{ backgroundColor: '#1A1D24', border: '1px solid #2A2F3A', borderRadius: 8, padding: 16 }}>
             <p style={{ color: '#F1F5F9', fontWeight: 700, fontSize: '0.85rem', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Users size={14} color="#00E5A0" /> {matchedPlayers} joueuse{matchedPlayers > 1 ? 's' : ''} rapprochée{matchedPlayers > 1 ? 's' : ''} sur {playerTokens.length}
+              <Users size={14} color="#00E5A0" /> {matchedPlayers} joueur{matchedPlayers > 1 ? 's' : ''} rapproché{matchedPlayers > 1 ? 's' : ''} sur {playerTokens.length}
             </p>
             <p style={{ color: '#475569', fontSize: '0.72rem', margin: '0 0 10px', lineHeight: 1.5 }}>
-              La colonne «&nbsp;{playersColumnName}&nbsp;» est découpée en joueuses au lieu d'être comptée comme une
+              La colonne «&nbsp;{playersColumnName}&nbsp;» est découpée en joueurs au lieu d'être comptée comme une
               dimension. Un jeton laissé «&nbsp;hors effectif&nbsp;» n'est pas enregistré ; le reste de l'action l'est
               quand même.
             </p>

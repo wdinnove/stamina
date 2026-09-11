@@ -1,8 +1,8 @@
 /**
  * Agrégation du suivi live (rotations & plays) — fonctions pures, même convention que
  * `tacticalAnalysis.ts`. Domaine séparé : ici pas de dimensions configurables, juste deux flux
- * (possessions attaque/défense, changements de joueuses) à croiser par play, par cinq et par
- * joueuse.
+ * (possessions attaque/défense, changements de joueurs) à croiser par play, par cinq et par
+ * joueur.
  */
 import type { MatchLiveAction, MatchLineupEvent, Play, LineupSide } from './types';
 import { rentabiliteColor, type RentabiliteThresholds } from './tacticalAnalysis';
@@ -59,7 +59,7 @@ export function playStats(actions: MatchLiveAction[], plays: Play[]): PlayStatRo
 }
 
 export interface LineupStatRow {
-  /** Ids joueuses, triés — sert de clé de regroupement stable indépendamment de l'ordre d'entrée. */
+  /** Ids joueurs, triés — sert de clé de regroupement stable indépendamment de l'ordre d'entrée. */
   players: string[];
   possessionsOffense: number;
   possessionsDefense: number;
@@ -104,9 +104,9 @@ export function lineupStats(actions: MatchLiveAction[]): LineupStatRow[] {
   return [...rows.values()].sort((a, b) => (b.possessionsOffense + b.possessionsDefense) - (a.possessionsOffense + a.possessionsDefense));
 }
 
-/** +/- par joueuse (nous uniquement) : points marqués moins points encaissés pendant qu'elle
+/** +/- par joueur (nous uniquement) : points marqués moins points encaissés pendant qu'il
  *  était sur le terrain, tous cinq confondus — la même mécanique que `lineupStats`, mais
- *  répartie joueuse par joueuse plutôt que par combinaison exacte. */
+ *  répartie joueur par joueur plutôt que par combinaison exacte. */
 export function playerPlusMinus(actions: MatchLiveAction[]): Map<string, number> {
   const totals = new Map<string, number>();
   for (const a of actions) {
@@ -147,9 +147,9 @@ export function lineupIntervals(
 }
 
 /**
- * Temps de jeu par joueuse, en secondes (un seul banc à la fois : appeler séparément pour 'us' et
+ * Temps de jeu par joueur, en secondes (un seul banc à la fois : appeler séparément pour 'us' et
  * 'them' si besoin). Dérivé des changements de banc, jamais stocké : chaque intervalle de
- * composition est crédité à chaque joueuse présente pendant celui-ci.
+ * composition est crédité à chaque joueur présent pendant celui-ci.
  */
 export function playingTime(
   lineupEvents: MatchLineupEvent[],

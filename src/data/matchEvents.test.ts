@@ -93,7 +93,7 @@ describe('scoreFromEvents', () => {
 });
 
 describe('plusMinusFromEvents', () => {
-  it('crédite chaque point aux joueuses présentes au moment de l\'action', () => {
+  it('crédite chaque point aux joueurs présents au moment de l\'action', () => {
     const pm = plusMinusFromEvents([
       ev({ x: 7.5, y: 9.0, made: true, onCourt: ['p1', 'p2'] }),
       ev({ side: 'them', x: 7.5, y: 2.0, made: true, onCourt: ['p2', 'p3'] }),
@@ -127,7 +127,7 @@ describe('boxscoreFromEvents', () => {
     expect(p1.eval).toBe(2);
   });
 
-  it('produit le boxscore adverse à partir des joueuses nommées, en ignorant l\'agrégé', () => {
+  it('produit le boxscore adverse à partir des joueurs nommés, en ignorant l\'agrégé', () => {
     const events = [
       ev({ side: 'them', opponentPlayerId: 'o1', x: 7.5, y: 9.0, made: true }),
       ev({ side: 'them', opponentPlayerId: 'o1', type: 'foul' }),        // → fte, PAS fpr
@@ -141,7 +141,7 @@ describe('boxscoreFromEvents', () => {
     expect(scoreFromEvents(events).them).toBe(5);
   });
 
-  it('garde une joueuse entrée sans aucune action — ses minutes comptent', () => {
+  it('garde un joueur entré sans aucune action — ses minutes comptent', () => {
     const rows = boxscoreFromEvents([], lineups, 600, 1, 300);
     expect(rows.map(r => r.playerId).sort()).toEqual(['p1', 'p2']);
     expect(rows[0].min).toBe(5);

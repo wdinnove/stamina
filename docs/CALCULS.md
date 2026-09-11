@@ -554,7 +554,7 @@ Une action = une ligne, sans identité propre — on n'affiche jamais une action
 
 - `valeur SMALLINT` : les points de l'action, `NULL` pour une action non notée ;
 - `options SMALLINT[]` : un **code d'option** par dimension, `NULL` pour une case non renseignée ;
-- `player_ids UUID[]` : les joueuses rapprochées de l'effectif à l'import.
+- `player_ids UUID[]` : les joueurs rapprochés de l'effectif à l'import.
 
 Deux invariants tiennent tout l'édifice, et sont figés à la création comme l'est déjà `normalized_name` :
 
@@ -573,11 +573,11 @@ Mesures ayant motivé ce modèle, sur un match réel de 212 actions : l'ancien s
 
 Les regroupements — `buildDimensionTable`, `buildCustomTableRows`, `buildCrossMatrix`, `buildTacticalIndicators` — indexent malgré tout par **libellé normalisé** (accents, casse, espaces). C'est désormais une ceinture et non plus la bretelle : ça protège les regroupements manuels du tableau de bord, où le staff saisit des libellés à la main.
 
-### Table par joueuse
+### Table par joueur
 
-`buildPlayerTable` remplace l'ancienne « dimension Joueuses », qui comptait des **combinaisons** et non des joueuses : sur un match réel, 11 joueuses produisaient 101 libellés distincts, et la plus impliquée (46 actions) n'apparaissait nulle part en tête du tableau parce qu'elle était presque toujours taguée avec quelqu'un d'autre.
+`buildPlayerTable` remplace l'ancienne « dimension Joueuses », qui comptait des **combinaisons** et non des joueurs : sur un match réel, 11 joueurs produisaient 101 libellés distincts, et la plus impliquée (46 actions) n'apparaissait nulle part en tête du tableau parce qu'elle était presque toujours taguée avec quelqu'un d'autre.
 
-Une action taguée à deux joueuses compte pour chacune : la part se lit « part des actions de la catégorie où la joueuse est impliquée », et la somme des parts dépasse 100 %. Le total en pied de table est celui de la catégorie, pas la somme des lignes.
+Une action taguée à deux joueurs compte pour chacun : la part se lit « part des actions de la catégorie où le joueur est impliqué », et la somme des parts dépasse 100 %. Le total en pied de table est celui de la catégorie, pas la somme des lignes.
 
 ---
 
@@ -892,7 +892,7 @@ Fichiers source : [`src/data/liveTrackingAnalysis.ts`](../src/data/liveTrackingA
 
 Domaine volontairement **indépendant** du tactique (§ import CSV vidéo, `tactical_actions`) : pointage rapide en direct ou en relecture manuelle (pas de tag vidéo multi-dimensions a posteriori). Deux tables alimentent les calculs : `match_lineup_events` (qui est sur le terrain) et `match_live_actions` (fin de possession — `side` 'offense'/'defense' = qui avait le ballon, `points`, `play`).
 
-**Feuille de match** (`match_roster`) : restreint l'effectif proposé aux joueuses retenues. Convention volontaire — **aucune ligne = tout l'effectif de la saison est disponible**, ce qui évite d'imposer une configuration avant de pouvoir pointer quoi que ce soit ; cocher tout le monde efface la sélection plutôt que de figer une liste, pour que l'effectif suive les arrivées ultérieures. Une joueuse déjà sur le terrain reste affichée même si elle est retirée de la feuille : sans ça, elle deviendrait un « ? » dans l'historique déjà enregistré.
+**Feuille de match** (`match_roster`) : restreint l'effectif proposé aux joueurs retenus. Convention volontaire — **aucune ligne = tout l'effectif de la saison est disponible**, ce qui évite d'imposer une configuration avant de pouvoir pointer quoi que ce soit ; cocher tout le monde efface la sélection plutôt que de figer une liste, pour que l'effectif suive les arrivées ultérieures. Un joueur déjà sur le terrain reste affiché même s'il est retiré de la feuille : sans ça, il deviendrait un « ? » dans l'historique déjà enregistré.
 
 **Une possession = un nombre de points**, saisi en un tap (0 à 4 : 1 = lancer franc, 4 = panier à 3 points + faute) — pas de colonne d'issue séparée (succès/échec, perte de balle, ballon mort…) : `points = 0` couvre tout raté, quelle qu'en soit la raison. La distinction plus fine a été essayée puis retirée : elle ralentissait la saisie en match sans encore servir de calcul. Un panier marqué avec `side = 'defense'` est un panier **encaissé** par nous.
 
@@ -900,9 +900,9 @@ Domaine volontairement **indépendant** du tactique (§ import CSV vidéo, `tact
 
 **+/- d'une combinaison de cinq** (`lineupStats`) = points marqués pendant que ce cinq était sur le terrain en attaque − points encaissés pendant qu'il y était en défense. Une possession sans cinq renseigné (`onCourt` vide) n'entre dans aucune ligne.
 
-**+/- par joueuse** (`playerPlusMinus`) : même mécanique que `lineupStats`, répartie individuellement — pour chaque possession, chaque joueuse présente dans `onCourt` reçoit +points (attaque) ou -points (défense). Une joueuse jamais entrée en jeu n'apparaît pas (distinct d'un +/- à 0, qui signifie qu'elle a joué sans que le score bouge en sa faveur ni en sa défaveur).
+**+/- par joueur** (`playerPlusMinus`) : même mécanique que `lineupStats`, répartie individuellement — pour chaque possession, chaque joueur présente dans `onCourt` reçoit +points (attaque) ou -points (défense). Un joueur jamais entrée en jeu n'apparaît pas (distinct d'un +/- à 0, qui signifie qu'elle a joué sans que le score bouge en sa faveur ni en sa défaveur).
 
-**Temps de jeu par joueuse** (`playingTime`) : dérivé de `match_lineup_events`, jamais stocké. Chaque écart entre deux changements de banc consécutifs (ou entre le dernier changement et le repère "maintenant" — `clock.quarter`/`clock.elapsedSeconds`, pour un match en cours) est crédité à chaque joueuse du cinq de l'intervalle. `(quarter, gameTimeSeconds)` est converti en un axe de temps continu via `periodDurationSeconds` — supposé constant sur tout le match, prolongations comprises, même simplification que `useMatchClock` — pour compter juste un intervalle qui chevauche une fin de quart-temps. Comme le repère "maintenant" avance avec le chrono, le temps de jeu affiché progresse tout seul pendant que la partie tourne.
+**Temps de jeu par joueur** (`playingTime`) : dérivé de `match_lineup_events`, jamais stocké. Chaque écart entre deux changements de banc consécutifs (ou entre le dernier changement et le repère "maintenant" — `clock.quarter`/`clock.elapsedSeconds`, pour un match en cours) est crédité à chaque joueur du cinq de l'intervalle. `(quarter, gameTimeSeconds)` est converti en un axe de temps continu via `periodDurationSeconds` — supposé constant sur tout le match, prolongations comprises, même simplification que `useMatchClock` — pour compter juste un intervalle qui chevauche une fin de quart-temps. Comme le repère "maintenant" avance avec le chrono, le temps de jeu affiché progresse tout seul pendant que la partie tourne.
 
 **Suppression depuis l'historique** (`recomputeOnCourtSnapshots`) : une possession se supprime toujours sans effet de bord (elle ne détermine l'état d'aucune autre ligne). Un changement de banc, en revanche, est rejoué : l'instantané `onCourt` de chaque changement suivant sur le même banc, et de chaque possession pointée depuis, est recalculé à partir de ce qui reste — sinon une suppression au milieu du match laisserait le cinq affiché durablement désynchronisé du cinq réel. Le composant ne persiste que les lignes dont `onCourt` a réellement changé.
 

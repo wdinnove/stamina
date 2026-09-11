@@ -1,15 +1,15 @@
 /**
- * Rapprochement des joueuses taguées dans les CSV tactiques avec l'effectif de l'app.
+ * Rapprochement des joueurs tagués dans les CSV tactiques avec l'effectif de l'app.
  *
- * L'export vidéo écrit une cellule par action, avec plusieurs joueuses séparées par des virgules
+ * L'export vidéo écrit une cellule par action, avec plusieurs joueurs séparés par des virgules
  * et un numéro de maillot en tête : « #0 Cynthia, #14 Eva Ha ». On en fait des jetons, et chaque
- * jeton distinct est rapproché d'une joueuse — une fois pour tout l'import, pas une fois par
- * action : sur un match réel, 193 actions taguées ne contiennent que 11 joueuses distinctes.
+ * jeton distinct est rapproché d'un joueur — une fois pour tout l'import, pas une fois par
+ * action : sur un match réel, 193 actions taguées ne contiennent que 11 joueurs distincts.
  */
 import type { Player } from '../data/types';
 import { normalizeTacticalName } from './tacticalCsvParser';
 
-/** Noms de colonne reconnus comme portant les joueuses. */
+/** Noms de colonne reconnus comme portant les joueurs. */
 const PLAYER_COLUMN_NAMES = new Set(['joueuses', 'joueuse', 'joueurs', 'joueur', 'players', 'player']);
 
 export function isPlayerColumnName(name: string): boolean {
@@ -41,8 +41,8 @@ export function parsePlayerToken(raw: string): PlayerToken {
 /**
  * Joueuse correspondant à un jeton, ou null. Le numéro de maillot prime : c'est la seule donnée
  * que l'export vidéo et l'app partagent de façon fiable. À défaut, on retombe sur le prénom ou le
- * nom, comparés sans accents ni casse — un prénom seul suffit tant qu'il ne désigne qu'une
- * joueuse de l'effectif (deux « Eva » ne sont donc rapprochées que par leur numéro).
+ * nom, comparés sans accents ni casse — un prénom seul suffit tant qu'il ne désigne qu'un seul
+ * joueur de l'effectif (deux « Eva » ne sont donc rapprochés que par leur numéro).
  */
 export function matchPlayerToken(raw: string, players: Player[]): Player | null {
   const token = parsePlayerToken(raw);
@@ -62,7 +62,7 @@ export function matchPlayerToken(raw: string, players: Player[]): Player | null 
 
 /**
  * Jetons distincts d'un ensemble de blocs, avec leur nombre d'actions — dans l'ordre de première
- * apparition. `columnIndexOf` dit où est la colonne des joueuses dans chaque bloc (−1 = aucune).
+ * apparition. `columnIndexOf` dit où est la colonne des joueurs dans chaque bloc (−1 = aucune).
  */
 export function collectPlayerTokens(
   blocks: { dimensionNames: string[]; rows: string[][] }[],

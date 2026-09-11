@@ -15,7 +15,7 @@ toujours dépendant d'un fichier eMarque.
 
 | Brique | Fichier | État |
 |---|---|---|
-| Boxscore par joueuse | `match_stats` + [`stats.ts`](../src/api/stats.ts) | ✅ complet, alimenté par CSV uniquement |
+| Boxscore par joueur | `match_stats` + [`stats.ts`](../src/api/stats.ts) | ✅ complet, alimenté par CSV uniquement |
 | Stats collectives | `team_match_stats` (+ vue `_full`) | ✅ eFG%, FT Rate, %BP, %REB, ratings — tout en colonnes générées |
 | Chrono de match | [`useMatchClock.ts`](../src/hooks/useMatchClock.ts) | ✅ QT + prolongations, ajustable, position conservée par match en `localStorage` (repart toujours en pause) |
 | Rotations 2 bancs | `match_lineup_events` | ✅ instantané `on_court` à chaque changement |
@@ -25,7 +25,7 @@ toujours dépendant d'un fichier eMarque.
 | Terrain FIBA en mètres | [`diagram.ts`](../src/utils/diagram.ts) `HALF` + [`DiagramCourt.tsx`](../src/components/DiagramCourt.tsx) | ✅ demi-terrain 15 × 14 m, toutes les cotes |
 | Aval analytique | `playerAdvanced`, PCA, archétypes, Four Factors, objectifs, rapports | ✅ tout part de `match_stats` |
 
-**Il manque exactement un maillon : `joueuse × action × position`.** Le reste de la chaîne est en
+**Il manque exactement un maillon : `joueur × action × position`.** Le reste de la chaîne est en
 place des deux côtés.
 
 ---
@@ -36,7 +36,7 @@ place des deux côtés.
 |---|---|
 | **eMarque V2 / FIBA LiveStats** | Play-by-play exhaustif, tir positionné sur le terrain, boxscore live, PDF officiel. Conçu pour **deux opérateurs de table** — hors de portée d'un coach seul. |
 | **Hudl Instat / Synergy** | Tagging **après match, sur vidéo**. La valeur est dans les zones et les lineups, pas dans la vitesse de saisie. |
-| **Swish / Easystats / GameChanger** | Un opérateur : geste **joueuse → action** en 2 taps, chaînage après un tir raté, undo permanent, **offline obligatoire**, lien de suivi public. |
+| **Swish / Easystats / GameChanger** | Un opérateur : geste **joueur → action** en 2 taps, chaînage après un tir raté, undo permanent, **offline obligatoire**, lien de suivi public. |
 | **Cleaning the Glass / PBP Stats** | Tout est **dérivé** d'un flux d'événements brut. Rien de pré-agrégé en base. |
 
 Trois constantes chez tous, qui structurent ce plan :
@@ -195,7 +195,7 @@ largement.
 ### `src/data/matchEvents.ts`
 
 ```ts
-/** Boxscore par joueuse, prêt pour statsApi.bulkUpsertForMatch. */
+/** Boxscore par joueur, prêt pour statsApi.bulkUpsertForMatch. */
 export function boxscoreFromEvents(
   events: MatchEvent[],
   lineupEvents: MatchLineupEvent[],
@@ -301,7 +301,7 @@ match : pendant 90 minutes de saisie, chaque pixel de chrome est un pixel perdu.
 │  ● Jade          │  │    (340 px)    │ └────┴────┘ ││  BANC                │
 │  BANC            │  │   tap = tir    │ REBONDS     ││  ○ 9  Petit          │
 │  ○ 5  Emma       │  │                │ ┌────┬────┐ ││ ┌──────────────────┐ │
-│  ○ 8  Lou        │  └────────────────┤ │Reb.│Reb.│ ││ │  Sans joueuse    │ │
+│  ○ 8  Lou        │  └────────────────┤ │Reb.│Reb.│ ││ │  Sans joueur    │ │
 │                  │  Raquette · 2 pts │ │déf.│off.│ ││ └──────────────────┘ │
 │                  │                   │ CRÉATION …  ││                      │
 ├──────────────────┴──────────────────────────────────┴──────────────────────┤
@@ -314,11 +314,11 @@ match : pendant 90 minutes de saisie, chaque pixel de chrome est un pixel perdu.
 **Tir (3 taps, dans l'ordre qu'on veut)**
 
 ```
-joueuse → terrain → ✓/✗        on sait déjà qui
-terrain → joueuse → ✓/✗        on fige l'endroit, on attribue ensuite
+joueur → terrain → ✓/✗        on sait déjà qui
+terrain → joueur → ✓/✗        on fige l'endroit, on attribue ensuite
 ```
 
-Les deux chemins produisent le même événement. Imposer « joueuse d'abord » était une erreur : la
+Les deux chemins produisent le même événement. Imposer « joueur d'abord » était une erreur : la
 **position est l'information périssable** — on oublie l'endroit exact d'un tir en deux secondes,
 jamais qui a tiré. C'est aussi pourquoi FIBA LiveStats est position-d'abord. Quand le point est
 posé en premier, l'écran affiche « Qui a tiré ? » et les `✓`/`✗` n'apparaissent qu'une fois
@@ -329,20 +329,20 @@ La valeur 2/3 n'est jamais saisie : elle sort de la position.
 **Toute autre action (2 taps, dans l'ordre qu'on veut)**
 
 ```
-joueuse → bouton de la palette
-bouton de la palette → joueuse
+joueur → bouton de la palette
+bouton de la palette → joueur
 ```
 
 Même principe que pour les tirs, et pour la même raison : ce qui vient en premier à l'esprit
 dépend de l'action. Une perte de balle, on voit le ballon partir avant de reconnaître qui l'a
-perdu ; un rebond, on voit qui l'a pris. Un bouton tapé sans joueuse armée **reste allumé en
+perdu ; un rebond, on voit qui l'a pris. Un bouton tapé sans joueur armé **reste allumé en
 ambre** et l'écran demande « qui ? » — exactement comme un point posé sur le terrain.
 
 Une seule chose attend son auteur à la fois : poser un tir désarme l'action en attente, et
 inversement. `échap` annule ce qui attend.
 
-La joueuse **reste sélectionnée** entre deux actions : une séquence tir raté → rebond offensif →
-tir de la même joueuse ne demande pas de la re-désigner.
+Le joueur **reste sélectionnée** entre deux actions : une séquence tir raté → rebond offensif →
+tir de la même joueur ne demande pas de la re-désigner.
 
 ### Les changements sont derrière un mode explicite
 
@@ -355,15 +355,15 @@ moment (« tape la sortante, puis l'entrante »), au lieu de la répéter dans c
 du suivi live (sortante puis entrante, ou l'inverse), et **les deux colonnes** passent en ambre
 pour qu'on ne s'y trompe pas.
 
-Une désignation en attente sur un banc ne peut pas se conclure sur l'autre : taper une joueuse
+Une désignation en attente sur un banc ne peut pas se conclure sur l'autre : taper un joueur
 adverse après avoir désigné une des nôtres recommence de ce côté-là plutôt que de fabriquer un
 changement croisé. C'est encodé dans `resolveSubstitution` et testé.
 
-**Une joueuse est armable si elle est sur le terrain, ou si aucun cinq n'a encore été posé de son
+**Un joueur est armable s'il est sur le terrain, ou si aucun cinq n'a encore été posé de son
 côté.** Ce second cas n'est pas un trou : il permet de pointer des statistiques sans tenir les
 rotations du tout. Dès qu'un cinq existe, le banc se verrouille.
 
-Ce n'est pas du confort. La première version prenait comme sortante la joueuse « armée pour la
+Ce n'est pas du confort. La première version prenait comme sortante le joueur « armée pour la
 saisie » : sélectionner Marie pour pointer son rebond, puis taper Léa au banc, **faisait sortir
 Marie** — un tap silencieux qui corrompait minutes, +/- et instantanés `onCourt`. La décision
 « qui sort, qui entre » est désormais une fonction pure isolée (`resolveSubstitution`), avec un
@@ -385,7 +385,7 @@ chrono restent au milieu exact quelle que soit la largeur de ce qu'on ajoute à 
 | `c` | bascule le mode changement |
 | `échap` | annule le tir en cours, la désignation de changement, ou la sélection |
 
-Toute frappe est ignorée dès qu'un champ a le focus : le formulaire d'ajout de joueuse adverse est
+Toute frappe est ignorée dès qu'un champ a le focus : le formulaire d'ajout de joueur adverse est
 sur le même écran, taper « Dupont » ne doit rien déclencher.
 
 ### Accusé de réception
@@ -469,7 +469,7 @@ s'éteint toute seule. Une modale à chaque tir raté, c'est l'écran abandonné
 Les joueurs adverses n'existent pas en base : ils se saisissent dans une **feuille adverse**,
 symétrique de la nôtre — bouton `☰ Feuille` en tête de colonne, numéro + nom, **Entrée enchaîne**
 et rend la main au champ numéro, de sorte qu'on tape la feuille de l'autre banc d'une traite sans
-quitter le clavier. Une joueuse déjà référencée par une action pointée ou présente sur le terrain
+quitter le clavier. Un joueur déjà référencée par une action pointée ou présente sur le terrain
 ne peut plus en être retirée : l'effacer laisserait un « ? » dans l'historique.
 
 Une fois saisis, ils se gèrent **exactement comme les nôtres** : même palette, même terrain, même
@@ -609,8 +609,8 @@ FROM   match_stats WHERE eval IS NOT NULL;
 - On/off et statistiques de cinq **au point près** (aujourd'hui à la possession)
 - Courbe d'écart et détection des runs (`scoreTimeline`)
 - Splits par quart-temps
-- Shot chart **agrégé sur la saison**, par joueuse et par équipe
-- Écart d'une joueuse à la moyenne de l'équipe, zone par zone
+- Shot chart **agrégé sur la saison**, par joueur et par équipe
+- Écart d'un joueur à la moyenne de l'équipe, zone par zone
 
 ### Phase 4 — Diffusion
 

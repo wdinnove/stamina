@@ -73,7 +73,7 @@ le plus besoin de l'outil.
 | **Performance** | équipes illimitées, module médical, module personnalité, support prioritaire, onboarding | **3 900 €** |
 | Add-on onboarding | paramétrage, import historique, 2 h de formation staff en visio | **690 €** one-shot |
 
-**Repère de vente** : 490 € ≈ **35 € par joueuse et par saison**, soit moins qu'une
+**Repère de vente** : 490 € ≈ **35 € par joueur et par saison**, soit moins qu'une
 licence FFBB. C'est l'argument qui ferme la discussion en comité directeur.
 1 490 € pour 5 équipes = le prix d'un jeu de maillots.
 
@@ -155,8 +155,8 @@ Or **ni Supabase ni Vercel ne sont certifiés HDS**. La certification coûte
   suivi systématique + mineurs = trois critères CNIL. La livrer pré-remplie est un
   argument de vente majeur, aucun club amateur ne sait la faire.
 - **Base légale** : consentement explicite du joueur, révocable, **sans conséquence
-  sportive au refus**, et prouvable. Pour une joueuse pro salariée, le déséquilibre
-  coach/joueuse fragilise le consentement → imposer au club une information écrite
+  sportive au refus**, et prouvable. Pour un joueur pro salariée, le déséquilibre
+  coach/joueur fragilise le consentement → imposer au club une information écrite
   préalable et l'avis du CSE quand il existe.
 - **Mineurs** : les équipes U18/U21 déclenchent l'article 8 (15 ans en France) →
   consentement parental, formulaire dédié, mentions en langage clair. Sujet de
@@ -197,7 +197,7 @@ des phrases en français courant, pas la nomenclature canonique.
 
 ### 🟠 5.4 Psychométrie et droit du travail
 
-Pour des joueuses sous contrat, un questionnaire de personnalité est une **méthode
+Pour des joueurs sous contrat, un questionnaire de personnalité est une **méthode
 d'évaluation** au sens des articles L.1222-2 et L.1222-3 du Code du travail :
 pertinence par rapport à la finalité, information préalable de la salariée,
 information/consultation du CSE. Si un profil sert à écarter quelqu'un d'un rôle,

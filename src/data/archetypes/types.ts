@@ -17,7 +17,7 @@ export interface RawPlayerStats {
   };
   advancedAgg: PlayerAdvancedStats;
   /** Phase 2+ : la donnée source existe désormais (`tactical_actions.player_ids`, rapprochée de
-   *  l'effectif à l'import) ; reste à brancher l'agrégation par joueuse sur le moteur. */
+   *  l'effectif à l'import) ; reste à brancher l'agrégation par joueur sur le moteur. */
   tacticalAgg?: Record<string, number> | null;
 }
 

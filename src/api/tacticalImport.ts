@@ -28,7 +28,7 @@ export interface TacticalImportResult {
  */
 export type TacticalReplaceScope = 'match' | 'imported-categories';
 
-/** Rapprochement d'un jeton « #0 Cynthia » du CSV vers une joueuse de l'effectif. */
+/** Rapprochement d'un jeton « #0 Cynthia » du CSV vers un joueur de l'effectif. */
 export type PlayerIdByToken = Record<string, string>;
 
 /** Découpe une cellule « #0 Cynthia, #14 Eva Ha » en jetons, dans l'ordre du CSV. */
@@ -48,7 +48,7 @@ export interface ActionPayload {
 /** Un bloc du CSV dont les colonnes ont été rattachées à leur dimension. */
 export interface ResolvedBlock {
   categoryId: string;
-  /** Dimension de chaque colonne — null pour la colonne des joueuses, qui n'en est pas une. */
+  /** Dimension de chaque colonne — null pour la colonne des joueurs, qui n'en est pas une. */
   columnDimensions: (TacticalDimension | null)[];
   rows: string[][];
 }
@@ -56,7 +56,7 @@ export interface ResolvedBlock {
 /**
  * Traduit les blocs du CSV en lignes prêtes à insérer. Fonction pure : c'est ici que se joue
  * l'essentiel de la correction de l'import (adressage par `slot`, valeur sortie des options,
- * découpe des joueuses), donc c'est ici qu'on peut la tester sans base.
+ * découpe des joueurs), donc c'est ici qu'on peut la tester sans base.
  *
  * `codeByLabel` est indexé `dimensionId::libellé normalisé`.
  */
@@ -147,7 +147,7 @@ export const tacticalImportApi = {
       const columnDimensions: (TacticalDimension | null)[] = [];
       for (const dimName of block.dimensionNames) {
         if (normalizedPlayersColumn && normalizeTacticalName(dimName) === normalizedPlayersColumn) {
-          columnDimensions.push(null);   // colonne des joueuses : donnée structurée, pas une dimension
+          columnDimensions.push(null);   // colonne des joueurs : donnée structurée, pas une dimension
           continue;
         }
         const { dimension, created } = await tacticalConfigApi.ensureDimension(teamId, category.id, dimName, dimensions);

@@ -59,7 +59,7 @@ function reprisEstimeeDisplay(rtpDate: string | undefined): { label: string; col
 }
 
 /**
- * Une entrée médicale, partout où elle s'affiche en liste : historique d'une joueuse et infirmerie.
+ * Une entrée médicale, partout où elle s'affiche en liste : historique d'un joueur et infirmerie.
  *
  * Une seule mise en page pour les deux — celle, aérée, de l'historique joueur. L'infirmerie en
  * portait une seconde, plus dense (photo en colonne, boutons Modifier/Clôturer empilés), pour un
@@ -73,8 +73,8 @@ export function InjuryRecordCard({ record, player, onClose, navigate, showPlayer
   player?: Player;
   onClose?: () => void;
   navigate: (path: string) => void;
-  /** Ajoute photo, nom et statut de la joueuse en tête de card — pour les listes qui mélangent
-   *  l'effectif (infirmerie). Inutile sur l'historique d'une joueuse : on sait déjà de qui il s'agit. */
+  /** Ajoute photo, nom et statut de le joueur en tête de card — pour les listes qui mélangent
+   *  l'effectif (infirmerie). Inutile sur l'historique d'un joueur : on sait déjà de qui il s'agit. */
   showPlayerIdentity?: boolean;
   /** La card devient cliquable et ouvre une modale de détail — modifier y vit ; « Clôturer » reste
    *  sur la card, c'est le geste courant sur une entrée active. */
@@ -97,7 +97,7 @@ export function InjuryRecordCard({ record, player, onClose, navigate, showPlayer
   return (
     <div onClick={onClick} style={{
       // La bordure reflète le TYPE d'entrée (rouge/vert/bleu), jamais le statut courant de la
-      // joueuse : sur une liste mélangée, c'est ce qui distingue une blessure d'un traitement au
+      // joueur : sur une liste mélangée, c'est ce qui distingue une blessure d'un traitement au
       // premier coup d'œil — le statut a déjà sa propre pastille.
       backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderLeft: `3px solid ${col}`, borderRadius: 8,
       padding: '16px 18px', cursor: onClick ? 'pointer' : 'default', display: 'flex', gap: 14, alignItems: 'center',

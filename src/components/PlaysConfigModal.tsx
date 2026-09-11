@@ -282,7 +282,7 @@ export function PlaysConfigModal({
             );
           })}
           {seasonPlayers.length === 0 && (
-            <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Aucune joueuse dans l'effectif de la saison.</p>
+            <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Aucun joueur dans l'effectif de la saison.</p>
           )}
         </div>
       </div>
@@ -303,7 +303,7 @@ export function PlaysConfigModal({
           <>
             <p style={{ color: '#94A3B8', fontSize: '0.8rem', lineHeight: 1.5, margin: '0 0 12px' }}>
               Effacer <strong style={{ color: '#F1F5F9' }}>{recordedCount}</strong> ligne{recordedCount > 1 ? 's' : ''} de suivi
-              (possessions, actions de saisie, rotations, joueuses adverses) pour ce match ? Les plays configurés
+              (possessions, actions de saisie, rotations, joueurs adverses) pour ce match ? Les plays configurés
               ci-dessus sont conservés.
               <br />Cette action est définitive.
             </p>

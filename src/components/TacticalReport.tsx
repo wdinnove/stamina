@@ -171,7 +171,7 @@ export function TacticalReport({ events, categories, dimensions, options = [], p
   dimensions: TacticalDimension[];
   /** Catalogue d'options attendues (toutes catégories confondues) — fait apparaître des lignes à 0 si configuré. */
   options?: TacticalDimensionOption[];
-  /** Effectif indexé par id — sans lui, la table par joueuse n'est pas affichée. */
+  /** Effectif indexé par id — sans lui, la table par joueur n'est pas affichée. */
   playerNameById?: Map<string, string>;
 }) {
   if (events.length === 0) return null;
@@ -191,7 +191,7 @@ export function TacticalReport({ events, categories, dimensions, options = [], p
       {orderedCategories.map(category => {
         const report = buildCategoryReport(events, category, dimensions, options);
         const thresholds = categoryThresholds(category);
-        // Une action taguée à deux joueuses compte pour chacune : le total en pied de table est
+        // Une action taguée à deux joueurs compte pour chacun : le total en pied de table est
         // celui de la catégorie, pas la somme des lignes, qui le dépasse forcément.
         const playerTable = playerNameById && (() => {
           const valueDimension = findValueDimension(dimensions, category.id);

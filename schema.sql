@@ -4830,7 +4830,7 @@ CREATE TABLE IF NOT EXISTS tactical_actions (
   seq         SMALLINT   NOT NULL,
   valeur      SMALLINT,              -- points de l'action ; NULL = action sans score
   options     SMALLINT[] NOT NULL DEFAULT '{}',   -- options[slot+1] = code, NULL = non renseigné
-  player_ids  UUID[],                -- joueuses rapprochées de l'effectif ; NULL = aucune
+  player_ids  UUID[],                -- joueurs rapprochés de l'effectif ; NULL = aucune
   PRIMARY KEY (match_id, category_id, seq)
 );
 
@@ -4909,7 +4909,7 @@ DROP TABLE IF EXISTS tactical_events;
 --
 -- Pas de lien vidéo ni de timecode externe stocké (même choix que le tactique) : le seul repère
 -- temporel est un chrono de match INTERNE (quart-temps + secondes écoulées dans le quart), utile
--- pour calculer un temps de jeu par combinaison de joueuses — jamais pour pointer un instant dans
+-- pour calculer un temps de jeu par combinaison de joueurs — jamais pour pointer un instant dans
 -- un fichier vidéo. `quarter` dépasse 4 pour les prolongations (5 = P1, 6 = P2…), même convention
 -- que `matches.quarter_scores` (cf. `MatchFormModal`, "Q{i+1}" puis "P{i-3}").
 --
@@ -4969,7 +4969,7 @@ CREATE POLICY "match_opponent_players_write" ON match_opponent_players
 -- 2bis. Joueuses de NOTRE équipe retenues pour ce match (la « feuille de match »).
 --    Convention : AUCUNE ligne = tout l'effectif de la saison est disponible. C'est le défaut, et
 --    il évite d'imposer une configuration avant de pouvoir pointer quoi que ce soit ; dès qu'une
---    ligne existe, seules les joueuses listées sont proposées. Une feuille vide n'aurait de toute
+--    ligne existe, seuls les joueurs listés sont proposés. Une feuille vide n'aurait de toute
 --    façon aucun sens, l'ambiguïté n'est donc que théorique.
 CREATE TABLE IF NOT EXISTS match_roster (
   match_id  UUID NOT NULL REFERENCES matches(id)  ON DELETE CASCADE,
@@ -5018,7 +5018,7 @@ CREATE POLICY "match_lineup_events_write" ON match_lineup_events
 
 -- 4. Fin de possession — une ligne par possession pointée, pour l'UNE ou l'AUTRE équipe (`side`
 --    'offense' = nous avions le ballon, 'defense' = l'adversaire l'avait). Un panier marqué en
---    'defense' est donc un panier ENCAISSÉ : les deux flux combinés donnent un +/- par joueuse et
+--    'defense' est donc un panier ENCAISSÉ : les deux flux combinés donnent un +/- par joueur et
 --    par combinaison de cinq sans rien calculer de plus. `play_id` SANS CASCADE, comme
 --    `tactical_actions.category_id` : supprimer un play déjà utilisé doit échouer plutôt
 --    qu'effacer l'historique en silence.

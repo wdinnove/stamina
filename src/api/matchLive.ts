@@ -34,7 +34,7 @@ export const matchLiveApi = {
     if (error) throw error;
   },
 
-  /** Feuille de match : ids des joueuses retenues. Tableau vide = pas de sélection enregistrée,
+  /** Feuille de match : ids des joueurs retenus. Tableau vide = pas de sélection enregistrée,
    *  donc tout l'effectif de la saison est disponible (cf. commentaire de `match_roster`). */
   async getRoster(matchId: string): Promise<string[]> {
     const { data, error } = await supabase
@@ -170,7 +170,7 @@ export const matchLiveApi = {
    * direct : les effacer seules laissait les actions de saisie sans minutes, sans +/- et sans
    * titulaires, en référençant des joueurs adverses supprimés. Tout ou rien.
    *
-   * L'ordre compte : les possessions et les actions référencent les joueuses adverses (par
+   * L'ordre compte : les possessions et les actions référencent les joueurs adverses (par
    * tableau d'UUID sans clé étrangère pour les unes, par clé étrangère pour les autres) ; les
    * supprimer en dernier évite de laisser des identifiants pendants si la séquence s'interrompt.
    */

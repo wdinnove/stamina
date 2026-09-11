@@ -37,12 +37,12 @@ import type {
  * L'ORDRE DE SAISIE EST LIBRE, et c'est le principe central de l'écran : la position d'un tir est
  * l'information périssable (on oublie l'endroit exact en deux secondes, jamais qui a tiré), donc
  * poser le point d'abord doit être possible. Les deux chemins mènent au même événement :
- *   joueuse → terrain → ✓/✗        (on sait déjà qui)
- *   terrain → joueuse → ✓/✗        (on fige l'endroit, on attribue ensuite)
- * Les autres actions restent à deux taps : joueuse → bouton de la palette.
+ *   joueur → terrain → ✓/✗        (on sait déjà qui)
+ *   terrain → joueur → ✓/✗        (on fige l'endroit, on attribue ensuite)
+ * Les autres actions restent à deux taps : joueur → bouton de la palette.
  *
  * Les CHANGEMENTS sont derrière un mode explicite : la sélection sert à saisir des stats, et une
- * rotation déclenchée par le même tap sortait du terrain la joueuse simplement « armée » pour la
+ * rotation déclenchée par le même tap sortait du terrain le joueur simplement « armé » pour la
  * prochaine action — un tap silencieux qui corrompait minutes, +/- et instantanés `onCourt`.
  */
 
@@ -66,19 +66,19 @@ export type SubResolution =
   | { kind: 'none' };
 
 /**
- * Que fait un tap sur une joueuse EN MODE CHANGEMENT — pure, donc testable sans DOM.
+ * Que fait un tap sur un joueur EN MODE CHANGEMENT — pure, donc testable sans DOM.
  *
  * Geste à deux taps qui marche dans les deux sens (sortante d'abord ou entrante d'abord) :
  * imposer un ordre obligeait à faire l'aller-retour entre le haut et le bas de la colonne à
- * chaque rotation. Retaper la même joueuse annule ; taper une autre du même côté déplace
+ * chaque rotation. Retaper la même joueur annule ; taper une autre du même côté déplace
  * simplement la désignation.
  *
  * Les deux bancs passent par ici, d'où le paramètre `side` : une désignation en attente sur un
- * banc ne peut pas se conclure sur l'autre — taper une joueuse adverse après avoir désigné une
+ * banc ne peut pas se conclure sur l'autre — taper un joueur adverse après avoir désigné une
  * des nôtres recommence simplement de ce côté-là, plutôt que de fabriquer un changement croisé.
  *
  * C'est le SEUL endroit qui décide qui sort et qui entre, et il est isolé pour cette raison : la
- * version précédente prenait comme sortante la joueuse « armée pour la saisie », si bien qu'un
+ * version précédente prenait comme sortant le joueur « armé pour la saisie », si bien qu'un
  * tap sur le banc sortait du terrain quelqu'un qui venait juste de prendre un rebond.
  */
 export function resolveSubstitution(
@@ -346,7 +346,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const onCourt = onCourtBySide.us;
 
   /**
-   * Une joueuse est armable si elle est sur le terrain — OU si aucun cinq n'a encore été posé de
+   * Un joueur est armable s'il est sur le terrain — OU si aucun cinq n'a encore été posé de
    * son côté. Ce second cas n'est pas un trou : il permet de pointer des statistiques sans tenir
    * les rotations du tout (usage plus léger, assumé, cf. docs/STATS_LIVE.md). Dès qu'un cinq
    * existe, le banc se verrouille et on ne peut plus attribuer une action à quelqu'un d'assis.
@@ -412,7 +412,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   const selectionLabel = !selection ? null
     : selection.side === 'them'
-      ? (selection.id ? (opponentById.get(selection.id)?.name ?? '?') : `${opponentName} (sans joueuse)`)
+      ? (selection.id ? (opponentById.get(selection.id)?.name ?? '?') : `${opponentName} (sans joueur)`)
       : playerNameShort(playerById.get(selection.id!)!);
 
   /* ── Saisie ────────────────────────────────────────────────────────────── */
@@ -446,7 +446,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }, [match.id, events, onCourtBySide.us, onCourtBySide.them]);
 
   /** Traduit la sélection courante en champs d'événement — le seul endroit qui sait qu'une
-   *  joueuse adverse s'écrit dans `opponentPlayerId` et pas dans `playerId`. */
+   *  joueur adverse s'écrit dans `opponentPlayerId` et pas dans `playerId`. */
   function authorFields(sel: Selection): Partial<MatchEvent> {
     return sel.side === 'us'
       ? { side: 'us', playerId: sel.id! }
@@ -477,7 +477,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }
 
   /**
-   * Tap sur un bouton de la palette. Comme pour les tirs, L'ORDRE EST LIBRE : si une joueuse est
+   * Tap sur un bouton de la palette. Comme pour les tirs, L'ORDRE EST LIBRE : si un joueur est
    * déjà armée, l'action part tout de suite ; sinon l'action s'arme et attend son auteur. Les deux
    * chemins produisent le même événement en deux taps.
    */
@@ -574,7 +574,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       case 'swap':
         pushLineup(side, sideOnCourt.map(id => id === move.outgoing ? move.incoming : id), [move.incoming], [move.outgoing]);
         setPendingSub(null);
-        // La joueuse armée vient de sortir : la désarmer plutôt que de laisser pointer ses actions.
+        // Le joueur armé vient de sortir : le désarmer plutôt que de laisser pointer ses actions.
         setSelection(prev => prev?.side === side && prev.id === move.outgoing ? null : prev);
         break;
       case 'none': break;
@@ -609,7 +609,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    * Trois raccourcis, pas trente : ceux qu'on retient sans les relire. Les dix lettres d'action
    * ont été retirées — autant de mnémoniques à mémoriser, c'est une charge, pas un gain.
    *
-   * Toute frappe est ignorée dès qu'un champ a le focus : le formulaire d'ajout de joueuse
+   * Toute frappe est ignorée dès qu'un champ a le focus : le formulaire d'ajout de joueur
    * adverse est sur le même écran, taper « Dupont » ne doit rien déclencher.
    */
   useEffect(() => {
@@ -1519,7 +1519,7 @@ function SettingsModal({ periodDurationSeconds, onPeriodDurationChange, shotInpu
  * n'existe en base : il se saisit ici, à la chaîne. Entrée valide et rend la main au champ numéro,
  * de sorte qu'on tape la feuille de l'autre banc d'une traite, sans quitter le clavier.
  *
- * Une joueuse déjà référencée par une action pointée ou présente sur le terrain ne peut plus être
+ * Un joueur déjà référencé par une action pointée ou présent sur le terrain ne peut plus être
  * retirée : l'effacer laisserait un « ? » dans l'historique.
  */
 function OpponentSheetModal({ opponentName, opponents, usedIds, onAdd, onRemove, onClose }: {
@@ -1694,7 +1694,7 @@ function RosterTitle({ name, count }: { name: string; count: number }) {
   );
 }
 
-/** Ligne d'une joueuse adverse — même gabarit sur le terrain et au banc, comme pour les nôtres. */
+/** Ligne d'un joueur adverse — même gabarit sur le terrain et au banc, comme pour les nôtres. */
 function OpponentRow({ player, active, marked, dimmed, canEdit, onClick }: {
   player: MatchOpponentPlayer; active: boolean; marked: boolean; dimmed?: boolean;
   canEdit: boolean; onClick: () => void;
