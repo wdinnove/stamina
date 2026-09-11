@@ -8,6 +8,7 @@ import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } fro
 import { useUrlState } from '../hooks/useUrlState';
 import { ConfigCard, ConfigAction } from './ConfigCard';
 import { TacticalConfigImportModal } from './TacticalConfigImportModal';
+import { downloadCsv } from '../utils/csv';
 
 function friendlyDeleteError(e: unknown, itemLabel: string): string {
   const message = e instanceof Error ? e.message : String(e);
@@ -358,15 +359,7 @@ export function TacticalConfigManager({ teamId }: { teamId: string }) {
           })),
       })),
     );
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'configuration_tactique.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadCsv(csv, 'configuration_tactique.csv');
   }
 
   function toggleCategorySelected(id: string) {

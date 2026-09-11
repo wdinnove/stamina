@@ -16,6 +16,7 @@ import { playerNameFull } from '../utils/playerName';
 import type { Match, Player, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { Modal } from './Modal';
 import { DropzoneEmptyState } from './DropzoneEmptyState';
+import { downloadCsv } from '../utils/csv';
 
 /** Valeurs hors catalogue configuré (par catégorie/dimension déjà existantes — une catégorie/dimension
  *  nouvelle n'a par définition pas encore de catalogue à vérifier). Jamais bloquant, juste informatif. */
@@ -66,15 +67,7 @@ Valeur,Temps fort,Forme de jeu,Finalité,Reconquête
 `;
 
 function downloadTacticalCsvTemplate() {
-  const blob = new Blob(['﻿' + TACTICAL_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = 'modele_donnees_tactiques.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCsv(TACTICAL_CSV_TEMPLATE, 'modele_donnees_tactiques.csv');
 }
 
 /** Lecture d'un CSV en UTF-8 — encodage des exports du logiciel vidéo (le mojibake résiduel

@@ -11,7 +11,7 @@
  */
 import { playingTime, lineupIntervals } from './liveTrackingAnalysis';
 import { shotEventValue } from './shotChart';
-import type { MatchEvent, MatchLineupEvent, LineupSide } from './types';
+import type { MatchEvent, MatchEventType, MatchLineupEvent, LineupSide } from './types';
 
 /**
  * Une ligne de boxscore par joueur. Structurellement identique à `BulkStatRow` (api/stats.ts) —
@@ -34,6 +34,13 @@ export interface PlayerBoxscoreRow {
   eval: number;
   plusMinus: number;
 }
+
+/** Nom court de chaque type d'action, en français — la seule liste, partagée par l'écran de saisie
+ *  et l'export. Court volontairement : elle s'affiche dans des puces d'historique. */
+export const EVENT_LABELS: Record<MatchEventType, string> = {
+  shot: 'Tir', ft: 'LF', reb_off: 'Rebond off.', reb_def: 'Rebond déf.', ast: 'Passe déc.',
+  stl: 'Interception', blk: 'Contre', tov: 'Ballon perdu', foul: 'Faute', foul_drawn: 'Faute reçue',
+};
 
 /** Points rapportés par un événement — 0 pour tout ce qui n'est pas un tir réussi. */
 export function eventPoints(event: MatchEvent): number {

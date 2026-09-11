@@ -571,7 +571,12 @@ Sans cette phase, l'écran est une démo.
 - ✅ **Collision de `seq`** : l'insertion reprend un rang libre sur violation de clé (23505) et
   l'écran se recharge, au lieu de perdre l'action. Le verrou « un seul saisisseur » ou le `seq`
   côté serveur restent la solution propre si l'usage à deux devient réel.
-- Export **play-by-play + feuille de match en PDF** (`jspdf` est déjà installé) — à faire.
+- ✅ **Export play-by-play en CSV** ([`data/playByPlay.ts`](../src/data/playByPlay.ts), bouton
+  « CSV » dans le bandeau d'historique) : une ligne par action, avec le score courant recalculé
+  ligne à ligne. C'est ce qui permet d'arbitrer un désaccord avec la feuille de marque officielle
+  — sans lui, un écart de deux points en fin de match n'a aucun moyen d'être retracé. Le CSV
+  plutôt que le PDF : il s'ouvre dans un tableur, se filtre et se recoupe, là où un PDF ne sert
+  qu'à être lu. La feuille de match imprimable reste à faire si le besoin apparaît.
 
 ### Évaluation : vérifiée ✅
 

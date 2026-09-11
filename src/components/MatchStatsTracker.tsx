@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, AlertTriangle, X } from 'lucide-react';
+import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, Download, AlertTriangle, X } from 'lucide-react';
 import { DiagramCourt } from './DiagramCourt';
 import { ShotGrid, SHOT_COLORS } from './ShotChart';
 import { PlayerAvatar } from './PlayerAvatar';
@@ -14,7 +14,9 @@ import { useMatchClock, PERIOD_PRESETS_MIN } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
-import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents } from '../data/matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS } from '../data/matchEvents';
+import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
+import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
 import { shotEventValue, shotValue, shotZone, ZONE_LABELS } from '../data/shotChart';
 import { playerNameShort, playerNameFull } from '../utils/playerName';
 import type {
@@ -224,11 +226,6 @@ const NO_POSITION_SHOTS: { label: string; made: boolean; value: 2 | 3 }[] = [
   { label: '3 ✓', made: true,  value: 3 },
   { label: '3 ✗', made: false, value: 3 },
 ];
-
-const EVENT_LABELS: Record<MatchEventType, string> = {
-  shot: 'Tir', ft: 'LF', reb_off: 'Rebond off.', reb_def: 'Rebond déf.', ast: 'Passe déc.',
-  stl: 'Interception', blk: 'Contre', tov: 'Ballon perdu', foul: 'Faute', foul_drawn: 'Faute reçue',
-};
 
 export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTrackerProps) {
   const clock = useMatchClock(match.id);
@@ -737,6 +734,21 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     ? (playerById.has(id) ? playerNameShort(playerById.get(id)!) : '?')
     : (opponentById.get(id)?.name ?? '?');
 
+  /**
+   * Play-by-play en CSV. C'est la seule sortie qui rend la saisie exploitable ailleurs : tableur,
+   * archive, et surtout arbitrage d'un désaccord avec la feuille de marque officielle — sans elle,
+   * un écart de deux points en fin de match n'a aucun moyen d'être retracé.
+   */
+  function exportPlayByPlay() {
+    const rows = playByPlayRows(events, {
+      us: ourTeamName,
+      them: opponentName,
+      player:   id => (playerById.has(id) ? playerNameFull(playerById.get(id)!) : '?'),
+      opponent: id => opponentById.get(id)?.name ?? '?',
+    });
+    downloadCsv(toCsv([[...PLAY_BY_PLAY_HEADER], ...rows]), csvFilename('play-by-play', opponentName, match.date));
+  }
+
   function eventText(e: MatchEvent): string {
     const author = e.side === 'us'
       ? (e.playerId ? playerNameShort(playerById.get(e.playerId)!) : '')
@@ -882,6 +894,12 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <Undo2 size={14} />Annuler
             </button>
           )}
+
+          <button onClick={exportPlayByPlay} disabled={events.length === 0}
+            title="Exporter le play-by-play en CSV"
+            style={{ ...SMALL_BTN, flexShrink: 0, opacity: events.length === 0 ? 0.4 : 1, cursor: events.length === 0 ? 'not-allowed' : 'pointer' }}>
+            <Download size={14} style={{ marginRight: 5 }} />CSV
+          </button>
 
           <button onClick={() => setShowFullHistory(v => !v)} aria-expanded={showFullHistory}
             title="Voir tout l'historique"

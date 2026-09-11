@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 import { DropzoneEmptyState } from './DropzoneEmptyState';
 import { playerNameFull } from '../utils/playerName';
 import { LAYER } from '../styles/layers';
+import { downloadCsv } from '../utils/csv';
 
 // ─── Types internes ───────────────────────────────────────────────────────────
 
@@ -99,15 +100,7 @@ Bernard Inès;1;18;6;2;4;0;0;2;2;2;3;2;0;0;1;2;1;2;+1
 `;
 
 function downloadCsvTemplate() {
-  const blob = new Blob(['﻿' + CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = 'modele_stats_match.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCsv(CSV_TEMPLATE, 'modele_stats_match.csv');
 }
 
 function emptyRow(): CsvRow {

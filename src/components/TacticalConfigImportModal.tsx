@@ -8,6 +8,7 @@ import type { ParsedConfigCategory } from '../utils/tacticalCsvParser';
 import type { TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { Modal } from './Modal';
 import { DropzoneEmptyState } from './DropzoneEmptyState';
+import { downloadCsv } from '../utils/csv';
 
 // ─── Modèle CSV téléchargeable ──────────────────────────────────────────────────
 // Deux catégories, des dimensions au nombre d'options différent, et une dimension
@@ -23,15 +24,7 @@ Attaque rapide;Valeur
 `;
 
 function downloadConfigCsvTemplate() {
-  const blob = new Blob(['﻿' + CONFIG_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = 'modele_configuration_tactique.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCsv(CONFIG_CSV_TEMPLATE, 'modele_configuration_tactique.csv');
 }
 
 const newBadgeStyle: CSSProperties = {
