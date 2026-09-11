@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shotValue, shotZone, zoneStats } from './shotChart';
-import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents } from './matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, type PlayerBoxscoreRow } from './matchEvents';
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, MatchLineupEvent } from './types';
 
@@ -130,13 +130,13 @@ describe('boxscoreFromEvents', () => {
   it('produit le boxscore adverse à partir des joueuses nommées, en ignorant l\'agrégé', () => {
     const events = [
       ev({ side: 'them', opponentPlayerId: 'o1', x: 7.5, y: 9.0, made: true }),
-      ev({ side: 'them', opponentPlayerId: 'o1', type: 'foul' }),
+      ev({ side: 'them', opponentPlayerId: 'o1', type: 'foul' }),        // → fte, PAS fpr
       ev({ side: 'them', x: 7.5, y: 2.0, made: true, value: 2 }),  // panier encaissé sans auteur
     ];
     const rows = boxscoreFromEvents(events, lineups, 600, 1, 600, 'them');
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ playerId: 'o1', fg3a: 1, fg3m: 1, fpr: 1, pts: 3 });
+    expect(rows[0]).toMatchObject({ playerId: 'o1', fg3a: 1, fg3m: 1, fte: 1, fpr: 0, pts: 3 });
     // Le panier anonyme compte quand même au score.
     expect(scoreFromEvents(events).them).toBe(5);
   });
@@ -210,5 +210,40 @@ describe('teamTotalsFromEvents', () => {
     const rows = boxscoreFromEvents(events, [], 600, 1, 600, 'them');
     expect(rows).toHaveLength(1);
     expect(rows[0].fg2a).toBe(0);
+  });
+});
+
+describe('evaluation', () => {
+  const row = (over: Partial<PlayerBoxscoreRow>): PlayerBoxscoreRow => ({
+    playerId: 'p1', starter: false, min: 0,
+    fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
+    ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,
+    pts: 0, eval: 0, plusMinus: 0, ...over,
+  });
+
+  // Lignes réelles d'un import eMarque : c'est cette confrontation qui a établi la formule et
+  // révélé que `fte` et `fpr` étaient lues à l'envers partout.
+  it('reproduit les évaluations de la feuille de marque', () => {
+    expect(evaluation(row({
+      pts: 11, fg2m: 3, fg2a: 7, fg3m: 0, fg3a: 1, ftm: 5, fta: 10,
+      ro: 2, rd: 2, pd: 1, ct: 0, intercepts: 2, bp: 0, fte: 1, fpr: 5,
+    }))).toBe(13);
+
+    expect(evaluation(row({
+      pts: 6, fg2m: 2, fg2a: 5, ftm: 2, fta: 2,
+      ro: 0, rd: 3, pd: 1, ct: 1, intercepts: 4, bp: 1, fte: 2, fpr: 2,
+    }))).toBe(13);
+
+    expect(evaluation(row({
+      fg2a: 2, fg3a: 2, pd: 2, intercepts: 1, bp: 1, fte: 4, fpr: 0,
+    }))).toBe(-2);
+  });
+
+  it("ne retranche pas les fautes commises — l'évaluation FFBB n'est pas l'index FIBA", () => {
+    expect(evaluation(row({ pts: 10, fte: 5 }))).toBe(10);
+  });
+
+  it('crédite les fautes provoquées', () => {
+    expect(evaluation(row({ pts: 10, fpr: 4 }))).toBe(14);
   });
 });

@@ -717,7 +717,18 @@ Un profil est un jeu d'indicateurs pondérés ; son libellé ne doit rien promet
 - « Moteur d'énergie » (rebond offensif + fautes provoquées) est devenu **« Présence au rebond et au contact »**. Un moteur d'énergie se reconnaît aux déviations, ballons libres récupérés et écrans — aucune de ces données n'est saisie.
 - **« Intérieur shooteur (stretch 5) »** ajouté : il manquait. Volume ET adresse à 3 points, avec un poids négatif sur le rebond offensif — une intérieure qui reste au cercle est l'inverse d'un profil qui écarte le jeu.
 
-⚠️ `fte` = fautes **reçues** (provoquées), `fpr` = fautes **commises**. Le schéma, le formulaire d'import et `featureRegistry` concordent ; le registre d'indicateurs avait les deux libellés inversés, si bien que « Fautes commises » affichait les fautes provoquées dans le classement, les objectifs et les corrélations.
+⚠️ **`fte` = fautes COMMISES, `fpr` = fautes PROVOQUÉES** — l'inverse de ce que les noms de colonnes suggèrent, et l'inverse de ce que l'application a longtemps supposé (le commentaire de `schema.sql` était faux, tout le reste s'était aligné dessus).
+
+Établi sur les données, pas sur la convention : sur 457 lignes importées, `fte` ne dépasse jamais 5 — le plafond d'élimination FIBA — quand `fpr` monte à 9 ; et la colonne `eval` de l'eMarque se reproduit exactement en **ajoutant** `fpr`, ce que seule une faute provoquée justifie. La correction a touché `evaluation()`, la ventilation des fautes de la saisie en direct, le registre d'indicateurs, la PCA, les clés d'archétypes (`foulsPer36` / `foulsDrawnPer36`, nommées d'après ce qu'elles mesurent), la table d'en-têtes de l'import CSV et les libellés d'écran.
+
+**Évaluation FFBB** (vérifiée à la ligne près) :
+
+```
+eval = pts + ro + rd + pd + ct + interceptions + fautes provoquées
+     − (tirs manqués + lancers francs manqués + ballons perdus)
+```
+
+Les fautes commises n'y sont **pas** retranchées : l'index d'efficacité FIBA le fait, l'évaluation FFBB non.
 
 ---
 

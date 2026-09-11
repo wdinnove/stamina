@@ -193,7 +193,7 @@ export function TeamCompareStatBlocks({ a, b, display }: Props) {
             <Row label="% PD"              period={astShareP}             season={astShareS}             unit="%" />
             <Row label="Ballons perdus"    period={p(t => t.bp)}          season={s(t => t.bp)}          dec={1} higherIsBetter={false} />
             <Row label="% BP"              period={toPctP}                season={toPctS}                unit="%" higherIsBetter={false} />
-            <Row label="Fautes provoquées" period={p(t => t.fte)}         season={s(t => t.fte)}         dec={1} />
+            <Row label="Fautes commises" period={p(t => t.fte)}         season={s(t => t.fte)}         dec={1} />
             {/* FT Rate est un RATIO (0,28 = 28 LF pour 100 tirs), pas un pourcentage : même forme
                 qu'en base (ft_rate NUMERIC(4,2)) et que dans le boxscore. */}
             <Row label="FT Rate"           period={ftRateP}               season={ftRateS}               dec={2} />

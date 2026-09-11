@@ -69,7 +69,7 @@ export const DIMENSIONS_V1: DimensionDefinition[] = [
       { featureKey: 'interceptsPer36', weight: 2 },
       { featureKey: 'ctPer36', weight: 2 },
       { featureKey: 'drebPct', weight: 1 },
-      { featureKey: 'fprPer36', weight: -1 },
+      { featureKey: 'foulsPer36', weight: -1 },
     ],
     status: 'partial_proxy',
     caveat: "Pas de rating défensif individuel ni de split on/off — proxy box-score uniquement.",
@@ -80,7 +80,7 @@ export const DIMENSIONS_V1: DimensionDefinition[] = [
     description: 'Volume de secondes efforts et de gestes défensifs par minute jouée.',
     indicators: [
       { featureKey: 'orebPct', weight: 1 },
-      { featureKey: 'ftePer36', weight: 1 },
+      { featureKey: 'foulsDrawnPer36', weight: 1 },
       { featureKey: 'interceptsPer36', weight: 1 },
       { featureKey: 'ctPer36', weight: 1 },
     ],
@@ -107,7 +107,7 @@ export const DIMENSIONS_V1: DimensionDefinition[] = [
     description: 'Propension à chercher le contact et à jouer un rôle à fort volume.',
     indicators: [
       { featureKey: 'ftRate', weight: 2 },
-      { featureKey: 'ftePer36', weight: 2 },
+      { featureKey: 'foulsDrawnPer36', weight: 2 },
       { featureKey: 'usagePct', weight: 1 },
     ],
     status: 'partial_proxy',

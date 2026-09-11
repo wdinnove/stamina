@@ -300,7 +300,7 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
               <Row label="% PD"              period={pAstR}    season={sAstR}    unit="%" />
               <Row label="Ballons perdus"    period={p('bp')}  season={s('bp')}  dec={1} higherIsBetter={false} />
               <Row label="% BP"              period={pTovR}    season={sTovR}    unit="%" higherIsBetter={false} />
-              <Row label="Fautes provoquées" period={p('fte')} season={s('fte')} dec={1} />
+              <Row label="Fautes commises" period={p('fte')} season={s('fte')} dec={1} />
               <Row label="FT Rate"           period={pFtr}     season={sFtr}     dec={2} />
             </>
           </Block>

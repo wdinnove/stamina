@@ -80,8 +80,8 @@ const oppPossOf = (m: TeamMatchStat) => m.opp_possessions ?? m.possessions;
  * des corrélations. `explain` et `sense` alimentent le glossaire de la page d'aide : une seule
  * source, pas une liste parallèle à maintenir.
  *
- * ⚠️ `fte` = fautes REÇUES (provoquées), `fpr` = fautes COMMISES — cf. schema.sql et le formulaire
- * d'import. Les deux libellés étaient inversés ici comme dans crossAnalysis.
+ * ⚠️ `fte` = fautes COMMISES, `fpr` = fautes PROVOQUÉES — l'inverse de ce que les noms suggèrent,
+ * établi en confrontant `evaluation()` aux lignes importées de l'eMarque (cf. schema.sql).
  */
 export const VARIABLES: TeamVariable[] = [
   { key: 'fg2Pct',     label: '2%',        longLabel: 'Réussite aux tirs à 2 points',
@@ -135,11 +135,11 @@ export const VARIABLES: TeamVariable[] = [
   { key: 'bp',         label: 'Bp',        longLabel: 'Ballons perdus',
     explain: 'Possessions perdues sans tir. À rapporter au rythme de jeu via %BP.', sense: 'lower',
     get: m => m.bp },
-  { key: 'fte',        label: 'Fp',        longLabel: 'Fautes provoquées',
-    explain: "Fautes subies : autant d'occasions de lancers francs et de fautes accumulées côté adverse.", sense: 'higher',
-    get: m => m.fte },
-  { key: 'fpr',        label: 'Fte',       longLabel: 'Fautes commises',
+  { key: 'fte',        label: 'Fte',       longLabel: 'Fautes commises',
     explain: 'Fautes sifflées contre son équipe. Trop de fautes envoie l\'adversaire sur la ligne et fatigue la rotation.', sense: 'lower',
+    get: m => m.fte },
+  { key: 'fpr',        label: 'Fp',        longLabel: 'Fautes provoquées',
+    explain: "Fautes subies : autant d'occasions de lancers francs et de fautes accumulées côté adverse.", sense: 'higher',
     get: m => m.fpr },
   { key: 'offRating',  label: 'ORtg',      longLabel: 'Efficacité offensive (ORtg)',
     explain: "Points marqués pour 100 possessions. Compare l'attaque indépendamment du rythme de jeu.", sense: 'higher',

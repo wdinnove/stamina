@@ -137,7 +137,7 @@ export const PROFILES_V1: ProfileDefinition[] = [
     indicators: [
       { featureKey: 'ctPer36', weight: 3 },
       { featureKey: 'drebPct', weight: 1 },
-      { featureKey: 'fprPer36', weight: -1 },
+      { featureKey: 'foulsPer36', weight: -1 },
     ],
     status: 'partial_proxy',
     eligiblePositions: ['Pivot', 'Ailier Fort', 'Ailier'],
@@ -196,7 +196,7 @@ export const PROFILES_V1: ProfileDefinition[] = [
     indicators: [
       { featureKey: 'interceptsPer36', weight: 3 },
       { featureKey: 'drebPct', weight: 1 },
-      { featureKey: 'fprPer36', weight: -1 },
+      { featureKey: 'foulsPer36', weight: -1 },
     ],
     status: 'partial_proxy',
     eligiblePositions: ['Meneur', 'Arrière', 'Ailier'],
@@ -213,7 +213,7 @@ export const PROFILES_V1: ProfileDefinition[] = [
     category: 'energie',
     indicators: [
       { featureKey: 'orebPct', weight: 2 },
-      { featureKey: 'ftePer36', weight: 2 },
+      { featureKey: 'foulsDrawnPer36', weight: 2 },
     ],
     status: 'partial_proxy',
     // Pas d'eligiblePositions : rôle transversal, proposé à tous les postes.

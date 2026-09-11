@@ -1054,8 +1054,8 @@ export default function MatchDetailPage() {
                 ]},
               ] as MetricGroup[] : []),
               { title: 'Fautes', metrics: [
-                { label: 'FPR', a: sA.fpr, b: sB.fpr, displayA: String(sA.fpr), displayB: String(sB.fpr), higherBetter: false },
-                { label: 'FTE', a: sA.fte, b: sB.fte, displayA: String(sA.fte), displayB: String(sB.fte), higherBetter: null },
+                { label: 'FTE', a: sA.fte, b: sB.fte, displayA: String(sA.fte), displayB: String(sB.fte), higherBetter: false },
+                { label: 'FPR', a: sA.fpr, b: sB.fpr, displayA: String(sA.fpr), displayB: String(sB.fpr), higherBetter: null },
               ]},
             ];
             const selStyle: React.CSSProperties = { backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', fontSize: '0.82rem', padding: '7px 10px', cursor: 'pointer', outline: 'none', flex: 1 };
@@ -1158,8 +1158,8 @@ export default function MatchDetailPage() {
                 { label: 'IN', own: teamStats.intercepts, opp: teamStats.opp_intercepts, higherBetter: true },
               ]},
               { title: 'Fautes', rows: [
-                { label: 'FTE', own: teamStats.fte, opp: teamStats.opp_fte, higherBetter: null },
-                { label: 'FPR', own: teamStats.fpr, opp: teamStats.opp_fpr, higherBetter: false },
+                { label: 'FTE', own: teamStats.fte, opp: teamStats.opp_fte, higherBetter: false },
+                { label: 'FPR', own: teamStats.fpr, opp: teamStats.opp_fpr, higherBetter: null },
               ]},
             ];
             return (

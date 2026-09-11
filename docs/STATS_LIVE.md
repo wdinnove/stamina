@@ -568,27 +568,36 @@ Sans cette phase, l'écran est une démo.
   côté serveur restent la solution propre si l'usage à deux devient réel.
 - Export **play-by-play + feuille de match en PDF** (`jspdf` est déjà installé) — à faire.
 
-### Vérifier la formule d'évaluation
+### Évaluation : vérifiée ✅
 
-`evaluation()` (`data/matchEvents.ts`) est la convention FIBA/FFBB, mais `match_stats.eval` vient
-aujourd'hui exclusivement du CSV eMarque : tant que les deux n'ont pas été confrontés sur un match
-réel, la colonne publiée par la saisie peut diverger d'une unité de celle que le staff lit chaque
-semaine. Aucun jeu d'essai eMarque n'est versionné dans le dépôt, la vérification se fait donc
-directement en base, sur un match déjà importé :
+`evaluation()` (`data/matchEvents.ts`) a été confrontée aux **457 lignes** déjà importées de
+l'eMarque. La formule qui les reproduit à la ligne près est :
 
-```sql
-SELECT player_id, eval AS eval_emarque,
-       (pts + ro + rd + pd + ct + intercepts + fte)
-     - ((fg2a - fg2m) + (fg3a - fg3m) + (fta - ftm) + bp + fpr) AS eval_calcule
-FROM   match_stats
-WHERE  match_id = '<un match importé par CSV>'
-  AND  eval IS NOT NULL
-ORDER  BY 1;
+```
+eval = pts + ro + rd + pd + ct + interceptions + fautes provoquées
+     − (tirs manqués + lancers francs manqués + ballons perdus)
 ```
 
-Toute ligne où les deux colonnes diffèrent désigne une composante que l'eMarque compte autrement.
-Tant que ça n'est pas fait, prendre `eval` d'un match saisi avec la même prudence qu'une valeur
-calculée maison. **C'est la dernière inconnue de la publication.**
+Deux enseignements, tous deux corrigés dans le code :
+
+1. **Les fautes commises ne sont pas retranchées.** L'index d'efficacité FIBA le fait, l'évaluation
+   FFBB — celle que lit le staff — non.
+2. **`fte` et `fpr` étaient lues à l'envers dans toute l'application.** `fte` contient les fautes
+   COMMISES (jamais plus de 5, c'est le plafond d'élimination), `fpr` les fautes PROVOQUÉES (jusqu'à
+   9 dans les données). Le commentaire de `schema.sql` disait l'inverse et tout le reste s'était
+   aligné dessus : libellés du classement et des objectifs, PCA, archétypes, table d'en-têtes de
+   l'import CSV, et la ventilation des fautes de cet écran. Voir docs/CALCULS.md.
+
+La vérification se rejoue par cette requête, si la source de données change :
+
+```sql
+SELECT count(*) AS lignes,
+       count(*) FILTER (
+         WHERE eval = (pts + ro + rd + pd + ct + intercepts + fpr)
+                    - ((fg2a - fg2m) + (fg3a - fg3m) + (fta - ftm) + bp)
+       ) AS concordantes
+FROM   match_stats WHERE eval IS NOT NULL;
+```
 
 ### Phase 3 — Analytique dérivée
 

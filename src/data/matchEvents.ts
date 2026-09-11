@@ -80,18 +80,21 @@ function emptyRow(playerId: string): PlayerBoxscoreRow {
 }
 
 /**
- * Évaluation FIBA/FFBB : ce qu'on apporte moins ce qu'on gâche.
+ * Évaluation FFBB : ce qu'on apporte moins ce qu'on gâche.
  *
- * ⚠️ Aujourd'hui `match_stats.eval` vient exclusivement du CSV eMarque, l'app ne l'a jamais
- * calculée. Cette formule est la convention officielle, mais elle doit être confrontée à un match
- * déjà importé avant d'être publiée : un écart d'une unité sur une colonne que le staff lit
- * chaque semaine coûte plus cher que la colonne elle-même.
+ * VÉRIFIÉE sur 457 lignes importées de l'eMarque, à la ligne près — c'est cette confrontation qui
+ * a révélé que les deux colonnes de fautes étaient lues à l'envers dans toute l'application.
+ *
+ * Deux pièges qu'elle contient :
+ *   • `fpr` sont les fautes PROVOQUÉES, donc un CRÉDIT, malgré son nom.
+ *   • Les fautes commises (`fte`) ne sont PAS retranchées. L'index d'efficacité FIBA les
+ *     retranche, l'évaluation FFBB non — et c'est l'évaluation FFBB que lit le staff.
  */
 export function evaluation(r: PlayerBoxscoreRow): number {
   const missedFg = (r.fg2a - r.fg2m) + (r.fg3a - r.fg3m);
   const missedFt = r.fta - r.ftm;
-  return (r.pts + r.ro + r.rd + r.pd + r.ct + r.intercepts + r.fte)
-       - (missedFg + missedFt + r.bp + r.fpr);
+  return (r.pts + r.ro + r.rd + r.pd + r.ct + r.intercepts + r.fpr)
+       - (missedFg + missedFt + r.bp);
 }
 
 /**
@@ -150,8 +153,11 @@ export function boxscoreFromEvents(
       case 'stl':        r.intercepts += 1; break;
       case 'blk':        r.ct += 1;  break;
       case 'tov':        r.bp += 1;  break;
-      case 'foul':       r.fpr += 1; break;
-      case 'foul_drawn': r.fte += 1; break;
+      // `fte` = fautes COMMISES, `fpr` = fautes PROVOQUÉES. Les noms disent l'inverse, la base
+      // fait foi (cf. schema.sql). C'était inversé ici, donc un match publié depuis la saisie
+      // comptait les fautes à l'envers de tous les matchs importés.
+      case 'foul':       r.fte += 1; break;
+      case 'foul_drawn': r.fpr += 1; break;
     }
   }
 
@@ -193,8 +199,8 @@ export function teamTotalsFromEvents(events: MatchEvent[], side: LineupSide): Te
       case 'stl':        t.intercepts += 1; break;
       case 'blk':        t.ct += 1;  break;
       case 'tov':        t.bp += 1;  break;
-      case 'foul':       t.fpr += 1; break;
-      case 'foul_drawn': t.fte += 1; break;
+      case 'foul':       t.fte += 1; break;
+      case 'foul_drawn': t.fpr += 1; break;
     }
   }
   t.possessions = Math.round(possessionsFromEvents(events, side) * 10) / 10;

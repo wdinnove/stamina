@@ -185,9 +185,10 @@ describe('documentation des indicateurs', () => {
   });
 
   it('n\'inverse plus fautes commises et fautes provoquées', () => {
-    // `fte` = fautes reçues, `fpr` = fautes commises (schema.sql, formulaire d'import).
-    expect(indicatorByKey('fte')!.label).toBe('Fautes provoquées');
-    expect(indicatorByKey('fpr')!.label).toBe('Fautes commises');
+    // Établi en confrontant `evaluation()` à 457 lignes importées : `fte` ne dépasse jamais 5
+    // (élimination), `fpr` monte à 9 et est CRÉDITÉ par l'évaluation de l'eMarque.
+    expect(indicatorByKey('fte')!.label).toBe('Fautes commises');
+    expect(indicatorByKey('fpr')!.label).toBe('Fautes provoquées');
     expect(indicatorByKey('fte')!.sense).toBe('higher');
     expect(indicatorByKey('fpr')!.sense).toBe('lower');
   });

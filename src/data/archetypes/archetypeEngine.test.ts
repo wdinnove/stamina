@@ -28,13 +28,13 @@ const TEST_PROFILES: ProfileDefinition[] = [
     key: 'disruptor', label: 'Perturbateur', description: '', category: 'defense', status: 'available',
     indicators: [
       { featureKey: 'interceptsPer36', weight: 3 },
-      { featureKey: 'fprPer36', weight: -1 },
+      { featureKey: 'foulsPer36', weight: -1 },
     ],
   },
 ];
 
-function player(playerId: string, over: Partial<RawPlayerStats['advancedAgg']> & { interceptsPer36?: number; fprPer36?: number }): RawPlayerStats {
-  const { interceptsPer36, fprPer36, ...advanced } = over;
+function player(playerId: string, over: Partial<RawPlayerStats['advancedAgg']> & { interceptsPer36?: number; foulsPer36?: number }): RawPlayerStats {
+  const { interceptsPer36, foulsPer36, ...advanced } = over;
   return makeRawPlayerStats({
     playerId,
     matches: 12,
@@ -43,7 +43,7 @@ function player(playerId: string, over: Partial<RawPlayerStats['advancedAgg']> &
       pts: 0, fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0,
       ro: 0, rd: 0, pd: 0,
       ct: 0, intercepts: Math.round(((interceptsPer36 ?? 0) * 300) / 36), bp: 0,
-      fte: 0, fpr: Math.round(((fprPer36 ?? 0) * 300) / 36),
+      fte: Math.round(((foulsPer36 ?? 0) * 300) / 36), fpr: 0,
       startsCount: 0, plusMinus: 0, plusMinusCount: 0,
     },
     advancedAgg: {
@@ -57,7 +57,7 @@ function player(playerId: string, over: Partial<RawPlayerStats['advancedAgg']> &
 describe('computeArchetypesForSquad (intégration)', () => {
   const hubPlayer = player('hub-player', { usagePct: 30, astPct: 32, ptsProd: 22, tovPct: 8 });
   const rebounderPlayer = player('rebounder-player', { usagePct: 15, astPct: 5, ptsProd: 8, tovPct: 12, orebPct: 14, drebPct: 26, trebPct: 38 });
-  const disruptorPlayer = player('disruptor-player', { usagePct: 18, astPct: 10, ptsProd: 10, tovPct: 15, orebPct: 4, drebPct: 14, trebPct: 18, interceptsPer36: 3.2, fprPer36: 1.0 });
+  const disruptorPlayer = player('disruptor-player', { usagePct: 18, astPct: 10, ptsProd: 10, tovPct: 15, orebPct: 4, drebPct: 14, trebPct: 18, interceptsPer36: 3.2, foulsPer36: 1.0 });
   // Complète les features non renseignées pour ne pas fausser les percentiles (valeurs neutres)
   const squad = [hubPlayer, rebounderPlayer, disruptorPlayer].map(p => player(p.playerId, {
     usagePct: p.advancedAgg.usagePct ?? 15,
@@ -68,7 +68,7 @@ describe('computeArchetypesForSquad (intégration)', () => {
     drebPct: p.advancedAgg.drebPct ?? 16,
     trebPct: p.advancedAgg.trebPct ?? 20,
     interceptsPer36: p.totals.intercepts ? (p.totals.intercepts * 36) / p.minutesTotal : 1,
-    fprPer36: p.totals.fpr ? (p.totals.fpr * 36) / p.minutesTotal : 3,
+    foulsPer36: p.totals.fte ? (p.totals.fte * 36) / p.minutesTotal : 3,
   }));
 
   it('fait ressortir le profil attendu en tête pour chaque joueur synthétique (sens des poids)', () => {
@@ -104,7 +104,7 @@ describe('computeArchetypesForSquad (intégration)', () => {
     const soloPlayer = player('solo', {
       usagePct: 20, astPct: 20, ptsProd: 20, tovPct: 20,
       orebPct: 20, drebPct: 20, trebPct: 20,
-      interceptsPer36: 2, fprPer36: 2,
+      interceptsPer36: 2, foulsPer36: 2,
     });
     const reports = computeArchetypesForSquad([soloPlayer], NO_POSITIONS, TEST_PROFILES, []);
     expect(reports).toHaveLength(1);
@@ -124,7 +124,7 @@ describe('computeArchetypesForSquad (intégration)', () => {
     const outlierWithFewMatches: RawPlayerStats = {
       ...player('one-game-wonder', {
         usagePct: 99, astPct: 99, ptsProd: 99, tovPct: 1,
-        orebPct: 99, drebPct: 99, trebPct: 99, interceptsPer36: 99, fprPer36: 0,
+        orebPct: 99, drebPct: 99, trebPct: 99, interceptsPer36: 99, foulsPer36: 0,
       }),
       matches: 2, // sous MIN_MATCHES_HARD_CUTOFF (3)
     };

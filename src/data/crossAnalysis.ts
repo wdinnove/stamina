@@ -563,12 +563,11 @@ const RAW_INDICATORS: IndicatorDef[] = [
   playerMatchStat('ct',         'Contres',                      'Ct',  '#A78BFA', '',  m => m.ct),
   playerMatchStat('intercepts', 'Interceptions',                'Int', '#EC4899', '',  m => m.intercepts),
   playerMatchStat('bp',         'Ballons perdus',               'Bp',  '#EF4444', '',  m => m.bp),
-  // `fte` = fautes REÇUES (provoquées), `fpr` = fautes COMMISES — cf. schema.sql, le formulaire
-  // d'import et featureRegistry, qui concordent tous. Les deux libellés étaient inversés ici :
-  // choisir « Fautes commises » dans le classement, un objectif ou une corrélation affichait en
-  // réalité les fautes provoquées, et inversement.
-  playerMatchStat('fte',        'Fautes provoquées',            'Fp',  '#4ADE80', '',  m => m.fte),
-  playerMatchStat('fpr',        'Fautes commises',              'Fte', '#F87171', '',  m => m.fpr),
+  // `fte` = fautes COMMISES (plafonnées à 5), `fpr` = fautes PROVOQUÉES (sans plafond). Les NOMS
+  // de colonnes disent l'inverse et l'app les a longtemps lues à l'envers ; c'est la confrontation
+  // de `evaluation()` à 457 lignes importées qui a tranché (cf. schema.sql).
+  playerMatchStat('fte',        'Fautes commises',              'Fte', '#F87171', '',  m => m.fte),
+  playerMatchStat('fpr',        'Fautes provoquées',            'Fp',  '#4ADE80', '',  m => m.fpr),
   // ── Match — Statistiques avancées ──
   playerAdvStat('adv_offRating', 'ORtg individuel (pts × 100 / possessions utilisées)', 'ORtg', '#00E5A0', a => a.offRating, ''),
   playerAdvStat('adv_efgPct',   'eFG% individuel',                  'eFG%',   '#EAB308', a => a.efgPct),

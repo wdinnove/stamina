@@ -80,8 +80,12 @@ const COL_MAP: Record<string, keyof CsvRow> = {
   'CT': 'ct', 'BLK': 'ct', 'BLOCKS': 'ct', 'CONTRES': 'ct',
   'IN': 'intercepts', 'STL': 'intercepts', 'STEALS': 'intercepts', 'INTERCEPTS': 'intercepts', 'INT': 'intercepts',
   'BP': 'bp', 'TO': 'bp', 'TOV': 'bp', 'TURNOVER': 'bp', 'BALLESPERDUES': 'bp',
-  'FTE': 'fte', 'PF': 'fte', 'FAUTESRECUES': 'fte', 'FAUTESOBTENUES': 'fte',
-  'FPR': 'fpr', 'FC': 'fpr', 'FAUTESCOMMISES': 'fpr', 'FAUTESPERSONNELLES': 'fpr',
+  // `fte` = fautes COMMISES, `fpr` = fautes PROVOQUÉES : l'inverse de ce que les noms suggèrent,
+  // mais c'est ce que contiennent les colonnes de l'eMarque (cf. schema.sql). La table associait
+  // « FAUTESRECUES » et « PF » (personal fouls) à la même colonne — les deux ne pouvaient pas
+  // être vraies, et c'est ce qui avait mis toute l'application à l'envers.
+  'FTE': 'fte', 'PF': 'fte', 'FC': 'fte', 'FAUTESCOMMISES': 'fte', 'FAUTESPERSONNELLES': 'fte',
+  'FPR': 'fpr', 'FAUTESRECUES': 'fpr', 'FAUTESOBTENUES': 'fpr', 'FAUTESPROVOQUEES': 'fpr',
   'EVAL': 'eval', 'EFF': 'eval', 'EFFICIENCY': 'eval', 'EVALUATION': 'eval',
   '+/-': 'plusMinus', 'PM': 'plusMinus', 'PLUSMINUS': 'plusMinus', 'PLUS/MINUS': 'plusMinus',
 };
@@ -477,8 +481,8 @@ function CollectiveForm({ values, onChange }: {
         {row('Contres', inp('ct'))}
         {row('Interceptions', inp('intercepts'))}
         {row('Balles perdues', inp('bp'))}
-        {row('Fautes reçues', inp('fte'))}
-        {row('Fautes commises', inp('fpr'))}
+        {row('Fautes commises', inp('fte'))}
+        {row('Fautes provoquées', inp('fpr'))}
         {readonlyVal('Possessions ≈', calcPoss())}
       </div>
     </div>

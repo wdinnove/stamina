@@ -44,8 +44,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: 'ftaPer36', label: 'Lancers tentés/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fta) },
   { key: 'ctPer36', label: 'Contres/36', source: 'boxscore', get: r => per36Rate(r, r.totals.ct) },
   { key: 'interceptsPer36', label: 'Interceptions/36', source: 'boxscore', get: r => per36Rate(r, r.totals.intercepts) },
-  { key: 'fprPer36', label: 'Fautes commises/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fpr) },
-  { key: 'ftePer36', label: 'Fautes provoquées/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fte) },
+  // Les colonnes `fte`/`fpr` portent l'inverse de ce que leur nom suggère : `fte` = fautes
+  // COMMISES, `fpr` = fautes PROVOQUÉES (cf. schema.sql). Les clés ci-dessous sont nommées d'après
+  // ce qu'elles MESURENT, pas d'après la colonne — c'est cette confusion qui donnait un malus aux
+  // joueuses qui provoquent des fautes et un bonus à celles qui en commettent.
+  { key: 'foulsPer36', label: 'Fautes commises/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fte) },
+  { key: 'foulsDrawnPer36', label: 'Fautes provoquées/36', source: 'boxscore', get: r => per36Rate(r, r.totals.fpr) },
 ];
 
 export function getFeature(key: string): FeatureDef | undefined {

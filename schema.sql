@@ -771,8 +771,13 @@ CREATE TABLE match_stats (
   intercepts SMALLINT NOT NULL DEFAULT 0,
   bp         SMALLINT NOT NULL DEFAULT 0,
 
-  fpr        SMALLINT NOT NULL DEFAULT 0,  -- fautes commises
-  fte        SMALLINT NOT NULL DEFAULT 0,  -- fautes reçues
+  -- ATTENTION au nom des colonnes, il induit en erreur et l'a fait longtemps :
+  --   fte = fautes COMMISES      (plafonnées à 5, élimination)
+  --   fpr = fautes PROVOQUÉES    (sans plafond)
+  -- Vérifié sur les données importées : `fte` n'a jamais dépassé 5, `fpr` monte à 9, et la
+  -- colonne `eval` de l'eMarque AJOUTE `fpr` — ce que seule une faute provoquée justifie.
+  fpr        SMALLINT NOT NULL DEFAULT 0,  -- fautes provoquées
+  fte        SMALLINT NOT NULL DEFAULT 0,  -- fautes commises
 
   eval       SMALLINT,
   plus_minus SMALLINT,
