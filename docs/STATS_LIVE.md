@@ -614,7 +614,13 @@ FROM   match_stats WHERE eval IS NOT NULL;
 - On/off et statistiques de cinq **au point près** (aujourd'hui à la possession)
 - Courbe d'écart et détection des runs (`scoreTimeline`)
 - Splits par quart-temps
-- Shot chart **agrégé sur la saison**, par joueur et par équipe
+- ✅ Shot chart **agrégé sur la saison** ([`SeasonShotChartPanel`](../src/components/SeasonShotChartPanel.tsx),
+  onglet *Statistiques joueurs → Grille de tir* de Performance collective) : suit la période et le
+  filtre amicaux de la page. Le rendu et les filtres sont partagés avec la vue match
+  ([`ShotChartExplorer`](../src/components/ShotChartExplorer.tsx)). Côté adverse aucun joueur n'est
+  sélectionnable — les identifiants adverses sont propres à chaque match, deux homonymes de deux
+  clubs ne sont pas la même personne ; les tirs encaissés restent agrégés, ce qui est justement la
+  lecture utile.
 - Écart d'un joueur à la moyenne de l'équipe, zone par zone
 
 ### Phase 4 — Diffusion

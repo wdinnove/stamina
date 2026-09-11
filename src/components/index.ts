@@ -21,6 +21,8 @@ export { LiveTrackingPanel } from './LiveTrackingPanel';
 export { MatchStatsTracker } from './MatchStatsTracker';
 export { MatchLineupsPanel } from './MatchLineupsPanel';
 export { MatchShotChartPanel } from './MatchShotChartPanel';
+export { SeasonShotChartPanel } from './SeasonShotChartPanel';
+export { ShotChartExplorer } from './ShotChartExplorer';
 export { MatchScoreboard } from './MatchScoreboard';
 export { LiveActionModal } from './LiveActionModal';
 export type { LiveActionInput } from './LiveActionModal';

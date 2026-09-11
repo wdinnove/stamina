@@ -64,6 +64,32 @@ export const matchEventsApi = {
     if (error) throw error;
   },
 
+  /**
+   * Actions de PLUSIEURS matchs, pour les vues saison. La clé primaire étant `(match_id, seq)`,
+   * le filtre `in` sur `match_id` s'appuie sur son index : aucun index supplémentaire à créer.
+   *
+   * Le lot d'ids est découpé, parce qu'une liste d'UUID entière part dans l'URL de la requête
+   * PostgREST et qu'une saison de quarante matchs la ferait dépasser la limite du serveur.
+   */
+  async getByMatchIds(matchIds: string[]): Promise<MatchEvent[]> {
+    if (matchIds.length === 0) return [];
+    const CHUNK = 25;
+    const chunks: string[][] = [];
+    for (let i = 0; i < matchIds.length; i += CHUNK) chunks.push(matchIds.slice(i, i + CHUNK));
+
+    const results = await Promise.all(chunks.map(async ids => {
+      const { data, error } = await supabase
+        .from('match_events')
+        .select(EVENT_COLUMNS)
+        .in('match_id', ids)
+        .order('match_id', { ascending: true })
+        .order('seq', { ascending: true });
+      if (error) throw error;
+      return (data ?? []).map(toMatchEvent);
+    }));
+    return results.flat();
+  },
+
   /** Nombre d'actions, sans rapatrier les lignes (`head`) — sert aux confirmations de suppression,
    *  qui doivent annoncer ce qu'elles effacent. */
   async countForMatch(matchId: string): Promise<number> {

@@ -15,7 +15,8 @@ import {
   PlayerRankingTable, IndicatorSelect, CorrelationsPanel, WellnessPomsPanel, PlayerCompareByPlayer,
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
-  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel, MbtiStaffPanel, PlayerNotesPanel
+  TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel, MbtiStaffPanel, PlayerNotesPanel,
+  SeasonShotChartPanel
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
@@ -152,6 +153,9 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
   { label: 'Statistiques joueurs', tabs: [
     { key: 'players-basic',    slug: 'stats-joueurs',          label: 'Brutes' },
     { key: 'players-advanced', slug: 'stats-joueurs-avancees', label: 'Avancées' },
+    // Alimenté par la saisie en direct uniquement : les matchs importés par feuille de marque
+    // n'ont pas de position de tir. L'onglet reste visible avec un état vide qui l'explique.
+    { key: 'shot-chart',       slug: 'grille-de-tir',          label: 'Grille de tir' },
   ] },
   { label: 'Statistiques matchs', tabs: [
     { key: 'matches-basic',    slug: 'stats-matchs',          label: 'Brutes' },
@@ -837,6 +841,11 @@ export default function PerformanceCollectivePage() {
           />
         </div>
         </>
+      )}
+
+      {/* ══ GRILLE DE TIR (saison) ══════════════════════════════════════════ */}
+      {activeTab === 'shot-chart' && (
+        <SeasonShotChartPanel matches={filteredSeasonMatches} players={players} />
       )}
 
       {/* ══ STATISTIQUES JOUEURS ════════════════════════════════════════════ */}
