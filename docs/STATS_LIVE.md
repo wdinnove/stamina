@@ -617,7 +617,9 @@ FROM   match_stats WHERE eval IS NOT NULL;
   ESCALIER : le score saute au panier, une interpolation entre deux paniers laisserait lire des
   écarts qui n'ont jamais existé. Une série est définie strictement comme des paniers consécutifs
   d'un seul camp (« un 8-0 ») : un « 10-2 » dépendrait d'une tolérance que personne ne saurait
-  justifier.
+  justifier. L'onglet porte aussi le déroulé ACTION PAR ACTION, replié par défaut et filtrable aux
+  seuls paniers — construit par `playByPlayEntries`, dont l'export CSV n'est que l'aplatissement :
+  une seule construction, sinon l'écran et le fichier finissent par ne plus raconter la même chose.
 - ✅ Shot chart **agrégé sur la saison** ([`SeasonShotChartPanel`](../src/components/SeasonShotChartPanel.tsx),
   onglet *Statistiques joueurs → Grille de tir* de Performance collective) : suit la période et le
   filtre amicaux de la page. Le rendu et les filtres sont partagés avec la vue match

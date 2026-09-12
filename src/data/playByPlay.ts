@@ -10,7 +10,7 @@
 import { EVENT_LABELS, eventPoints } from './matchEvents';
 import { periodLabel, formatClock } from './liveTrackingAnalysis';
 import { shotEventValue, shotZone, ZONE_LABELS } from './shotChart';
-import type { MatchEvent } from './types';
+import type { MatchEvent, LineupSide } from './types';
 
 export interface PlayByPlayNames {
   /** Nom des deux équipes, tels qu'affichés à l'écran. */
@@ -27,44 +27,76 @@ export const PLAY_BY_PLAY_HEADER = [
   'Zone', 'X (m)', 'Y (m)', 'Score nous', 'Score eux',
 ] as const;
 
+export interface PlayByPlayEntry {
+  seq: number;
+  side: LineupSide;
+  quarter: number;
+  gameTimeSeconds: number;
+  /** Vide pour une action adverse pointée en anonyme — cas normal et fréquent, pas une donnée
+   *  manquante. */
+  author: string;
+  action: string;
+  outcome: '' | 'Réussi' | 'Manqué';
+  points: number;
+  /** Vide pour un tir saisi sans position : il compte au score et au boxscore, mais n'appartient
+   *  à aucune zone. */
+  zone: string;
+  x?: number;
+  y?: number;
+  /** Score APRÈS cette action. */
+  scoreUs: number;
+  scoreThem: number;
+}
+
 /**
- * Une ligne par action, dans l'ordre de saisie.
- *
- * Deux colonnes méritent une explication :
- *   • `Joueur` est vide pour une action adverse pointée en anonyme — c'est un cas normal et
- *     fréquent, pas une donnée manquante.
- *   • `Zone` est vide pour un tir saisi sans position : il compte au score et au boxscore, mais
- *     n'appartient à aucune zone.
+ * Une entrée par action, dans l'ordre de saisie, avec le score courant. C'est la forme lue à
+ * l'écran ; le CSV n'en est qu'un aplatissement (`playByPlayRows`). Une seule construction pour
+ * les deux, sinon l'export et l'affichage finissent par ne plus raconter la même chose.
  */
-export function playByPlayRows(events: MatchEvent[], names: PlayByPlayNames): string[][] {
+export function playByPlayEntries(events: MatchEvent[], names: PlayByPlayNames): PlayByPlayEntry[] {
   const score = { us: 0, them: 0 };
 
   return [...events].sort((a, b) => a.seq - b.seq).map(e => {
     const points = eventPoints(e);
     score[e.side] += points;
 
-    const author = e.side === 'us'
-      ? (e.playerId ? names.player(e.playerId) : '')
-      : (e.opponentPlayerId ? names.opponent(e.opponentPlayerId) : '');
-
     const value = shotEventValue(e);
-    const action = e.type === 'shot' && value !== null ? `Tir à ${value} pts` : EVENT_LABELS[e.type];
-    const outcome = e.made === undefined ? '' : e.made ? 'Réussi' : 'Manqué';
     const positioned = e.x !== undefined && e.y !== undefined;
 
-    return [
-      periodLabel(e.quarter),
-      formatClock(e.gameTimeSeconds),
-      e.side === 'us' ? names.us : names.them,
-      author,
-      action,
-      outcome,
-      points > 0 ? String(points) : '',
-      positioned ? ZONE_LABELS[shotZone(e.x!, e.y!)] : '',
-      positioned ? e.x!.toFixed(2) : '',
-      positioned ? e.y!.toFixed(2) : '',
-      String(score.us),
-      String(score.them),
-    ];
+    return {
+      seq: e.seq,
+      side: e.side,
+      quarter: e.quarter,
+      gameTimeSeconds: e.gameTimeSeconds,
+      author: e.side === 'us'
+        ? (e.playerId ? names.player(e.playerId) : '')
+        : (e.opponentPlayerId ? names.opponent(e.opponentPlayerId) : ''),
+      action: e.type === 'shot' && value !== null ? `Tir à ${value} pts` : EVENT_LABELS[e.type],
+      outcome: e.made === undefined ? '' : e.made ? 'Réussi' : 'Manqué',
+      points,
+      zone: positioned ? ZONE_LABELS[shotZone(e.x!, e.y!)] : '',
+      x: positioned ? e.x : undefined,
+      y: positioned ? e.y : undefined,
+      scoreUs: score.us,
+      scoreThem: score.them,
+    };
   });
+}
+
+/** Le même play-by-play, aplati pour le CSV — colonnes dans l'ordre de `PLAY_BY_PLAY_HEADER`. */
+export function playByPlayRows(events: MatchEvent[], names: PlayByPlayNames): string[][] {
+  return playByPlayEntries(events, names).map(e => [
+    periodLabel(e.quarter),
+    formatClock(e.gameTimeSeconds),
+    e.side === 'us' ? names.us : names.them,
+    e.author,
+    e.action,
+    e.outcome,
+    e.points > 0 ? String(e.points) : '',
+    e.zone,
+    e.x !== undefined ? e.x.toFixed(2) : '',
+    e.y !== undefined ? e.y.toFixed(2) : '',
+    String(e.scoreUs),
+    String(e.scoreThem),
+  ]);
 }

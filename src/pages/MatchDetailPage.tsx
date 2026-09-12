@@ -1358,7 +1358,7 @@ export default function MatchDetailPage() {
           )}
 
           {activeTab === 'match_flow' && (
-            <MatchFlowPanel match={match} />
+            <MatchFlowPanel match={match} players={players} />
           )}
 
           {activeTab === 'lineups' && (

@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useMatchClock } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { scoreTimeline, detectRuns, quarterSplits, absoluteSeconds, DEFAULT_MIN_RUN_POINTS } from '../data/matchFlow';
+import { playByPlayEntries } from '../data/playByPlay';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
-import type { Match } from '../data/types';
+import { playerNameShort } from '../utils/playerName';
+import type { Match, Player } from '../data/types';
 
 /**
  * Déroulé du match : la courbe d'écart, les séries sans réponse, et le détail quart-temps par
@@ -16,6 +19,7 @@ import type { Match } from '../data/types';
 
 export interface MatchFlowPanelProps {
   match: Match;
+  players: Player[];
 }
 
 const PANEL: React.CSSProperties = {
@@ -31,7 +35,7 @@ const SECTION_TITLE: React.CSSProperties = {
  *  graduations, pas en pixels. */
 const CHART = { w: 1000, h: 260, padTop: 16, padBottom: 26, padLeft: 34, padRight: 8 };
 
-export function MatchFlowPanel({ match }: MatchFlowPanelProps) {
+export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
   const { selected } = useTeamSeason();
   const teamColor   = selected?.team.color ?? '#00E5A0';
   const ourTeamName = selected?.team.name ?? 'Notre équipe';
@@ -39,7 +43,24 @@ export function MatchFlowPanel({ match }: MatchFlowPanelProps) {
   const clock = useMatchClock(match.id);
   const period = clock.periodDurationSeconds;
 
-  const { events, lastQuarter, lastElapsedSeconds, hasData, loading, error } = useMatchTracking(match.id);
+  const { events, opponents, lastQuarter, lastElapsedSeconds, hasData, loading, error } = useMatchTracking(match.id);
+
+  /** Liste des actions repliée par défaut, et filtrable aux seuls paniers : deux cents lignes
+   *  déroulées d'office noieraient la courbe et les séries, qui sont la lecture du dessus. */
+  const [showList, setShowList] = useState(false);
+  const [scoringOnly, setScoringOnly] = useState(false);
+
+  const entries = useMemo(() => playByPlayEntries(events, {
+    us: ourTeamName,
+    them: opponentName,
+    player:   id => { const p = players.find(x => x.id === id); return p ? playerNameShort(p) : '?'; },
+    opponent: id => opponents.find(x => x.id === id)?.name ?? '?',
+  }), [events, ourTeamName, opponentName, players, opponents]);
+
+  const shownEntries = useMemo(
+    () => (scoringOnly ? entries.filter(e => e.points > 0) : entries),
+    [entries, scoringOnly],
+  );
 
   const timeline = useMemo(() => scoreTimeline(events, period), [events, period]);
   const runs     = useMemo(() => detectRuns(events, period), [events, period]);
@@ -212,6 +233,81 @@ export function MatchFlowPanel({ match }: MatchFlowPanelProps) {
         <p style={{ color: '#475569', fontSize: '0.73rem', margin: '10px 0 0' }}>
           Les colonnes de tir sont les nôtres. L'écart, lui, est celui du quart-temps seul — pas le cumul.
         </p>
+      </div>
+
+      {/* Le déroulé action par action. Replié par défaut : c'est la matière première, celle qu'on
+          ouvre pour vérifier un point précis, pas celle qu'on lit d'abord. Même construction que
+          l'export CSV (`playByPlayEntries`) — sinon l'écran et le fichier finissent par ne plus
+          raconter la même chose. */}
+      <div style={PANEL}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setShowList(v => !v)} aria-expanded={showList}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, ...SECTION_TITLE, margin: 0 }}>
+            <ChevronDown size={14} style={{ transform: showList ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            Action par action ({entries.length})
+          </button>
+          {showList && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([[false, 'Tout'], [true, 'Paniers seuls']] as const).map(([v, label]) => (
+                <button key={label} onClick={() => setScoringOnly(v)} aria-pressed={scoringOnly === v}
+                  style={{
+                    height: 30, padding: '0 11px', borderRadius: 6, fontSize: '0.73rem', cursor: 'pointer',
+                    border: `1px solid ${scoringOnly === v ? '#00E5A0' : '#2A2F3A'}`,
+                    backgroundColor: scoringOnly === v ? '#00E5A01F' : '#0D0F14',
+                    color: scoringOnly === v ? '#00E5A0' : '#94A3B8',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {showList && (
+          shownEntries.length === 0 ? (
+            <p style={{ color: '#475569', fontSize: '0.8rem', margin: '10px 0 0' }}>Aucune action à afficher.</p>
+          ) : (
+            <div style={{ overflowX: 'auto', maxHeight: 460, overflowY: 'auto', marginTop: 10 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                    {['Temps', 'Équipe', 'Joueur', 'Action', '', 'Score'].map((h, i) => (
+                      <th key={i} className="flow-head" style={i <= 3 ? { textAlign: 'left' } : undefined}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownEntries.map(e => (
+                    <tr key={e.seq} style={{ borderBottom: '1px solid #1E2229' }}>
+                      <td className="flow-cell" style={{ fontFamily: 'monospace', color: '#475569', whiteSpace: 'nowrap' }}>
+                        {periodLabel(e.quarter)} {formatClock(e.gameTimeSeconds)}
+                      </td>
+                      <td className="flow-cell" style={{ textAlign: 'left', color: e.side === 'us' ? teamColor : '#64748B', whiteSpace: 'nowrap' }}>
+                        {e.side === 'us' ? ourTeamName : opponentName}
+                      </td>
+                      <td className="flow-cell" style={{ textAlign: 'left', color: e.author ? '#F1F5F9' : '#475569' }}>
+                        {e.author || '—'}
+                      </td>
+                      <td className="flow-cell" style={{ textAlign: 'left', color: '#CBD5E1' }}>
+                        {e.action}
+                        {e.outcome && (
+                          <span style={{ color: e.outcome === 'Réussi' ? '#00E5A0' : '#EF4444' }}> {e.outcome === 'Réussi' ? '✓' : '✗'}</span>
+                        )}
+                        {e.zone && <span style={{ color: '#475569' }}> · {e.zone}</span>}
+                      </td>
+                      <td className="flow-cell" style={{ color: '#00E5A0', fontWeight: 700 }}>
+                        {e.points > 0 ? `+${e.points}` : ''}
+                      </td>
+                      <td className="flow-cell" style={{ fontFamily: 'monospace', color: '#94A3B8', whiteSpace: 'nowrap' }}>
+                        {e.scoreUs} — {e.scoreThem}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playByPlayRows, PLAY_BY_PLAY_HEADER } from './playByPlay';
+import { playByPlayRows, playByPlayEntries, PLAY_BY_PLAY_HEADER } from './playByPlay';
 import { toCsv } from '../utils/csv';
 import type { MatchEvent } from './types';
 
@@ -68,5 +68,27 @@ describe('toCsv', () => {
 
   it('sépare les lignes en CRLF, ce qu\'attend Excel', () => {
     expect(toCsv([['a'], ['b']])).toBe('a\r\nb');
+  });
+});
+
+describe('playByPlayEntries', () => {
+  it('porte le score APRÈS chaque action, et le camp sans passer par le nom d\'équipe', () => {
+    const entries = playByPlayEntries([
+      ev({ seq: 1, playerId: 'p1', x: 7.5, y: 9.0, made: true }),
+      ev({ seq: 2, side: 'them', type: 'foul' }),
+    ], NAMES);
+
+    expect(entries[0]).toMatchObject({ side: 'us', points: 3, scoreUs: 3, scoreThem: 0, outcome: 'Réussi' });
+    // Une action sans point ne fait pas bouger le score, mais le porte quand même.
+    expect(entries[1]).toMatchObject({ side: 'them', points: 0, scoreUs: 3, scoreThem: 0, outcome: '', author: '' });
+  });
+
+  it('est la seule construction : le CSV en est l\'aplatissement', () => {
+    const events = [ev({ seq: 1, playerId: 'p1', x: 7.5, y: 9.0, made: true })];
+    const [entry] = playByPlayEntries(events, NAMES);
+    const [row] = playByPlayRows(events, NAMES);
+    expect(col(row, 'Action')).toBe(entry.action);
+    expect(col(row, 'Zone')).toBe(entry.zone);
+    expect(col(row, 'Score nous')).toBe(String(entry.scoreUs));
   });
 });
