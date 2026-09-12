@@ -145,36 +145,42 @@ function MatchActionsMenu({
  */
 interface MatchTab { key: string; slug: string; label: string }
 
-const MATCH_TAB_GROUPS: { label: string; tabs: MatchTab[] }[] = [
-  { label: 'Statistiques', tabs: [
+// Le premier groupe n'a PAS de titre : c'est le match lui-même, et huit onglets sous un intitulé
+// « Statistiques » n'apprenaient rien de plus que leur propre libellé. Les sections nommées ne
+// servent qu'à mettre à part ce qui change de sujet (tactique) ou de moment d'usage (comparer,
+// saisir).
+//
+// Les SLUGS ne bougent jamais : les notifications visent un onglet par son slug et des liens
+// existent déjà. Renommer l'un d'eux casserait les deux sans que personne y gagne — une URL ne
+// se lit pas.
+//
+// Grille de tirs, Lineups et Play-by-play ne lisent QUE `match_events` : un match importé par
+// feuille de marque n'en a aucun. Ils restent visibles avec un état vide qui l'explique, plutôt
+// que d'apparaître et disparaître d'un match à l'autre — une navigation qui change de forme se
+// cherche.
+const MATCH_TAB_GROUPS: { label?: string; tabs: MatchTab[] }[] = [
+  { tabs: [
     { key: 'boxscore',     slug: 'boxscore',   label: 'Boxscore' },
-    { key: 'advanced',     slug: 'avancees',   label: 'Statistiques avancées' },
-    { key: 'four_factors', slug: '4-factors',  label: 'Four Factors' },
+    { key: 'advanced',     slug: 'avancees',   label: 'Stats avancées' },
+    { key: 'shot_chart',   slug: 'tirs',       label: 'Grille de tirs' },
+    { key: 'lineups',      slug: 'lineups',    label: 'Lineups' },
+    { key: 'match_flow',   slug: 'deroule',    label: 'Play-by-play' },
+    { key: 'four_factors', slug: '4-factors',  label: 'Four factors' },
     { key: 'objectives',   slug: 'objectifs',  label: 'Objectifs' },
-  ]},
-  // Ces deux-là ne lisent QUE `match_events` : un match importé par feuille de marque n'en a
-  // aucun. Les onglets restent visibles avec un état vide qui l'explique, plutôt que d'apparaître
-  // et disparaître d'un match à l'autre — une navigation qui change de forme se cherche.
-  { label: 'Saisie en direct', tabs: [
-    { key: 'match_flow', slug: 'deroule', label: 'Déroulé du match' },
-    { key: 'lineups',    slug: 'lineups', label: 'Analyse des lineups' },
-    { key: 'shot_chart', slug: 'tirs',    label: 'Grille de tir' },
-  ]},
-  { label: 'Comparaisons', tabs: [
-    { key: 'comp_players', slug: 'joueurs',    label: 'Joueurs' },
-    { key: 'comp_teams',   slug: 'equipes',    label: 'Équipes' },
-    { key: 'comp_matches', slug: 'saison',     label: 'Saison' },
+    { key: 'notes',        slug: 'notes',      label: 'Retour de match' },
   ]},
   { label: 'Tactique', tabs: [
     { key: 'tactical_brutes',    slug: 'tactique',        label: 'Statistiques brutes' },
     { key: 'tactical_dashboard', slug: 'tableau-de-bord', label: 'Tableau de bord' },
   ]},
-  { label: 'Direct', tabs: [
-    { key: 'live_tracking', slug: 'direct', label: 'Suivi live' },
-    { key: 'stats_tracker', slug: 'saisie', label: 'Saisie des stats' },
+  { label: 'Comparer', tabs: [
+    { key: 'comp_teams',   slug: 'equipes', label: 'Équipes' },
+    { key: 'comp_players', slug: 'joueurs', label: 'Joueurs' },
+    { key: 'comp_matches', slug: 'saison',  label: 'Saison' },
   ]},
-  { label: 'Notes', tabs: [
-    { key: 'notes', slug: 'notes', label: 'Retour de match' },
+  { label: 'Saisie', tabs: [
+    { key: 'stats_tracker', slug: 'saisie', label: 'Prise statistiques' },
+    { key: 'live_tracking', slug: 'direct', label: 'Prise live' },
   ]},
 ];
 

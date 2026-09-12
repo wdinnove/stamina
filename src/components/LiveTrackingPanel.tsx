@@ -431,7 +431,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
             La saisie des stats compte <strong>{trackerScore.us} — {trackerScore.them}</strong> sur
             {' '}{statEvents.length} action{statEvents.length > 1 ? 's' : ''}.
             Ce tableau de marque ne totalise que les possessions pointées ici : c'est l'onglet
-            <strong> Saisie des stats</strong> qui fait foi pour le score et le boxscore.
+            <strong> Prise statistiques</strong> qui fait foi pour le score et le boxscore.
           </span>
         </div>
       )}

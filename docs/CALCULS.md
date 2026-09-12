@@ -886,7 +886,7 @@ Trois surfaces gardent un périmètre imposé, indépendant de l'interrupteur :
 
 ---
 
-## 16. Suivi live : rotations & rentabilité des plays
+## 16. Prise live : rotations & rentabilité des plays
 
 Fichiers source : [`src/data/liveTrackingAnalysis.ts`](../src/data/liveTrackingAnalysis.ts), [`src/components/LiveTrackingPanel.tsx`](../src/components/LiveTrackingPanel.tsx), [`src/api/matchLive.ts`](../src/api/matchLive.ts), [`src/api/plays.ts`](../src/api/plays.ts)
 

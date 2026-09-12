@@ -709,7 +709,7 @@ export interface PlayerRank {
   weekLoads: number[];
 }
 
-// ─── Suivi live : rotations & rentabilité des plays ───────────────────────────
+// ─── Prise live : rotations & rentabilité des plays ───────────────────────────
 // Domaine volontairement séparé du tactique (`TacticalAction` ci-dessus) : ici, pointage rapide
 // en direct ou en relecture manuelle (qui est sur le terrain, fin de possession réussie ou non,
 // pour quel play), pas de tag vidéo multi-dimensions a posteriori.

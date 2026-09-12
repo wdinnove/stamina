@@ -65,7 +65,7 @@ export function MatchFlowPanel({ match }: MatchFlowPanelProps) {
       <div style={{ ...PANEL, color: '#64748B', fontSize: '0.85rem', lineHeight: 1.6 }}>
         <p style={{ margin: 0, color: '#94A3B8', fontWeight: 600 }}>Aucune saisie en direct pour ce match.</p>
         <p style={{ margin: '8px 0 0' }}>
-          Le déroulé se construit depuis l'onglet <strong style={{ color: '#CBD5E1' }}>Saisie des stats</strong>, qui
+          Le déroulé se construit depuis l'onglet <strong style={{ color: '#CBD5E1' }}>Prise statistiques</strong>, qui
           date chaque panier. Un match importé par feuille de marque n'en contient pas : elle donne des
           totaux, pas une chronologie.
         </p>

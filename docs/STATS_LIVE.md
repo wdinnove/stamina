@@ -6,7 +6,7 @@ l'application que par **import CSV** (`MatchStatsImportModal`), donc toujours ap
 toujours dépendant d'un fichier eMarque.
 
 **Hors périmètre de ce document : les plays.** Le suivi par système attaque/défense existe déjà
-(`plays`, `match_live_actions`, onglet « Suivi live ») et reste tel quel — voir
+(`plays`, `match_live_actions`, onglet « Prise live ») et reste tel quel — voir
 [§ 8](#8-articulation-avec-le-suivi-live-existant).
 
 ---
@@ -398,7 +398,7 @@ dans le dépliant (`▾`) à côté du compteur.
 
 `⟲ Annuler` est dans ce même bandeau, à côté de ce qu'il va défaire.
 
-### Analyse des lineups
+### Lineups
 
 Sous le boxscore, l'équivalent de « Cinq les plus vues » du suivi live — mais dérivé du flux
 d'événements, donc mesuré à l'action près, et **daté** : `lineupStatsFromEvents` croise les
@@ -537,7 +537,7 @@ existant fonctionne dessus.
 
 - Tap sur `DiagramCourt` → `x, y` ; `shotValue` déduit 2/3
 - `src/data/shotChart.ts` + tests de géométrie (corner/arc, valeurs limites)
-- Onglet **Grille de tir** ([`MatchShotChartPanel`](../src/components/MatchShotChartPanel.tsx)) :
+- Onglet **Grille de tirs** ([`MatchShotChartPanel`](../src/components/MatchShotChartPanel.tsx)) :
   tirs bruts (disque plein = réussi, croix = manqué) + tableau par zone (volume, FG%, eFG%)
 - Filtres : équipe, joueur, réussite, quart-temps. Le tableau par zone ignore volontairement le
   filtre de réussite — sinon il afficherait toujours 100 %.
@@ -613,7 +613,7 @@ FROM   match_stats WHERE eval IS NOT NULL;
 
 - On/off et statistiques de cinq **au point près** (aujourd'hui à la possession)
 - ✅ Courbe d'écart, séries sans réponse et splits par quart-temps
-  ([`data/matchFlow.ts`](../src/data/matchFlow.ts), onglet *Déroulé du match*). La courbe est en
+  ([`data/matchFlow.ts`](../src/data/matchFlow.ts), onglet *Play-by-play*). La courbe est en
   ESCALIER : le score saute au panier, une interpolation entre deux paniers laisserait lire des
   écarts qui n'ont jamais existé. Une série est définie strictement comme des paniers consécutifs
   d'un seul camp (« un 8-0 ») : un « 10-2 » dépendrait d'une tolérance que personne ne saurait
@@ -640,13 +640,13 @@ FROM   match_stats WHERE eval IS NOT NULL;
 
 Les plays sont hors périmètre, et les deux écrans restent **indépendants** :
 
-- « Suivi live » continue de pointer possessions + play + rotations, inchangé.
+- « Prise live » continue de pointer possessions + play + rotations, inchangé.
 - Le tracker écrit `match_events` et **n'écrit pas** `match_live_actions`.
 - Les deux partagent le chrono, `match_roster`, `match_lineup_events` et
   `match_opponent_players` — donc les rotations pointées dans l'un servent à l'autre.
 
 Conséquence assumée : un match saisi uniquement au tracker n'a pas de rentabilité par play, et un
-match pointé uniquement en « Suivi live » n'a pas de boxscore. C'est cohérent — ce sont deux
+match pointé uniquement en « Prise live » n'a pas de boxscore. C'est cohérent — ce sont deux
 questions différentes.
 
 Le jour où les deux doivent se rejoindre : une colonne nullable `possession_seq` sur

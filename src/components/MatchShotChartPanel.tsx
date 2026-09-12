@@ -55,7 +55,7 @@ export function MatchShotChartPanel({ match, players }: MatchShotChartPanelProps
       <div style={{ ...PANEL, color: '#64748B', fontSize: '0.85rem', lineHeight: 1.6 }}>
         <p style={{ margin: 0, color: '#94A3B8', fontWeight: 600 }}>Aucun tir saisi pour ce match.</p>
         <p style={{ margin: '8px 0 0' }}>
-          Les positions de tir se posent sur le terrain depuis l'onglet <strong style={{ color: '#CBD5E1' }}>Saisie des stats</strong>.
+          Les positions de tir se posent sur le terrain depuis l'onglet <strong style={{ color: '#CBD5E1' }}>Prise statistiques</strong>.
           Un match importé par feuille de marque n'en aura jamais : la feuille de marque ne contient pas
           l'endroit d'où chaque tir a été pris.
         </p>

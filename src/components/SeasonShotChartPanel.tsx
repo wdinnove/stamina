@@ -76,7 +76,7 @@ export function SeasonShotChartPanel({ matches, players }: SeasonShotChartPanelP
       <div style={{ ...PANEL, color: '#64748B', fontSize: '0.85rem', lineHeight: 1.6 }}>
         <p style={{ margin: 0, color: '#94A3B8', fontWeight: 600 }}>Aucun tir positionné sur cette période.</p>
         <p style={{ margin: '8px 0 0' }}>
-          Les positions de tir viennent de l'onglet <strong style={{ color: '#CBD5E1' }}>Saisie des stats</strong> d'un match.
+          Les positions de tir viennent de l'onglet <strong style={{ color: '#CBD5E1' }}>Prise statistiques</strong> d'un match.
           Les matchs importés par feuille de marque n'en contiennent pas : la feuille ne dit pas d'où
           chaque tir a été pris.
         </p>
