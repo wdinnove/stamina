@@ -210,6 +210,27 @@ const SMALL_BTN: React.CSSProperties = {
   fontSize: '0.75rem', cursor: 'pointer',
 };
 
+/**
+ * Gabarit des boutons de la barre de commandes. Un seul, pour les quatre : côte à côte, des
+ * boutons qui ne se ressemblent pas se lisent comme quatre choses de natures différentes.
+ *
+ * `disabled` se voit — texte éteint, curseur barré — parce qu'un bouton mort qui garde son air
+ * de bouton fait cliquer trois fois avant qu'on cherche pourquoi. L'infobulle dit alors ce qui
+ * manque, plutôt que de décrire une action impossible.
+ */
+function topBtnStyle({ disabled, active }: { disabled?: boolean; active?: boolean } = {}): React.CSSProperties {
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    height: 36, padding: '0 12px', borderRadius: 6, flexShrink: 0,
+    border: `1px solid ${active && !disabled ? '#00E5A0' : '#2A2F3A'}`,
+    backgroundColor: active && !disabled ? '#00E5A01F' : '#1E2229',
+    color: disabled ? '#475569' : active ? '#00E5A0' : '#CBD5E1',
+    fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.55 : 1,
+  };
+}
+
 const INPUT: React.CSSProperties = {
   height: TAP, padding: '0 8px', backgroundColor: '#0D0F14', border: '1px dashed #2A2F3A',
   borderRadius: 6, color: '#F1F5F9', fontSize: '0.8rem',
@@ -1035,18 +1056,49 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         @media (prefers-reduced-motion: reduce) { .tracker-flash { animation-duration: 1ms; } }
       `}</style>
 
-      {/* Commandes d'écran — plein écran et réglages. Tout en haut, au-dessus de la table de
-          marque : ce sont des réglages de l'AFFICHAGE, pas des gestes de match, et mêlés aux
-          boutons du chrono ils encombraient la zone qu'on regarde en pointant. */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+      {/* Barre de commandes — tout ce qui n'est pas un geste de match : plein écran, publier,
+          exporter, réglages. Posée au-dessus de la table de marque plutôt que dispersée dedans
+          et dans le bandeau d'historique : mêlés aux boutons du chrono et au bouton Annuler, ils
+          encombraient les deux zones qu'on regarde en pointant.
+
+          Les quatre partagent UN gabarit (`topBtnStyle`) : quatre boutons côte à côte qui ne se
+          ressemblent pas se lisent comme quatre choses de natures différentes. Le plein écran est
+          seul à gauche — il agit sur l'écran, les trois autres sur le match. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {document.fullscreenEnabled && (
           <button onClick={toggleFullscreen} aria-pressed={fullscreen}
-            style={{ ...SMALL_BTN, gap: 6, ...(fullscreen ? { borderColor: '#00E5A0', color: '#00E5A0' } : {}) }}>
+            title="Ne garder que l'écran de saisie"
+            style={topBtnStyle({ active: fullscreen })}>
             {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             {fullscreen ? 'Quitter le plein écran' : 'Passer en plein écran'}
           </button>
         )}
-        <button onClick={() => setShowKeys(true)} style={{ ...SMALL_BTN, gap: 6 }}>
+
+        {/* Le plein écran change l'écran, les trois autres agissent sur le match : cet écart les
+            sépare, il n'est pas décoratif. */}
+        <div style={{ flex: 1 }} />
+
+        {canEdit && (() => {
+          const disabled = publishState !== 'idle' || events.length === 0;
+          return (
+            <button onClick={openPublish} disabled={disabled} style={topBtnStyle({ disabled })}
+              title={events.length === 0
+                ? 'Rien à publier : aucune action enregistrée'
+                : 'Publier le boxscore dans les statistiques du match'}>
+              <Upload size={14} />{publishState === 'checking' ? 'Vérification…' : 'Publier'}
+            </button>
+          );
+        })()}
+
+        <button onClick={exportPlayByPlay} disabled={events.length === 0}
+          style={topBtnStyle({ disabled: events.length === 0 })}
+          title={events.length === 0
+            ? 'Rien à exporter : aucune action enregistrée'
+            : 'Exporter le play-by-play en CSV'}>
+          <Download size={14} />Exporter
+        </button>
+
+        <button onClick={() => setShowKeys(true)} style={topBtnStyle()} title="Réglages et raccourcis">
           <Settings size={14} />Réglages
         </button>
       </div>
@@ -1089,20 +1141,6 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       <MatchScoreboard
         ourTeamName={ourTeamName} teamColor={teamColor} opponentName={opponentName}
         scoreUs={score.us} scoreThem={score.them} clock={clock} canEdit={canEdit}
-        extraControls={
-          <>
-            <button onClick={openPublish} disabled={publishState !== 'idle' || events.length === 0}
-              title="Publier le boxscore dans les statistiques du match"
-              style={{
-                ...scoreboardBtn, gap: 6,
-                borderColor: events.length > 0 ? '#00E5A0' : '#2A2F3A',
-                color: events.length > 0 ? '#00E5A0' : '#475569',
-                cursor: events.length > 0 && publishState === 'idle' ? 'pointer' : 'not-allowed',
-              }}>
-              <Upload size={14} />{publishState === 'checking' ? 'Vérification…' : 'Publier'}
-            </button>
-          </>
-        }
       />
 
       {/* Accusé de réception : la dernière action enregistrée s'allume ici, juste sous le score,
@@ -1155,12 +1193,6 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <Undo2 size={14} />{undoTarget === 'lineup' ? 'Annuler le changement' : 'Annuler'}
             </button>
           )}
-
-          <button onClick={exportPlayByPlay} disabled={events.length === 0}
-            title="Exporter le play-by-play en CSV"
-            style={{ ...SMALL_BTN, flexShrink: 0, opacity: events.length === 0 ? 0.4 : 1, cursor: events.length === 0 ? 'not-allowed' : 'pointer' }}>
-            <Download size={14} style={{ marginRight: 5 }} />CSV
-          </button>
 
           <button onClick={() => setShowFullHistory(v => !v)} aria-expanded={showFullHistory}
             title="Voir tout l'historique"
@@ -1359,8 +1391,12 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
           {shotInput === 'buttons' ? (
             /* Saisie aux boutons : pas de terrain, donc pas de position. Les quatre boutons
-               prennent la place de la colonne et gagnent la taille qu'ils n'avaient pas en
-               repli sous le terrain. */
+               prennent toute la colonne.
+
+               C'est le RÉGLAGE qui décide, et lui seul. Ces mêmes boutons ont d'abord vécu sous
+               le terrain, en secours du tir qu'on n'a pas eu le temps de placer : posés là, ils
+               se prenaient pour le chemin normal, et on pointait au bouton un match entier sans
+               s'apercevoir qu'on perdait toutes les positions — donc la grille de tir du match. */
             <div>
               <p style={SECTION_TITLE}>Tirs</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
@@ -1432,27 +1468,6 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               ) : `${shotsUs.length} tir${shotsUs.length > 1 ? 's' : ''} · ${shotsThem.length} adverse${shotsThem.length > 1 ? 's' : ''}`}
             </p>
 
-            {/* Repli quand la position n'a pas pu être prise : un tir dans la confusion ne doit
-                pas être perdu. La valeur est alors FIGÉE en base (colonne `value`) au lieu d'être
-                déduite de la géométrie, et ces tirs comptent au boxscore mais restent hors des
-                grilles de tir — c'est le prix de la rapidité, pas un oubli. Volontairement
-                discret et sous le terrain : le chemin normal reste le clic sur le terrain. */}
-            <div style={{ marginTop: 10 }}>
-              <p style={{ ...SECTION_TITLE, fontSize: '0.6rem', margin: '0 0 4px', color: '#475569' }}>Tir sans position</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
-                {NO_POSITION_SHOTS.map(b => (
-                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit || shotBlocked}
-                    aria-pressed={pendingAction?.label === b.label}
-                    aria-label={`${b.value} points ${b.made ? 'réussi' : 'manqué'}, sans position`}
-                    style={paletteStyle(
-                      !shotBlocked && pendingAction?.label === b.label, !shotBlocked, b.made ? '#00E5A0' : '#EF4444',
-                      pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
-                    )}>
-                    <span className="tracker-action-label">{b.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
           )}
 
