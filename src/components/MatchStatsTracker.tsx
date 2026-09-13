@@ -1,15 +1,17 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, Download, AlertTriangle, X } from 'lucide-react';
+import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, Download, AlertTriangle, X, Maximize2, Minimize2, Film } from 'lucide-react';
 import { DiagramCourt } from './DiagramCourt';
 import { ShotGrid, SHOT_COLORS } from './ShotChart';
 import { Modal } from './Modal';
+import { LAYER } from '../styles/layers';
 import { MatchScoreboard, scoreboardBtn } from './MatchScoreboard';
 import { matchEventsApi } from '../api/matchEvents';
-import { enqueueInsert, enqueueDelete, flushQueue, pendingCount, subscribeQueue, takeResyncFlag } from '../api/matchEventQueue';
+import { enqueueInsert, enqueueDelete, flushQueue, pendingCount, queueError, subscribeQueue, takeResyncFlag } from '../api/matchEventQueue';
 import { matchLiveApi } from '../api/matchLive';
 import { statsApi, type BulkStatRow, type OpponentStatInput } from '../api/stats';
 import { matchesApi } from '../api/matches';
 import { useMatchClock, PERIOD_PRESETS_MIN } from '../hooks/useMatchClock';
+import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
@@ -56,6 +58,16 @@ export interface MatchStatsTrackerProps {
 
 /** Joueuse armée pour la prochaine action. `id: null` n'existe que côté adverse (pointage anonyme). */
 type Selection = { side: LineupSide; id: string | null };
+
+/** Confirmation en attente : ce qu'on s'apprête à détruire, et le geste qui le fera. */
+type PendingConfirm = {
+  title: string;
+  detail?: string;
+  confirmLabel: string;
+  /** Posée AU-DESSUS d'une autre modale (feuille adverse) ; défaut : plan des modales. */
+  overModal?: boolean;
+  run: () => void;
+} | null;
 /** Joueuse désignée dans un changement, quel que soit le sens du geste (terrain ou banc d'abord). */
 export type RosterOrigin = 'court' | 'bench';
 type PendingSub = { side: LineupSide; id: string; from: RosterOrigin } | null;
@@ -151,6 +163,28 @@ function readShotInput(): ShotInput {
   }
 }
 
+/**
+ * Hauteur du cadre vidéo, en pixels — redimensionnable à la souris (`resize: vertical`) et
+ * retenue d'une séance à l'autre : régler la taille de sa vidéo à chaque ouverture de match est
+ * exactement le genre de geste qu'on ne refait pas deux fois sans râler.
+ */
+const VIDEO_HEIGHT_KEY = 'stamina.trackerVideoHeight';
+const VIDEO_HEIGHT_DEFAULT = 320;
+/** En dessous, l'image ne montre plus rien d'utile ; au-delà, la saisie passe sous la ligne de
+ *  flottaison et on pointe à l'aveugle. */
+const VIDEO_HEIGHT_MIN = 140;
+const VIDEO_HEIGHT_MAX = 900;
+
+function readVideoHeight(): number {
+  try {
+    const raw = Number(localStorage.getItem(VIDEO_HEIGHT_KEY));
+    if (!Number.isFinite(raw) || raw <= 0) return VIDEO_HEIGHT_DEFAULT;
+    return Math.min(VIDEO_HEIGHT_MAX, Math.max(VIDEO_HEIGHT_MIN, Math.round(raw)));
+  } catch {
+    return VIDEO_HEIGHT_DEFAULT;
+  }
+}
+
 /** Cible tactile minimale. Un chip de banc à 22 px était la plus petite cible de l'écran alors
  *  qu'elle déclenche une rotation — petite cible, grosse conséquence. */
 const TAP = 44;
@@ -183,7 +217,7 @@ const INPUT: React.CSSProperties = {
 
 /**
  * Palette de saisie, identique pour les deux camps : DEUX boutons par ligne, groupés par thème.
- * Chercher « Faute reçue » dans une grille de dix cases sans repère coûte une seconde à chaque
+ * Chercher « Faute provoquée » dans une grille de dix cases sans repère coûte une seconde à chaque
  * fois ; groupées par paires nommées, on vise le groupe puis le côté, sans lire les dix libellés.
  *
  * Les libellés sont écrits en toutes lettres, pas en acronymes : un écran utilisé quelques fois
@@ -214,7 +248,7 @@ const PALETTE_GROUPS: {
   ]},
   { title: 'Fautes', buttons: [
     { type: 'foul',       label: 'Faute commise' },
-    { type: 'foul_drawn', label: 'Faute reçue' },
+    { type: 'foul_drawn', label: 'Faute provoquée' },
   ]},
 ];
 
@@ -259,6 +293,15 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [pendingAction, setPendingAction] = useState<{ type: MatchEventType; made?: boolean; label: string; value?: 2 | 3 } | null>(null);
   const [chain, setChain] = useState<'reb' | 'ast' | null>(null);
   const [subMode, setSubMode] = useState(false);
+  /** Geste destructeur en attente de confirmation. Une seule boîte pour les trois cas de cet
+   *  écran : supprimer une action, retirer un joueur adverse, annuler le dernier geste. */
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  /** Vidéo du match, lue depuis le disque. Jamais envoyée nulle part : c'est une URL d'objet
+   *  locale, valable le temps de l'onglet — d'où l'absence de toute persistance. */
+  const [video, setVideo] = useState<{ url: string; name: string } | null>(null);
+  const [showVideo, setShowVideo] = useState(false);
+  const [videoHeight] = useState(readVideoHeight);
   const [pendingSub, setPendingSub] = useState<PendingSub>(null);
   /**
    * Joueurs RETENUS pour ce match — la feuille de match, vide au départ : on compose le groupe du
@@ -297,6 +340,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [publishedAt, setPublishedAt] = useState<Date | null>(null);
   /** Actions saisies mais pas encore enregistrées — réseau coupé, ou serveur qui refuse. */
   const [pending, setPending] = useState(pendingCount());
+  /** Panne d'écriture avérée — pas « une action est en vol », qui est le cas normal. */
+  const [queueFailed, setQueueFailed] = useState(false);
   const courtRef = useRef<SVGSVGElement>(null);
 
   /**
@@ -333,6 +378,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    */
   useEffect(() => subscribeQueue(() => {
     setPending(pendingCount());
+    setQueueFailed(queueError() !== null);
     if (takeResyncFlag()) void load();
   }), [load]);
 
@@ -496,6 +542,67 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     setPendingAction(null);
   }
 
+  /**
+   * Plein écran sur l'écran de saisie seul — il n'y a rien d'autre à regarder pendant un match, et
+   * la barre de navigation et le menu d'onglets ne font qu'y prendre la place du terrain.
+   *
+   * L'état ne se déduit pas du bouton mais de `fullscreenchange` : on en sort aussi par Échap, par
+   * le geste du système ou par le bouton du navigateur, et une icône qui mentirait sur l'état en
+   * cours est pire que pas d'icône.
+   */
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  /** L'URL d'objet survit au démontage du composant : sans cette libération, quitter l'onglet du
+   *  match garde le fichier entier en mémoire jusqu'au rechargement de la page. */
+  const videoUrlRef = useRef<string | null>(null);
+  videoUrlRef.current = video?.url ?? null;
+  useEffect(() => () => { if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current); }, []);
+
+  /**
+   * Hauteur du cadre vidéo : c'est le navigateur qui la change (poignée `resize`), on ne fait que
+   * la retenir. Volontairement écrite en direct dans `localStorage` sans repasser par l'état :
+   * un `setState` ici redéfinirait la hauteur du cadre en plein glissement, et le
+   * redimensionnement se battrait contre le rendu.
+   */
+  const videoBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = videoBoxRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      try { localStorage.setItem(VIDEO_HEIGHT_KEY, String(Math.round(el.getBoundingClientRect().height))); }
+      catch { /* navigation privée */ }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [video, showVideo]);
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === rootRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else rootRef.current?.requestFullscreen().catch(() => setError('Le plein écran a été refusé par le navigateur.'));
+  }
+
+  /** Vidéo lue depuis le disque. L'URL d'objet précédente est révoquée : sans ça, chaque fichier
+   *  ouvert garde sa copie en mémoire jusqu'au rechargement de l'onglet. */
+  function openVideo(file: File | undefined) {
+    if (!file) return;
+    setVideo(prev => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return { url: URL.createObjectURL(file), name: file.name };
+    });
+    setShowVideo(true);
+  }
+
+  function closeVideo() {
+    setVideo(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; });
+  }
+
   function handleCourtClick(e: React.MouseEvent<SVGSVGElement>) {
     if (!canEdit || subMode) return;
     // Un tir a toujours un auteur : avec « sans joueur » armé, poser un point n'aboutirait à rien.
@@ -553,6 +660,17 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     setEvents(prev => prev.filter(e => e.seq !== seq));
     enqueueDelete(match.id, seq);
   }, [match.id]);
+
+  /**
+   * Tout geste qui DÉTRUIT une donnée passe par une confirmation — supprimer une action, retirer
+   * un joueur adverse, annuler le dernier geste. Une action pointée ne se retrouve pas : il n'y a
+   * pas de corbeille, et la feuille de marque papier est déjà repartie avec l'arbitre.
+   *
+   * La boîte dit CE QU'ELLE VA DÉTRUIRE, en toutes lettres. Une confirmation qui demande juste
+   * « êtes-vous sûr ? » ne fait que rajouter un clic : on la valide sans lire, et on découvre
+   * après coup qu'on visait la ligne du dessus.
+   */
+  const ask = useCallback((c: NonNullable<PendingConfirm>) => setPendingConfirm(c), []);
 
   /** Actions ET changements de banc, mêlés. Un changement ne laissait aucune trace ici : on ne
    *  pouvait ni vérifier qu'il était parti, ni s'apercevoir qu'on en avait fait un de trop. */
@@ -676,11 +794,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    * Toute frappe est ignorée dès qu'un champ a le focus : le formulaire d'ajout de joueur
    * adverse est sur le même écran, taper « Dupont » ne doit rien déclencher.
    *
-   * Et rien n'écoute tant qu'une MODALE est ouverte : `espace` lançait le chrono et `c` basculait
-   * le mode changement pendant qu'on cochait la feuille de match ou qu'on lisait la confirmation
-   * de publication, et on revenait sur un écran qui n'était plus dans l'état qu'on avait quitté.
+   * Et rien n'écoute tant qu'une MODALE est ouverte : `c` basculait le mode changement pendant
+   * qu'on cochait la feuille de match ou qu'on lisait la confirmation de publication, et on
+   * revenait sur un écran qui n'était plus dans l'état qu'on avait quitté.
    */
-  const modalOpen = showRosterModal || showOpponentSheet || showKeys || publishTarget !== null;
+  const modalOpen = showRosterModal || showOpponentSheet || showKeys || publishTarget !== null || pendingConfirm !== null;
+
+  useClockHotkey(clock, canEdit && !modalOpen);
 
   useEffect(() => {
     if (!canEdit || modalOpen) return;
@@ -690,11 +810,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       const tag = el?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
 
-      if (e.code === 'Space') {
-        if (tag === 'BUTTON') return;  // ne pas voler l'activation clavier native du bouton
-        e.preventDefault();
-        if (clock.running) clock.pause(); else clock.start();
-      } else if (e.key === 'c') {
+      if (e.key === 'c') {
         e.preventDefault();
         setSubMode(v => !v);
         setPendingSub(null);
@@ -708,9 +824,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-    // `clock` entier changerait à chaque seconde : seuls les trois membres réellement lus en font
-    // partie, et `pause`/`start` sont stables (useCallback vide).
-  }, [canEdit, modalOpen, clock.running, clock.pause, clock.start, pendingAction, pendingShot, pendingSub]);
+  }, [canEdit, modalOpen, pendingAction, pendingShot, pendingSub]);
 
   /* ── Publication ───────────────────────────────────────────────────────── */
 
@@ -807,6 +921,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   /* ── Rendu ─────────────────────────────────────────────────────────────── */
 
   const recent = history.slice(0, RECENT_COUNT);
+
   const isSelected = (side: LineupSide, id: string | null) => selection?.side === side && selection?.id === id;
 
   /** Le « sans joueur » de NOTRE côté n'accepte que les actions d'équipe : plutôt que d'avaler
@@ -819,6 +934,16 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const rosterName = (side: LineupSide, id: string) => side === 'us'
     ? (playerById.has(id) ? playerNameShort(playerById.get(id)!) : '?')
     : (opponentById.get(id)?.name ?? '?');
+
+  /** Ce que le bouton Annuler va réellement défaire — l'écrire évite l'annulation à l'aveugle,
+   *  qui est le geste où l'on se trompe le plus : la dernière ligne n'est pas toujours celle
+   *  qu'on croit quand elle vient d'être poussée par une autre. */
+  const undoDetail = undoTarget === 'lineup' && lastEntry?.kind === 'lineup'
+    ? `${periodLabel(lastEntry.quarter)} ${formatClock(lastEntry.gameTimeSeconds)} — ${lineupText(lastEntry.lineup)}`
+    : (() => {
+        const last = events.at(-1);
+        return last ? `${periodLabel(last.quarter)} ${formatClock(last.gameTimeSeconds)} — ${eventText(last)}` : '';
+      })();
 
   /**
    * Play-by-play en CSV. C'est la seule sortie qui rend la saisie exploitable ailleurs : tableur,
@@ -864,7 +989,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   if (loading) return <div style={{ color: '#64748B', padding: 24 }}>Chargement…</div>;
 
   return (
-    <div className="tracker" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1500, marginInline: 'auto', width: '100%' }}>
+    <div ref={rootRef} className="tracker" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1500, marginInline: 'auto', width: '100%' }}>
       <style>{`
         /* Largeurs mesurées, pas devinées. Le terrain est la seule pièce de l'écran dont la
            hauteur suit la largeur (ratio 15:14) : sans plancher il rétrécit avec la fenêtre
@@ -888,6 +1013,10 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         .tracker-action-label { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
           overflow: hidden; text-overflow: ellipsis; text-align: center; }
         .tracker button:focus-visible { outline: 2px solid #00E5A0; outline-offset: 2px; }
+        /* En plein écran l'élément est seul à l'écran : il porte lui-même le fond et la marge que
+           la page lui donnait, et défile pour son propre compte. Sans ça, le fond est noir et le
+           contenu colle aux bords. */
+        .tracker:fullscreen { background: #0D0F14; padding: 14px; overflow-y: auto; }
         .tracker-cell { padding: 5px 6px; font-size: 0.72rem; text-align: right; color: #CBD5E1; }
         .tracker-cell:first-child { text-align: left; color: #F1F5F9; }
         .tracker-head { padding: 5px 6px; font-size: 0.6rem; text-align: right; color: #64748B;
@@ -906,6 +1035,22 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         @media (prefers-reduced-motion: reduce) { .tracker-flash { animation-duration: 1ms; } }
       `}</style>
 
+      {/* Commandes d'écran — plein écran et réglages. Tout en haut, au-dessus de la table de
+          marque : ce sont des réglages de l'AFFICHAGE, pas des gestes de match, et mêlés aux
+          boutons du chrono ils encombraient la zone qu'on regarde en pointant. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+        {document.fullscreenEnabled && (
+          <button onClick={toggleFullscreen} aria-pressed={fullscreen}
+            style={{ ...SMALL_BTN, gap: 6, ...(fullscreen ? { borderColor: '#00E5A0', color: '#00E5A0' } : {}) }}>
+            {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            {fullscreen ? 'Quitter le plein écran' : 'Passer en plein écran'}
+          </button>
+        )}
+        <button onClick={() => setShowKeys(true)} style={{ ...SMALL_BTN, gap: 6 }}>
+          <Settings size={14} />Réglages
+        </button>
+      </div>
+
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 6, padding: '8px 12px', color: '#EF4444', fontSize: '0.78rem' }}>
           <AlertTriangle size={15} style={{ flexShrink: 0 }} />
@@ -916,11 +1061,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         </div>
       )}
 
-      {pending > 0 && (
+      {/* Bandeau d'écriture : il ne parle QUE quand l'enregistrement est réellement en panne.
+          Il s'affichait dès qu'une action était en vol — deux cents millisecondes, à chaque tap —
+          et faisait sauter la mise en page du haut de l'écran en continu. */}
+      {queueFailed && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.78rem' }}>
           <AlertTriangle size={15} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>
-            {pending} action{pending > 1 ? 's' : ''} en attente d'enregistrement. Elle{pending > 1 ? 's partiront' : ' partira'} au retour du réseau — ne fermez pas l'onglet.
+            {pending} action{pending > 1 ? 's' : ''} n'{pending > 1 ? 'ont' : 'a'} pas pu être enregistrée{pending > 1 ? 's' : ''}. Elle{pending > 1 ? 's repartiront' : ' repartira'} au retour du réseau — ne fermez pas l'onglet.
           </span>
           <button onClick={() => { flushQueue().then(err => setError(err ? err.message : '')); }}
             style={{ ...SMALL_BTN, height: 28, borderColor: '#F59E0B', color: '#F59E0B' }}>
@@ -952,10 +1100,6 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 cursor: events.length > 0 && publishState === 'idle' ? 'pointer' : 'not-allowed',
               }}>
               <Upload size={14} />{publishState === 'checking' ? 'Vérification…' : 'Publier'}
-            </button>
-            <button onClick={() => setShowKeys(true)} aria-label="Réglages et raccourcis" title="Réglages et raccourcis"
-              style={{ ...scoreboardBtn, width: 34, justifyContent: 'center' }}>
-              <Settings size={15} />
             </button>
           </>
         }
@@ -989,7 +1133,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           </div>
 
           {canEdit && (
-            <button onClick={undo} disabled={undoTarget === null}
+            <button disabled={undoTarget === null}
+              onClick={() => ask({
+                title: undoTarget === 'lineup' ? 'Annuler ce changement ?' : 'Annuler cette action ?',
+                detail: undoDetail,
+                confirmLabel: undoTarget === 'lineup' ? 'Annuler le changement' : "Annuler l'action",
+                run: undo,
+              })}
               title={
                 undoTarget === 'lineup' ? 'Annuler le dernier changement'
                 : undoTarget === 'event' ? (lastEntry?.kind === 'lineup' ? 'Annuler la dernière action' : 'Annuler la dernière action')
@@ -1042,7 +1192,12 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                       {eventPoints(h.event) > 0 && <span style={{ color: h.event.side === 'us' ? teamColor : '#94A3B8' }}> +{eventPoints(h.event)}</span>}
                     </span>
                     {canEdit && (
-                      <button onClick={() => removeEvent(h.event.seq)} aria-label="Supprimer cette action"
+                      <button onClick={() => ask({
+                        title: 'Supprimer cette action ?',
+                        detail: `${periodLabel(h.quarter)} ${formatClock(h.gameTimeSeconds)} — ${eventText(h.event)}. Elle ne sera pas récupérable.`,
+                        confirmLabel: 'Supprimer',
+                        run: () => removeEvent(h.event.seq),
+                      })} aria-label="Supprimer cette action"
                         style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 5, flexShrink: 0 }} title="Supprimer">
                         <Trash2 size={13} />
                       </button>
@@ -1051,6 +1206,52 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Vidéo du match, lue depuis le DISQUE — rien n'est envoyé ni stocké, c'est une URL d'objet
+          locale valable le temps de l'onglet. Volontairement indépendante du chrono : la caler
+          sur l'axe de temps du match demande un point de repère que seule la table de marque
+          donne, et une vidéo mal calée date faux TOUTES les actions pointées derrière.
+          Repliée par défaut : en direct on ne la veut pas, elle sert à pointer après match. */}
+      <div style={{ ...PANEL, padding: '10px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setShowVideo(v => !v)} aria-expanded={showVideo} disabled={!video}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, ...SECTION_TITLE, margin: 0, cursor: video ? 'pointer' : 'default' }}>
+            <ChevronDown size={14} style={{ transform: showVideo && video ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            Vidéo
+          </button>
+
+          <span style={{ flex: 1, minWidth: 0, color: '#475569', fontSize: '0.74rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {video ? video.name : 'Aucune vidéo ouverte. Le fichier reste sur cet appareil.'}
+          </span>
+
+          <label style={{ ...SMALL_BTN, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', flexShrink: 0 }}>
+            <Film size={13} />{video ? 'Changer' : 'Ouvrir une vidéo'}
+            <input type="file" accept="video/*" style={{ display: 'none' }}
+              onChange={e => { openVideo(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+
+          {video && (
+            <button onClick={closeVideo} style={{ ...SMALL_BTN, flexShrink: 0 }}>Retirer</button>
+          )}
+        </div>
+
+        {/* Cadre redimensionnable à la poignée, en bas à droite — `resize` du navigateur, pas une
+            poignée maison : elle gère déjà le glissement, le tactile et le clavier. La vidéo
+            occupe le cadre sans se déformer. */}
+        {video && showVideo && (
+          <div ref={videoBoxRef} style={{
+            height: videoHeight, minHeight: VIDEO_HEIGHT_MIN, maxHeight: VIDEO_HEIGHT_MAX,
+            resize: 'vertical', overflow: 'hidden',
+            // Une bande sous la vidéo pour la poignée : sans elle, elle se pose exactement sur le
+            // bouton plein écran du lecteur, et un clic sur deux redimensionne au lieu de lire.
+            paddingBottom: 14,
+            marginTop: 10, borderRadius: 8, backgroundColor: '#000',
+          }}>
+            <video src={video.url} controls playsInline
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
           </div>
         )}
       </div>
@@ -1538,7 +1739,23 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       {showOpponentSheet && (
         <OpponentSheetModal
           opponentName={opponentName} opponents={opponents} usedIds={usedOpponentIds}
-          onAdd={addOpponent} onRemove={removeOpponent} onClose={() => setShowOpponentSheet(false)}
+          onAdd={addOpponent}
+          onRemove={id => ask({
+            title: 'Retirer ce joueur de la feuille adverse ?',
+            detail: `${opponents.find(p => p.id === id)?.name ?? ''} sera retiré de la feuille. Les joueurs déjà pointés ou sur le terrain ne peuvent pas l'être.`,
+            confirmLabel: 'Retirer',
+            overModal: true,
+            run: () => removeOpponent(id),
+          })}
+          onClose={() => setShowOpponentSheet(false)}
+        />
+      )}
+
+      {pendingConfirm && (
+        <ConfirmModal
+          {...pendingConfirm}
+          onConfirm={() => { pendingConfirm.run(); setPendingConfirm(null); }}
+          onCancel={() => setPendingConfirm(null)}
         />
       )}
 
@@ -1579,7 +1796,7 @@ function SettingsModal({ periodDurationSeconds, onPeriodDurationChange, shotInpu
   onClose: () => void;
 }) {
   const rows: [string, string][] = [
-    ['espace', 'Lancer / arrêter le chrono'],
+    ['s',      'Lancer / arrêter le chrono'],
     ['c',      'Basculer le mode changement'],
     ['échap',  'Annuler le tir en cours, le changement en attente ou la sélection'],
   ];
@@ -1887,6 +2104,34 @@ function RosterRow({ number, name, accent, active, marked, dimmed, canEdit, titl
       <NumberBadge number={number} />
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
     </button>
+  );
+}
+
+/**
+ * Confirmation d'un geste qui détruit une donnée. Le bouton de retour s'appelle « Retour » et non
+ * « Annuler » : sur cet écran, « Annuler » est justement le nom du geste destructeur, et deux
+ * boutons « Annuler » côte à côte dans la même boîte ne veulent plus rien dire.
+ */
+function ConfirmModal({ title, detail, confirmLabel, overModal, onConfirm, onCancel }: {
+  title: string; detail?: string; confirmLabel: string; overModal?: boolean;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <Modal maxWidth={400} scrollOverlay={false} onClose={onCancel} closeOnBackdropClick
+      zIndex={overModal ? LAYER.modalOverModal : undefined} style={{ padding: 24 }}>
+      <h2 style={{ color: '#F1F5F9', margin: '0 0 8px', fontSize: '1rem', fontWeight: 700 }}>{title}</h2>
+      {detail && <p style={{ color: '#94A3B8', fontSize: '0.85rem', margin: '0 0 20px', lineHeight: 1.5 }}>{detail}</p>}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button type="button" onClick={onCancel}
+          style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer', fontSize: '0.85rem' }}>
+          Retour
+        </button>
+        <button type="button" onClick={onConfirm} autoFocus
+          style={{ flex: 1, padding: 10, backgroundColor: '#EF4444', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+          {confirmLabel}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

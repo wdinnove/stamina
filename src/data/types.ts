@@ -797,7 +797,7 @@ export type MatchEventType =
   | 'blk'         // contre
   | 'tov'         // ballon perdu
   | 'foul'        // faute commise
-  | 'foul_drawn'; // faute reçue
+  | 'foul_drawn'; // faute provoquée (subie par nous, sifflée contre l'adversaire)
 
 export interface MatchEvent {
   matchId: string;

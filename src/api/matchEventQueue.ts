@@ -38,6 +38,12 @@ function write(ops: QueuedOp[]) {
 
 let queue: QueuedOp[] = read();
 let flushing = false;
+/**
+ * Dernier échec d'écriture, tant qu'il n'a pas été rattrapé. C'est LUI qui justifie un bandeau à
+ * l'écran, pas la taille de la file : une action en vol pendant deux cents millisecondes est le
+ * fonctionnement normal, et l'annoncer faisait clignoter une alerte à chaque tap.
+ */
+let lastError: Error | null = null;
 /** Vrai dès qu'un rang a dû être réattribué : l'état local ne correspond plus à la base. */
 let needsResync = false;
 
@@ -55,6 +61,11 @@ export function subscribeQueue(fn: () => void): () => void {
 
 export function pendingCount(): number {
   return queue.length;
+}
+
+/** L'écriture est-elle RÉELLEMENT en panne (réseau tombé, refus du serveur) ? */
+export function queueError(): Error | null {
+  return lastError;
 }
 
 /** Vrai quand un rang a été réattribué à l'insertion : l'appelant doit recharger le match.
@@ -99,9 +110,11 @@ export async function flushQueue(): Promise<Error | null> {
           await matchEventsApi.delete(op.matchId, op.seq);
         }
       } catch (err) {
+        lastError = err instanceof Error ? err : new Error("Erreur d'enregistrement");
         notify();
-        return err instanceof Error ? err : new Error("Erreur d'enregistrement");
+        return lastError;
       }
+      lastError = null;
       queue.shift();
       write(queue);
       notify();

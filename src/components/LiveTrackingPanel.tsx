@@ -8,6 +8,7 @@ import { LiveActionModal, type LiveActionInput } from './LiveActionModal';
 import { PlaysConfigModal } from './PlaysConfigModal';
 import { MatchScoreboard } from './MatchScoreboard';
 import { useMatchClock } from '../hooks/useMatchClock';
+import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import {
   playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, periodLabel, formatClock,
@@ -146,26 +147,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
 
   useEffect(() => { load(); }, [load]);
 
-  /**
-   * Barre espace = lancer/arrêter le chrono, le geste le plus urgent du match (coup de sifflet).
-   * Ignorée dès qu'une saisie est en cours (champ de texte, liste déroulante) ou qu'une modale est
-   * ouverte, et quand le focus est sur un bouton — sinon on volerait l'activation clavier native
-   * de ce bouton. `preventDefault` empêche le défilement de la page, comportement par défaut de
-   * l'espace.
-   */
-  useEffect(() => {
-    if (!canEdit || actionModal || showPlaysConfig) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || el?.isContentEditable) return;
-      e.preventDefault();
-      if (clock.running) clock.pause(); else clock.start();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [canEdit, actionModal, showPlaysConfig, clock.running, clock.pause, clock.start]);
+  useClockHotkey(clock, canEdit && !actionModal && !showPlaysConfig);
 
   const onCourt = useMemo(() => {
     const last: Record<LineupSide, string[]> = { us: [], them: [] };

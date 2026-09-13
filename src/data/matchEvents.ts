@@ -39,7 +39,7 @@ export interface PlayerBoxscoreRow {
  *  et l'export. Court volontairement : elle s'affiche dans des puces d'historique. */
 export const EVENT_LABELS: Record<MatchEventType, string> = {
   shot: 'Tir', ft: 'LF', reb_off: 'Rebond off.', reb_def: 'Rebond déf.', ast: 'Passe déc.',
-  stl: 'Interception', blk: 'Contre', tov: 'Ballon perdu', foul: 'Faute', foul_drawn: 'Faute reçue',
+  stl: 'Interception', blk: 'Contre', tov: 'Ballon perdu', foul: 'Faute', foul_drawn: 'Faute provoquée',
 };
 
 /** Points rapportés par un événement — 0 pour tout ce qui n'est pas un tir réussi. */

@@ -5120,7 +5120,7 @@ CREATE TABLE IF NOT EXISTS match_events (
     'blk',         -- contre
     'tov',         -- ballon perdu
     'foul',        -- faute commise
-    'foul_drawn'   -- faute reçue
+    'foul_drawn'   -- faute provoquée
   )),
 
   -- Réussite. Obligatoire pour 'shot' et 'ft', interdite ailleurs.

@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS match_events (
     'blk',         -- contre
     'tov',         -- ballon perdu
     'foul',        -- faute commise
-    'foul_drawn'   -- faute reçue
+    'foul_drawn'   -- faute provoquée
   )),
 
   -- Réussite. Obligatoire pour 'shot' et 'ft', interdit ailleurs.
@@ -381,7 +381,7 @@ chrono restent au milieu exact quelle que soit la largeur de ce qu'on ajoute à 
 
 | Touche | Effet |
 |---|---|
-| `espace` | chrono marche/arrêt (même raccourci que le suivi live) |
+| `s` | chrono marche/arrêt (même raccourci que le suivi live, `useClockHotkey`). Pas la barre espace : elle réactive le dernier bouton cliqué, on réenregistrait l'action précédente en croyant arrêter le chrono. |
 | `c` | bascule le mode changement |
 | `échap` | annule le tir en cours, la désignation de changement, ou la sélection |
 
@@ -397,6 +397,42 @@ visibles — de quoi contrôler ce qu'on vient de faire ; au-delà c'est de la r
 dans le dépliant (`▾`) à côté du compteur.
 
 `⟲ Annuler` est dans ce même bandeau, à côté de ce qu'il va défaire.
+
+### Plein écran
+
+Le `⛶` de la barre de commandes met **l'écran de saisie seul à l'écran** (API Fullscreen native,
+sur l'élément racine du composant). Il n'y a rien d'autre à regarder pendant un match, et la
+barre de navigation comme le menu d'onglets ne font qu'y prendre la place du terrain.
+
+L'état affiché par l'icône vient de `fullscreenchange`, jamais du clic sur le bouton : on en sort
+aussi par `échap`, par le geste du système ou par le bouton du navigateur, et une icône qui
+mentirait sur l'état en cours serait pire que pas d'icône. Le bouton n'apparaît pas si le
+navigateur ne le permet pas (`document.fullscreenEnabled`).
+
+### Vidéo
+
+Un panneau replié au-dessus de la saisie lit une **vidéo du disque** (`<input type="file">` →
+`URL.createObjectURL`). Rien n'est envoyé ni stocké : l'URL d'objet ne vaut que le temps de
+l'onglet, et elle est révoquée au changement de fichier comme au démontage — sans quoi chaque
+fichier ouvert reste en mémoire jusqu'au rechargement de la page.
+
+Elle est **indépendante du chrono**, volontairement. La caler sur l'axe de temps du match demande
+un point de repère que seule la table de marque donne, et une vidéo mal calée daterait faux
+*toutes* les actions pointées derrière — on remplacerait une saisie approximative par une saisie
+fausse avec l'air d'être précise.
+
+### Confirmations
+
+Trois gestes détruisent une donnée et passent tous par la même boîte (`ConfirmModal`) :
+**supprimer une action**, **retirer un joueur adverse**, **annuler le dernier geste**. Une action
+pointée ne se retrouve pas : il n'y a pas de corbeille, et la feuille de marque papier est déjà
+repartie avec l'arbitre.
+
+La boîte **dit ce qu'elle va détruire**, en toutes lettres (quart-temps, temps, libellé de
+l'action). Une confirmation qui demande seulement « êtes-vous sûr ? » ne fait qu'ajouter un clic :
+on la valide sans lire, et on découvre après coup qu'on visait la ligne du dessus. Son bouton de
+retour s'appelle *Retour* et non *Annuler* — sur cet écran, « Annuler » est justement le nom d'un
+geste destructeur.
 
 ### Lineups
 
