@@ -516,6 +516,24 @@ serait perdu.
 Le tracker publie plus riche que le CSV sur deux colonnes : les **titulaires** (`starter`, en dur à
 `false` à l'import) et les **minutes**, dérivées des rotations réelles.
 
+## 6 bis. Vérification contre une vraie base
+
+Les tests unitaires ne voient ni la RLS, ni les contraintes de `match_events`, ni la sérialisation
+aller-retour des coordonnées, ni le chemin de publication complet. D'où
+[`scripts/check-tracker.mjs`](../scripts/check-tracker.mjs) :
+
+```
+E2E_EMAIL=... E2E_PASSWORD=... npx vite-node scripts/check-tracker.mjs
+```
+
+Il crée un match jetable daté de 2019, y saisit un match miniature, publie, vérifie, puis supprime
+le match — la cascade emporte actions, rotations, effectif adverse et statistiques. Aucune donnée
+existante n'est touchée. **À n'exécuter que sur un compte de test.**
+
+C'est ce script qui a révélé que les quatre contraintes de cohérence et les bornes de terrain
+n'existaient pas dans la base, alors qu'elles figurent dans `schema.sql` depuis le premier jour :
+la migration avait été appliquée partiellement. Le bloc de réparation est en fin de `schema.sql`.
+
 ## 7. Phases
 
 ### Phase 0 — Boxscore live ✅

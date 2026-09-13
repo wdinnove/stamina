@@ -5171,6 +5171,51 @@ CREATE POLICY "match_events_write" ON match_events
   USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
   WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
+-- ────────────────────────────────────────────────────────────────
+-- RÉPARATION — contraintes de cohérence de match_events
+-- Rejouable sans risque, à exécuter tel quel dans le SQL Editor.
+-- ────────────────────────────────────────────────────────────────
+--
+-- Constaté en écrivant réellement dans la base : le CHECK sur `type`, la clé étrangère et la clé
+-- primaire étaient bien là, mais AUCUNE des quatre contraintes de cohérence ni les bornes de
+-- terrain sur x/y. Un tir sans réussite, un rebond avec une position, ou un tir à x = 99 étaient
+-- acceptés — donc indétectables jusqu'au moment où une agrégation tombe dessus.
+--
+-- L'application n'écrit jamais de telles lignes ; ces contraintes sont là pour le jour où un bug,
+-- un second client ou une reprise de données le ferait.
+
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS event_one_author;
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS event_made_only_on_shots;
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS event_position_only_on_shots;
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS event_position_xor_value;
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS event_x_on_court;
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS event_y_on_court;
+
+ALTER TABLE match_events
+  ADD CONSTRAINT event_one_author CHECK (player_id IS NULL OR opponent_player_id IS NULL),
+
+  -- Réussite : obligatoire pour un tir et un lancer franc, interdite partout ailleurs.
+  ADD CONSTRAINT event_made_only_on_shots CHECK (
+    (type IN ('shot', 'ft') AND made IS NOT NULL) OR
+    (type NOT IN ('shot', 'ft') AND made IS NULL)
+  ),
+
+  -- Position et valeur figée n'existent que sur un tir du champ.
+  ADD CONSTRAINT event_position_only_on_shots CHECK (
+    type = 'shot' OR (x IS NULL AND y IS NULL AND value IS NULL)
+  ),
+
+  -- Un tir porte SOIT une position (la valeur est alors déduite par shotValue), SOIT une valeur
+  -- figée (saisie sans position) — jamais les deux, jamais aucune des deux.
+  ADD CONSTRAINT event_position_xor_value CHECK (
+    type <> 'shot' OR (x IS NOT NULL AND y IS NOT NULL AND value IS NULL)
+                   OR (x IS NULL AND y IS NULL AND value IS NOT NULL)
+  ),
+
+  -- Bornes du demi-terrain, en mètres (repère de utils/diagram.ts).
+  ADD CONSTRAINT event_x_on_court CHECK (x IS NULL OR (x >= 0 AND x <= 15)),
+  ADD CONSTRAINT event_y_on_court CHECK (y IS NULL OR (y >= 0 AND y <= 14));
+
 -- Vérification
 --   SELECT to_regclass('match_events');
 --   -- La policy d'écriture doit ressortir avec un `with_check` NON NUL :

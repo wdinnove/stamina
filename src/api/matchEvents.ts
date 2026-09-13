@@ -143,8 +143,9 @@ interface EventRow {
   on_court_them: string[] | null;
 }
 
-/** `x`/`y` sont en NUMERIC : PostgREST les rend en chaîne, d'où la conversion — sans elle, un tir
- *  relu depuis la base ne retomberait dans aucune zone. */
+/** `x`/`y` sont en NUMERIC. Le client les rend aujourd'hui en nombre, mais PostgREST sérialise le
+ *  type NUMERIC en chaîne selon la configuration : la conversion est gardée parce qu'un tir relu
+ *  en chaîne ne retomberait dans aucune zone, et que l'échec serait silencieux. */
 function toMatchEvent(row: EventRow): MatchEvent {
   return {
     matchId: row.match_id,
