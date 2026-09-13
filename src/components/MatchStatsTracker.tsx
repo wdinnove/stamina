@@ -14,7 +14,7 @@ import { useMatchClock, PERIOD_PRESETS_MIN } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
-import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS } from '../data/matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, type TrackerHistoryEntry } from '../data/matchEvents';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
 import { shotEventValue, shotValue, shotZone, ZONE_LABELS } from '../data/shotChart';
@@ -726,7 +726,9 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   /* ── Rendu ─────────────────────────────────────────────────────────────── */
 
-  const history = [...events].reverse();
+  /** Actions ET changements de banc, mêlés. Un changement ne laissait aucune trace ici : on ne
+   *  pouvait ni vérifier qu'il était parti, ni s'apercevoir qu'on en avait fait un de trop. */
+  const history = trackerHistory(events, lineupEvents);
   const recent  = history.slice(0, RECENT_COUNT);
   const isSelected = (side: LineupSide, id: string | null) => selection?.side === side && selection?.id === id;
 
@@ -748,6 +750,22 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     });
     downloadCsv(toCsv([[...PLAY_BY_PLAY_HEADER], ...rows]), csvFilename('play-by-play', opponentName, match.date));
   }
+
+  /** Libellé d'un changement. Le premier d'un banc n'a pas de sortant : c'est la composition de
+   *  départ, pas un échange, et l'écrire « → X » se lirait comme une entrée en cours de match. */
+  function lineupText(l: MatchLineupEvent): string {
+    const name = (id: string) => rosterName(l.side, id);
+    if (l.playersOut.length === 0) {
+      return l.playersIn.length > 1
+        ? `Cinq de départ · ${l.playersIn.map(name).join(', ')}`
+        : `Entrée · ${l.playersIn.map(name).join(', ')}`;
+    }
+    return `${l.playersOut.map(name).join(', ')} → ${l.playersIn.map(name).join(', ')}`;
+  }
+
+  const entryKey = (h: TrackerHistoryEntry) =>
+    h.kind === 'event' ? `e${h.event.seq}` : `l${h.lineup.side}${h.lineup.seq}`;
+  const entrySide = (h: TrackerHistoryEntry) => (h.kind === 'event' ? h.event.side : h.lineup.side);
 
   function eventText(e: MatchEvent): string {
     const author = e.side === 'us'
@@ -868,16 +886,20 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
           <div style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0, overflowX: 'auto', paddingBottom: 2 }}>
             {recent.length === 0 && <span style={{ color: '#475569', fontSize: '0.75rem' }}>Aucune action enregistrée.</span>}
-            {recent.map((e, i) => (
-              <span key={e.seq} className={i === 0 ? 'tracker-flash' : undefined}
+            {recent.map((h, i) => (
+              <span key={entryKey(h)} className={i === 0 ? 'tracker-flash' : undefined}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                  padding: '6px 10px', borderRadius: 999, border: '1px solid #2A2F3A',
-                  backgroundColor: '#0D0F14', color: e.side === 'us' ? '#CBD5E1' : '#64748B',
+                  padding: '6px 10px', borderRadius: 999,
+                  border: `1px solid ${h.kind === 'lineup' ? '#F59E0B55' : '#2A2F3A'}`,
+                  backgroundColor: h.kind === 'lineup' ? '#F59E0B0F' : '#0D0F14',
+                  color: entrySide(h) === 'us' ? '#CBD5E1' : '#64748B',
                   fontSize: '0.75rem', whiteSpace: 'nowrap',
                 }}>
-                <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '0.68rem' }}>{periodLabel(e.quarter)} {formatClock(e.gameTimeSeconds)}</span>
-                {eventText(e)}
+                <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '0.68rem' }}>{periodLabel(h.quarter)} {formatClock(h.gameTimeSeconds)}</span>
+                {h.kind === 'lineup'
+                  ? <><Repeat2 size={12} style={{ color: '#F59E0B' }} />{lineupText(h.lineup)}</>
+                  : eventText(h.event)}
               </span>
             ))}
           </div>
@@ -905,24 +927,38 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
             title="Voir tout l'historique"
             style={{ ...SMALL_BTN, flexShrink: 0 }}>
             <ChevronDown size={14} style={{ transform: showFullHistory ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', marginRight: 5 }} />
-            {events.length}
+            {history.length}
           </button>
         </div>
 
         {showFullHistory && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 260, overflowY: 'auto', marginTop: 10, paddingTop: 10, borderTop: '1px solid #1E2229' }}>
-            {history.map(e => (
-              <div key={e.seq} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.76rem' }}>
-                <span style={{ color: '#475569', flexShrink: 0, fontFamily: 'monospace' }}>{periodLabel(e.quarter)} {formatClock(e.gameTimeSeconds)}</span>
-                <span style={{ flex: 1, minWidth: 0, color: e.side === 'us' ? '#CBD5E1' : '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {eventText(e)}
-                  {eventPoints(e) > 0 && <span style={{ color: e.side === 'us' ? teamColor : '#94A3B8' }}> +{eventPoints(e)}</span>}
-                </span>
-                {canEdit && (
-                  <button onClick={() => removeEvent(e.seq)} aria-label="Supprimer cette action"
-                    style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 5, flexShrink: 0 }} title="Supprimer">
-                    <Trash2 size={13} />
-                  </button>
+            {history.map(h => (
+              <div key={entryKey(h)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.76rem' }}>
+                <span style={{ color: '#475569', flexShrink: 0, fontFamily: 'monospace' }}>{periodLabel(h.quarter)} {formatClock(h.gameTimeSeconds)}</span>
+                {h.kind === 'lineup' ? (
+                  <>
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#F59E0B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <Repeat2 size={12} style={{ flexShrink: 0 }} />{lineupText(h.lineup)}
+                    </span>
+                    {/* Pas de suppression : retirer un changement fausserait le cinq mémorisé sur
+                        toutes les actions déjà enregistrées après lui. Pour corriger, refaire le
+                        changement inverse — c'est aussi le geste réel. */}
+                    {canEdit && <span style={{ width: 23, flexShrink: 0 }} />}
+                  </>
+                ) : (
+                  <>
+                    <span style={{ flex: 1, minWidth: 0, color: h.event.side === 'us' ? '#CBD5E1' : '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {eventText(h.event)}
+                      {eventPoints(h.event) > 0 && <span style={{ color: h.event.side === 'us' ? teamColor : '#94A3B8' }}> +{eventPoints(h.event)}</span>}
+                    </span>
+                    {canEdit && (
+                      <button onClick={() => removeEvent(h.event.seq)} aria-label="Supprimer cette action"
+                        style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 5, flexShrink: 0 }} title="Supprimer">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ))}

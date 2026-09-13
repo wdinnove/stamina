@@ -244,6 +244,35 @@ export interface TeamTotals {
   possessions: number;
 }
 
+export type TrackerHistoryEntry =
+  | { kind: 'event';  quarter: number; gameTimeSeconds: number; event: MatchEvent }
+  | { kind: 'lineup'; quarter: number; gameTimeSeconds: number; lineup: MatchLineupEvent };
+
+/**
+ * Historique de l'écran de saisie : actions ET changements de banc, mêlés, le plus récent d'abord.
+ *
+ * Les deux flux vivent dans deux tables et ont chacun leur propre `seq` : seul le repère de jeu
+ * (quart-temps, temps écoulé) permet de les ordonner l'un par rapport à l'autre. Un changement
+ * enregistré au même instant qu'une action passe AVANT elle — un changement se fait sur ballon
+ * mort, le jeu reprend ensuite. C'est une convention, pas une déduction : rien dans les données ne
+ * tranche, et l'inverse ferait lire « panier puis changement » là où le coach a vu l'inverse.
+ */
+export function trackerHistory(events: MatchEvent[], lineupEvents: MatchLineupEvent[]): TrackerHistoryEntry[] {
+  const entries: TrackerHistoryEntry[] = [
+    ...lineupEvents.map(l => ({ kind: 'lineup' as const, quarter: l.quarter, gameTimeSeconds: l.gameTimeSeconds, lineup: l })),
+    ...events.map(e => ({ kind: 'event' as const, quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds, event: e })),
+  ];
+
+  return entries.sort((a, b) => {
+    if (a.quarter !== b.quarter) return b.quarter - a.quarter;
+    if (a.gameTimeSeconds !== b.gameTimeSeconds) return b.gameTimeSeconds - a.gameTimeSeconds;
+    if (a.kind !== b.kind) return a.kind === 'lineup' ? 1 : -1;   // à égalité, le changement dessous
+    return a.kind === 'event' && b.kind === 'event'
+      ? b.event.seq - a.event.seq
+      : (a as { lineup: MatchLineupEvent }).lineup.seq - (b as { lineup: MatchLineupEvent }).lineup.seq;
+  });
+}
+
 export interface EventLineupRow {
   /** Ids joueurs, triés — clé de regroupement stable, indépendante de l'ordre d'entrée. */
   players: string[];

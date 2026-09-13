@@ -440,6 +440,12 @@ Un joueur **déjà sur le terrain ne peut pas être décoché** — le sortir pa
   quelques fois par mois ne peut pas supposer un jargon mémorisé.
 - **Palette groupée par thème, deux boutons par ligne** — Lancers francs, Rebonds, Création,
   Défense, Fautes. On vise le groupe puis le côté, au lieu de relire dix libellés.
+- Le bandeau mêle **actions ET changements de banc** (`trackerHistory`). Les deux flux vivent dans
+  deux tables avec chacune son `seq` : seul le repère de jeu les ordonne l'un par rapport à
+  l'autre, et à instant égal le changement passe sous l'action — il se fait sur ballon mort, le
+  jeu reprend ensuite. Un changement n'est PAS supprimable depuis là : le retirer fausserait le
+  cinq mémorisé sur toutes les actions déjà enregistrées après lui. Pour corriger, on refait le
+  changement inverse, qui est aussi le geste réel.
 - **Annuler** vit dans le bandeau des dernières actions, à côté de ce qu'il va défaire — pas noyé
   dans les réglages de chrono.
 - **Toutes les cibles font 44 px**, en particulier les chips de banc : la plus petite cible de

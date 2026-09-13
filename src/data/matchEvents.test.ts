@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shotValue, shotZone, zoneStats } from './shotChart';
-import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, type PlayerBoxscoreRow } from './matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, trackerHistory, type PlayerBoxscoreRow } from './matchEvents';
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, MatchLineupEvent } from './types';
 
@@ -245,5 +245,37 @@ describe('evaluation', () => {
 
   it('crédite les fautes provoquées', () => {
     expect(evaluation(row({ pts: 10, fpr: 4 }))).toBe(14);
+  });
+});
+
+describe('trackerHistory', () => {
+  const lu = (over: Partial<MatchLineupEvent> & { seq: number }): MatchLineupEvent => ({
+    matchId: 'm1', side: 'us', quarter: 1, gameTimeSeconds: 0,
+    playersIn: [], playersOut: [], onCourt: [], ...over,
+  });
+
+  it('mêle les deux flux, le plus récent en tête', () => {
+    const h = trackerHistory(
+      [ev({ seq: 1, type: 'ast', quarter: 1, gameTimeSeconds: 30 }), ev({ seq: 2, type: 'ast', quarter: 2, gameTimeSeconds: 10 })],
+      [lu({ seq: 1, gameTimeSeconds: 0 }), lu({ seq: 2, quarter: 1, gameTimeSeconds: 45 })],
+    );
+    expect(h.map(e => `${e.kind[0]}${e.quarter}:${e.gameTimeSeconds}`)).toEqual(['e2:10', 'l1:45', 'e1:30', 'l1:0']);
+  });
+
+  it('place le changement SOUS l\'action quand ils partagent l\'instant', () => {
+    // Convention : le changement se fait sur ballon mort, le jeu reprend ensuite. Le plus récent
+    // étant en tête, l'action se lit donc au-dessus.
+    const h = trackerHistory([ev({ seq: 1, type: 'ast', gameTimeSeconds: 20 })], [lu({ seq: 1, gameTimeSeconds: 20 })]);
+    expect(h.map(e => e.kind)).toEqual(['event', 'lineup']);
+  });
+
+  it('départage deux actions du même instant par leur rang', () => {
+    const h = trackerHistory([ev({ seq: 1, type: 'ast', gameTimeSeconds: 20 }), ev({ seq: 2, type: 'stl', gameTimeSeconds: 20 })], []);
+    expect(h.map(e => e.kind === 'event' ? e.event.seq : 0)).toEqual([2, 1]);
+  });
+
+  it('garde les deux bancs, sans confondre leurs rangs', () => {
+    const h = trackerHistory([], [lu({ seq: 1, side: 'us', gameTimeSeconds: 10 }), lu({ seq: 1, side: 'them', gameTimeSeconds: 10 })]);
+    expect(h).toHaveLength(2);
   });
 });
