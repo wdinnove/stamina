@@ -10,6 +10,32 @@
  * Le tic ne sert donc plus qu'à RAFRAÎCHIR l'affichage ; sa régularité n'a plus d'importance.
  */
 
+/** Quarts-temps réglementaires. Au-delà, ce sont des prolongations. */
+export const REGULATION_PERIODS = 4;
+
+/** Durée d'une prolongation, FIBA : cinq minutes, quelle que soit la durée des quarts-temps —
+ *  un match en 8 minutes joue lui aussi des prolongations de 5. */
+export const OVERTIME_SECONDS = 5 * 60;
+
+/** Durée du quart-temps numéro `quarter`. `regulationSeconds` ne concerne que les quatre premiers. */
+export function periodSeconds(quarter: number, regulationSeconds: number): number {
+  return quarter > REGULATION_PERIODS ? OVERTIME_SECONDS : regulationSeconds;
+}
+
+/**
+ * Position sur l'axe de temps CONTINU du match, en secondes depuis l'entre-deux.
+ *
+ * Le calcul ne peut pas se réduire à `(quart-temps − 1) × durée` : une prolongation ne dure pas
+ * autant qu'un quart-temps. Sans ce découpage, la première minute d'une deuxième prolongation
+ * était placée cinq minutes trop loin, ce qui décalait la courbe d'écart et gonflait le temps de
+ * jeu du cinq présent.
+ */
+export function absoluteSeconds(quarter: number, gameTimeSeconds: number, regulationSeconds: number): number {
+  const regulation = Math.min(quarter - 1, REGULATION_PERIODS) * regulationSeconds;
+  const overtime   = Math.max(0, quarter - 1 - REGULATION_PERIODS) * OVERTIME_SECONDS;
+  return regulation + overtime + gameTimeSeconds;
+}
+
 export interface ClockPosition {
   /** Secondes écoulées figées au dernier arrêt. */
   baseSeconds: number;

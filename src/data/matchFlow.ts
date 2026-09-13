@@ -6,14 +6,10 @@
  * différents, et c'est cette différence qu'on lit ici.
  */
 import { eventPoints, teamTotalsFromEvents, type TeamTotals } from './matchEvents';
+import { absoluteSeconds } from './matchClock';
 import type { MatchEvent, LineupSide } from './types';
 
-/** Temps absolu depuis le début du match, en secondes — un axe continu par-dessus les
- *  quart-temps. `periodDurationSeconds` est supposé constant, prolongations comprises, comme
- *  partout ailleurs (cf. `lineupIntervals`). */
-export function absoluteSeconds(quarter: number, gameTimeSeconds: number, periodDurationSeconds: number): number {
-  return (quarter - 1) * periodDurationSeconds + gameTimeSeconds;
-}
+export { absoluteSeconds };
 
 export interface TimelinePoint {
   seconds: number;

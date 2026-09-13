@@ -5172,6 +5172,27 @@ CREATE POLICY "match_events_write" ON match_events
   WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- ────────────────────────────────────────────────────────────────
+-- MIGRATION — durée d'un quart-temps, portée par le match
+-- Script exécutable tel quel dans le SQL Editor.
+-- ────────────────────────────────────────────────────────────────
+--
+-- C'est cette durée qui convertit (quart-temps, temps écoulé) en axe de temps continu, donc elle
+-- détermine les MINUTES publiées dans `match_stats`. Tant qu'elle vivait dans le navigateur, un
+-- match saisi en 8 minutes sur la tablette du club repartait à 10 depuis un autre appareil, et les
+-- minutes changeaient selon qui publiait.
+--
+-- Les prolongations ne sont PAS concernées : elles durent 5 minutes en FIBA quelle que soit la
+-- durée des quarts-temps (cf. `OVERTIME_SECONDS` dans data/matchClock.ts).
+
+ALTER TABLE matches
+  ADD COLUMN IF NOT EXISTS period_duration_seconds SMALLINT NOT NULL DEFAULT 600
+    CHECK (period_duration_seconds BETWEEN 60 AND 1200);
+
+-- Vérification
+--   SELECT period_duration_seconds FROM matches LIMIT 1;
+
+
+-- ────────────────────────────────────────────────────────────────
 -- RÉPARATION — contraintes de cohérence de match_events
 -- Rejouable sans risque, à exécuter tel quel dans le SQL Editor.
 -- ────────────────────────────────────────────────────────────────

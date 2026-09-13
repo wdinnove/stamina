@@ -47,7 +47,9 @@ export const matchesApi = {
     return data ? toMatch(data) : null;
   },
 
-  async create(input: Omit<Match, 'id'>): Promise<Match> {
+  /** La durée d'un quart-temps n'est pas demandée à la création : elle se règle depuis l'écran de
+   *  saisie, au moment où elle compte, et la base porte le défaut senior. */
+  async create(input: Omit<Match, 'id' | 'periodDurationSeconds'> & { periodDurationSeconds?: number }): Promise<Match> {
     const { data, error } = await supabase
       .from('matches')
       .insert({
@@ -63,6 +65,7 @@ export const matchesApi = {
         score_us:       input.scoreUs,
         score_them:     input.scoreThem,
         quarter_scores: input.quarterScores ?? null,
+        period_duration_seconds: input.periodDurationSeconds ?? 600,
         notes:          input.notes ?? null,
       })
       .select()
@@ -83,6 +86,7 @@ export const matchesApi = {
     if (input.scoreUs       !== undefined) row.score_us       = input.scoreUs;
     if (input.scoreThem     !== undefined) row.score_them     = input.scoreThem;
     if (input.quarterScores !== undefined) row.quarter_scores = input.quarterScores ?? null;
+    if (input.periodDurationSeconds !== undefined) row.period_duration_seconds = input.periodDurationSeconds;
     if (input.notes         !== undefined) row.notes          = input.notes ?? null;
     const { error } = await supabase.from('matches').update(row).eq('id', id);
     if (error) throw error;
@@ -109,6 +113,9 @@ function toMatch(row: Record<string, unknown>): Match {
     scoreUs:       row.score_us       as number,
     scoreThem:     row.score_them     as number,
     quarterScores: row.quarter_scores as { us: number; them: number }[] | undefined,
+    // Défaut ici plutôt qu'en base seulement : un match lu avant la migration ne doit pas rendre
+    // `undefined` et faire calculer des minutes sur une durée nulle.
+    periodDurationSeconds: (row.period_duration_seconds as number | null) ?? 600,
     notes:         row.notes as string | undefined,
   };
 }

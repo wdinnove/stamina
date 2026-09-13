@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import {
-  elapsedAt, isExpired, freeze, seek, parseClockInput,
+  elapsedAt, isExpired, freeze, seek, parseClockInput, periodSeconds,
   type ClockPosition,
 } from '../data/matchClock';
 
@@ -33,7 +33,11 @@ export interface MatchClock {
   /** Secondes écoulées depuis le début du quart-temps, ARRONDIES à `COARSE_SECONDS`. C'est la
    *  valeur des agrégations, jamais celle qu'on écrit en base. */
   elapsedSeconds: number;
+  /** Durée RÉGLEMENTAIRE d'un quart-temps — celle qui sert aux agrégations et à l'axe de temps. */
   periodDurationSeconds: number;
+  /** Durée du quart-temps EN COURS : la précédente, sauf en prolongation (5 min FIBA). C'est elle
+   *  que décompte la table de marque, et elle qui arrête le chrono. */
+  currentPeriodSeconds: number;
   /** Valeur EXACTE à la seconde — à lire au moment de créer une action ou une rotation, et à la
    *  publication. Ne déclenche aucun rendu. */
   getElapsedSeconds: () => number;
@@ -57,7 +61,9 @@ export interface MatchClock {
 /** Position du chrono conservée LOCALEMENT (jamais en base) sous cette clé plus l'id du match. */
 const STORAGE_PREFIX = 'stamina.matchClock.';
 
-interface StoredClock { quarter: number; elapsedSeconds: number; periodDurationSeconds: number }
+/** Seule la POSITION est locale. La durée d'un quart-temps, elle, appartient au match : deux
+ *  appareils doivent publier les mêmes minutes. */
+interface StoredClock { quarter: number; elapsedSeconds: number }
 
 function readStored(matchId?: string): StoredClock | null {
   if (!matchId) return null;
@@ -66,11 +72,7 @@ function readStored(matchId?: string): StoredClock | null {
     if (!raw) return null;
     const v = JSON.parse(raw) as Partial<StoredClock>;
     if (typeof v.quarter !== 'number' || typeof v.elapsedSeconds !== 'number') return null;
-    return {
-      quarter: v.quarter,
-      elapsedSeconds: v.elapsedSeconds,
-      periodDurationSeconds: typeof v.periodDurationSeconds === 'number' ? v.periodDurationSeconds : DEFAULT_PERIOD_SECONDS,
-    };
+    return { quarter: v.quarter, elapsedSeconds: v.elapsedSeconds };
   } catch {
     return null;  // navigation privée, quota, JSON corrompu : on repart de Q1, jamais d'écran cassé
   }
@@ -89,12 +91,18 @@ function readStored(matchId?: string): StoredClock | null {
  * même id : ils partagent donc le même chrono, et un rechargement en plein match le retrouve.
  * Le chrono revient toujours EN PAUSE — le temps passé hors de l'écran n'est pas du temps de jeu.
  */
-export function useMatchClock(matchId?: string): MatchClock {
+export function useMatchClock(matchId?: string, regulationSeconds?: number): MatchClock {
   const [quarter, setQuarter] = useState(() => readStored(matchId)?.quarter ?? 1);
   const [running, setRunning] = useState(false);
-  const [periodDurationSeconds, setPeriodDurationSeconds] = useState(
-    () => readStored(matchId)?.periodDurationSeconds ?? DEFAULT_PERIOD_SECONDS,
-  );
+  const [periodDurationSeconds, setPeriodDurationSeconds] = useState(regulationSeconds ?? DEFAULT_PERIOD_SECONDS);
+
+  // La durée vient du match : si elle change côté serveur (autre appareil), l'écran suit.
+  useEffect(() => {
+    if (regulationSeconds !== undefined) setPeriodDurationSeconds(regulationSeconds);
+  }, [regulationSeconds]);
+
+  /** Durée du quart-temps EN COURS — c'est elle qui borne le chrono, pas la réglementaire. */
+  const currentPeriodSeconds = periodSeconds(quarter, periodDurationSeconds);
 
   /** Position courante : base figée + instant de départ. Une ref, pour que la seconde qui avance
    *  ne rende rien. */
@@ -102,8 +110,8 @@ export function useMatchClock(matchId?: string): MatchClock {
   const [coarseElapsed, setCoarseElapsed] = useState(() => coarse(posRef.current.baseSeconds));
 
   const listeners = useRef(new Set<() => void>()).current;
-  const periodRef = useRef(periodDurationSeconds);
-  periodRef.current = periodDurationSeconds;
+  const periodRef = useRef(currentPeriodSeconds);
+  periodRef.current = currentPeriodSeconds;
 
   const notify = useCallback(() => {
     const value = elapsedAt(posRef.current, Date.now(), periodRef.current);
@@ -122,7 +130,6 @@ export function useMatchClock(matchId?: string): MatchClock {
     posRef.current = { baseSeconds: restored?.elapsedSeconds ?? 0, startedAt: null };
     setRunning(false);
     setQuarter(restored?.quarter ?? 1);
-    setPeriodDurationSeconds(restored?.periodDurationSeconds ?? DEFAULT_PERIOD_SECONDS);
     setCoarseElapsed(coarse(posRef.current.baseSeconds));
     for (const fn of listeners) fn();
   }, [matchId, listeners]);
@@ -149,11 +156,10 @@ export function useMatchClock(matchId?: string): MatchClock {
     try {
       localStorage.setItem(STORAGE_PREFIX + matchId, JSON.stringify({
         quarter,
-        elapsedSeconds: elapsedAt(posRef.current, Date.now(), periodDurationSeconds),
-        periodDurationSeconds,
+        elapsedSeconds: elapsedAt(posRef.current, Date.now(), periodRef.current),
       }));
     } catch { /* quota ou navigation privée : le chrono reste utilisable, il ne survivra pas au rechargement */ }
-  }, [matchId, quarter, coarseElapsed, periodDurationSeconds, running]);
+  }, [matchId, quarter, coarseElapsed, running]);
 
   const subscribeSeconds = useCallback((fn: () => void) => {
     listeners.add(fn);
@@ -203,7 +209,7 @@ export function useMatchClock(matchId?: string): MatchClock {
   const previousPeriod = useCallback(() => resetTo(q => Math.max(1, q - 1)), [resetTo]);
 
   return {
-    quarter, running, elapsedSeconds: coarseElapsed, periodDurationSeconds,
+    quarter, running, elapsedSeconds: coarseElapsed, periodDurationSeconds, currentPeriodSeconds,
     getElapsedSeconds, subscribeSeconds,
     setPeriodDuration, start, pause, adjustRemaining, setRemainingSeconds: setRemaining, nextPeriod, previousPeriod,
   };

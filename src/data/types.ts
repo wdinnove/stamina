@@ -58,6 +58,13 @@ export interface Match {
   scoreUs: number;
   scoreThem: number;
   quarterScores?: { us: number; them: number }[];
+  /**
+   * Durée RÉGLEMENTAIRE d'un quart-temps, en secondes (8/10/12 min selon la catégorie). Portée par
+   * le match et non par le navigateur : c'est elle qui convertit (quart-temps, temps écoulé) en axe
+   * de temps continu, donc elle détermine les minutes publiées. Les prolongations durent 5 minutes
+   * quoi qu'il arrive (cf. `OVERTIME_SECONDS`).
+   */
+  periodDurationSeconds: number;
   /** Retour à chaud du staff — HTML de l'éditeur riche, comme `TrainingSession.notes`. */
   notes?: string;
 }

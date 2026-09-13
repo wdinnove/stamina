@@ -440,6 +440,24 @@ Un joueur **déjà sur le terrain ne peut pas être décoché** — le sortir pa
   quelques fois par mois ne peut pas supposer un jargon mémorisé.
 - **Palette groupée par thème, deux boutons par ligne** — Lancers francs, Rebonds, Création,
   Défense, Fautes. On vise le groupe puis le côté, au lieu de relire dix libellés.
+- **Actions d'équipe** (rebond défensif, rebond offensif, ballon perdu) sous notre banc : les
+  trois seuls cas où la règle crédite l'équipe et non un joueur. Sans elles un rebond d'équipe
+  était perdu, et avec lui une possession — donc tous les ratios par possession. Volontairement
+  limité à ces trois : un « sans joueur » ouvert à tout deviendrait le raccourci du soir de match,
+  et notre propre boxscore individuel se viderait sans que rien ne l'annonce. Le côté adverse, lui,
+  garde son « Sans joueur » complet — on n'y cherche pas l'attribution individuelle.
+- **Annuler** défait le dernier geste, changement compris. Un changement n'est défaisable que s'il
+  est réellement le dernier : une action enregistrée derrière lui se retrouverait sinon avec un
+  cinq qui n'a jamais existé.
+- **Aucun raccourci n'écoute pendant qu'une modale est ouverte.**
+- La **durée d'un quart-temps** est portée par le match (`matches.period_duration_seconds`), pas
+  par le navigateur : deux appareils publient les mêmes minutes. Les **prolongations durent
+  5 minutes** quelle que soit cette durée (FIBA), et l'axe de temps continu en tient compte —
+  `absoluteSeconds` ne peut pas se réduire à `(quart-temps − 1) × durée`.
+- La publication **prévient quand elle va écrire à vide** : aucune minute (chrono jamais lancé) ou
+  aucun cinq composé. Ces zéros partent dans `match_stats` et divisent ensuite le %USG/min, les
+  statistiques par 36 minutes, les archétypes et la PCA. Elle écrit aussi les **scores par
+  quart-temps** sur la fiche du match, qui restaient vides.
 - Le bandeau mêle **actions ET changements de banc** (`trackerHistory`). Les deux flux vivent dans
   deux tables avec chacune son `seq` : seul le repère de jeu les ordonne l'un par rapport à
   l'autre, et à instant égal le changement passe sous l'action — il se fait sur ballon mort, le

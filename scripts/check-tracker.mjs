@@ -70,6 +70,16 @@ try {
   await refused('tir hors du terrain (x = 99)', { ...bad, seq: 904, type: 'shot', made: true, x: 99, y: 9 });
   await refused('type d\'action inconnu',       { ...bad, seq: 905, type: 'dunk', made: true, x: 7.5, y: 9 });
 
+  console.log('\n── Durée d\'un quart-temps, portée par le match ──');
+  try {
+    await matchesApi.update(match.id, { periodDurationSeconds: 480 });
+    const reread = await matchesApi.getById(match.id);
+    t('durée réglable et relue depuis le match', reread.periodDurationSeconds === 480, `${reread.periodDurationSeconds}s`);
+    await matchesApi.update(match.id, { periodDurationSeconds: 600 });
+  } catch (e) {
+    t('durée réglable et relue depuis le match', false, `migration absente — ${e.message.split('\n')[0].slice(0, 70)}`);
+  }
+
   console.log('\n── Saisie d\'un match ──');
   await matchLiveApi.insertLineupEvent({ matchId: match.id, seq: 1, side: 'us', quarter: 1, gameTimeSeconds: 0, playersIn: five, playersOut: [], onCourt: five });
   const opp = await matchLiveApi.addOpponentPlayer(match.id, 'Dupont', 7);

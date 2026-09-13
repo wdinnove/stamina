@@ -4,6 +4,7 @@
  * (possessions attaque/défense, changements de joueurs) à croiser par play, par cinq et par
  * joueur.
  */
+import { absoluteSeconds } from './matchClock';
 import type { MatchLiveAction, MatchLineupEvent, Play, LineupSide } from './types';
 import { rentabiliteColor, type RentabiliteThresholds } from './tacticalAnalysis';
 
@@ -123,9 +124,9 @@ export function playerPlusMinus(actions: MatchLiveAction[]): Map<string, number>
  * consécutifs, et entre le dernier changement et le repère « maintenant »
  * (`nowQuarter`/`nowElapsedSeconds`) pour un match en cours.
  *
- * `periodDurationSeconds` est supposé constant sur tout le match, prolongations comprises — même
- * simplification que `useMatchClock` — pour convertir (quarter, gameTimeSeconds) en un axe de
- * temps continu et ainsi mesurer juste un intervalle qui chevauche une fin de quart-temps.
+ * `periodDurationSeconds` est la durée RÉGLEMENTAIRE ; les prolongations comptent pour cinq
+ * minutes (`absoluteSeconds`). C'est ce qui permet de mesurer juste un intervalle qui chevauche
+ * une fin de quart-temps.
  */
 export function lineupIntervals(
   lineupEvents: MatchLineupEvent[],
@@ -135,7 +136,7 @@ export function lineupIntervals(
   periodDurationSeconds: number,
 ): { onCourt: string[]; seconds: number }[] {
   const events = lineupEvents.filter(e => e.side === side).sort((a, b) => a.seq - b.seq);
-  const toAbsolute = (quarter: number, elapsed: number) => (quarter - 1) * periodDurationSeconds + elapsed;
+  const toAbsolute = (quarter: number, elapsed: number) => absoluteSeconds(quarter, elapsed, periodDurationSeconds);
 
   return events.map((e, i) => {
     const start = toAbsolute(e.quarter, e.gameTimeSeconds);

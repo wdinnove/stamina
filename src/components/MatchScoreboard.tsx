@@ -113,7 +113,7 @@ export function ClockDisplay({ clock, editable, fontSize = '1.3rem' }: {
   clock: MatchClock; editable: boolean; fontSize?: string;
 }) {
   const elapsed = useClockSeconds(clock);
-  const seconds = Math.max(0, clock.periodDurationSeconds - elapsed);
+  const seconds = Math.max(0, clock.currentPeriodSeconds - elapsed);
   const [editing, setEditing] = useState(false);
   const [value, setValue]     = useState('');
 

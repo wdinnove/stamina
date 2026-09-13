@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useMatchTracking } from '../hooks/useMatchTracking';
-import { useMatchClock } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { lineupStatsFromEvents, plusMinusFromEvents } from '../data/matchEvents';
 import { playingTime, formatClock } from '../data/liveTrackingAnalysis';
@@ -40,7 +39,9 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
   const { selected } = useTeamSeason();
   const ourTeamName  = selected?.team.name ?? 'Notre équipe';
   const opponentName = match.opponent || 'Adversaire';
-  const clock = useMatchClock(match.id);
+  /** La durée d'un quart-temps appartient au match, plus au navigateur : ces écrans la lisent
+   *  donc directement, sans instancier un chrono dont ils n'ont aucun usage. */
+  const period = match.periodDurationSeconds;
 
   const { events, lineupEvents, opponents, lastQuarter, lastElapsedSeconds, hasData, loading, error } =
     useMatchTracking(match.id);
@@ -53,20 +54,20 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
   const nameOf = (id: string) => (side === 'us' ? nameById.get(id) : oppNameById.get(id)) ?? '?';
 
   const rows = useMemo(
-    () => lineupStatsFromEvents(events, lineupEvents, side, clock.periodDurationSeconds, lastQuarter, lastElapsedSeconds),
-    [events, lineupEvents, side, clock.periodDurationSeconds, lastQuarter, lastElapsedSeconds],
+    () => lineupStatsFromEvents(events, lineupEvents, side, period, lastQuarter, lastElapsedSeconds),
+    [events, lineupEvents, side, period, lastQuarter, lastElapsedSeconds],
   );
   const shown = rows.filter(r => r.seconds >= minSeconds);
 
   /** Temps de jeu et +/- individuels, à côté des combinaisons : ce sont les deux lectures d'une
    *  même rotation, et les séparer sur deux écrans oblige à faire l'aller-retour. */
   const playerRows = useMemo(() => {
-    const minutes = playingTime(lineupEvents, side, lastQuarter, lastElapsedSeconds, clock.periodDurationSeconds);
+    const minutes = playingTime(lineupEvents, side, lastQuarter, lastElapsedSeconds, period);
     const pm = plusMinusFromEvents(events, side);
     return [...minutes.entries()]
       .map(([id, seconds]) => ({ id, seconds, plusMinus: pm.get(id) ?? 0 }))
       .sort((a, b) => b.seconds - a.seconds);
-  }, [events, lineupEvents, side, lastQuarter, lastElapsedSeconds, clock.periodDurationSeconds]);
+  }, [events, lineupEvents, side, lastQuarter, lastElapsedSeconds, period]);
 
   if (loading) return <div style={{ color: '#64748B', padding: 24 }}>Chargement…</div>;
   if (error)   return <div style={{ color: '#EF4444', padding: 24 }}>{error}</div>;

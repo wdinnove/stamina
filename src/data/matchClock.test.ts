@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { elapsedAt, isExpired, freeze, seek, remainingAt, parseClockInput, PAUSED_AT_ZERO } from './matchClock';
+import { elapsedAt, isExpired, freeze, seek, remainingAt, parseClockInput, periodSeconds, absoluteSeconds, PAUSED_AT_ZERO } from './matchClock';
 
 const T0 = 1_700_000_000_000;
 const PERIOD = 600;   // 10 minutes
@@ -74,5 +74,36 @@ describe('parseClockInput', () => {
     expect(parseClockInput('7:75')).toBeNull(); // 75 secondes n'existent pas
     expect(parseClockInput('abc')).toBeNull();
     expect(parseClockInput('')).toBeNull();
+  });
+});
+
+describe('periodSeconds', () => {
+  it('donne la durée réglementaire jusqu\'au quatrième quart-temps', () => {
+    expect(periodSeconds(1, 600)).toBe(600);
+    expect(periodSeconds(4, 600)).toBe(600);
+  });
+
+  it('donne 5 minutes en prolongation, même en catégorie jeune', () => {
+    expect(periodSeconds(5, 600)).toBe(300);
+    expect(periodSeconds(7, 480)).toBe(300);
+  });
+});
+
+describe('absoluteSeconds', () => {
+  it('met les quarts-temps bout à bout', () => {
+    expect(absoluteSeconds(1, 0, 600)).toBe(0);
+    expect(absoluteSeconds(3, 120, 600)).toBe(1320);
+  });
+
+  it('compte les prolongations à 5 minutes, pas à la durée d\'un quart-temps', () => {
+    // Q5 commence à 40 min, et non à 40 min quoi qu'il arrive ensuite.
+    expect(absoluteSeconds(5, 0, 600)).toBe(2400);
+    // Q6 commence 5 minutes après, pas 10.
+    expect(absoluteSeconds(6, 60, 600)).toBe(2400 + 300 + 60);
+  });
+
+  it('suit la durée réglementaire choisie', () => {
+    expect(absoluteSeconds(3, 0, 480)).toBe(960);
+    expect(absoluteSeconds(5, 0, 480)).toBe(1920);
   });
 });

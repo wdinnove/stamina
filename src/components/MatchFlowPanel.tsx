@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useMatchTracking } from '../hooks/useMatchTracking';
-import { useMatchClock } from '../hooks/useMatchClock';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { scoreTimeline, detectRuns, quarterSplits, absoluteSeconds, DEFAULT_MIN_RUN_POINTS } from '../data/matchFlow';
 import { playByPlayEntries } from '../data/playByPlay';
@@ -40,8 +39,9 @@ export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
   const teamColor   = selected?.team.color ?? '#00E5A0';
   const ourTeamName = selected?.team.name ?? 'Notre équipe';
   const opponentName = match.opponent || 'Adversaire';
-  const clock = useMatchClock(match.id);
-  const period = clock.periodDurationSeconds;
+  /** La durée d'un quart-temps appartient au match, plus au navigateur : ces écrans la lisent
+   *  donc directement, sans instancier un chrono dont ils n'ont aucun usage. */
+  const period = match.periodDurationSeconds;
 
   const { events, opponents, lastQuarter, lastElapsedSeconds, hasData, loading, error } = useMatchTracking(match.id);
 

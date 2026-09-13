@@ -15,6 +15,7 @@ import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
 import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, type TrackerHistoryEntry } from '../data/matchEvents';
+import { quarterSplits } from '../data/matchFlow';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
 import { shotEventValue, shotValue, shotZone, ZONE_LABELS } from '../data/shotChart';
@@ -218,6 +219,16 @@ const PALETTE_GROUPS: {
   ]},
 ];
 
+/**
+ * Actions créditées à l'ÉQUIPE et non à un joueur — les seules que la règle laisse sans auteur.
+ * Elles comptent au score, aux totaux collectifs et aux possessions, jamais au boxscore individuel.
+ */
+const TEAM_EVENTS: { type: MatchEventType; label: string; help: string }[] = [
+  { type: 'reb_def', label: 'Rebond déf. équipe', help: "Rebond défensif d'équipe : ballon sorti ou récupéré sans qu'un joueur le capte" },
+  { type: 'reb_off', label: 'Rebond off. équipe', help: "Rebond offensif d'équipe : la possession reste à nous sans capteur désigné" },
+  { type: 'tov',     label: 'Ballon perdu équipe', help: "Perte de balle d'équipe : 24 secondes, retour en zone, remise en jeu ratée" },
+];
+
 /** Repli sous le terrain : un tir dont on n'a pas eu le temps de prendre la position. La valeur
  *  est figée ici plutôt que déduite de la géométrie — c'est le seul cas où elle l'est. */
 const NO_POSITION_SHOTS: { label: string; made: boolean; value: 2 | 3 }[] = [
@@ -228,7 +239,7 @@ const NO_POSITION_SHOTS: { label: string; made: boolean; value: 2 | 3 }[] = [
 ];
 
 export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTrackerProps) {
-  const clock = useMatchClock(match.id);
+  const clock = useMatchClock(match.id, match.periodDurationSeconds);
   const { selected } = useTeamSeason();
   const teamColor    = selected?.team.color ?? '#00E5A0';
   const ourTeamName  = selected?.team.name ?? 'Notre équipe';
@@ -261,6 +272,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [shotInput, setShotInputState] = useState<ShotInput>(readShotInput);
+
+  /** La durée d'un quart-temps appartient au match : elle doit valoir la même chose sur la
+   *  tablette du club et sur l'ordinateur de l'analyste, sans quoi les minutes publiées changent
+   *  selon qui publie. L'écran suit tout de suite, la base derrière. */
+  function setPeriodDuration(seconds: number) {
+    clock.setPeriodDuration(seconds);
+    persist(() => matchesApi.update(match.id, { periodDurationSeconds: seconds }));
+  }
 
   function setShotInput(mode: ShotInput) {
     setShotInputState(mode);
@@ -314,8 +333,15 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }), [load]);
 
   useEffect(() => {
-    flushQueue().then(err => { if (err) setError(err.message); });
-  }, []);
+    // Un arriéré d'une session précédente part ici. Sans le rechargement qui suit, ces actions
+    // rejoignaient bien la base mais restaient INVISIBLES à l'écran jusqu'au prochain F5 — un
+    // opérateur voyait son arriéré s'évanouir, exactement l'inverse de ce qu'on lui promet.
+    const hadBacklog = pendingCount() > 0;
+    flushQueue().then(err => {
+      if (err) setError(err.message);
+      else if (hadBacklog) void load();
+    });
+  }, [load]);
 
   /**
    * Écriture au fil de l'eau : l'écran applique le geste tout de suite et enregistre derrière.
@@ -510,10 +536,34 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     enqueueDelete(match.id, seq);
   }, [match.id]);
 
+  /** Actions ET changements de banc, mêlés. Un changement ne laissait aucune trace ici : on ne
+   *  pouvait ni vérifier qu'il était parti, ni s'apercevoir qu'on en avait fait un de trop. */
+  const history = useMemo(() => trackerHistory(events, lineupEvents), [events, lineupEvents]);
+
+  /**
+   * Annule le DERNIER GESTE, quel qu'il soit — depuis que les changements figurent dans
+   * l'historique, un bouton qui n'annulerait que les actions mentirait.
+   *
+   * Un changement n'est défaisable que s'il est réellement le dernier : une fois qu'une action a
+   * été enregistrée derrière lui, la retirer laisserait cette action avec un cinq qui n'a jamais
+   * existé sur le terrain. Dans ce cas l'annulation retombe sur la dernière action, et l'infobulle
+   * le dit.
+   */
+  const lastEntry = history[0];
+  const undoTarget: 'lineup' | 'event' | null =
+    lastEntry?.kind === 'lineup' ? 'lineup' : events.length > 0 ? 'event' : null;
+
   const undo = useCallback(() => {
+    if (lastEntry?.kind === 'lineup') {
+      const { side, seq } = lastEntry.lineup;
+      setLineupEvents(prev => prev.filter(e => !(e.side === side && e.seq === seq)));
+      setPendingSub(null);
+      persist(() => matchLiveApi.deleteLineupEvent(match.id, side, seq));
+      return;
+    }
     const last = events.at(-1);
     if (last) removeEvent(last.seq);
-  }, [events, removeEvent]);
+  }, [lastEntry, events, removeEvent, match.id, persist]);
 
   /* ── Rotations ─────────────────────────────────────────────────────────── */
 
@@ -607,9 +657,15 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    *
    * Toute frappe est ignorée dès qu'un champ a le focus : le formulaire d'ajout de joueur
    * adverse est sur le même écran, taper « Dupont » ne doit rien déclencher.
+   *
+   * Et rien n'écoute tant qu'une MODALE est ouverte : `espace` lançait le chrono et `c` basculait
+   * le mode changement pendant qu'on cochait la feuille de match ou qu'on lisait la confirmation
+   * de publication, et on revenait sur un écran qui n'était plus dans l'état qu'on avait quitté.
    */
+  const modalOpen = showRosterModal || showOpponentSheet || showKeys || publishTarget !== null;
+
   useEffect(() => {
-    if (!canEdit) return;
+    if (!canEdit || modalOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       const el = e.target as HTMLElement | null;
@@ -636,7 +692,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     return () => window.removeEventListener('keydown', onKeyDown);
     // `clock` entier changerait à chaque seconde : seuls les trois membres réellement lus en font
     // partie, et `pause`/`start` sont stables (useCallback vide).
-  }, [canEdit, clock.running, clock.pause, clock.start, pendingAction, pendingShot, pendingSub]);
+  }, [canEdit, modalOpen, clock.running, clock.pause, clock.start, pendingAction, pendingShot, pendingSub]);
 
   /* ── Publication ───────────────────────────────────────────────────────── */
 
@@ -711,8 +767,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
       await statsApi.upsertTeamStats(match.id, teamTotalsFromEvents(events, 'us'), teamTotalsFromEvents(events, 'them'));
 
+      // Les scores par quart-temps sont déjà calculés pour l'onglet Play-by-play ; la fiche du
+      // match les affichait vides pour un match pourtant saisi de bout en bout.
+      const quarterScores = quarterSplits(events).map(q => ({ us: q.pointsUs, them: q.pointsThem }));
+
       if (isFinal && (finalScore.us !== match.scoreUs || finalScore.them !== match.scoreThem)) {
-        await matchesApi.update(match.id, { scoreUs: finalScore.us, scoreThem: finalScore.them, result });
+        await matchesApi.update(match.id, { scoreUs: finalScore.us, scoreThem: finalScore.them, result, quarterScores });
+      } else if (isFinal) {
+        await matchesApi.update(match.id, { quarterScores });
       }
 
       setPublishedAt(new Date());
@@ -726,10 +788,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   /* ── Rendu ─────────────────────────────────────────────────────────────── */
 
-  /** Actions ET changements de banc, mêlés. Un changement ne laissait aucune trace ici : on ne
-   *  pouvait ni vérifier qu'il était parti, ni s'apercevoir qu'on en avait fait un de trop. */
-  const history = trackerHistory(events, lineupEvents);
-  const recent  = history.slice(0, RECENT_COUNT);
+  const recent = history.slice(0, RECENT_COUNT);
   const isSelected = (side: LineupSide, id: string | null) => selection?.side === side && selection?.id === id;
 
   const rosterName = (side: LineupSide, id: string) => side === 'us'
@@ -905,15 +964,20 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           </div>
 
           {canEdit && (
-            <button onClick={undo} disabled={events.length === 0}
-              title="Annuler la dernière action"
+            <button onClick={undo} disabled={undoTarget === null}
+              title={
+                undoTarget === 'lineup' ? 'Annuler le dernier changement'
+                : undoTarget === 'event' ? (lastEntry?.kind === 'lineup' ? 'Annuler la dernière action' : 'Annuler la dernière action')
+                : 'Rien à annuler'
+              }
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', borderRadius: 6, flexShrink: 0,
-                border: '1px solid rgba(239,68,68,0.45)', backgroundColor: 'rgba(239,68,68,0.08)',
-                color: '#EF4444', fontSize: '0.78rem', fontWeight: 600,
-                cursor: events.length ? 'pointer' : 'not-allowed', opacity: events.length ? 1 : 0.35,
+                border: `1px solid ${undoTarget === 'lineup' ? 'rgba(245,158,11,0.5)' : 'rgba(239,68,68,0.45)'}`,
+                backgroundColor: undoTarget === 'lineup' ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)',
+                color: undoTarget === 'lineup' ? '#F59E0B' : '#EF4444', fontSize: '0.78rem', fontWeight: 600,
+                cursor: undoTarget ? 'pointer' : 'not-allowed', opacity: undoTarget ? 1 : 0.35,
               }}>
-              <Undo2 size={14} />Annuler
+              <Undo2 size={14} />{undoTarget === 'lineup' ? 'Annuler le changement' : 'Annuler'}
             </button>
           )}
 
@@ -1039,6 +1103,26 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               );
             })}
           </div>
+
+          {/* Statistiques d'ÉQUIPE : les trois seuls cas où la règle crédite l'équipe et non un
+              joueur. Sans elles, un rebond d'équipe était perdu — et avec lui une possession, donc
+              tous les ratios par possession. Volontairement limité à ces trois : un « sans joueur »
+              ouvert à tout deviendrait le raccourci du soir de match, et notre propre boxscore
+              individuel se viderait sans que rien ne l'annonce. */}
+          {canEdit && (
+            <div style={{ marginTop: 10 }}>
+              <p style={{ ...SECTION_TITLE, fontSize: '0.6rem', margin: '0 0 4px', color: '#475569' }}>Équipe</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 5 }}>
+                {TEAM_EVENTS.map(b => (
+                  <button key={b.label} onClick={() => pushEvent({ type: b.type, side: 'us' })}
+                    title={b.help}
+                    style={{ ...paletteStyle(false, true, '#94A3B8'), height: 38, fontSize: '0.73rem' }}>
+                    <span className="tracker-action-label">{b.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Terrain et palette côte à côte : le terrain ne sert qu'une seconde par tir, il n'a
@@ -1426,6 +1510,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         <PublishModal
           existing={publishTarget}
           players={boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, coarseElapsed, 'us').length}
+          noMinutes={boxscore.length > 0 && boxscore.every(r => r.min === 0)}
+          noLineup={lineupEvents.length === 0}
           opponents={boxscoreFromEvents(events, lineupEvents, clock.periodDurationSeconds, clock.quarter, coarseElapsed, 'them').length}
           score={score} saving={publishState === 'saving'}
           matchScoreUs={match.scoreUs} matchScoreThem={match.scoreThem}
@@ -1436,7 +1522,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       {showKeys && (
         <SettingsModal
           periodDurationSeconds={clock.periodDurationSeconds}
-          onPeriodDurationChange={clock.setPeriodDuration}
+          onPeriodDurationChange={setPeriodDuration}
           shotInput={shotInput}
           onShotInputChange={setShotInput}
           canEdit={canEdit}
@@ -1654,7 +1740,7 @@ function OpponentSheetModal({ opponentName, opponents, usedIds, onAdd, onRemove,
  * chemin que l'import CSV, et le dernier geste fait foi. L'alerte annonce donc ce qui va
  * disparaître, chiffres à l'appui, plutôt qu'un avertissement générique.
  */
-function PublishModal({ existing, players, opponents, score, saving, matchScoreUs, matchScoreThem, onConfirm, onCancel }: {
+function PublishModal({ existing, players, opponents, score, saving, matchScoreUs, matchScoreThem, noMinutes, noLineup, onConfirm, onCancel }: {
   existing: ExistingStats;
   players: number;
   opponents: number;
@@ -1662,6 +1748,10 @@ function PublishModal({ existing, players, opponents, score, saving, matchScoreU
   saving: boolean;
   matchScoreUs: number;
   matchScoreThem: number;
+  /** Aucune minute mesurée : le chrono n'a jamais tourné. */
+  noMinutes: boolean;
+  /** Aucun cinq composé : ni titulaires, ni +/-. */
+  noLineup: boolean;
   onConfirm: (isFinal: boolean) => void;
   onCancel: () => void;
 }) {
@@ -1684,6 +1774,23 @@ function PublishModal({ existing, players, opponents, score, saving, matchScoreU
         Ce match sera enregistré avec <strong style={{ color: '#F1F5F9' }}>{players} joueur{players > 1 ? 's' : ''}</strong>,
         {' '}<strong style={{ color: '#F1F5F9' }}>{opponents} adverse{opponents > 1 ? 's' : ''}</strong> et les totaux d'équipe.
       </p>
+
+      {/* Ce qui va être publié À VIDE. Ces colonnes partent dans `match_stats` et divisent
+          ensuite le %USG/min, les statistiques par 36 minutes, les archétypes et la PCA : des
+          zéros y font plus de dégâts qu'une ligne absente, et rien ne les signalait. */}
+      {(noMinutes || noLineup) && (
+        <div style={{ display: 'flex', gap: 10, backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <AlertTriangle size={18} style={{ color: '#F59E0B', flexShrink: 0, marginTop: 1 }} />
+          <div style={{ color: '#FCD34D', fontSize: '0.8rem', lineHeight: 1.45 }}>
+            <strong style={{ color: '#F59E0B' }}>Ce boxscore sera publié incomplet.</strong>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {noMinutes && <li>Aucune minute : le chrono n'a pas tourné. Les statistiques par 36 minutes, le %USG/min, les archétypes et la PCA reposent dessus.</li>}
+              {noLineup && <li>Aucun cinq composé : ni titulaires, ni +/-.</li>}
+            </ul>
+            <p style={{ margin: '8px 0 0' }}>Publier reste possible — ces colonnes seront simplement à zéro.</p>
+          </div>
+        </div>
+      )}
 
       <label style={{
         display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, padding: 12, borderRadius: 8, cursor: 'pointer',
