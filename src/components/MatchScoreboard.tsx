@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Play as PlayIcon, Pause, SkipForward, SkipBack } from 'lucide-react';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
 import { useClockSeconds, type MatchClock } from '../hooks/useMatchClock';
+import { parseClockInput } from '../data/matchClock';
 
 /**
  * Table de marque + commandes du chrono — le bloc de tête PARTAGÉ par le suivi live et la prise de
@@ -116,9 +117,11 @@ export function ClockDisplay({ clock, editable, fontSize = '1.3rem' }: {
   const [editing, setEditing] = useState(false);
   const [value, setValue]     = useState('');
 
+  /** Une saisie illisible garde le temps précédent — `parseClockInput` accepte `mm:ss`, `m:ss` et
+   *  un nombre seul de secondes, ce qui couvre ce qu'on tape réellement en bord de terrain. */
   function commit() {
-    const m = value.match(/^(\d{1,2}):(\d{2})$/);
-    if (m) clock.setRemainingSeconds(Number(m[1]) * 60 + Number(m[2]));
+    const parsed = parseClockInput(value);
+    if (parsed !== null) clock.setRemainingSeconds(parsed);
     setEditing(false);
   }
 
