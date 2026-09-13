@@ -18,6 +18,7 @@ import { useUrlSort } from '../hooks/useUrlState';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
+import { unattributedLine, sumStatLines } from '../data/boxscoreTotals';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { ratioFromSums, pctFromSums } from '../utils/ratioFromSums';
 import { LAYER } from '../styles/layers';
@@ -681,38 +682,59 @@ export default function MatchDetailPage() {
                               </tr>
                             );
                           })}
-                          {/* Ligne TOTAUX */}
-                          {individualStats.length > 1 && (() => {
-                            const t = individualStats.reduce((acc, s) => ({
-                              min: acc.min + s.min, pts: acc.pts + s.pts,
-                              fg2m: acc.fg2m + s.fg2m, fg2a: acc.fg2a + s.fg2a,
-                              fg3m: acc.fg3m + s.fg3m, fg3a: acc.fg3a + s.fg3a,
-                              ftm: acc.ftm + s.ftm, fta: acc.fta + s.fta,
-                              ro: acc.ro + s.ro, rd: acc.rd + s.rd,
-                              pd: acc.pd + s.pd, ct: acc.ct + s.ct,
-                              intercepts: acc.intercepts + s.intercepts, bp: acc.bp + s.bp,
-                              fte: acc.fte + s.fte, fpr: acc.fpr + s.fpr,
-                            }), { min: 0, pts: 0, fg2m: 0, fg2a: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0, ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0 });
+                          {/* Ligne ÉQUIPE, puis TOTAUX. Les totaux ne sont plus la somme des
+                              individuelles : ils intègrent ce qui n'a pas d'auteur (rebond
+                              d'équipe, 24 secondes, actions pointées « sans joueur »), sinon le
+                              boxscore annonce moins de rebonds que les four factors du même
+                              match. */}
+                          {(() => {
+                            const teamLine = teamStats ? unattributedLine(teamStats, individualStats, 'us') : null;
+                            if (individualStats.length <= 1 && !teamLine) return null;
+                            const t = sumStatLines([...individualStats, ...(teamLine ? [teamLine] : [])]);
+                            const minutes = individualStats.reduce((a, s) => a + s.min, 0);
                             return (
-                              <tr key="totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-                                <td style={{ ...TD, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
-                                <td style={{ ...TD, color: '#334155' }}>—</td>
-                                <td style={{ ...TD }}>{fmt1(t.min)}</td>
-                                <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
-                                <td style={TD}>{t.fg2m}/{t.fg2a}</td>
-                                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg2m, t.fg2a)}</td>
-                                <td style={TD}>{t.fg3m}/{t.fg3a}</td>
-                                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg3m, t.fg3a)}</td>
-                                <td style={TD}>{t.ftm}/{t.fta}</td>
-                                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.ftm, t.fta)}</td>
-                                <td style={{ ...TD }}>{t.ro}</td>
-                                <td style={{ ...TD }}>{t.rd}</td>
-                                <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.ro + t.rd}</td>
-                                <td style={{ ...TD }}>{t.pd}</td><td style={{ ...TD }}>{t.ct}</td><td style={{ ...TD }}>{t.intercepts}</td>
-                                <td style={{ ...TD }}>{t.bp}</td><td style={{ ...TD }}>{t.fte}</td><td style={{ ...TD }}>{t.fpr}</td>
-                                <td style={{ ...TD, color: '#475569' }}>—</td>
-                                <td style={{ ...TD, color: '#475569' }}>—</td>
-                              </tr>
+                              <>
+                                {teamLine && (
+                                  <tr key="team" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
+                                    title="Actions sans auteur : rebond d'équipe, ballon perdu sur les 24 secondes, action pointée sans joueur. Elles comptent aux totaux collectifs, à aucune ligne individuelle.">
+                                    <td style={{ ...TD, textAlign: 'left', color: '#94A3B8', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Équipe</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{teamLine.pts}</td>
+                                    <td style={TD}>{teamLine.fg2m}/{teamLine.fg2a}</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={TD}>{teamLine.fg3m}/{teamLine.fg3a}</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={TD}>{teamLine.ftm}/{teamLine.fta}</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={TD}>{teamLine.ro}</td><td style={TD}>{teamLine.rd}</td>
+                                    <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{teamLine.ro + teamLine.rd}</td>
+                                    <td style={TD}>{teamLine.pd}</td><td style={TD}>{teamLine.ct}</td><td style={TD}>{teamLine.intercepts}</td>
+                                    <td style={TD}>{teamLine.bp}</td><td style={TD}>{teamLine.fte}</td><td style={TD}>{teamLine.fpr}</td>
+                                    <td style={{ ...TD, color: '#475569' }}>—</td>
+                                    <td style={{ ...TD, color: '#475569' }}>—</td>
+                                  </tr>
+                                )}
+                                <tr key="totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
+                                  <td style={{ ...TD, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
+                                  <td style={{ ...TD, color: '#334155' }}>—</td>
+                                  <td style={{ ...TD }}>{fmt1(minutes)}</td>
+                                  <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
+                                  <td style={TD}>{t.fg2m}/{t.fg2a}</td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg2m, t.fg2a)}</td>
+                                  <td style={TD}>{t.fg3m}/{t.fg3a}</td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg3m, t.fg3a)}</td>
+                                  <td style={TD}>{t.ftm}/{t.fta}</td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.ftm, t.fta)}</td>
+                                  <td style={{ ...TD }}>{t.ro}</td>
+                                  <td style={{ ...TD }}>{t.rd}</td>
+                                  <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.ro + t.rd}</td>
+                                  <td style={{ ...TD }}>{t.pd}</td><td style={{ ...TD }}>{t.ct}</td><td style={{ ...TD }}>{t.intercepts}</td>
+                                  <td style={{ ...TD }}>{t.bp}</td><td style={{ ...TD }}>{t.fte}</td><td style={{ ...TD }}>{t.fpr}</td>
+                                  <td style={{ ...TD, color: '#475569' }}>—</td>
+                                  <td style={{ ...TD, color: '#475569' }}>—</td>
+                                </tr>
+                              </>
                             );
                           })()}
                         </tbody>
@@ -762,37 +784,57 @@ export default function MatchDetailPage() {
                               <td style={{ ...TD, color: s.plusMinus != null ? (s.plusMinus > 0 ? '#00E5A0' : s.plusMinus < 0 ? '#EF4444' : '#94A3B8') : '#475569' }}>{s.plusMinus != null ? (s.plusMinus > 0 ? `+${s.plusMinus}` : s.plusMinus) : '—'}</td>
                             </tr>
                           ))}
-                          {opponentStats.length > 1 && (() => {
-                            const t = opponentStats.reduce((acc, s) => ({
-                              min: acc.min + s.min, pts: acc.pts + s.pts,
-                              fg2m: acc.fg2m + s.fg2m, fg2a: acc.fg2a + s.fg2a,
-                              fg3m: acc.fg3m + s.fg3m, fg3a: acc.fg3a + s.fg3a,
-                              ftm: acc.ftm + s.ftm, fta: acc.fta + s.fta,
-                              ro: acc.ro + s.ro, rd: acc.rd + s.rd,
-                              pd: acc.pd + s.pd, ct: acc.ct + s.ct,
-                              intercepts: acc.intercepts + s.intercepts, bp: acc.bp + s.bp,
-                              fte: acc.fte + s.fte, fpr: acc.fpr + s.fpr,
-                            }), { min:0,pts:0,fg2m:0,fg2a:0,fg3m:0,fg3a:0,ftm:0,fta:0,ro:0,rd:0,pd:0,ct:0,intercepts:0,bp:0,fte:0,fpr:0 });
+                          {/* Même ligne « Équipe » que pour nous — et bien plus fréquente ici :
+                              suivre l'adversaire en agrégé (« sans joueur ») est le cas normal,
+                              son boxscore individuel est souvent incomplet par choix. */}
+                          {(() => {
+                            const teamLine = teamStats ? unattributedLine(teamStats, opponentStats, 'them') : null;
+                            if (opponentStats.length <= 1 && !teamLine) return null;
+                            const t = sumStatLines([...opponentStats, ...(teamLine ? [teamLine] : [])]);
+                            const minutes = opponentStats.reduce((a, s) => a + s.min, 0);
                             return (
-                              <tr key="opp-totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-                                <td style={{ ...TD, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
-                                <td style={{ ...TD, color: '#334155' }}>—</td>
-                                <td style={TD}>{fmt1(t.min)}</td>
-                                <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
-                                <td style={TD}>{t.fg2m}/{t.fg2a}</td>
-                                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg2m, t.fg2a)}</td>
-                                <td style={TD}>{t.fg3m}/{t.fg3a}</td>
-                                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg3m, t.fg3a)}</td>
-                                <td style={TD}>{t.ftm}/{t.fta}</td>
-                                <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.ftm, t.fta)}</td>
-                                <td style={TD}>{t.ro}</td>
-                                <td style={TD}>{t.rd}</td>
-                                <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.ro + t.rd}</td>
-                                <td style={TD}>{t.pd}</td><td style={TD}>{t.ct}</td><td style={TD}>{t.intercepts}</td>
-                                <td style={TD}>{t.bp}</td><td style={TD}>{t.fte}</td><td style={TD}>{t.fpr}</td>
-                                <td style={{ ...TD, color: '#475569' }}>—</td>
-                                <td style={{ ...TD, color: '#475569' }}>—</td>
-                              </tr>
+                              <>
+                                {teamLine && (
+                                  <tr key="opp-team" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
+                                    title="Actions adverses sans auteur : pointage anonyme, rebond d'équipe, ballon perdu sur les 24 secondes.">
+                                    <td style={{ ...TD, textAlign: 'left', color: '#94A3B8', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Équipe</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{teamLine.pts}</td>
+                                    <td style={TD}>{teamLine.fg2m}/{teamLine.fg2a}</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={TD}>{teamLine.fg3m}/{teamLine.fg3a}</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={TD}>{teamLine.ftm}/{teamLine.fta}</td>
+                                    <td style={{ ...TD, color: '#334155' }}>—</td>
+                                    <td style={TD}>{teamLine.ro}</td><td style={TD}>{teamLine.rd}</td>
+                                    <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{teamLine.ro + teamLine.rd}</td>
+                                    <td style={TD}>{teamLine.pd}</td><td style={TD}>{teamLine.ct}</td><td style={TD}>{teamLine.intercepts}</td>
+                                    <td style={TD}>{teamLine.bp}</td><td style={TD}>{teamLine.fte}</td><td style={TD}>{teamLine.fpr}</td>
+                                    <td style={{ ...TD, color: '#475569' }}>—</td>
+                                    <td style={{ ...TD, color: '#475569' }}>—</td>
+                                  </tr>
+                                )}
+                                <tr key="opp-totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
+                                  <td style={{ ...TD, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
+                                  <td style={{ ...TD, color: '#334155' }}>—</td>
+                                  <td style={TD}>{fmt1(minutes)}</td>
+                                  <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
+                                  <td style={TD}>{t.fg2m}/{t.fg2a}</td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg2m, t.fg2a)}</td>
+                                  <td style={TD}>{t.fg3m}/{t.fg3a}</td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.fg3m, t.fg3a)}</td>
+                                  <td style={TD}>{t.ftm}/{t.fta}</td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(t.ftm, t.fta)}</td>
+                                  <td style={TD}>{t.ro}</td>
+                                  <td style={TD}>{t.rd}</td>
+                                  <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.ro + t.rd}</td>
+                                  <td style={TD}>{t.pd}</td><td style={TD}>{t.ct}</td><td style={TD}>{t.intercepts}</td>
+                                  <td style={TD}>{t.bp}</td><td style={TD}>{t.fte}</td><td style={TD}>{t.fpr}</td>
+                                  <td style={{ ...TD, color: '#475569' }}>—</td>
+                                  <td style={{ ...TD, color: '#475569' }}>—</td>
+                                </tr>
+                              </>
                             );
                           })()}
                         </tbody>

@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, Download, AlertTriangle, X } from 'lucide-react';
 import { DiagramCourt } from './DiagramCourt';
 import { ShotGrid, SHOT_COLORS } from './ShotChart';
-import { PlayerAvatar } from './PlayerAvatar';
 import { Modal } from './Modal';
 import { MatchScoreboard, scoreboardBtn } from './MatchScoreboard';
 import { matchEventsApi } from '../api/matchEvents';
@@ -220,14 +219,19 @@ const PALETTE_GROUPS: {
 ];
 
 /**
- * Actions créditées à l'ÉQUIPE et non à un joueur — les seules que la règle laisse sans auteur.
- * Elles comptent au score, aux totaux collectifs et aux possessions, jamais au boxscore individuel.
+ * Actions que la règle crédite à l'ÉQUIPE et non à un joueur : rebond d'équipe (ballon sorti ou
+ * récupéré sans capteur désigné) et perte de balle d'équipe (24 secondes, retour en zone). Elles
+ * comptent au score, aux totaux collectifs et aux possessions, jamais au boxscore individuel.
+ *
+ * La liste reste courte de NOTRE côté : un « sans joueur » ouvert à tout deviendrait le raccourci
+ * du soir de match, et notre propre boxscore individuel se viderait sans que rien ne l'annonce.
+ * Côté adverse il est au contraire ouvert à tout — on suit l'adversaire en agrégé.
  */
-const TEAM_EVENTS: { type: MatchEventType; label: string; help: string }[] = [
-  { type: 'reb_def', label: 'Rebond déf. équipe', help: "Rebond défensif d'équipe : ballon sorti ou récupéré sans qu'un joueur le capte" },
-  { type: 'reb_off', label: 'Rebond off. équipe', help: "Rebond offensif d'équipe : la possession reste à nous sans capteur désigné" },
-  { type: 'tov',     label: 'Ballon perdu équipe', help: "Perte de balle d'équipe : 24 secondes, retour en zone, remise en jeu ratée" },
-];
+const TEAM_EVENT_TYPES: MatchEventType[] = ['reb_def', 'reb_off', 'tov'];
+
+/** Vrai si l'action peut s'écrire avec cet auteur — le seul garde-fou du « sans joueur ». */
+export const allowsAuthor = (sel: Selection, type: MatchEventType) =>
+  sel.side === 'them' || sel.id !== null || TEAM_EVENT_TYPES.includes(type);
 
 /** Repli sous le terrain : un tir dont on n'a pas eu le temps de prendre la position. La valeur
  *  est figée ici plutôt que déduite de la géométrie — c'est le seul cas où elle l'est. */
@@ -435,7 +439,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const selectionLabel = !selection ? null
     : selection.side === 'them'
       ? (selection.id ? (opponentById.get(selection.id)?.name ?? '?') : `${opponentName} (sans joueur)`)
-      : playerNameShort(playerById.get(selection.id!)!);
+      : (selection.id ? playerNameShort(playerById.get(selection.id)!) : `${ourTeamName} (sans joueur)`);
 
   /* ── Saisie ────────────────────────────────────────────────────────────── */
 
@@ -471,12 +475,31 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    *  joueur adverse s'écrit dans `opponentPlayerId` et pas dans `playerId`. */
   function authorFields(sel: Selection): Partial<MatchEvent> {
     return sel.side === 'us'
-      ? { side: 'us', playerId: sel.id! }
+      ? { side: 'us', playerId: sel.id ?? undefined }
       : { side: 'them', opponentPlayerId: sel.id ?? undefined };
+  }
+
+  /**
+   * Le SEUL chemin d'écriture d'une action : il applique le garde-fou du « sans joueur » et arme
+   * l'enchaînement. Les trois gestes qui mènent ici (tir posé sur le terrain, bouton de palette
+   * joueur déjà armé, joueur tapé sur une action déjà armée) produisent le même événement ; les
+   * laisser recopier la même suite d'appels, c'est trois occasions de la faire diverger.
+   */
+  function record(sel: Selection, a: { type: MatchEventType; made?: boolean; value?: 2 | 3; x?: number; y?: number }) {
+    if (!allowsAuthor(sel, a.type)) return;
+    pushEvent({ ...a, ...authorFields(sel) });
+    setChain(
+      (a.type === 'ft' || a.type === 'shot') && a.made === false ? 'reb'
+        : a.type === 'shot' && a.made ? 'ast'
+        : null,
+    );
+    setPendingAction(null);
   }
 
   function handleCourtClick(e: React.MouseEvent<SVGSVGElement>) {
     if (!canEdit || subMode) return;
+    // Un tir a toujours un auteur : avec « sans joueur » armé, poser un point n'aboutirait à rien.
+    if (selection !== null && !allowsAuthor(selection, 'shot')) return;
     const rect = courtRef.current?.getBoundingClientRect();
     if (!rect) return;
     // Le viewBox couvre exactement le demi-terrain : la conversion pixel → mètre est un simple
@@ -490,12 +513,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   function confirmShot(made: boolean) {
     if (!pendingShot || !selection) return;
-    pushEvent({
-      type: 'shot', made, ...authorFields(selection),
+    record(selection, {
+      type: 'shot', made,
       x: +pendingShot.x.toFixed(2), y: +pendingShot.y.toFixed(2),
     });
     setPendingShot(null);
-    setChain(made ? 'ast' : 'reb');
   }
 
   /**
@@ -506,9 +528,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   function handleActionTap(type: MatchEventType, made: boolean | undefined, label: string, value?: 2 | 3) {
     if (!canEdit) return;
     if (selection) {
-      pushEvent({ type, made, value, ...authorFields(selection) });
-      setChain((type === 'ft' || type === 'shot') && made === false ? 'reb' : type === 'shot' && made ? 'ast' : null);
-      setPendingAction(null);
+      record(selection, { type, made, value });
       return;
     }
     // Une action armée et un tir posé ne peuvent pas attendre le même tap : le second annule le premier.
@@ -523,9 +543,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   function selectPlayer(sel: Selection) {
     if (pendingAction) {
       const { type, made, value } = pendingAction;
-      pushEvent({ type, made, value, ...authorFields(sel) });
-      setChain((type === 'ft' || type === 'shot') && made === false ? 'reb' : type === 'shot' && made ? 'ast' : null);
-      setPendingAction(null);
+      record(sel, { type, made, value });
       return;
     }
     setSelection(prev => prev?.side === sel.side && prev.id === sel.id ? null : sel);
@@ -791,6 +809,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const recent = history.slice(0, RECENT_COUNT);
   const isSelected = (side: LineupSide, id: string | null) => selection?.side === side && selection?.id === id;
 
+  /** Le « sans joueur » de NOTRE côté n'accepte que les actions d'équipe : plutôt que d'avaler
+   *  silencieusement un tap impossible, l'écran éteint ce qu'il refusera — dans les deux sens,
+   *  selon qu'on a armé l'auteur ou l'action en premier. */
+  const teamAuthorBlocked = pendingAction !== null && !allowsAuthor({ side: 'us', id: null }, pendingAction.type);
+  const actionBlocked = (type: MatchEventType) => selection !== null && !allowsAuthor(selection, type);
+  const shotBlocked = actionBlocked('shot');
+
   const rosterName = (side: LineupSide, id: string) => side === 'us'
     ? (playerById.has(id) ? playerNameShort(playerById.get(id)!) : '?')
     : (opponentById.get(id)?.name ?? '?');
@@ -828,7 +853,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   function eventText(e: MatchEvent): string {
     const author = e.side === 'us'
-      ? (e.playerId ? playerNameShort(playerById.get(e.playerId)!) : '')
+      ? (e.playerId ? playerNameShort(playerById.get(e.playerId)!) : 'équipe')
       : (e.opponentPlayerId ? (opponentById.get(e.opponentPlayerId)?.name ?? '?') : 'adv');
     const what = e.type === 'shot' || e.type === 'ft'
       ? `${e.made ? '✓' : '✗'} ${e.type === 'ft' ? 'LF' : `${shotEventValue(e)} pts`}`
@@ -1057,21 +1082,12 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
             {onCourt.map(id => {
               const player = playerById.get(id);
               if (!player) return null;
-              const active = isSelected('us', id);
-              const marked = subMode && pendingSub?.side === 'us' && pendingSub.id === id;
-              const accent = marked ? '#F59E0B' : teamColor;
               return (
-                <button key={id} onClick={() => handleRosterTap('us', id, 'court')} disabled={!canEdit} aria-pressed={active || marked}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 9, minHeight: TAP, padding: '4px 10px', borderRadius: 8,
-                    border: `1px solid ${active || marked ? accent : '#2A2F3A'}`,
-                    backgroundColor: active || marked ? `${accent}1F` : '#0D0F14',
-                    color: active || marked ? '#F1F5F9' : '#CBD5E1', cursor: canEdit ? 'pointer' : 'default',
-                    fontSize: '0.85rem', fontWeight: active || marked ? 700 : 400, textAlign: 'left',
-                  }}>
-                  <PlayerAvatar player={player} size={30} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playerNameShort(player)}</span>
-                </button>
+                <RosterRow key={id} number={player.number} name={playerNameShort(player)} accent={teamColor}
+                  active={isSelected('us', id)}
+                  marked={subMode && pendingSub?.side === 'us' && pendingSub.id === id}
+                  canEdit={canEdit}
+                  onClick={() => handleRosterTap('us', id, 'court')} />
               );
             })}
           </div>
@@ -1085,42 +1101,28 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                   : 'Aucun joueur sur le banc.'}
               </p>
             )}
-            {bench.map(p => {
-              const marked = subMode && pendingSub?.side === 'us' && pendingSub.id === p.id;
-              return (
-                <button key={p.id} onClick={() => handleRosterTap('us', p.id, 'bench')} disabled={!canEdit || (!subMode && !isSelectable('us', p.id))}
-                  title={subMode ? `Faire entrer ${playerNameShort(p)}` : 'Activez le mode changement pour le faire entrer'}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 9, minHeight: TAP, padding: '4px 10px', borderRadius: 8,
-                    border: `1px solid ${marked ? '#F59E0B' : '#2A2F3A'}`,
-                    backgroundColor: marked ? '#F59E0B1F' : 'transparent',
-                    color: subMode ? '#CBD5E1' : '#64748B', cursor: subMode ? 'pointer' : 'default',
-                    fontSize: '0.83rem', textAlign: 'left', opacity: subMode ? 1 : 0.65,
-                  }}>
-                  <NumberBadge number={p.number} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playerNameShort(p)}</span>
-                </button>
-              );
-            })}
+            {bench.map(p => (
+              <RosterRow key={p.id} number={p.number} name={playerNameShort(p)} accent={teamColor}
+                active={isSelected('us', p.id)}
+                marked={subMode && pendingSub?.side === 'us' && pendingSub.id === p.id}
+                dimmed={!subMode && !isSelectable('us', p.id)}
+                canEdit={canEdit}
+                title={subMode ? `Faire entrer ${playerNameShort(p)}` : undefined}
+                onClick={() => handleRosterTap('us', p.id, 'bench')} />
+            ))}
           </div>
 
-          {/* Statistiques d'ÉQUIPE : les trois seuls cas où la règle crédite l'équipe et non un
-              joueur. Sans elles, un rebond d'équipe était perdu — et avec lui une possession, donc
-              tous les ratios par possession. Volontairement limité à ces trois : un « sans joueur »
-              ouvert à tout deviendrait le raccourci du soir de match, et notre propre boxscore
-              individuel se viderait sans que rien ne l'annonce. */}
+          {/* « Sans joueur » — les actions que la règle crédite à l'équipe se pointent comme
+              n'importe quelle autre : on arme cet auteur, puis on tape l'action. Trois boutons
+              dédiés vivaient ici ; ils dupliquaient des intitulés déjà présents dans la palette
+              et n'obéissaient pas au même geste que tout le reste de l'écran. */}
           {canEdit && (
-            <div style={{ marginTop: 10 }}>
-              <p style={{ ...SECTION_TITLE, fontSize: '0.6rem', margin: '0 0 4px', color: '#475569' }}>Équipe</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 5 }}>
-                {TEAM_EVENTS.map(b => (
-                  <button key={b.label} onClick={() => pushEvent({ type: b.type, side: 'us' })}
-                    title={b.help}
-                    style={{ ...paletteStyle(false, true, '#94A3B8'), height: 38, fontSize: '0.73rem' }}>
-                    <span className="tracker-action-label">{b.label}</span>
-                  </button>
-                ))}
-              </div>
+            <div style={{ marginTop: 8 }}>
+              <RosterRow number={null} name="Sans joueur" accent="#94A3B8" canEdit
+                active={isSelected('us', null)}
+                dimmed={teamAuthorBlocked}
+                title="Action d'équipe : rebond ou ballon perdu sans joueur désigné. Elle compte aux totaux et aux possessions, jamais au boxscore individuel."
+                onClick={() => selectPlayer({ side: 'us', id: null })} />
             </div>
           )}
         </div>
@@ -1162,12 +1164,12 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <p style={SECTION_TITLE}>Tirs</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
                 {NO_POSITION_SHOTS.map(b => (
-                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit}
+                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit || shotBlocked}
                     aria-pressed={pendingAction?.label === b.label}
                     aria-label={`${b.value} points ${b.made ? 'réussi' : 'manqué'}`}
                     style={{
                       ...paletteStyle(
-                        pendingAction?.label === b.label, true, b.made ? '#00E5A0' : '#EF4444',
+                        !shotBlocked && pendingAction?.label === b.label, !shotBlocked, b.made ? '#00E5A0' : '#EF4444',
                         pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
                       ),
                       height: 56, fontSize: '0.95rem', fontWeight: 700,
@@ -1189,7 +1191,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 ref={courtRef}
                 viewBox={`0 0 ${COURT_SIZE.half.w} ${COURT_SIZE.half.h}`}
                 onClick={handleCourtClick}
-                style={{ width: '100%', display: 'block', borderRadius: 8, cursor: canEdit && !subMode ? 'crosshair' : 'default' }}
+                style={{ width: '100%', display: 'block', borderRadius: 8, opacity: shotBlocked ? 0.45 : 1,
+                  cursor: canEdit && !subMode && !shotBlocked ? 'crosshair' : 'default' }}
               >
                 {/* Terrain de SAISIE : il ne montre que le tir en cours. Les tirs déjà
                     enregistrés sont dans les grilles du bas — les empiler ici finissait par
@@ -1237,11 +1240,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <p style={{ ...SECTION_TITLE, fontSize: '0.6rem', margin: '0 0 4px', color: '#475569' }}>Tir sans position</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
                 {NO_POSITION_SHOTS.map(b => (
-                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit}
+                  <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit || shotBlocked}
                     aria-pressed={pendingAction?.label === b.label}
                     aria-label={`${b.value} points ${b.made ? 'réussi' : 'manqué'}, sans position`}
                     style={paletteStyle(
-                      pendingAction?.label === b.label, true, b.made ? '#00E5A0' : '#EF4444',
+                      !shotBlocked && pendingAction?.label === b.label, !shotBlocked, b.made ? '#00E5A0' : '#EF4444',
                       pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
                     )}>
                     <span className="tracker-action-label">{b.label}</span>
@@ -1268,16 +1271,21 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 <div key={group.title}>
                   <p style={{ ...SECTION_TITLE, fontSize: '0.6rem', margin: '0 0 4px', color: '#475569' }}>{group.title}</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-                    {group.buttons.map(b => (
-                      <button key={b.label} onClick={() => handleActionTap(b.type, b.made, b.label)} disabled={!canEdit}
-                        aria-pressed={pendingAction?.label === b.label}
-                        style={paletteStyle(
-                          pendingAction?.label === b.label || (chain !== null && b.chain === chain),
-                          true, b.tone, pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
-                        )}>
-                        <span className="tracker-action-label">{b.label}</span>
-                      </button>
-                    ))}
+                    {group.buttons.map(b => {
+                      const blocked = actionBlocked(b.type);
+                      return (
+                        <button key={b.label} onClick={() => handleActionTap(b.type, b.made, b.label)}
+                          disabled={!canEdit || blocked}
+                          title={blocked ? "Sans joueur, seuls un rebond ou un ballon perdu se créditent à l'équipe" : undefined}
+                          aria-pressed={pendingAction?.label === b.label}
+                          style={paletteStyle(
+                            !blocked && (pendingAction?.label === b.label || (chain !== null && b.chain === chain)),
+                            !blocked, b.tone, pendingAction?.label === b.label ? '#F59E0B' : '#00E5A0',
+                          )}>
+                          <span className="tracker-action-label">{b.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -1310,7 +1318,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               </p>
             )}
             {opponentsOnCourt.map(p => (
-              <OpponentRow key={p.id} player={p} canEdit={canEdit}
+              <RosterRow key={p.id} number={p.number ?? null} name={p.name} accent="#94A3B8" canEdit={canEdit}
                 active={isSelected('them', p.id)}
                 marked={subMode && pendingSub?.side === 'them' && pendingSub.id === p.id}
                 onClick={() => handleRosterTap('them', p.id, 'court')} />
@@ -1322,10 +1330,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <p style={{ ...SECTION_TITLE, marginTop: 12 }}>Banc</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {opponentsBench.map(p => (
-                  <OpponentRow key={p.id} player={p} canEdit={canEdit}
+                  <RosterRow key={p.id} number={p.number ?? null} name={p.name} accent="#94A3B8" canEdit={canEdit}
                     active={isSelected('them', p.id)}
                     marked={subMode && pendingSub?.side === 'them' && pendingSub.id === p.id}
                     dimmed={!subMode && !isSelectable('them', p.id)}
+                    title={subMode ? `Faire entrer ${p.name}` : undefined}
                     onClick={() => handleRosterTap('them', p.id, 'bench')} />
                 ))}
               </div>
@@ -1333,18 +1342,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           )}
 
           {/* Le pointage anonyme reste toujours à portée : on ne saisit pas un panier encaissé
-              moins bien parce qu'on n'a pas eu le numéro. */}
-          <button onClick={() => selectPlayer({ side: 'them', id: null })} disabled={!canEdit} aria-pressed={isSelected('them', null)}
-            title="Enregistrer une action adverse sans l'attribuer : elle compte au score et aux totaux, pas au boxscore individuel"
-            style={{
-              width: '100%', minHeight: TAP, padding: '4px 10px', borderRadius: 8, marginTop: 8, textAlign: 'left',
-              border: `1px dashed ${isSelected('them', null) ? '#94A3B8' : '#2A2F3A'}`,
-              backgroundColor: isSelected('them', null) ? '#94A3B81F' : 'transparent',
-              color: isSelected('them', null) ? '#F1F5F9' : '#64748B',
-              cursor: canEdit ? 'pointer' : 'default', fontSize: '0.81rem',
-            }}>
-            Sans joueur
-          </button>
+              moins bien parce qu'on n'a pas eu le numéro. Contrairement au nôtre, il accepte
+              TOUTES les actions — suivre l'adversaire en agrégé est le cas normal. */}
+          <div style={{ marginTop: 8 }}>
+            <RosterRow number={null} name="Sans joueur" accent="#94A3B8" canEdit={canEdit}
+              active={isSelected('them', null)}
+              title="Enregistrer une action adverse sans l'attribuer : elle compte au score et aux totaux, pas au boxscore individuel"
+              onClick={() => selectPlayer({ side: 'them', id: null })} />
+          </div>
         </div>
       </div>
 
@@ -1855,25 +1860,32 @@ function RosterTitle({ name, count }: { name: string; count: number }) {
   );
 }
 
-/** Ligne d'un joueur adverse — même gabarit sur le terrain et au banc, comme pour les nôtres. */
-function OpponentRow({ player, active, marked, dimmed, canEdit, onClick }: {
-  player: MatchOpponentPlayer; active: boolean; marked: boolean; dimmed?: boolean;
-  canEdit: boolean; onClick: () => void;
+/**
+ * Ligne d'effectif — MÊME gabarit des deux côtés, terrain, banc et « sans joueur » compris. Les
+ * deux colonnes avaient divergé : la nôtre grisait son banc en permanence alors qu'il restait
+ * cliquable, et affichait une photo là où l'autre affichait un numéro. En plein match, deux
+ * colonnes qui ne se lisent pas pareil se lisent mal.
+ */
+function RosterRow({ number, name, accent, active, marked, dimmed, canEdit, title, onClick }: {
+  number: number | null; name: string; accent: string;
+  active: boolean; marked?: boolean; dimmed?: boolean; canEdit: boolean;
+  title?: string; onClick: () => void;
 }) {
-  const accent = marked ? '#F59E0B' : '#94A3B8';
-  const on = active || marked;
+  const on = active || !!marked;
+  const tone = marked ? '#F59E0B' : accent;
   return (
-    <button onClick={onClick} disabled={!canEdit || dimmed} aria-pressed={on}
+    <button onClick={onClick} disabled={!canEdit || dimmed} aria-pressed={on} title={title}
       style={{
+        width: '100%',
         display: 'flex', alignItems: 'center', gap: 9, minHeight: TAP, padding: '4px 10px', borderRadius: 8,
-        border: `1px solid ${on ? accent : '#2A2F3A'}`,
-        backgroundColor: on ? `${accent}1F` : dimmed ? 'transparent' : '#0D0F14',
+        border: `1px solid ${on ? tone : '#2A2F3A'}`,
+        backgroundColor: on ? `${tone}1F` : dimmed ? 'transparent' : '#0D0F14',
         color: on ? '#F1F5F9' : '#CBD5E1', cursor: canEdit && !dimmed ? 'pointer' : 'default',
         fontSize: '0.85rem', fontWeight: on ? 700 : 400, textAlign: 'left',
-        opacity: dimmed ? 0.65 : 1,
+        opacity: dimmed ? 0.5 : 1,
       }}>
-      <NumberBadge number={player.number ?? null} />
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.name}</span>
+      <NumberBadge number={number} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
     </button>
   );
 }

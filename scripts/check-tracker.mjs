@@ -17,6 +17,7 @@ import { matchesApi } from '../src/api/matches.ts';
 import { matchEventsApi } from '../src/api/matchEvents.ts';
 import { matchLiveApi } from '../src/api/matchLive.ts';
 import { boxscoreFromEvents, teamTotalsFromEvents, scoreFromEvents } from '../src/data/matchEvents.ts';
+import { unattributedLine } from '../src/data/boxscoreTotals.ts';
 import { zoneStats } from '../src/data/shotChart.ts';
 import { playByPlayRows } from '../src/data/playByPlay.ts';
 
@@ -92,6 +93,9 @@ try {
     { ...base, seq: 4, gameTimeSeconds: 55, type: 'foul', playerId: five[4] },
     { ...base, seq: 5, gameTimeSeconds: 70, side: 'them', type: 'shot', made: true, value: 2, opponentPlayerId: opp.id },
     { ...base, seq: 6, gameTimeSeconds: 80, side: 'them', type: 'shot', made: true, value: 3 },
+    // Rebond d'ÉQUIPE : aucun auteur. Il doit compter aux totaux collectifs et à aucune ligne
+    // individuelle — c'est tout l'objet de la ligne « Équipe » du boxscore.
+    { ...base, seq: 7, gameTimeSeconds: 90, type: 'reb_def' },
   ];
   for (const e of written) await matchEventsApi.insert(e);
 
@@ -111,6 +115,8 @@ try {
   const p4 = rowsUs.find(r => r.playerId === five[4]);
   t('faute commise rangée dans fte', p4.fte === 1 && p4.fpr === 0, `fte=${p4.fte} fpr=${p4.fpr}`);
   t('totaux adverses comptent l\'anonyme', teamTotalsFromEvents(back, 'them').fg3m === 1);
+  t('rebond d\'équipe absent des lignes individuelles', rowsUs.every(r => r.rd === 0));
+  t('rebond d\'équipe compté aux totaux collectifs', teamTotalsFromEvents(back, 'us').rd === 1);
   t('tir à 3 rangé par zone', zoneStats(back, 'us').find(z => z.zone === 'arc_axe').made === 1);
   t('play-by-play cohérent', playByPlayRows(back, { us: 'A', them: 'B', player: () => 'X', opponent: () => 'Y' }).at(-1).slice(10).join('-') === '6-5');
 
@@ -131,6 +137,11 @@ try {
   t('statistiques adverses publiées', (await statsApi.listOpponentStatsByMatchId(match.id)).length === 1);
   const teamPub = await statsApi.getTeamStatsByMatchId(match.id);
   t('totaux collectifs publiés', teamPub?.fg3m === 1 && teamPub?.opp_fg3m === 1, `fg3m=${teamPub?.fg3m} opp=${teamPub?.opp_fg3m}`);
+  const teamLine = unattributedLine(teamPub, published, 'us');
+  t('ligne « Équipe » du boxscore : le rebond sans auteur ressort', teamLine?.rd === 1, `rd=${teamLine?.rd ?? '—'}`);
+  const oppLine = unattributedLine(teamPub, await statsApi.listOpponentStatsByMatchId(match.id), 'them');
+  t('ligne « Équipe » adverse : le tir anonyme ressort', oppLine?.fg3m === 1 && oppLine?.pts === 3, `fg3m=${oppLine?.fg3m ?? '—'} pts=${oppLine?.pts ?? '—'}`);
+
   const updated = await matchesApi.getById(match.id);
   t('score du match mis à jour', updated.scoreUs === 6 && updated.scoreThem === 5, `${updated.scoreUs} — ${updated.scoreThem}`);
 

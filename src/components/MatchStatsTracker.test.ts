@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSubstitution, resolveLineupEntry } from './MatchStatsTracker';
+import { resolveSubstitution, resolveLineupEntry, allowsAuthor } from './MatchStatsTracker';
 import type { MatchLineupEvent } from '../data/types';
 
 const FIVE = ['p1', 'p2', 'p3', 'p4', 'p5'];
@@ -72,5 +72,26 @@ describe('resolveLineupEntry', () => {
   it("n'amende jamais un changement : quelqu'un en est sorti", () => {
     const last = LINEUP({ seq: 2, playersIn: ['p9'], playersOut: ['p3'], onCourt: ['p1', 'p2', 'p9'] });
     expect(resolveLineupEntry(last, 'p4')).toEqual({ kind: 'push', onCourt: ['p1', 'p2', 'p9', 'p4'] });
+  });
+});
+
+describe('allowsAuthor', () => {
+  it('laisse tout passer à un joueur nommé', () => {
+    expect(allowsAuthor({ side: 'us', id: 'p1' }, 'shot')).toBe(true);
+    expect(allowsAuthor({ side: 'them', id: 'o1' }, 'foul')).toBe(true);
+  });
+
+  it('ouvre le « sans joueur » adverse à tout : on suit l\'adversaire en agrégé', () => {
+    expect(allowsAuthor({ side: 'them', id: null }, 'shot')).toBe(true);
+  });
+
+  it('limite NOTRE « sans joueur » aux actions que la règle crédite à l\'équipe', () => {
+    // Sans ce garde-fou, notre boxscore individuel se viderait sans que rien ne l'annonce.
+    expect(allowsAuthor({ side: 'us', id: null }, 'reb_def')).toBe(true);
+    expect(allowsAuthor({ side: 'us', id: null }, 'reb_off')).toBe(true);
+    expect(allowsAuthor({ side: 'us', id: null }, 'tov')).toBe(true);
+    expect(allowsAuthor({ side: 'us', id: null }, 'shot')).toBe(false);
+    expect(allowsAuthor({ side: 'us', id: null }, 'ast')).toBe(false);
+    expect(allowsAuthor({ side: 'us', id: null }, 'foul')).toBe(false);
   });
 });
