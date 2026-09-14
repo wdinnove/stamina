@@ -2,15 +2,19 @@ import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { scoreTimeline, detectRuns, quarterSplits, absoluteSeconds, DEFAULT_MIN_RUN_POINTS } from '../data/matchFlow';
+import { scoreTimeline, detectRuns, absoluteSeconds, DEFAULT_MIN_RUN_POINTS } from '../data/matchFlow';
 import { playByPlayEntries } from '../data/playByPlay';
 import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player } from '../data/types';
 
 /**
- * Déroulé du match : la courbe d'écart, les séries sans réponse, et le détail quart-temps par
- * quart-temps — tout ce que le boxscore ne dit pas parce qu'il n'a pas d'axe du temps.
+ * Déroulé du match : la courbe d'écart, les séries sans réponse et le flux d'actions — tout ce
+ * que le boxscore ne dit pas parce qu'il n'a pas d'axe du temps.
+ *
+ * Le détail quart-temps par quart-temps a son propre onglet (« QT par QT ») : il vivait ici en
+ * double, et la version de l'onglet sert AUSSI les matchs importés, qui n'ont pas d'actions mais
+ * ont un score par quart-temps.
  *
  * Un match perdu de 4 après avoir mené de 15 et un match perdu de 4 sans jamais mener produisent
  * le même boxscore. Ce sont deux matchs différents, et deux causeries d'après-match différentes.
@@ -64,7 +68,6 @@ export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
 
   const timeline = useMemo(() => scoreTimeline(events, period), [events, period]);
   const runs     = useMemo(() => detectRuns(events, period), [events, period]);
-  const splits   = useMemo(() => quarterSplits(events), [events]);
 
   /** Fin de l'axe : le dernier instant enregistré, arrondi à la fin du quart-temps en cours —
    *  sinon la courbe s'arrête au milieu du graphique sur un match suivi jusqu'au bout. */
@@ -197,42 +200,6 @@ export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
             ))}
           </div>
         )}
-      </div>
-
-      <div style={PANEL}>
-        <p style={SECTION_TITLE}>Quart-temps par quart-temps</p>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                {['', 'Marqués', 'Encaissés', 'Écart', '2 pts', '3 pts', 'LF', 'RO', 'BP', 'Poss.'].map((h, i) => (
-                  <th key={i} className="flow-head">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {splits.map(s => (
-                <tr key={s.quarter} style={{ borderBottom: '1px solid #1E2229' }}>
-                  <td className="flow-cell">{periodLabel(s.quarter)}</td>
-                  <td className="flow-cell" style={{ fontWeight: 700, color: '#F1F5F9' }}>{s.pointsUs}</td>
-                  <td className="flow-cell">{s.pointsThem}</td>
-                  <td className="flow-cell" style={{ fontWeight: 700, color: s.diff > 0 ? '#00E5A0' : s.diff < 0 ? '#EF4444' : '#64748B' }}>
-                    {signed(s.diff)}
-                  </td>
-                  <td className="flow-cell">{s.us.fg2m}/{s.us.fg2a}</td>
-                  <td className="flow-cell">{s.us.fg3m}/{s.us.fg3a}</td>
-                  <td className="flow-cell">{s.us.ftm}/{s.us.fta}</td>
-                  <td className="flow-cell">{s.us.ro}</td>
-                  <td className="flow-cell">{s.us.bp}</td>
-                  <td className="flow-cell">{s.us.possessions.toFixed(1)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p style={{ color: '#475569', fontSize: '0.73rem', margin: '10px 0 0' }}>
-          Les colonnes de tir sont les nôtres. L'écart, lui, est celui du quart-temps seul — pas le cumul.
-        </p>
       </div>
 
       {/* Le déroulé action par action. Replié par défaut : c'est la matière première, celle qu'on

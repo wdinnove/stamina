@@ -21,6 +21,7 @@ npx vercel dev         # dev AVEC les fonctions serverless api/
 | [docs/SETUP.md](docs/SETUP.md) | monter une app comme celle-ci de zéro — guide pas à pas pour débutant |
 | [docs/STACK.md](docs/STACK.md) | la stack : quoi, pourquoi, où — fiche de référence |
 | [docs/CALCULS.md](docs/CALCULS.md) | les formules métier |
-| [docs/STATS_LIVE.md](docs/STATS_LIVE.md) | le plan de la prise de statistiques en direct (boxscore, rotations, zones de tir) |
+| [docs/PRISE_STATISTIQUES.md](docs/PRISE_STATISTIQUES.md) | la prise de statistiques de A à Z — SQL, API, domaine, écran, tests, et comment l'extraire |
+| [docs/STATS_LIVE.md](docs/STATS_LIVE.md) | le journal de conception de cette même feature — pourquoi chaque choix |
 | [docs/FORMATS_CSV.md](docs/FORMATS_CSV.md) | les formats CSV d'import tactique — à donner tel quel à qui prépare les fichiers |
 | [schema.sql](schema.sql) | le schéma Postgres complet (tables, RLS, fonctions, buckets) |

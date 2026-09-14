@@ -9,7 +9,7 @@ import { TacticalImportModal } from '../components/TacticalImportModal';
 import { tacticalConfigApi } from '../api/tacticalConfig';
 import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
-import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker, MatchLineupsPanel, MatchShotChartPanel, MatchFlowPanel } from '../components';
+import { EmptyState, Modal, MatchFormModal, TacticalStatsSection, AccessRestricted, MatchKindBadge, LiveTrackingPanel, MatchStatsTracker, MatchLineupsPanel, MatchShotChartPanel, MatchFlowPanel, MatchQuarterPanel, MatchFourFactors } from '../components';
 import { ResponsiveTabNav } from '../components/ResponsiveTabNav';
 import RichTextEditor from '../components/RichTextEditor';
 import { MatchObjectivesRecap } from '../components/MatchObjectivesRecap';
@@ -158,15 +158,17 @@ interface MatchTab { key: string; slug: string; label: string }
 // Grille de tirs, Lineups et Play-by-play ne lisent QUE `match_events` : un match importé par
 // feuille de marque n'en a aucun. Ils restent visibles avec un état vide qui l'explique, plutôt
 // que d'apparaître et disparaître d'un match à l'autre — une navigation qui change de forme se
-// cherche.
+// cherche. « QT par QT » fait exception : il part du score par quart-temps (`quarter_scores`),
+// que porte AUSSI un match importé, et n'ajoute le détail par tir que s'il existe.
 const MATCH_TAB_GROUPS: { label?: string; tabs: MatchTab[] }[] = [
   { tabs: [
     { key: 'boxscore',     slug: 'boxscore',   label: 'Boxscore' },
     { key: 'advanced',     slug: 'avancees',   label: 'Stats avancées' },
+    { key: 'four_factors', slug: '4-factors',  label: 'Four factors' },
     { key: 'shot_chart',   slug: 'tirs',       label: 'Grille de tirs' },
     { key: 'lineups',      slug: 'lineups',    label: 'Lineups' },
     { key: 'match_flow',   slug: 'deroule',    label: 'Play-by-play' },
-    { key: 'four_factors', slug: '4-factors',  label: 'Four factors' },
+    { key: 'quarters',     slug: 'qt-par-qt',  label: 'QT par QT' },
     { key: 'objectives',   slug: 'objectifs',  label: 'Objectifs' },
     { key: 'notes',        slug: 'notes',      label: 'Retour de match' },
   ]},
@@ -968,72 +970,12 @@ export default function MatchDetailPage() {
           )}
 
           {/* ── FOUR FACTORS ── */}
-          {activeTab === 'four_factors' && (() => {
-            if (!teamStats) return <EmptyState message="Statistiques collectives requises." />;
-            const oppFga = teamStats.opp_fg2a + teamStats.opp_fg3a;
-            const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : null;
-            const factors: { label: string; desc: string; weight: string; own: number | null; opp: number | null; higherIsBetter: boolean; fmt: (v: number) => string }[] = [
-              { label: 'eFG%', desc: 'Efficacité au tir pondérant le 3pts', weight: '40%', own: teamStats.efgPct, opp: teamStats.opp_efgPct, higherIsBetter: true, fmt: v => `${v}%` },
-              { label: 'TO%', desc: 'Balles perdues par 100 possessions', weight: '25%', own: teamStats.toPct, opp: teamStats.opp_toPct, higherIsBetter: false, fmt: v => `${v}%` },
-              { label: 'OREB%', desc: 'Part des rebonds offensifs captés', weight: '20%', own: teamStats.orebPct, opp: teamStats.opp_orebPct, higherIsBetter: true, fmt: v => `${v}%` },
-              { label: 'FT Rate', desc: 'Lancers-francs obtenus par tir tenté', weight: '15%', own: teamStats.ftRate, opp: oppFtRate, higherIsBetter: true, fmt: v => v.toFixed(2) },
-            ];
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
-                  {factors.map(f => {
-                    const ownBetter = f.own !== null && f.opp !== null && (f.higherIsBetter ? f.own > f.opp : f.own < f.opp);
-                    const oppBetter = f.own !== null && f.opp !== null && (f.higherIsBetter ? f.opp > f.own : f.opp < f.own);
-                    const maxVal = Math.max(f.own ?? 0, f.opp ?? 0, 0.01);
-                    const ownPct = f.own !== null ? Math.min((f.own / maxVal) * 100, 100) : 0;
-                    const oppPct = f.opp !== null ? Math.min((f.opp / maxVal) * 100, 100) : 0;
-                    return (
-                      <div key={f.label} className="p-3 sm:p-4" style={{ backgroundColor: '#1E2229', border: `1px solid ${ownBetter ? '#00E5A020' : oppBetter ? '#EF444420' : '#2A2F3A'}`, borderRadius: 10 }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 14 }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ color: '#F1F5F9', fontWeight: 800, fontSize: '1rem' }}>{f.label}</span>
-                              <span style={{ fontSize: '0.6rem', color: '#334155', backgroundColor: '#0D1117', padding: '1px 6px', borderRadius: 3, fontWeight: 700 }}>{f.weight}</span>
-                            </div>
-                            <span style={{ color: '#334155', fontSize: '0.65rem', display: 'block', marginTop: 2 }}>{f.desc}</span>
-                          </div>
-                          {ownBetter && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#00E5A0', backgroundColor: '#00E5A012', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>✓ Avantage</span>}
-                          {oppBetter && <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#EF4444', backgroundColor: '#EF444412', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>✗ Désavantage</span>}
-                        </div>
-                        {/* Mon équipe */}
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>Mon équipe</span>
-                            <span style={{ fontSize: '1rem', fontWeight: 800, color: ownBetter ? '#00E5A0' : oppBetter ? '#EF4444' : '#F1F5F9', fontFamily: 'JetBrains Mono, monospace' }}>
-                              {f.own !== null ? f.fmt(f.own) : '—'}
-                            </span>
-                          </div>
-                          <div style={{ height: 6, backgroundColor: '#2A2F3A', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${ownPct}%`, backgroundColor: ownBetter ? '#22C55E' : oppBetter ? '#EF4444' : '#475569', borderRadius: 4 }} />
-                          </div>
-                        </div>
-                        {/* Adversaire */}
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{match.opponent}</span>
-                            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#64748B', fontFamily: 'JetBrains Mono, monospace' }}>
-                              {f.opp !== null ? f.fmt(f.opp) : '—'}
-                            </span>
-                          </div>
-                          <div style={{ height: 6, backgroundColor: '#2A2F3A', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${oppPct}%`, backgroundColor: '#475569', borderRadius: 4 }} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p style={{ margin: 0, fontSize: '0.68rem', color: '#2A2F3A', textAlign: 'center' }}>
-                  Modèle Dean Oliver — les poids indiqués reflètent l'importance relative de chaque facteur.
-                </p>
-              </div>
-            );
-          })()}
+          {activeTab === 'four_factors' && (
+            <MatchFourFactors teamStats={teamStats} opponentName={match.opponent} />
+          )}
+
+          {/* ── QT PAR QT ── */}
+          {activeTab === 'quarters' && <MatchQuarterPanel match={match} />}
 
           {/* ── COMPARAISON JOUEURS ── */}
           {activeTab === 'comp_players' && (() => {

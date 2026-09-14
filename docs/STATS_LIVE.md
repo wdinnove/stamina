@@ -1,5 +1,10 @@
 # Prise de statistiques en direct — plan
 
+> **Ce document est le journal de conception** : pourquoi chaque choix, ce qui a été écarté,
+> les phases. Pour la référence complète de ce qui EXISTE — schéma SQL, API, domaine, écran,
+> tests, et l'inventaire pour extraire la feature dans un projet à part — voir
+> [PRISE_STATISTIQUES.md](PRISE_STATISTIQUES.md).
+
 Objectif : un écran qui permet de **pointer un match action par action**, et d'en dériver le
 boxscore, le temps de jeu, les zones de tir et le +/-. Aujourd'hui le boxscore n'entre dans
 l'application que par **import CSV** (`MatchStatsImportModal`), donc toujours après le match et
