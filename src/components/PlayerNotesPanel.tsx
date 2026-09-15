@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { NotebookPen, Pencil, Trash2, X, User, Search } from 'lucide-react';
+import { NotebookPen, Pencil, Trash2, X, Search, ChevronRight } from 'lucide-react';
 import { Card, CardTitle } from './Card';
-import { Badge } from './Badge';
 import { EmptyState } from './EmptyState';
 import { Modal } from './Modal';
 import { AddButton } from './AddButton';
@@ -13,9 +12,9 @@ import { notify } from '../api/notifications';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { usePlayerNotes } from '../hooks/usePlayerNotes';
 import { noteCategoryConfig } from '../data/config';
-import { filterNotes, hasNoteFilter } from '../utils/notes';
+import { filterNotes, hasNoteFilter, notePlainText } from '../utils/notes';
 import { sanitizeHtml } from '../utils/sanitize';
-import { fmtDateWithDay } from '../utils/dateFormat';
+import { fmtDateShort, fmtDateWithDay } from '../utils/dateFormat';
 import { playerNameFull } from '../utils/playerName';
 import { LAYER } from '../styles/layers';
 import type { NoteCategory, Player, PlayerNote } from '../data/types';
@@ -64,6 +63,8 @@ export function PlayerNotesPanel({ playerId, roster, teamId, seasonId }: PlayerN
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<PlayerNote | null>(null);
+  /** Note dépliée — une seule à la fois, sinon la liste reperd la densité qu'on vient d'y gagner. */
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // En vue individuelle, `playerId` fait déjà le tri côté requête : seuls la catégorie et la
@@ -159,7 +160,23 @@ export function PlayerNotesPanel({ playerId, roster, teamId, seasonId }: PlayerN
         {/* Barre de filtres — même facture que celle de la page Tâches : recherche avec sa loupe,
             et une croix de remise à zéro dans chaque select actif. Le filtre joueur n'apparaît
             qu'en vue collective : sur une fiche joueur, il est déjà choisi. */}
-        <style>{`@media (max-width: 639px) { .note-filters { flex-direction: column !important; } .note-filters > * { flex: none !important; width: 100% !important; } }`}</style>
+        {/* Lignes du suivi : la bande de survol et les séparateurs débordent le padding de la
+            carte pour aller d'un bord à l'autre, et les icônes d'action ne sortent qu'au survol
+            (au doigt, pas de survol : elles restent visibles). */}
+        <style>{`
+          .note-item { margin: 0 -16px; padding: 0 16px; }
+          .note-item + .note-item { border-top: 1px solid #22262F; }
+          .note-item:hover, .note-item.is-open { background-color: #1A1E26; }
+          .note-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; cursor: pointer; min-width: 0; }
+          .note-actions { opacity: 0; transition: opacity .12s; }
+          .note-item:hover .note-actions, .note-item.is-open .note-actions { opacity: 1; }
+          @media (hover: none) { .note-actions { opacity: 1; } }
+          @media (max-width: 639px) {
+            .note-filters { flex-direction: column !important; }
+            .note-filters > * { flex: none !important; width: 100% !important; }
+            .note-cat, .note-who { display: none !important; }
+          }
+        `}</style>
         <div className="note-filters" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
@@ -211,49 +228,59 @@ export function PlayerNotesPanel({ playerId, roster, teamId, seasonId }: PlayerN
           } />
         </Card>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Card style={{ padding: '4px 16px' }}>
           {visible.map(note => {
             const cat = noteCategoryConfig[note.category];
+            const open = expanded === note.id;
             return (
-              <Card key={note.id} accentColor={cat.color}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-                    <Badge color={cat.color} label={cat.label} size="sm" />
-                    <span style={{ color: '#F1F5F9', fontSize: '0.83rem', fontWeight: 600 }}>
-                      {fmtDateWithDay(note.date)}
+              <div key={note.id} className={open ? 'note-item is-open' : 'note-item'}>
+                <div className="note-row" onClick={() => setExpanded(open ? null : note.id)}>
+                  <ChevronRight size={13} style={{ color: open ? '#94A3B8' : '#475569', flexShrink: 0, transform: open ? 'rotate(90deg)' : undefined, transition: 'transform .12s' }} />
+                  <span style={{ color: open ? '#F1F5F9' : '#94A3B8', fontSize: '0.78rem', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtDateShort(note.date)}
+                  </span>
+                  <span title={cat.label} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: cat.color, flexShrink: 0 }} />
+                  <span className="note-cat" style={{ color: cat.color, fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0, width: 84 }}>{cat.label}</span>
+                  {!playerId && (
+                    <span className="note-who" style={{ color: '#64748B', fontSize: '0.75rem', flexShrink: 0, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {nameOf.get(note.playerId) ?? 'Joueur retiré'}
                     </span>
-                    {!playerId && (
-                      <span style={{ color: '#94A3B8', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <User size={12} />{nameOf.get(note.playerId) ?? 'Joueur retiré de l\'effectif'}
-                      </span>
-                    )}
-                    {note.authorName && (
-                      <span style={{ color: '#475569', fontSize: '0.72rem' }}>par {note.authorName}</span>
-                    )}
-                  </div>
+                  )}
+                  {/* Extrait sur une ligne — disparaît une fois la note dépliée, le contenu complet
+                      prend le relais juste en dessous. */}
+                  <span style={{ flex: 1, color: '#64748B', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, opacity: open ? 0 : 1 }}>
+                    {notePlainText(note.content)}
+                  </span>
                   {canEditTeamData && (
-                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <div className="note-actions" style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                       <button onClick={() => openEdit(note)} title="Modifier"
                         style={iconBtn}
                         onMouseEnter={e => (e.currentTarget.style.color = '#3B82F6')}
                         onMouseLeave={e => (e.currentTarget.style.color = '#334155')}>
-                        <Pencil size={14} />
+                        <Pencil size={13} />
                       </button>
                       <button onClick={() => setConfirmDelete(note)} title="Supprimer"
                         style={iconBtn}
                         onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
                         onMouseLeave={e => (e.currentTarget.style.color = '#334155')}>
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   )}
                 </div>
-                {/* Contenu de l'éditeur riche — assaini avant affichage, comme partout ailleurs. */}
-                <div className="rich-display" dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.content) }} />
-              </Card>
+                {open && (
+                  /* Contenu de l'éditeur riche — assaini avant affichage, comme partout ailleurs. */
+                  <div style={{ padding: '0 0 12px 21px' }}>
+                    <div className="rich-display" dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.content) }} />
+                    {note.authorName && (
+                      <p style={{ color: '#475569', fontSize: '0.72rem', margin: '8px 0 0' }}>par {note.authorName}</p>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
-        </div>
+        </Card>
       )}
 
       {showForm && (
