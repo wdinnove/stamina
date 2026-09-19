@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { getWeekTier } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, sessionWorkDuration } from '../utils/rpe';
 import { roundedAvg } from '../utils/avg';
 import { EMPTY_TEAM_AVERAGE } from '../utils/teamAverage';
 import type { LoadEntry } from '../utils/rpe';
@@ -14,6 +14,7 @@ import {
 import { Save, Check, Zap, Activity, Users, Calendar, AlertTriangle, ListChecks } from 'lucide-react';
 import { playersApi } from '../api/players';
 import { rpeApi } from '../api/rpe';
+import { sessionBlocksApi } from '../api/sessionBlocks';
 import { notify } from '../api/notifications';
 import { attendanceApi, teamCategoriesApi } from '../api';
 import type { TrainingSession } from '../data/types';
@@ -107,6 +108,7 @@ export default function RPEPage() {
   const [duration, setDuration]           = useState(_navState?.duration ?? 90);
   const [rpeValues, setRpeValues]         = useState<Record<string, number | null>>({});
   const [existingSessionId, setExistingSessionId] = useState<string | null>(_navState?.sessionId ?? null);
+  const [workDuration, setWorkDuration]   = useState<number | null>(null);
   const [saving, setSaving]               = useState(false);
   const [saved, setSaved]                 = useState(false);
   const [saveError, setSaveError]         = useState('');
@@ -186,6 +188,18 @@ export default function RPEPage() {
   useEffect(() => {
     if (!existingSessionId) { setSessionAtt([]); return; }
     attendanceApi.listAttendance([existingSessionId]).then(setSessionAtt).catch(() => setSessionAtt([]));
+  }, [existingSessionId]);
+
+  /**
+   * Temps de travail réel de la séance choisie (durée totale moins les blocs "repos") — sert de
+   * base à `actualDuration` à la sauvegarde, pour que la charge réelle se calcule sur la même
+   * base que la charge planifiée (`estimatedSessionRpe`) au lieu de la durée totale, repos compris.
+   */
+  useEffect(() => {
+    if (!existingSessionId) { setWorkDuration(null); return; }
+    sessionBlocksApi.list(existingSessionId)
+      .then(blocks => setWorkDuration(sessionWorkDuration(blocks)))
+      .catch(() => setWorkDuration(null));
   }, [existingSessionId]);
 
   // ── Load roster when season changes
@@ -380,7 +394,11 @@ export default function RPEPage() {
         date:              sessionDate,
         categoryId:        categoryId || undefined,
         plannedDuration:   duration,
-        actualDuration:    duration,
+        // Base de temps réelle : les blocs "repos" de la séance en sont exclus (comme la charge
+        // planifiée, cf. estimatedSessionRpe) — sinon la charge réelle inclut du temps mort que la
+        // charge planifiée n'inclut pas, et les deux deviennent incomparables. Fallback sur `duration`
+        // en saisie manuelle (pas de séance liée, donc pas de blocs à consulter).
+        actualDuration:    workDuration && workDuration > 0 ? workDuration : duration,
         entries:           activeEntries.map(([playerId, rpe]) => ({ playerId, rpe })),
         existingSessionId: existingSessionId ?? undefined,
       });

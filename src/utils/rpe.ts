@@ -14,9 +14,14 @@ import type { SessionBlockKind } from '../data/types';
 export function estimatedSessionRpe(
   blocks: Array<{ kind: SessionBlockKind; duration: number; loadUa: number }>,
 ): number | null {
-  const workDuration = blocks.reduce((sum, b) => b.kind === 'repos' ? sum : sum + b.duration, 0);
+  const workDuration = sessionWorkDuration(blocks);
   if (workDuration <= 0) return null;
   return blocks.reduce((sum, b) => sum + b.loadUa, 0) / workDuration;
+}
+
+/** Temps de travail d'une séance : sa durée totale moins les blocs "repos" — cf. `estimatedSessionRpe`. */
+export function sessionWorkDuration(blocks: Array<{ kind: SessionBlockKind; duration: number }>): number {
+  return blocks.reduce((sum, b) => b.kind === 'repos' ? sum : sum + b.duration, 0);
 }
 
 /** Sous-ensemble de champs requis pour les calculs de charge (ACWR, TSB…) — RPEEntry le satisfait déjà */
