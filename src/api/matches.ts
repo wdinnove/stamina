@@ -67,6 +67,7 @@ export const matchesApi = {
         quarter_scores: input.quarterScores ?? null,
         period_duration_seconds: input.periodDurationSeconds ?? 600,
         notes:          input.notes ?? null,
+        game_plan:      input.gamePlan ?? null,
       })
       .select()
       .single();
@@ -88,6 +89,7 @@ export const matchesApi = {
     if (input.quarterScores !== undefined) row.quarter_scores = input.quarterScores ?? null;
     if (input.periodDurationSeconds !== undefined) row.period_duration_seconds = input.periodDurationSeconds;
     if (input.notes         !== undefined) row.notes          = input.notes ?? null;
+    if (input.gamePlan      !== undefined) row.game_plan      = input.gamePlan ?? null;
     const { error } = await supabase.from('matches').update(row).eq('id', id);
     if (error) throw error;
   },
@@ -117,5 +119,6 @@ function toMatch(row: Record<string, unknown>): Match {
     // `undefined` et faire calculer des minutes sur une durée nulle.
     periodDurationSeconds: (row.period_duration_seconds as number | null) ?? 600,
     notes:         row.notes as string | undefined,
+    gamePlan:      row.game_plan as string | undefined,
   };
 }

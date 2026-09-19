@@ -170,6 +170,7 @@ const MATCH_TAB_GROUPS: { label?: string; tabs: MatchTab[] }[] = [
     { key: 'match_flow',   slug: 'deroule',    label: 'Play-by-play' },
     { key: 'quarters',     slug: 'qt-par-qt',  label: 'QT par QT' },
     { key: 'objectives',   slug: 'objectifs',  label: 'Objectifs' },
+    { key: 'game_plan',    slug: 'plan-de-match', label: 'Plan de match' },
     { key: 'notes',        slug: 'notes',      label: 'Retour de match' },
   ]},
   { label: 'Tactique', tabs: [
@@ -229,6 +230,31 @@ export default function MatchDetailPage() {
       setNotesError(err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement.');
     } finally {
       setNotesSaving(false);
+    }
+  }
+
+  const [gamePlanDraft,  setGamePlanDraft]  = useState('');
+  const [gamePlanSaving, setGamePlanSaving] = useState(false);
+  const [gamePlanSaved,  setGamePlanSaved]  = useState(false);
+  const [gamePlanError,  setGamePlanError]  = useState('');
+
+  useEffect(() => {
+    setGamePlanDraft(match?.gamePlan ?? '');
+  }, [match?.gamePlan]);
+
+  async function handleSaveGamePlan() {
+    if (!match) return;
+    setGamePlanSaving(true);
+    setGamePlanError('');
+    try {
+      await matchesApi.update(match.id, { gamePlan: gamePlanDraft || undefined });
+      setMatch({ ...match, gamePlan: gamePlanDraft || undefined });
+      setGamePlanSaved(true);
+      setTimeout(() => setGamePlanSaved(false), 2000);
+    } catch (err: unknown) {
+      setGamePlanError(err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement.');
+    } finally {
+      setGamePlanSaving(false);
     }
   }
 
@@ -1359,6 +1385,28 @@ export default function MatchDetailPage() {
 
           {activeTab === 'stats_tracker' && (
             <MatchStatsTracker match={match} players={players} canEdit={canEditTeamData} />
+          )}
+
+          {activeTab === 'game_plan' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Edit size={15} style={{ color: '#00E5A0' }} />
+                  <h2 style={{ color: '#F1F5F9', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Plan de match</h2>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {gamePlanError && <span style={{ color: '#EF4444', fontSize: '0.78rem' }}>{gamePlanError}</span>}
+                  {canEditTeamData && (
+                  <button type="button" onClick={handleSaveGamePlan} disabled={gamePlanSaving || gamePlanDraft === (match.gamePlan ?? '')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', backgroundColor: gamePlanSaved ? '#1E2229' : (gamePlanSaving || gamePlanDraft === (match.gamePlan ?? '')) ? '#1E2229' : '#00E5A0', border: gamePlanSaved ? '1px solid #00E5A0' : 'none', borderRadius: 6, color: gamePlanSaved ? '#00E5A0' : (gamePlanSaving || gamePlanDraft === (match.gamePlan ?? '')) ? '#475569' : '#0D0F14', cursor: (gamePlanSaving || gamePlanDraft === (match.gamePlan ?? '')) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>
+                    {gamePlanSaved ? <><Check size={13} /> Enregistré</> : <><Save size={13} /> {gamePlanSaving ? 'Enregistrement…' : 'Enregistrer'}</>}
+                  </button>
+                  )}
+                </div>
+              </div>
+              <RichTextEditor value={gamePlanDraft} onChange={setGamePlanDraft} disabled={!canEditTeamData}
+                placeholder="Plan de match, consignes, points d'attention…" minHeight={160} />
+            </div>
           )}
 
           {activeTab === 'notes' && (

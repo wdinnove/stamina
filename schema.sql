@@ -721,6 +721,8 @@ CREATE TABLE matches (
   quarter_scores JSONB,
   -- Retour à chaud du staff sur le match — HTML de l'éditeur riche, comme staff_meetings.notes.
   notes          TEXT,
+  -- Plan de match préparé en amont — même principe que `notes`, HTML de l'éditeur riche.
+  game_plan      TEXT,
   created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
@@ -5244,3 +5246,58 @@ ALTER TABLE match_events
 --   FROM   pg_policies WHERE tablename = 'match_events';
 --   -- Et le compte doit être editor ou admin sur l'équipe du match :
 --   SELECT count(*) FROM writable_team_ids();
+
+
+-- ================================================================
+-- MIGRATION — Plan de match
+-- Script exécutable tel quel dans le SQL Editor de Supabase.
+-- ================================================================
+--
+-- Plan préparé en amont du match — même principe que le retour de match (matches.notes) : du
+-- texte riche, sans historique ni auteur, réédité en place.
+
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS game_plan TEXT;
+
+-- Vérification
+--   SELECT column_name FROM information_schema.columns
+--    WHERE table_name = 'matches' AND column_name = 'game_plan';   -- game_plan
+
+
+-- ────────────────────────────────────────────────────────────────
+-- RÉPARATION — rpe_entries.actual_duration incluait les blocs "repos"
+-- Rejouable sans risque, à exécuter tel quel dans le SQL Editor.
+-- ────────────────────────────────────────────────────────────────
+--
+-- La saisie RPE écrivait `actual_duration = plannedDuration` (durée totale de la séance) pour
+-- CHAQUE entrée, alors que la charge planifiée (estimatedSessionRpe / block_load_ua) exclut déjà
+-- les blocs "repos" de son temps de travail. Les deux charges n'étaient donc pas sur la même base
+-- de temps — un repos long en séance planifiée pouvait faire ressortir une charge réelle plus
+-- haute que la charge planifiée alors que le RPE réel était plus bas. Corrigé côté appli
+-- (src/pages/RPEPage.tsx) ; ce script rattrape les entrées déjà enregistrées.
+--
+-- Ne touche QUE les entrées dont `actual_duration` vaut encore la durée totale planifiée (donc
+-- jamais éditées différemment) et dont la séance a un plan de blocs avec du temps de travail réel.
+
+WITH work_durations AS (
+  SELECT session_id, SUM(duration) AS work_duration
+  FROM   session_blocks
+  WHERE  kind <> 'repos'
+  GROUP  BY session_id
+)
+UPDATE rpe_entries e
+SET    actual_duration = w.work_duration
+FROM   training_sessions s
+JOIN   work_durations w ON w.session_id = s.id
+WHERE  e.session_id = s.id
+  AND  w.work_duration BETWEEN 1 AND 300  -- borne du CHECK sur actual_duration, cf. rpe_entries
+  AND  e.actual_duration IS NOT DISTINCT FROM s.planned_duration;
+
+-- Vérification
+--   -- Doit ressortir 0 lignes restantes encore égales à la durée totale planifiée, pour les
+--   -- séances qui ont un plan de blocs avec du repos :
+--   SELECT count(*)
+--   FROM   rpe_entries e
+--   JOIN   training_sessions s ON s.id = e.session_id
+--   JOIN   (SELECT session_id, SUM(duration) FILTER (WHERE kind = 'repos') AS repos_duration
+--           FROM session_blocks GROUP BY session_id) r ON r.session_id = s.id
+--   WHERE  r.repos_duration > 0 AND e.actual_duration = s.planned_duration;

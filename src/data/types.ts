@@ -67,6 +67,8 @@ export interface Match {
   periodDurationSeconds: number;
   /** Retour à chaud du staff — HTML de l'éditeur riche, comme `TrainingSession.notes`. */
   notes?: string;
+  /** Plan de match préparé en amont — HTML de l'éditeur riche, même pattern que `notes`. */
+  gamePlan?: string;
 }
 
 /**
