@@ -11,12 +11,13 @@ import { matchLiveApi } from '../api/matchLive';
 import { statsApi, type BulkStatRow, type OpponentStatInput } from '../api/stats';
 import { matchesApi } from '../api/matches';
 import { useMatchClock, PERIOD_PRESETS_MIN, parseClockInput } from '../hooks/useMatchClock';
+import { useUrlSort } from '../hooks/useUrlState';
 import { periodSeconds } from '../data/matchClock';
 import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock, formatGameClock } from '../data/liveTrackingAnalysis';
-import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, editableTimeWindow, backwardsTime, type TrackerHistoryEntry } from '../data/matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, editableTimeWindow, backwardsLineupChange, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type TrackerHistoryEntry } from '../data/matchEvents';
 import { quarterSplits } from '../data/matchFlow';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
@@ -59,6 +60,9 @@ export interface MatchStatsTrackerProps {
 
 /** Joueuse armée pour la prochaine action. `id: null` n'existe que côté adverse (pointage anonyme). */
 type Selection = { side: LineupSide; id: string | null };
+
+/** Identifie l'auteur d'une action pour l'accusé de réception — `null` = « sans joueur ». */
+const authorKey = (sel: Selection) => `${sel.side}:${sel.id ?? ''}`;
 
 /** Confirmation en attente : ce qu'on s'apprête à détruire, et le geste qui le fera. */
 type PendingConfirm = {
@@ -315,6 +319,16 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [pendingAction, setPendingAction] = useState<{ type: MatchEventType; made?: boolean; label: string; value?: 2 | 3 } | null>(null);
   const [chain, setChain] = useState<'reb' | 'ast' | null>(null);
   const [subMode, setSubMode] = useState(false);
+  /**
+   * Ce que la dernière action enregistrée vient d'allumer en vert : son auteur et son bouton.
+   * Enregistrer DÉSARME la sélection, et l'écran retombait instantanément au repos — on ne savait
+   * pas si le tap avait été pris, ni sur quel joueur. Le vert le dit, sur les deux boutons à la
+   * fois.
+   *
+   * `nonce` fait alterner deux classes identiques : réappliquer la même classe CSS ne relance pas
+   * l'animation, et deux actions d'affilée du même joueur ne clignotaient qu'une fois.
+   */
+  const [confirmFlash, setConfirmFlash] = useState<{ author: string; action: string; nonce: number } | null>(null);
   /** Geste destructeur en attente de confirmation. Une seule boîte pour les trois cas de cet
    *  écran : supprimer une action, retirer un joueur adverse, annuler le dernier geste. */
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>(null);
@@ -397,6 +411,28 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }, [match.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * À l'ouverture, le chrono se cale sur la DERNIÈRE saisie enregistrée — son quart-temps et son
+   * temps. C'est la base qui fait foi, pas le navigateur : reprendre un match commencé sur la
+   * tablette du club depuis un autre appareil repartait de zéro, et les premières actions
+   * pointées ensuite étaient datées au début du premier quart-temps.
+   *
+   * Une seule fois par match, et jamais pendant que le chrono tourne : une resynchronisation en
+   * plein match ne doit pas ramener le chrono en arrière sous les doigts du saisisseur.
+   */
+  const resumedMatchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || resumedMatchRef.current === match.id) return;
+    resumedMatchRef.current = match.id;
+    let last: { quarter: number; gameTimeSeconds: number } | null = null;
+    for (const e of [...events, ...lineupEvents]) {
+      if (!last || e.quarter > last.quarter || (e.quarter === last.quarter && e.gameTimeSeconds > last.gameTimeSeconds)) {
+        last = { quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds };
+      }
+    }
+    if (last) clock.setPosition(last.quarter, last.gameTimeSeconds);
+  }, [loading, match.id, events, lineupEvents, clock.setPosition]);
 
   /**
    * File d'attente : l'écran affiche ce qui n'est pas encore parti, et se recharge si un rang a dû
@@ -495,9 +531,19 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     [events, lineupEvents, clock.periodDurationSeconds, clock.quarter, coarseElapsed, boxscoreSide],
   );
 
+  /** Même tri, même clé d'URL que l'onglet Lineups : deux tableaux des mêmes lignes ne peuvent pas
+   *  se trier différemment selon l'écran d'où on les regarde. */
+  const { sortKey: lineupSortKey, sortDir: lineupSortDir, toggleSort: toggleLineupSort } =
+    useUrlSort<LineupSortKey>({ key: 'seconds', dir: 'desc' }, { ns: 'cinq', allowed: LINEUP_SORT_KEYS });
+
   const lineupRows = useMemo(
-    () => lineupStatsFromEvents(events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed),
-    [events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed],
+    () => sortLineupRows(
+      lineupStatsFromEvents(events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed),
+      lineupSortKey, lineupSortDir, id => rosterName(lineupSide, id),
+    ),
+    // `rosterName` dépend des effectifs, qui ne bougent pas pendant qu'on lit un tableau trié.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed, lineupSortKey, lineupSortDir],
   );
 
   const shotsUs = useMemo(
@@ -558,9 +604,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    * joueur déjà armé, joueur tapé sur une action déjà armée) produisent le même événement ; les
    * laisser recopier la même suite d'appels, c'est trois occasions de la faire diverger.
    */
-  function record(sel: Selection, a: { type: MatchEventType; made?: boolean; value?: 2 | 3; x?: number; y?: number }) {
+  function record(
+    sel: Selection,
+    a: { type: MatchEventType; made?: boolean; value?: 2 | 3; x?: number; y?: number },
+    label?: string,
+  ) {
     if (!allowsAuthor(sel, a.type)) return;
     pushEvent({ ...a, ...authorFields(sel) });
+    setConfirmFlash(prev => ({ author: authorKey(sel), action: label ?? '', nonce: (prev?.nonce ?? 0) + 1 }));
     setChain(
       (a.type === 'ft' || a.type === 'shot') && a.made === false ? 'reb'
         : a.type === 'shot' && a.made ? 'ast'
@@ -630,6 +681,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     setVideo(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; });
   }
 
+  /** Le vert retombe tout seul : c'est un accusé de réception, pas un état. */
+  useEffect(() => {
+    if (!confirmFlash) return;
+    const id = setTimeout(() => setConfirmFlash(null), 800);
+    return () => clearTimeout(id);
+  }, [confirmFlash]);
+
   function handleCourtClick(e: React.MouseEvent<SVGSVGElement>) {
     if (!canEdit || subMode) return;
     // Un tir a toujours un auteur : avec « sans joueur » armé, poser un point n'aboutirait à rien.
@@ -662,7 +720,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   function handleActionTap(type: MatchEventType, made: boolean | undefined, label: string, value?: 2 | 3) {
     if (!canEdit) return;
     if (selection) {
-      record(selection, { type, made, value });
+      record(selection, { type, made, value }, label);
       return;
     }
     // Une action armée et un tir posé ne peuvent pas attendre le même tap : le second annule le premier.
@@ -676,8 +734,8 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    */
   function selectPlayer(sel: Selection) {
     if (pendingAction) {
-      const { type, made, value } = pendingAction;
-      record(sel, { type, made, value });
+      const { type, made, value, label } = pendingAction;
+      record(sel, { type, made, value }, label);
       return;
     }
     setSelection(prev => prev?.side === sel.side && prev.id === sel.id ? null : sel);
@@ -951,6 +1009,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   const isSelected = (side: LineupSide, id: string | null) => selection?.side === side && selection?.id === id;
 
+  /** Deux classes identiques, alternées : c'est ce qui relance l'animation sur deux actions
+   *  d'affilée du même joueur. */
+  const flashClass = (on: boolean) =>
+    on && confirmFlash ? (confirmFlash.nonce % 2 ? 'tracker-confirm-a' : 'tracker-confirm-b') : undefined;
+  const authorFlash = (side: LineupSide, id: string | null) => flashClass(confirmFlash?.author === authorKey({ side, id }));
+  const actionFlash = (label: string) => flashClass(confirmFlash?.action === label);
+
   /** Le « sans joueur » de NOTRE côté n'accepte que les actions d'équipe : plutôt que d'avaler
    *  silencieusement un tap impossible, l'écran éteint ce qu'il refusera — dans les deux sens,
    *  selon qu'on a armé l'auteur ou l'action en premier. */
@@ -1049,12 +1114,17 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   }
 
   /**
-   * Un temps qui RECULE dans un quart-temps est impossible : le chrono ne remonte pas. C'est
-   * presque toujours le même geste manqué — poser le temps du quart-temps suivant sans avoir
-   * changé de quart-temps — et son symptôme est muet : l'intervalle devient négatif, il est borné
-   * à zéro, et le temps de jeu de tout un cinq disparaît sans un mot.
+   * Un changement daté AVANT le précédent est le seul cas où du temps de jeu disparaît vraiment :
+   * l'intervalle devient négatif, il est borné à zéro, et le cinq concerné est crédité de rien.
+   *
+   * Le temps des ACTIONS n'entre dans aucune durée — le surveiller faisait apparaître une alerte
+   * permanente dès le premier recalage du chrono en arrière, ou à la première correction de temps,
+   * qui est justement là pour ça.
    */
-  const backwards = useMemo(() => backwardsTime(events, lineupEvents), [events, lineupEvents]);
+  const backwards = useMemo(
+    () => backwardsLineupChange(lineupEvents, clock.periodDurationSeconds),
+    [lineupEvents, clock.periodDurationSeconds],
+  );
   const entrySide = (h: TrackerHistoryEntry) => (h.kind === 'event' ? h.event.side : h.lineup.side);
 
   function eventText(e: MatchEvent): string {
@@ -1103,6 +1173,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         .tracker-head { padding: 5px 6px; font-size: 0.6rem; text-align: right; color: #64748B;
           text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
         .tracker-head:first-child { text-align: left; }
+        /* L'en-tête EST le bouton : un tableau où seule une flèche est cliquable se manque une
+           fois sur deux. Il hérite de la cellule — alignement, casse, graisse. */
+        .tracker-sort { background: none; border: none; padding: 0; cursor: pointer; font: inherit;
+          color: inherit; letter-spacing: inherit; text-transform: inherit; white-space: nowrap; }
+        .tracker-sort:hover { color: #94A3B8; }
         .tracker-key { font-family: monospace; background: #0D0F14; border: 1px solid #2A2F3A;
           border-radius: 3px; padding: 0 4px; color: #94A3B8; }
         /* Accusé de réception d'une action : le chip le plus récent s'allume puis retombe. Il se
@@ -1113,6 +1188,19 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           100% { background: #0D0F14; color: #CBD5E1; border-color: #2A2F3A; }
         }
         .tracker-flash { animation: tracker-flash 900ms ease-out; }
+        /* Accusé de réception SUR LES BOUTONS : le joueur et l'action qui viennent d'être
+           enregistrés s'allument en vert, puis retombent à leur style de repos — qui est le même
+           pour les deux (#0D0F14 sur #2A2F3A), d'où une seule image de fin. Une animation CSS
+           l'emporte sur les styles en ligne, c'est ce qui permet de la poser sans les dupliquer. */
+        @keyframes tracker-confirm {
+          0%   { border-color: #00E5A0; background: #00E5A040; color: #F1F5F9; transform: scale(1.03); }
+          60%  { border-color: #00E5A0; background: #00E5A020; color: #F1F5F9; transform: scale(1); }
+          100% { border-color: #2A2F3A; background: #0D0F14; }
+        }
+        .tracker-confirm-a, .tracker-confirm-b { animation: tracker-confirm 800ms ease-out; }
+        @media (prefers-reduced-motion: reduce) {
+          .tracker-confirm-a, .tracker-confirm-b { animation-duration: 1ms; }
+        }
         @media (prefers-reduced-motion: reduce) { .tracker-flash { animation-duration: 1ms; } }
       `}</style>
 
@@ -1189,16 +1277,17 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         </div>
       )}
 
-      {/* Un chrono ne remonte jamais dans un quart-temps. Le bandeau n'est pas masquable : tant
-          que la saisie est dans cet état, des minutes sont perdues à chaque lecture. */}
+      {/* Non masquable : tant que la saisie est dans cet état, un cinq est compté zéro seconde à
+          chaque lecture — boxscore publié compris. */}
       {backwards && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.78rem', lineHeight: 1.5 }}>
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
-            Le temps recule en {periodLabel(backwards.quarter)} : {gameClock(backwards.quarter, backwards.previous)} puis {gameClock(backwards.quarter, backwards.current)}.
-            Un chrono ne remonte pas — avez-vous oublié de passer au quart-temps suivant&nbsp;?{' '}
-            <strong style={{ color: '#FBBF24' }}>Tant que c'est le cas, le temps de jeu du cinq concerné est compté zéro.</strong>{' '}
-            Corrigez le temps dans l'historique, ou refaites le changement dans le bon quart-temps.
+            Un changement {backwards.side === 'us' ? 'de votre banc' : 'du banc adverse'} est daté{' '}
+            <strong style={{ color: '#FBBF24' }}>{periodLabel(backwards.current.quarter)} {gameClock(backwards.current.quarter, backwards.current.gameTimeSeconds)}</strong>,
+            après un autre daté {periodLabel(backwards.previous.quarter)} {gameClock(backwards.previous.quarter, backwards.previous.gameTimeSeconds)} —
+            le cinq entre les deux est donc compté <strong style={{ color: '#FBBF24' }}>zéro seconde</strong>.
+            Corrigez son temps dans l'historique&nbsp;; si un quart-temps a commencé entre les deux, passez d'abord au quart-temps suivant.
           </span>
         </div>
       )}
@@ -1423,6 +1512,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               if (!player) return null;
               return (
                 <RosterRow key={id} number={player.number} name={playerNameShort(player)} accent={teamColor}
+                  flash={authorFlash('us', id)}
                   active={isSelected('us', id)}
                   marked={subMode && pendingSub?.side === 'us' && pendingSub.id === id}
                   canEdit={canEdit}
@@ -1442,6 +1532,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
             )}
             {bench.map(p => (
               <RosterRow key={p.id} number={p.number} name={playerNameShort(p)} accent={teamColor}
+                flash={authorFlash('us', p.id)}
                 active={isSelected('us', p.id)}
                 marked={subMode && pendingSub?.side === 'us' && pendingSub.id === p.id}
                 dimmed={!subMode && !isSelectable('us', p.id)}
@@ -1458,6 +1549,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           {canEdit && (
             <div style={{ marginTop: 8 }}>
               <RosterRow number={null} name="Sans joueur" accent="#94A3B8" canEdit
+                flash={authorFlash('us', null)}
                 active={isSelected('us', null)}
                 dimmed={teamAuthorBlocked}
                 title="Action d'équipe : rebond ou ballon perdu sans joueur désigné. Elle compte aux totaux et aux possessions, jamais au boxscore individuel."
@@ -1508,6 +1600,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
                 {NO_POSITION_SHOTS.map(b => (
                   <button key={b.label} onClick={() => handleActionTap('shot', b.made, b.label, b.value)} disabled={!canEdit || shotBlocked}
+                    className={actionFlash(b.label)}
                     aria-pressed={pendingAction?.label === b.label}
                     aria-label={`${b.value} points ${b.made ? 'réussi' : 'manqué'}`}
                     style={{
@@ -1597,6 +1690,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                       const blocked = actionBlocked(b.type);
                       return (
                         <button key={b.label} onClick={() => handleActionTap(b.type, b.made, b.label)}
+                          className={actionFlash(b.label)}
                           disabled={!canEdit || blocked}
                           title={blocked ? "Sans joueur, seuls un rebond ou un ballon perdu se créditent à l'équipe" : undefined}
                           aria-pressed={pendingAction?.label === b.label}
@@ -1641,6 +1735,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
             )}
             {opponentsOnCourt.map(p => (
               <RosterRow key={p.id} number={p.number ?? null} name={p.name} accent="#94A3B8" canEdit={canEdit}
+                flash={authorFlash('them', p.id)}
                 active={isSelected('them', p.id)}
                 marked={subMode && pendingSub?.side === 'them' && pendingSub.id === p.id}
                 onClick={() => handleRosterTap('them', p.id, 'court')} />
@@ -1653,6 +1748,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {opponentsBench.map(p => (
                   <RosterRow key={p.id} number={p.number ?? null} name={p.name} accent="#94A3B8" canEdit={canEdit}
+                    flash={authorFlash('them', p.id)}
                     active={isSelected('them', p.id)}
                     marked={subMode && pendingSub?.side === 'them' && pendingSub.id === p.id}
                     dimmed={!subMode && !isSelectable('them', p.id)}
@@ -1668,6 +1764,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               TOUTES les actions — suivre l'adversaire en agrégé est le cas normal. */}
           <div style={{ marginTop: 8 }}>
             <RosterRow number={null} name="Sans joueur" accent="#94A3B8" canEdit={canEdit}
+              flash={authorFlash('them', null)}
               active={isSelected('them', null)}
               title="Enregistrer une action adverse sans l'attribuer : elle compte au score et aux totaux, pas au boxscore individuel"
               onClick={() => selectPlayer({ side: 'them', id: null })} />
@@ -1790,8 +1887,18 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                    {['Cinq', 'Temps', 'Poss.', 'Pts/poss.', 'Pour', 'Contre', '+/-'].map(h => (
-                      <th key={h} className="tracker-head">{h}</th>
+                    {([
+                      ['Cinq', 'players'], ['Temps', 'seconds'], ['Poss.', 'possessions'],
+                      ['Pts/poss.', 'pointsPerPossession'], ['Pour', 'pointsFor'],
+                      ['Contre', 'pointsAgainst'], ['+/-', 'plusMinus'],
+                    ] as [string, LineupSortKey][]).map(([label, key]) => (
+                      <th key={key} className="tracker-head">
+                        <button onClick={() => toggleLineupSort(key)} className="tracker-sort"
+                          aria-label={`Trier par ${label}`}
+                          style={{ color: lineupSortKey === key ? '#CBD5E1' : undefined }}>
+                          {label}{lineupSortKey === key ? (lineupSortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        </button>
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -2204,15 +2311,15 @@ function RosterTitle({ name, count }: { name: string; count: number }) {
  * cliquable, et affichait une photo là où l'autre affichait un numéro. En plein match, deux
  * colonnes qui ne se lisent pas pareil se lisent mal.
  */
-function RosterRow({ number, name, accent, active, marked, dimmed, canEdit, title, onClick }: {
+function RosterRow({ number, name, accent, active, marked, dimmed, canEdit, title, flash, onClick }: {
   number: number | null; name: string; accent: string;
   active: boolean; marked?: boolean; dimmed?: boolean; canEdit: boolean;
-  title?: string; onClick: () => void;
+  title?: string; flash?: string; onClick: () => void;
 }) {
   const on = active || !!marked;
   const tone = marked ? '#F59E0B' : accent;
   return (
-    <button onClick={onClick} disabled={!canEdit || dimmed} aria-pressed={on} title={title}
+    <button onClick={onClick} disabled={!canEdit || dimmed} aria-pressed={on} title={title} className={flash}
       style={{
         width: '100%',
         display: 'flex', alignItems: 'center', gap: 9, minHeight: TAP, padding: '4px 10px', borderRadius: 8,

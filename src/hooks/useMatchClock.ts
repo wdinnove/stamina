@@ -50,6 +50,9 @@ export interface MatchClock {
    *  qui corrige un oubli de pause en comparant à la table de marque, pas au temps écoulé. */
   adjustRemaining: (deltaSeconds: number) => void;
   setRemainingSeconds: (seconds: number) => void;
+  /** Place le chrono sur une position connue, toujours EN PAUSE — reprise d'une saisie déjà
+   *  commencée, sur cet appareil ou sur un autre. */
+  setPosition: (quarter: number, elapsedSeconds: number) => void;
   /** Passe au quart-temps (ou à la prolongation) suivant, chrono remis à la durée pleine et en
    *  pause — reprendre est un geste volontaire du coach, pas automatique. */
   nextPeriod: () => void;
@@ -197,6 +200,14 @@ export function useMatchClock(matchId?: string, regulationSeconds?: number): Mat
     setPeriodDurationSeconds(Math.max(60, Math.round(seconds)));
   }, []);
 
+  const setPosition = useCallback((atQuarter: number, elapsedSeconds: number) => {
+    posRef.current = { baseSeconds: Math.max(0, Math.round(elapsedSeconds)), startedAt: null };
+    setRunning(false);
+    setQuarter(atQuarter);
+    setCoarseElapsed(coarse(posRef.current.baseSeconds));
+    notify();
+  }, [notify]);
+
   const resetTo = useCallback((next: (q: number) => number) => {
     posRef.current = { baseSeconds: 0, startedAt: null };
     setRunning(false);
@@ -211,7 +222,8 @@ export function useMatchClock(matchId?: string, regulationSeconds?: number): Mat
   return {
     quarter, running, elapsedSeconds: coarseElapsed, periodDurationSeconds, currentPeriodSeconds,
     getElapsedSeconds, subscribeSeconds,
-    setPeriodDuration, start, pause, adjustRemaining, setRemainingSeconds: setRemaining, nextPeriod, previousPeriod,
+    setPeriodDuration, start, pause, adjustRemaining, setRemainingSeconds: setRemaining,
+    setPosition, nextPeriod, previousPeriod,
   };
 }
 

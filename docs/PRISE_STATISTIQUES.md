@@ -301,7 +301,8 @@ sérialisables.
 | `lineupStatsFromEvents(...)` | Combinaisons de cinq : temps, possessions, points pour/contre, +/-. Regroupées sur le cinq **trié**, donc un cinq qui sort et revient donne UNE ligne au temps cumulé, pas deux — c'est la combinaison qu'on lit, pas le passage. |
 | `byGameTime(a, b)` | Ordre **chronologique** (quart-temps, temps, rang). Pas l'ordre de saisie — voir § 12.1. |
 | `editableTimeWindow(...)` | Bornes dans lesquelles le temps d'une saisie peut être corrigé sans invalider un cinq figé (§ 8). |
-| `backwardsTime(...)` | Première saisie dont le temps recule dans un quart-temps — toujours une erreur, jamais signalée avant. |
+| `backwardsLineupChange(...)` | Premier changement de banc daté avant le précédent — le seul cas où du temps de jeu disparaît vraiment. |
+| `sortLineupRows(...)` | Tri des combinaisons, partagé par l'écran de saisie et l'onglet Lineups. Les ratios `null` tombent en bas dans les deux sens. |
 
 #### 6.1 L'évaluation, et le piège des deux colonnes de fautes
 
@@ -477,15 +478,18 @@ Elle ne s'applique **pas** aux DURÉES (temps de jeu d'un cinq, filtre « au moi
 restent des durées : `formatClock` reste là pour elles, et les confondre afficherait un temps de
 jeu à l'envers.
 
-### L'alerte « le temps recule »
+### L'alerte « un changement est daté avant le précédent »
 
-Un chrono de basket ne remonte jamais. Une saisie dont le temps recule à l'intérieur d'un
-quart-temps est donc toujours une erreur, et presque toujours la même : on pose le temps du
-quart-temps suivant sans avoir changé de quart-temps. Le symptôme, lui, est muet — `lineupIntervals`
-borne à zéro un intervalle négatif, et le temps de jeu de tout un cinq disparaît sans un mot.
+`lineupIntervals` borne à zéro un intervalle négatif : le cinq concerné est alors crédité de zéro
+seconde, en silence. La cause habituelle est un quart-temps qu'on a oublié d'avancer avant de
+poser le temps du suivant. Le bandeau n'est pas masquable et nomme le banc, les deux temps en
+cause et le geste à faire.
 
-Le bandeau n'est pas masquable et nomme le quart-temps, les deux temps en cause et le geste à
-faire. Tant que la saisie est dans cet état, chaque lecture est fausse.
+`backwardsLineupChange` ne regarde **que les changements**, et compare sur l'axe absolu — c'est la
+définition exacte du dégât, pas une approximation. Une première version surveillait aussi les
+ACTIONS : leur temps n'entre dans aucune durée, et l'alerte s'allumait définitivement dès le
+premier recalage du chrono en arrière, ou à la première correction de temps — qui est justement là
+pour ça. Un avertissement qui ne s'éteint plus n'avertit plus de rien.
 
 ### Confirmations
 
@@ -664,7 +668,8 @@ Le **quart-temps** ne se corrige pas : il détermine les scores par quart-temps 
 | `typecheck` qui ne vérifie rien | `tsc --noEmit` sur une config à références | `tsc -b --noEmit` |
 | `Cannot access 'X' before initialization` | Valeur d'affichage déclarée avant les fonctions de nommage | Déclarer après (deux fois le cas) |
 | Alerte qui clignote à chaque tap | Bandeau lié à la taille de la file | Bandeau lié à `queueError()` |
-| Le temps de jeu de tout un cinq compté zéro | Temps posé pour le quart-temps suivant sans avoir changé de quart-temps : l'intervalle devient négatif et `lineupIntervals` le borne à zéro, sans un mot | `backwardsTime` — un chrono ne remonte jamais dans un quart-temps, donc c'est toujours une erreur de saisie |
+| Le temps de jeu de tout un cinq compté zéro | Temps posé pour le quart-temps suivant sans avoir changé de quart-temps : l'intervalle devient négatif et `lineupIntervals` le borne à zéro, sans un mot | `backwardsLineupChange` |
+| Alerte permanente sur le temps | Le même détecteur surveillait aussi les actions, dont le désordre ne coûte rien — et que la correction de temps produit volontairement | Ne surveiller que ce qui casse une durée : les changements |
 
 ---
 

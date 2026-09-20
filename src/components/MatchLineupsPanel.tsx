@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useUrlSort } from '../hooks/useUrlState';
 import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { lineupStatsFromEvents, plusMinusFromEvents } from '../data/matchEvents';
+import { lineupStatsFromEvents, plusMinusFromEvents, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey } from '../data/matchEvents';
 import { playingTime, formatClock } from '../data/liveTrackingAnalysis';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player, LineupSide } from '../data/types';
@@ -35,6 +36,9 @@ const SECTION_TITLE: React.CSSProperties = {
  *  de saisie, et ses ratios n'ont aucun sens. Le filtre est ajustable, pas imposé. */
 const MIN_SECONDS_PRESETS = [0, 30, 60, 180] as const;
 
+const PLAYER_SORT_KEYS = ['id', 'seconds', 'plusMinus'] as const;
+type PlayerSortKey = typeof PLAYER_SORT_KEYS[number];
+
 export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
   const { selected } = useTeamSeason();
   const ourTeamName  = selected?.team.name ?? 'Notre équipe';
@@ -51,23 +55,43 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
 
   const nameById = useMemo(() => new Map(players.map(p => [p.id, playerNameShort(p)])), [players]);
   const oppNameById = useMemo(() => new Map(opponents.map(p => [p.id, p.name])), [opponents]);
-  const nameOf = (id: string) => (side === 'us' ? nameById.get(id) : oppNameById.get(id)) ?? '?';
+  const nameOf = useCallback(
+    (id: string) => (side === 'us' ? nameById.get(id) : oppNameById.get(id)) ?? '?',
+    [side, nameById, oppNameById],
+  );
 
   const rows = useMemo(
     () => lineupStatsFromEvents(events, lineupEvents, side, period, lastQuarter, lastElapsedSeconds),
     [events, lineupEvents, side, period, lastQuarter, lastElapsedSeconds],
   );
-  const shown = rows.filter(r => r.seconds >= minSeconds);
+
+  /** Le tri vit dans l'URL, comme partout ailleurs (`useUrlSort`) : un tableau trié se partage
+   *  avec le tri qu'on avait sous les yeux, et survit à un aller-retour d'onglet. */
+  const { sortKey, sortDir, toggleSort } = useUrlSort<LineupSortKey>(
+    { key: 'seconds', dir: 'desc' }, { ns: 'cinq', allowed: LINEUP_SORT_KEYS },
+  );
+
+  const shown = useMemo(
+    () => sortLineupRows(rows.filter(r => r.seconds >= minSeconds), sortKey, sortDir, nameOf),
+    [rows, minSeconds, sortKey, sortDir, nameOf],
+  );
 
   /** Temps de jeu et +/- individuels, à côté des combinaisons : ce sont les deux lectures d'une
    *  même rotation, et les séparer sur deux écrans oblige à faire l'aller-retour. */
+  const playerSort = useUrlSort<PlayerSortKey>(
+    { key: 'seconds', dir: 'desc' }, { ns: 'joueurs', allowed: PLAYER_SORT_KEYS },
+  );
+
   const playerRows = useMemo(() => {
     const minutes = playingTime(lineupEvents, side, lastQuarter, lastElapsedSeconds, period);
     const pm = plusMinusFromEvents(events, side);
+    const dir = playerSort.sortDir === 'asc' ? 1 : -1;
     return [...minutes.entries()]
       .map(([id, seconds]) => ({ id, seconds, plusMinus: pm.get(id) ?? 0 }))
-      .sort((a, b) => b.seconds - a.seconds);
-  }, [events, lineupEvents, side, lastQuarter, lastElapsedSeconds, period]);
+      .sort((a, b) => playerSort.sortKey === 'id'
+        ? dir * nameOf(a.id).localeCompare(nameOf(b.id))
+        : dir * (a[playerSort.sortKey] - b[playerSort.sortKey]) || b.seconds - a.seconds);
+  }, [events, lineupEvents, side, lastQuarter, lastElapsedSeconds, period, playerSort.sortKey, playerSort.sortDir, nameOf]);
 
   if (loading) return <div style={{ color: '#64748B', padding: 24 }}>Chargement…</div>;
   if (error)   return <div style={{ color: '#EF4444', padding: 24 }}>{error}</div>;
@@ -93,6 +117,12 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
         .lineup-head { padding: 6px 8px; font-size: 0.62rem; text-align: right; color: #64748B;
           text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
         .lineup-head:first-child { text-align: left; }
+        /* L'en-tête EST le bouton : un tableau où seule une petite flèche est cliquable se
+           manque une fois sur deux. Il hérite de la cellule (alignement, couleur, graisse). */
+        .lineup-sort { background: none; border: none; padding: 0; cursor: pointer;
+          font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+          white-space: nowrap; }
+        .lineup-sort:hover { color: #94A3B8; }
       `}</style>
 
       <div style={{ ...PANEL, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -131,8 +161,18 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                  {['Cinq', 'Temps', 'Poss.', 'Pts/poss.', 'Encaissé/poss.', 'Pour', 'Contre', '+/-'].map(h => (
-                    <th key={h} className="lineup-head">{h}</th>
+                  {([
+                    ['Cinq', 'players'], ['Temps', 'seconds'], ['Poss.', 'possessions'],
+                    ['Pts/poss.', 'pointsPerPossession'], ['Encaissé/poss.', 'oppPointsPerPossession'],
+                    ['Pour', 'pointsFor'], ['Contre', 'pointsAgainst'], ['+/-', 'plusMinus'],
+                  ] as [string, LineupSortKey][]).map(([label, key]) => (
+                    <th key={key} className="lineup-head">
+                      <button onClick={() => toggleSort(key)} className="lineup-sort"
+                        aria-label={`Trier par ${label}`}
+                        style={{ color: sortKey === key ? '#CBD5E1' : undefined }}>
+                        {label}{sortArrow(sortKey === key, sortDir)}
+                      </button>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -166,7 +206,15 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 320 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                  {['Joueur', 'Temps', '+/-'].map(h => <th key={h} className="lineup-head">{h}</th>)}
+                  {([['Joueur', 'id'], ['Temps', 'seconds'], ['+/-', 'plusMinus']] as [string, PlayerSortKey][]).map(([label, key]) => (
+                    <th key={key} className="lineup-head">
+                      <button onClick={() => playerSort.toggleSort(key)} className="lineup-sort"
+                        aria-label={`Trier par ${label}`}
+                        style={{ color: playerSort.sortKey === key ? '#CBD5E1' : undefined }}>
+                        {label}{sortArrow(playerSort.sortKey === key, playerSort.sortDir)}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -200,6 +248,10 @@ function toggleStyle(active: boolean): React.CSSProperties {
     maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
   };
 }
+
+/** La colonne triée porte son sens ; les autres ne portent rien — une flèche grise sur chaque
+ *  en-tête ne dit plus laquelle fait foi. */
+const sortArrow = (active: boolean, dir: 'asc' | 'desc') => (active ? (dir === 'asc' ? ' ↑' : ' ↓') : '');
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 const plusMinusColor = (n: number) => (n > 0 ? '#00E5A0' : n < 0 ? '#EF4444' : '#64748B');

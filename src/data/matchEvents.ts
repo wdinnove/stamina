@@ -10,7 +10,7 @@
  * Voir docs/STATS_LIVE.md.
  */
 import { playingTime, lineupIntervals } from './liveTrackingAnalysis';
-import { periodSeconds } from './matchClock';
+import { periodSeconds, absoluteSeconds } from './matchClock';
 import { shotEventValue } from './shotChart';
 import type { MatchEvent, MatchEventType, MatchLineupEvent, LineupSide } from './types';
 
@@ -345,44 +345,45 @@ export function editableTimeWindow(
   };
 }
 
-export interface BackwardsTime {
-  quarter: number;
-  /** Temps de la saisie précédente, puis celui qui recule. */
-  previous: number;
-  current: number;
+export interface BackwardsLineupChange {
+  side: LineupSide;
+  /** Le changement précédent, puis celui qui est daté avant lui. */
+  previous: { quarter: number; gameTimeSeconds: number };
+  current:  { quarter: number; gameTimeSeconds: number };
 }
 
 /**
- * Première saisie dont le temps RECULE à l'intérieur d'un quart-temps.
+ * Premier changement de banc daté AVANT celui qui le précède — le seul cas où du temps de jeu
+ * disparaît vraiment.
  *
- * Un chrono de basket ne remonte jamais : c'est donc toujours une erreur de saisie, et presque
- * toujours la même — on pose le temps du quart-temps suivant sans avoir changé de quart-temps.
- * Personne ne s'en aperçoit, parce que le symptôme est ailleurs : `lineupIntervals` borne à zéro
- * un intervalle négatif, et le temps de jeu de tout un cinq disparaît en silence.
+ * `lineupIntervals` mesure chaque intervalle entre deux changements consécutifs et borne à zéro un
+ * résultat négatif : le cinq concerné est alors crédité de zéro seconde, en silence. La cause
+ * habituelle est un quart-temps qu'on a oublié d'avancer avant de poser le temps du suivant.
  *
- * Chaque flux est parcouru dans SON ordre de saisie (`seq`) : un temps qui recule d'une ligne à la
- * suivante est le signal, pas l'ordre des temps une fois triés.
+ * Ne regarde QUE les changements, et délibérément pas les actions. Le temps d'une action ne sert
+ * à aucun calcul de durée : deux actions dans le désordre ne coûtent rien, et les signaler
+ * faisait apparaître une alerte permanente au premier recalage du chrono en arrière — ou à la
+ * première correction de temps, qui est justement là pour ça.
+ *
+ * La comparaison se fait sur l'axe ABSOLU, comme `lineupIntervals` : c'est la définition exacte
+ * du dégât, pas une approximation.
  */
-export function backwardsTime(events: MatchEvent[], lineupEvents: MatchLineupEvent[]): BackwardsTime | null {
-  const streams: { quarter: number; gameTimeSeconds: number }[][] = [
-    [...events].sort((a, b) => a.seq - b.seq),
-    ...(['us', 'them'] as LineupSide[]).map(side =>
-      lineupEvents.filter(l => l.side === side).sort((a, b) => a.seq - b.seq)),
-  ];
+export function backwardsLineupChange(
+  lineupEvents: MatchLineupEvent[],
+  regulationSeconds: number,
+): BackwardsLineupChange | null {
+  const at = (e: MatchLineupEvent) => absoluteSeconds(e.quarter, e.gameTimeSeconds, regulationSeconds);
 
-  const found: BackwardsTime[] = [];
-  for (const stream of streams) {
+  for (const side of ['us', 'them'] as LineupSide[]) {
+    const stream = lineupEvents.filter(l => l.side === side).sort((a, b) => a.seq - b.seq);
     for (let i = 1; i < stream.length; i++) {
-      const prev = stream[i - 1];
-      const cur  = stream[i];
-      if (cur.quarter === prev.quarter && cur.gameTimeSeconds < prev.gameTimeSeconds) {
-        found.push({ quarter: cur.quarter, previous: prev.gameTimeSeconds, current: cur.gameTimeSeconds });
-        break;   // un seul signalement par flux : le premier suffit à envoyer corriger
+      if (at(stream[i]) < at(stream[i - 1])) {
+        const pick = (e: MatchLineupEvent) => ({ quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds });
+        return { side, previous: pick(stream[i - 1]), current: pick(stream[i]) };
       }
     }
   }
-
-  return found.sort((a, b) => a.quarter - b.quarter)[0] ?? null;
+  return null;
 }
 
 export interface EventLineupRow {
@@ -399,6 +400,41 @@ export interface EventLineupRow {
   /** Points marqués par possession — null tant qu'aucune possession n'est mesurée. */
   pointsPerPossession: number | null;
   oppPointsPerPossession: number | null;
+}
+
+/** Colonnes triables d'un tableau de combinaisons. `players` trie sur les NOMS affichés, pas sur
+ *  les identifiants — c'est ce que lit l'utilisateur. */
+export const LINEUP_SORT_KEYS = [
+  'players', 'seconds', 'possessions', 'pointsPerPossession',
+  'oppPointsPerPossession', 'pointsFor', 'pointsAgainst', 'plusMinus',
+] as const;
+export type LineupSortKey = typeof LINEUP_SORT_KEYS[number];
+
+/**
+ * Tri d'un tableau de combinaisons, partagé par l'écran de saisie et l'onglet Lineups — deux
+ * tableaux des mêmes lignes ne peuvent pas se trier différemment.
+ *
+ * Un ratio `null` n'est pas zéro : c'est « aucune possession mesurée ». Il tombe en bas du tableau
+ * dans les DEUX sens, plutôt que de se faire passer pour la pire performance de la soirée.
+ */
+export function sortLineupRows(
+  rows: EventLineupRow[],
+  key: LineupSortKey,
+  dir: 'asc' | 'desc',
+  nameOf: (id: string) => string,
+): EventLineupRow[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (key === 'players') {
+      return sign * a.players.map(nameOf).join(', ').localeCompare(b.players.map(nameOf).join(', '));
+    }
+    const va = a[key];
+    const vb = b[key];
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    return sign * (va - vb) || b.seconds - a.seconds;
+  });
 }
 
 function lineupKey(onCourt: string[]): string {

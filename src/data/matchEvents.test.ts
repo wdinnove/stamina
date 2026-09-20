@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shotValue, shotZone, zoneStats } from './shotChart';
-import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, trackerHistory, editableTimeWindow, backwardsTime, type PlayerBoxscoreRow } from './matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, trackerHistory, editableTimeWindow, backwardsLineupChange, sortLineupRows, type EventLineupRow, type PlayerBoxscoreRow } from './matchEvents';
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, MatchLineupEvent } from './types';
 
@@ -373,38 +373,95 @@ describe('editableTimeWindow', () => {
   });
 });
 
-describe('backwardsTime', () => {
-  const ev = (seq: number, gameTimeSeconds: number, quarter = 1): MatchEvent => ({
-    matchId: 'm1', seq, quarter, gameTimeSeconds, side: 'us', type: 'ast',
-    playerId: 'p1', onCourt: [], onCourtThem: [],
-  });
+describe('backwardsLineupChange', () => {
   const lu = (seq: number, gameTimeSeconds: number, quarter = 1, side: 'us' | 'them' = 'us'): MatchLineupEvent => ({
     matchId: 'm1', seq, side, quarter, gameTimeSeconds,
     playersIn: [], playersOut: [], onCourt: [],
   });
 
-  it('ne signale rien quand le temps avance', () => {
-    expect(backwardsTime([ev(1, 100), ev(2, 250)], [lu(1, 0), lu(2, 300)])).toBeNull();
+  it('ne signale rien quand les changements avancent', () => {
+    expect(backwardsLineupChange([lu(1, 0), lu(2, 300)], 600)).toBeNull();
   });
 
   it('ne signale rien au passage d\'un quart-temps à l\'autre', () => {
-    // Le temps repart à zéro : c'est normal, et c'est justement ce qu'on veut voir faire.
-    expect(backwardsTime([ev(1, 560, 1), ev(2, 20, 2)], [])).toBeNull();
+    // Le temps repart à zéro : c'est normal, et c'est justement le geste qu'on veut voir faire.
+    expect(backwardsLineupChange([lu(1, 560, 1), lu(2, 20, 2)], 600)).toBeNull();
   });
 
-  it('signale un temps qui recule dans le même quart-temps', () => {
-    // Le quart-temps n'a pas été avancé : l'intervalle devient négatif et le temps de jeu de tout
-    // un cinq est écrasé à zéro, sans un mot.
-    expect(backwardsTime([], [lu(1, 480), lu(2, 60)]))
-      .toEqual({ quarter: 1, previous: 480, current: 60 });
+  it('signale un changement daté avant le précédent', () => {
+    // Le quart-temps n'a pas été avancé : l'intervalle devient négatif, il est borné à zéro, et le
+    // cinq entre les deux est crédité de rien.
+    expect(backwardsLineupChange([lu(1, 480), lu(2, 60)], 600)).toMatchObject({
+      side: 'us',
+      previous: { quarter: 1, gameTimeSeconds: 480 },
+      current:  { quarter: 1, gameTimeSeconds: 60 },
+    });
   });
 
-  it('surveille aussi le flux des actions', () => {
-    expect(backwardsTime([ev(1, 300), ev(2, 30)], [])).toEqual({ quarter: 1, previous: 300, current: 30 });
+  it('IGNORE le désordre entre actions : il ne coûte aucune durée', () => {
+    // Recaler le chrono en arrière, ou corriger le temps d'une action, met les actions dans le
+    // désordre sans conséquence. Les signaler affichait une alerte qui ne s'éteignait plus.
+    expect(backwardsLineupChange([], 600)).toBeNull();
   });
 
-  it('rend le plus ancien quand les deux bancs dérivent', () => {
-    expect(backwardsTime([], [lu(1, 400, 2), lu(2, 50, 2), lu(1, 400, 1, 'them'), lu(2, 50, 1, 'them')])?.quarter)
-      .toBe(1);
+  it('surveille les deux bancs', () => {
+    expect(backwardsLineupChange([lu(1, 400, 1, 'them'), lu(2, 50, 1, 'them')], 600)?.side).toBe('them');
+  });
+
+  it('compare sur l\'axe absolu, prolongations comprises', () => {
+    // Q4 à 01:00 écoulé puis une prolongation : 5 min, pas la durée réglementaire.
+    expect(backwardsLineupChange([lu(1, 60, 4), lu(2, 30, 5)], 600)).toBeNull();
+    // Retour en arrière d'un quart-temps entier : négatif, donc signalé.
+    expect(backwardsLineupChange([lu(1, 60, 3), lu(2, 30, 2)], 600)).not.toBeNull();
+  });
+});
+
+
+describe('sortLineupRows', () => {
+  const row = (over: Partial<EventLineupRow>): EventLineupRow => ({
+    players: ['p1'], seconds: 0, possessions: 0, oppPossessions: 0,
+    pointsFor: 0, pointsAgainst: 0, plusMinus: 0,
+    pointsPerPossession: null, oppPointsPerPossession: null, ...over,
+  });
+  const names: Record<string, string> = { p1: 'Zoé', p2: 'Alice', p3: 'Marc' };
+  const nameOf = (id: string) => names[id] ?? id;
+
+  it('trie sur les NOMS affichés, pas sur les identifiants', () => {
+    const rows = sortLineupRows([row({ players: ['p1'] }), row({ players: ['p2'] })], 'players', 'asc', nameOf);
+    expect(rows.map(r => r.players[0])).toEqual(['p2', 'p1']);   // Alice avant Zoé
+  });
+
+  it('inverse le sens', () => {
+    const rows = sortLineupRows([row({ seconds: 10 }), row({ seconds: 300 })], 'seconds', 'desc', nameOf);
+    expect(rows.map(r => r.seconds)).toEqual([300, 10]);
+    expect(sortLineupRows(rows, 'seconds', 'asc', nameOf).map(r => r.seconds)).toEqual([10, 300]);
+  });
+
+  it('laisse les ratios sans possession EN BAS dans les deux sens', () => {
+    // `null` = aucune possession mesurée. Le trier comme un zéro le ferait passer pour la pire
+    // performance de la soirée, alors qu'il n'y a simplement rien à lire.
+    const rows = [
+      row({ players: ['p1'], pointsPerPossession: null }),
+      row({ players: ['p2'], pointsPerPossession: 1.2 }),
+      row({ players: ['p3'], pointsPerPossession: 0.4 }),
+    ];
+    expect(sortLineupRows(rows, 'pointsPerPossession', 'desc', nameOf).map(r => r.players[0]))
+      .toEqual(['p2', 'p3', 'p1']);
+    expect(sortLineupRows(rows, 'pointsPerPossession', 'asc', nameOf).map(r => r.players[0]))
+      .toEqual(['p3', 'p2', 'p1']);
+  });
+
+  it('départage à égalité par le temps, le plus long d\'abord', () => {
+    const rows = sortLineupRows([
+      row({ players: ['p1'], plusMinus: 4, seconds: 60 }),
+      row({ players: ['p2'], plusMinus: 4, seconds: 300 }),
+    ], 'plusMinus', 'desc', nameOf);
+    expect(rows.map(r => r.players[0])).toEqual(['p2', 'p1']);
+  });
+
+  it('ne touche pas au tableau reçu', () => {
+    const rows = [row({ seconds: 10 }), row({ seconds: 300 })];
+    sortLineupRows(rows, 'seconds', 'desc', nameOf);
+    expect(rows.map(r => r.seconds)).toEqual([10, 300]);
   });
 });
