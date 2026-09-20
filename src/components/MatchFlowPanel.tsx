@@ -4,7 +4,7 @@ import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { scoreTimeline, detectRuns, absoluteSeconds, DEFAULT_MIN_RUN_POINTS } from '../data/matchFlow';
 import { playByPlayEntries } from '../data/playByPlay';
-import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
+import { periodLabel, formatGameClock } from '../data/liveTrackingAnalysis';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player } from '../data/types';
 
@@ -48,6 +48,12 @@ export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
   const period = match.periodDurationSeconds;
 
   const { events, opponents, lastQuarter, lastElapsedSeconds, hasData, loading, error } = useMatchTracking(match.id);
+
+  /** Position d'une série sur l'axe CONTINU, ramenée au décompte de son quart-temps. Le retrait de
+   *  `(quart − 1) × durée` ne marchait que jusqu'à la première prolongation : elle dure cinq
+   *  minutes, pas la durée réglementaire, et les suivantes sortaient en négatif. */
+  const inQuarterClock = (quarter: number, absolute: number) =>
+    formatGameClock(quarter, absolute - absoluteSeconds(quarter, 0, period), period);
 
   /** Liste des actions repliée par défaut, et filtrable aux seuls paniers : deux cents lignes
    *  déroulées d'office noieraient la courbe et les séries, qui sont la lecture du dessus. */
@@ -187,9 +193,9 @@ export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
                 <span style={{ color: '#CBD5E1', fontSize: '0.8rem', flex: 1 }}>
                   {r.side === 'us' ? ourTeamName : opponentName}
                   <span style={{ color: '#64748B' }}>
-                    {' · '}{periodLabel(r.startQuarter)} {formatClock(r.startSeconds - (r.startQuarter - 1) * period)}
+                    {' · '}{periodLabel(r.startQuarter)} {inQuarterClock(r.startQuarter, r.startSeconds)}
                     {r.endQuarter !== r.startQuarter || r.endSeconds !== r.startSeconds
-                      ? ` → ${periodLabel(r.endQuarter)} ${formatClock(r.endSeconds - (r.endQuarter - 1) * period)}`
+                      ? ` → ${periodLabel(r.endQuarter)} ${inQuarterClock(r.endQuarter, r.endSeconds)}`
                       : ''}
                   </span>
                 </span>
@@ -247,7 +253,7 @@ export function MatchFlowPanel({ match, players }: MatchFlowPanelProps) {
                   {shownEntries.map(e => (
                     <tr key={e.seq} style={{ borderBottom: '1px solid #1E2229' }}>
                       <td className="flow-cell" style={{ fontFamily: 'monospace', color: '#475569', whiteSpace: 'nowrap' }}>
-                        {periodLabel(e.quarter)} {formatClock(e.gameTimeSeconds)}
+                        {periodLabel(e.quarter)} {formatGameClock(e.quarter, e.gameTimeSeconds, period)}
                       </td>
                       <td className="flow-cell" style={{ textAlign: 'left', color: e.side === 'us' ? teamColor : '#64748B', whiteSpace: 'nowrap' }}>
                         {e.side === 'us' ? ourTeamName : opponentName}

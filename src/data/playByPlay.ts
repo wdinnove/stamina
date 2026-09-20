@@ -7,8 +7,8 @@
  * ligne plutôt que stocké : il se relit comme la feuille de marque papier, où l'on suit l'écart
  * action après action.
  */
-import { EVENT_LABELS, eventPoints } from './matchEvents';
-import { periodLabel, formatClock } from './liveTrackingAnalysis';
+import { EVENT_LABELS, eventPoints, byGameTime } from './matchEvents';
+import { periodLabel, formatGameClock } from './liveTrackingAnalysis';
 import { shotEventValue, shotZone, ZONE_LABELS } from './shotChart';
 import type { MatchEvent, LineupSide } from './types';
 
@@ -56,7 +56,7 @@ export interface PlayByPlayEntry {
 export function playByPlayEntries(events: MatchEvent[], names: PlayByPlayNames): PlayByPlayEntry[] {
   const score = { us: 0, them: 0 };
 
-  return [...events].sort((a, b) => a.seq - b.seq).map(e => {
+  return [...events].sort(byGameTime).map(e => {
     const points = eventPoints(e);
     score[e.side] += points;
 
@@ -83,11 +83,20 @@ export function playByPlayEntries(events: MatchEvent[], names: PlayByPlayNames):
   });
 }
 
-/** Le même play-by-play, aplati pour le CSV — colonnes dans l'ordre de `PLAY_BY_PLAY_HEADER`. */
-export function playByPlayRows(events: MatchEvent[], names: PlayByPlayNames): string[][] {
+/**
+ * Le même play-by-play, aplati pour le CSV — colonnes dans l'ordre de `PLAY_BY_PLAY_HEADER`.
+ *
+ * La colonne « Temps » est le DÉCOMPTE du quart-temps, comme partout ailleurs et comme la feuille
+ * de marque officielle : ce fichier sert justement à arbitrer un désaccord avec elle, il doit se
+ * lire dans le même sens. D'où `periodDurationSeconds`, que la forme stockée (temps écoulé) ne
+ * suffit pas à convertir.
+ */
+export function playByPlayRows(
+  events: MatchEvent[], names: PlayByPlayNames, periodDurationSeconds: number,
+): string[][] {
   return playByPlayEntries(events, names).map(e => [
     periodLabel(e.quarter),
-    formatClock(e.gameTimeSeconds),
+    formatGameClock(e.quarter, e.gameTimeSeconds, periodDurationSeconds),
     e.side === 'us' ? names.us : names.them,
     e.author,
     e.action,

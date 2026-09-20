@@ -5,7 +5,7 @@
  * 15 et un match perdu de 4 sans jamais mener produisent le même boxscore ; ce sont deux matchs
  * différents, et c'est cette différence qu'on lit ici.
  */
-import { eventPoints, teamTotalsFromEvents, type TeamTotals } from './matchEvents';
+import { eventPoints, teamTotalsFromEvents, byGameTime, type TeamTotals } from './matchEvents';
 import { absoluteSeconds } from './matchClock';
 import type { MatchEvent, LineupSide } from './types';
 
@@ -29,7 +29,7 @@ export function scoreTimeline(events: MatchEvent[], periodDurationSeconds: numbe
   const points: TimelinePoint[] = [{ seconds: 0, quarter: 1, us: 0, them: 0, diff: 0 }];
   const score = { us: 0, them: 0 };
 
-  for (const e of [...events].sort((a, b) => a.seq - b.seq)) {
+  for (const e of [...events].sort(byGameTime)) {
     const pts = eventPoints(e);
     if (pts === 0) continue;
     score[e.side] += pts;
@@ -71,7 +71,7 @@ export function detectRuns(
   periodDurationSeconds: number,
   minPoints: number = DEFAULT_MIN_RUN_POINTS,
 ): Run[] {
-  const scoring = [...events].sort((a, b) => a.seq - b.seq).filter(e => eventPoints(e) > 0);
+  const scoring = [...events].sort(byGameTime).filter(e => eventPoints(e) > 0);
   const runs: Run[] = [];
   const score = { us: 0, them: 0 };
 

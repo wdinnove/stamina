@@ -11,7 +11,7 @@ import { useMatchClock } from '../hooks/useMatchClock';
 import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import {
-  playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, periodLabel, formatClock,
+  playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, periodLabel, formatClock, formatGameClock,
   rentabiliteColor, OFFENSE_THRESHOLDS, DEFENSE_THRESHOLDS,
 } from '../data/liveTrackingAnalysis';
 import { scoreFromEvents } from '../data/matchEvents';
@@ -472,7 +472,7 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
             {history.map(row => (
               <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem' }}>
-                <span style={{ color: '#475569', width: 90, flexShrink: 0 }}>{periodLabel(row.quarter)} · {formatClock(row.time)}</span>
+                <span style={{ color: '#475569', width: 90, flexShrink: 0 }}>{periodLabel(row.quarter)} · {formatGameClock(row.quarter, row.time, clock.periodDurationSeconds)}</span>
                 <span style={{ color: '#CBD5E1', flex: 1 }}>{row.label}</span>
                 {canEdit && (
                   confirmingKey === row.key ? (

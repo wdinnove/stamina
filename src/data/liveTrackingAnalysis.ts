@@ -4,7 +4,7 @@
  * (possessions attaque/défense, changements de joueurs) à croiser par play, par cinq et par
  * joueur.
  */
-import { absoluteSeconds } from './matchClock';
+import { absoluteSeconds, periodSeconds } from './matchClock';
 import type { MatchLiveAction, MatchLineupEvent, Play, LineupSide } from './types';
 import { rentabiliteColor, type RentabiliteThresholds } from './tacticalAnalysis';
 
@@ -222,7 +222,22 @@ export function periodLabel(quarter: number): string {
   return quarter <= 4 ? `Q${quarter}` : `P${quarter - 4}`;
 }
 
-/** Formate des secondes en mm:ss, pour l'affichage du chrono interne. */
+/**
+ * Temps AFFICHÉ d'une saisie : le DÉCOMPTE du quart-temps, comme la table de marque.
+ *
+ * En base, `game_time_seconds` est le temps ÉCOULÉ depuis le début du quart-temps — c'est ce qui
+ * permet de le convertir en axe de temps continu. Mais personne ne lit un match comme ça : le
+ * coach, l'arbitre et la feuille de marque comptent à rebours. L'historique affichait donc 03:00
+ * là où la table de marque affichait 07:00, pour la même action.
+ *
+ * Une prolongation décompte depuis 5 minutes, quelle que soit la durée réglementaire.
+ */
+export function formatGameClock(quarter: number, gameTimeSeconds: number, regulationSeconds: number): string {
+  return formatClock(Math.max(0, periodSeconds(quarter, regulationSeconds) - gameTimeSeconds));
+}
+
+/** Formate des secondes en mm:ss — une DURÉE (temps de jeu d'un cinq), ou le décompte déjà
+ *  calculé de la table de marque. Pour le temps d'une saisie, c'est `formatGameClock`. */
 export function formatClock(totalSeconds: number): string {
   const s = Math.max(0, Math.round(totalSeconds));
   const m = Math.floor(s / 60);

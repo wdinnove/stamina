@@ -107,6 +107,16 @@ export const matchLiveApi = {
     if (error) throw error;
   },
 
+  /** Corrige le TEMPS d'un changement de banc — c'est lui qui découpe les intervalles de
+   *  composition, donc les minutes de tout un cinq. */
+  async updateLineupEventTime(matchId: string, side: LineupSide, seq: number, gameTimeSeconds: number): Promise<void> {
+    const { error } = await supabase
+      .from('match_lineup_events')
+      .update({ game_time_seconds: gameTimeSeconds })
+      .eq('match_id', matchId).eq('side', side).eq('seq', seq);
+    if (error) throw error;
+  },
+
   /** Corrige l'instantané d'un changement de banc après suppression d'un autre — jamais appelé
    *  pour une écriture "normale" (l'instantané est fixé une fois pour toutes à la création). */
   async updateLineupEventOnCourt(matchId: string, side: LineupSide, seq: number, onCourt: string[]): Promise<void> {

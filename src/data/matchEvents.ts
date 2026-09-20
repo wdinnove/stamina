@@ -10,6 +10,7 @@
  * Voir docs/STATS_LIVE.md.
  */
 import { playingTime, lineupIntervals } from './liveTrackingAnalysis';
+import { periodSeconds } from './matchClock';
 import { shotEventValue } from './shotChart';
 import type { MatchEvent, MatchEventType, MatchLineupEvent, LineupSide } from './types';
 
@@ -271,6 +272,117 @@ export function trackerHistory(events: MatchEvent[], lineupEvents: MatchLineupEv
       ? b.event.seq - a.event.seq
       : (a as { lineup: MatchLineupEvent }).lineup.seq - (b as { lineup: MatchLineupEvent }).lineup.seq;
   });
+}
+
+/**
+ * Ordre CHRONOLOGIQUE d'un flux d'actions : quart-temps, puis temps, puis rang de saisie.
+ *
+ * Ce n'est pas l'ordre de saisie. Les deux coïncidaient tant que le temps d'une action ne pouvait
+ * pas être corrigé ; depuis qu'il le peut (`editableTimeWindow`), trier par rang ferait repartir
+ * la courbe d'écart en arrière, terminer une série avant qu'elle ne commence, et sortir un CSV
+ * dont les temps ne se suivent plus. Le rang ne sert plus qu'à départager deux actions du même
+ * instant — fréquent quand le chrono est à l'arrêt.
+ */
+export function byGameTime(a: MatchEvent, b: MatchEvent): number {
+  return a.quarter - b.quarter || a.gameTimeSeconds - b.gameTimeSeconds || a.seq - b.seq;
+}
+
+export interface TimeWindow {
+  /** Bornes INCLUSIVES, en secondes écoulées depuis le début du quart-temps. */
+  min: number;
+  max: number;
+}
+
+/**
+ * Bornes dans lesquelles le temps d'une saisie peut être corrigé sans rendre faux ce qui est déjà
+ * enregistré.
+ *
+ * Chaque action porte l'INSTANTANÉ des deux cinq au moment où elle a été pointée. La déplacer de
+ * l'autre côté d'un changement de banc laisserait ses points crédités à un cinq qui n'était pas
+ * sur le terrain — et rien ne le signalerait, ni à l'écran ni dans les totaux. Plutôt que de
+ * recalculer les instantanés en cascade à chaque correction, on interdit le franchissement :
+ *
+ *   • une ACTION reste entre les deux changements qui l'encadrent ;
+ *   • un CHANGEMENT reste entre les deux saisies qui l'encadrent, actions comprises.
+ *
+ * C'est la même règle vue du basket — une action appartient au cinq qui l'a jouée — et il n'y a
+ * alors plus rien à recalculer.
+ *
+ * À temps ÉGAL, la convention de `trackerHistory` tranche : le changement précède l'action. Un
+ * changement posé au même instant borne donc l'action par le bas, et une action au même instant
+ * borne le changement par le haut. C'est ce qui laisse de la place quand le chrono est à l'arrêt
+ * et que toute une série de saisies porte le même temps.
+ *
+ * Le QUART-TEMPS, lui, ne se corrige pas ici : il détermine les scores par quart-temps publiés,
+ * et le réparer est une autre opération.
+ */
+export function editableTimeWindow(
+  target: TrackerHistoryEntry,
+  events: MatchEvent[],
+  lineupEvents: MatchLineupEvent[],
+  regulationSeconds: number,
+): TimeWindow {
+  const t = target.gameTimeSeconds;
+  const isAction = target.kind === 'event';
+
+  const neighbours: number[] = [
+    ...lineupEvents
+      .filter(l => l.quarter === target.quarter
+        && !(target.kind === 'lineup' && l.side === target.lineup.side && l.seq === target.lineup.seq))
+      .map(l => l.gameTimeSeconds),
+    // Une action n'est bornée que par les changements ; deux actions se réordonnent librement,
+    // rien ne dépend de leur ordre relatif. Un changement, lui, est aussi borné par les actions :
+    // les franchir invaliderait l'instantané qu'elles portent.
+    ...(isAction ? [] : events.filter(e => e.quarter === target.quarter).map(e => e.gameTimeSeconds)),
+  ];
+
+  const before = neighbours.filter(s => (isAction ? s <= t : s < t));
+  const after  = neighbours.filter(s => (isAction ? s > t : s >= t));
+
+  return {
+    min: before.length > 0 ? Math.max(...before) : 0,
+    max: after.length  > 0 ? Math.min(...after)  : periodSeconds(target.quarter, regulationSeconds),
+  };
+}
+
+export interface BackwardsTime {
+  quarter: number;
+  /** Temps de la saisie précédente, puis celui qui recule. */
+  previous: number;
+  current: number;
+}
+
+/**
+ * Première saisie dont le temps RECULE à l'intérieur d'un quart-temps.
+ *
+ * Un chrono de basket ne remonte jamais : c'est donc toujours une erreur de saisie, et presque
+ * toujours la même — on pose le temps du quart-temps suivant sans avoir changé de quart-temps.
+ * Personne ne s'en aperçoit, parce que le symptôme est ailleurs : `lineupIntervals` borne à zéro
+ * un intervalle négatif, et le temps de jeu de tout un cinq disparaît en silence.
+ *
+ * Chaque flux est parcouru dans SON ordre de saisie (`seq`) : un temps qui recule d'une ligne à la
+ * suivante est le signal, pas l'ordre des temps une fois triés.
+ */
+export function backwardsTime(events: MatchEvent[], lineupEvents: MatchLineupEvent[]): BackwardsTime | null {
+  const streams: { quarter: number; gameTimeSeconds: number }[][] = [
+    [...events].sort((a, b) => a.seq - b.seq),
+    ...(['us', 'them'] as LineupSide[]).map(side =>
+      lineupEvents.filter(l => l.side === side).sort((a, b) => a.seq - b.seq)),
+  ];
+
+  const found: BackwardsTime[] = [];
+  for (const stream of streams) {
+    for (let i = 1; i < stream.length; i++) {
+      const prev = stream[i - 1];
+      const cur  = stream[i];
+      if (cur.quarter === prev.quarter && cur.gameTimeSeconds < prev.gameTimeSeconds) {
+        found.push({ quarter: cur.quarter, previous: prev.gameTimeSeconds, current: cur.gameTimeSeconds });
+        break;   // un seul signalement par flux : le premier suffit à envoyer corriger
+      }
+    }
+  }
+
+  return found.sort((a, b) => a.quarter - b.quarter)[0] ?? null;
 }
 
 export interface EventLineupRow {

@@ -118,7 +118,25 @@ try {
   t('rebond d\'équipe absent des lignes individuelles', rowsUs.every(r => r.rd === 0));
   t('rebond d\'équipe compté aux totaux collectifs', teamTotalsFromEvents(back, 'us').rd === 1);
   t('tir à 3 rangé par zone', zoneStats(back, 'us').find(z => z.zone === 'arc_axe').made === 1);
-  t('play-by-play cohérent', playByPlayRows(back, { us: 'A', them: 'B', player: () => 'X', opponent: () => 'Y' }).at(-1).slice(10).join('-') === '6-5');
+  const pbp = playByPlayRows(back, { us: 'A', them: 'B', player: () => 'X', opponent: () => 'Y' }, 600);
+  t('play-by-play cohérent', pbp.at(-1).slice(10).join('-') === '6-5');
+  // Colonne « Temps » en décompte, comme la feuille de marque : 10 s écoulées → 09:50 au tableau.
+  t('play-by-play exporté en temps décompté', pbp[0][1] === '09:50', pbp[0][1]);
+
+  // Correction du temps : la politique RLS est en FOR ALL, mais seul un UPDATE réellement exécuté
+  // prouve que son WITH CHECK laisse passer la ligne modifiée.
+  await matchEventsApi.updateTime(match.id, 1, 42);
+  const retimed = await matchEventsApi.getByMatchId(match.id);
+  t('temps d\'une action corrigé et relu', retimed.find(e => e.seq === 1).gameTimeSeconds === 42,
+    `${retimed.find(e => e.seq === 1).gameTimeSeconds}s`);
+
+  await matchLiveApi.updateLineupEventTime(match.id, 'us', lineups[0].seq, 15);
+  const retimedLineups = await matchLiveApi.getLineupEvents(match.id);
+  t('temps d\'un changement corrigé et relu',
+    retimedLineups.find(l => l.side === 'us' && l.seq === lineups[0].seq).gameTimeSeconds === 15);
+
+  await matchEventsApi.updateTime(match.id, 1, 10);   // remise en place pour la suite
+  await matchLiveApi.updateLineupEventTime(match.id, 'us', lineups[0].seq, lineups[0].gameTimeSeconds);
 
   console.log('\n── Publication ──');
   await statsApi.bulkUpsertForMatch(match.id, rowsUs, { ...M, scoreUs: score.us, scoreThem: score.them, result: 'win' });

@@ -6,16 +6,17 @@ import { Modal } from './Modal';
 import { LAYER } from '../styles/layers';
 import { MatchScoreboard, scoreboardBtn } from './MatchScoreboard';
 import { matchEventsApi } from '../api/matchEvents';
-import { enqueueInsert, enqueueDelete, flushQueue, pendingCount, queueError, subscribeQueue, takeResyncFlag } from '../api/matchEventQueue';
+import { enqueueInsert, enqueueDelete, enqueueUpdateTime, flushQueue, pendingCount, queueError, subscribeQueue, takeResyncFlag } from '../api/matchEventQueue';
 import { matchLiveApi } from '../api/matchLive';
 import { statsApi, type BulkStatRow, type OpponentStatInput } from '../api/stats';
 import { matchesApi } from '../api/matches';
-import { useMatchClock, PERIOD_PRESETS_MIN } from '../hooks/useMatchClock';
+import { useMatchClock, PERIOD_PRESETS_MIN, parseClockInput } from '../hooks/useMatchClock';
+import { periodSeconds } from '../data/matchClock';
 import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
-import { periodLabel, formatClock } from '../data/liveTrackingAnalysis';
-import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, type TrackerHistoryEntry } from '../data/matchEvents';
+import { periodLabel, formatClock, formatGameClock } from '../data/liveTrackingAnalysis';
+import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, editableTimeWindow, backwardsTime, type TrackerHistoryEntry } from '../data/matchEvents';
 import { quarterSplits } from '../data/matchFlow';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
@@ -322,6 +323,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    *  locale, valable le temps de l'onglet — d'où l'absence de toute persistance. */
   const [video, setVideo] = useState<{ url: string; name: string } | null>(null);
   const [showVideo, setShowVideo] = useState(false);
+  /** Correction du temps d'une ligne d'historique : sa clé, la saisie en cours, et le refus
+   *  éventuel. `null` = aucune ligne en cours de correction. */
+  const [timeEdit, setTimeEdit] = useState<
+    { key: string; quarter: number; value: string; min: number; max: number; refused: boolean } | null
+  >(null);
   const [videoHeight] = useState(readVideoHeight);
   const [pendingSub, setPendingSub] = useState<PendingSub>(null);
   /**
@@ -960,10 +966,10 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    *  qui est le geste où l'on se trompe le plus : la dernière ligne n'est pas toujours celle
    *  qu'on croit quand elle vient d'être poussée par une autre. */
   const undoDetail = undoTarget === 'lineup' && lastEntry?.kind === 'lineup'
-    ? `${periodLabel(lastEntry.quarter)} ${formatClock(lastEntry.gameTimeSeconds)} — ${lineupText(lastEntry.lineup)}`
+    ? `${periodLabel(lastEntry.quarter)} ${gameClock(lastEntry.quarter, lastEntry.gameTimeSeconds)} — ${lineupText(lastEntry.lineup)}`
     : (() => {
         const last = events.at(-1);
-        return last ? `${periodLabel(last.quarter)} ${formatClock(last.gameTimeSeconds)} — ${eventText(last)}` : '';
+        return last ? `${periodLabel(last.quarter)} ${gameClock(last.quarter, last.gameTimeSeconds)} — ${eventText(last)}` : '';
       })();
 
   /**
@@ -977,7 +983,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       them: opponentName,
       player:   id => (playerById.has(id) ? playerNameFull(playerById.get(id)!) : '?'),
       opponent: id => opponentById.get(id)?.name ?? '?',
-    });
+    }, clock.periodDurationSeconds);
     downloadCsv(toCsv([[...PLAY_BY_PLAY_HEADER], ...rows]), csvFilename('play-by-play', opponentName, match.date));
   }
 
@@ -993,8 +999,62 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     return `${l.playersOut.map(name).join(', ')} → ${l.playersIn.map(name).join(', ')}`;
   }
 
+  /** Temps d'une saisie, tel qu'on le lit sur la table de marque — en décompte.
+   *  Déclarée en `function` et non en const : elle est appelée par des valeurs d'affichage
+   *  calculées plus haut, et une const y serait lue avant son initialisation. */
+  function gameClock(quarter: number, gameTimeSeconds: number) {
+    return formatGameClock(quarter, gameTimeSeconds, clock.periodDurationSeconds);
+  }
+
   const entryKey = (h: TrackerHistoryEntry) =>
     h.kind === 'event' ? `e${h.event.seq}` : `l${h.lineup.side}${h.lineup.seq}`;
+
+  /**
+   * Corrige le temps d'une ligne d'historique. Le quart-temps, lui, ne bouge pas : il détermine
+   * les scores par quart-temps publiés, et le corriger est une autre réparation.
+   *
+   * La correction est REFUSÉE hors de la fenêtre autorisée plutôt que rabotée en silence : un
+   * temps ramené tout seul à la borne serait faux sans que personne l'ait demandé, et la raison
+   * du refus (« ce changement est là ») est justement ce qu'il faut lire pour corriger.
+   */
+  function commitTimeEdit(h: TrackerHistoryEntry, raw: string) {
+    const remaining = parseClockInput(raw);
+    // Saisi en décompte comme la table de marque, stocké en temps écoulé comme le reste de la base.
+    const seconds = remaining === null
+      ? null
+      : periodSeconds(h.quarter, clock.periodDurationSeconds) - remaining;
+    const window = editableTimeWindow(h, events, lineupEvents, clock.periodDurationSeconds);
+    if (seconds === null || seconds < window.min || seconds > window.max) {
+      setTimeEdit(prev => prev && { ...prev, refused: true });
+      return;
+    }
+
+    if (h.kind === 'event') {
+      setEvents(prev => prev.map(e => e.seq === h.event.seq ? { ...e, gameTimeSeconds: seconds } : e));
+      enqueueUpdateTime(match.id, h.event.seq, seconds);
+    } else {
+      const { side, seq } = h.lineup;
+      setLineupEvents(prev => prev.map(e => e.side === side && e.seq === seq ? { ...e, gameTimeSeconds: seconds } : e));
+      persist(() => matchLiveApi.updateLineupEventTime(match.id, side, seq, seconds));
+    }
+    setTimeEdit(null);
+  }
+
+  /** Ouvre la correction en affichant d'emblée la fenêtre autorisée : la lire avant de taper vaut
+   *  mieux que se faire refuser après. */
+  function openTimeEdit(h: TrackerHistoryEntry) {
+    if (!canEdit) return;
+    const { min, max } = editableTimeWindow(h, events, lineupEvents, clock.periodDurationSeconds);
+    setTimeEdit({ key: entryKey(h), quarter: h.quarter, value: gameClock(h.quarter, h.gameTimeSeconds), min, max, refused: false });
+  }
+
+  /**
+   * Un temps qui RECULE dans un quart-temps est impossible : le chrono ne remonte pas. C'est
+   * presque toujours le même geste manqué — poser le temps du quart-temps suivant sans avoir
+   * changé de quart-temps — et son symptôme est muet : l'intervalle devient négatif, il est borné
+   * à zéro, et le temps de jeu de tout un cinq disparaît sans un mot.
+   */
+  const backwards = useMemo(() => backwardsTime(events, lineupEvents), [events, lineupEvents]);
   const entrySide = (h: TrackerHistoryEntry) => (h.kind === 'event' ? h.event.side : h.lineup.side);
 
   function eventText(e: MatchEvent): string {
@@ -1129,6 +1189,20 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         </div>
       )}
 
+      {/* Un chrono ne remonte jamais dans un quart-temps. Le bandeau n'est pas masquable : tant
+          que la saisie est dans cet état, des minutes sont perdues à chaque lecture. */}
+      {backwards && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.78rem', lineHeight: 1.5 }}>
+          <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            Le temps recule en {periodLabel(backwards.quarter)} : {gameClock(backwards.quarter, backwards.previous)} puis {gameClock(backwards.quarter, backwards.current)}.
+            Un chrono ne remonte pas — avez-vous oublié de passer au quart-temps suivant&nbsp;?{' '}
+            <strong style={{ color: '#FBBF24' }}>Tant que c'est le cas, le temps de jeu du cinq concerné est compté zéro.</strong>{' '}
+            Corrigez le temps dans l'historique, ou refaites le changement dans le bon quart-temps.
+          </span>
+        </div>
+      )}
+
       {publishedAt && (
         <div style={{ backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 6, padding: '7px 12px', color: '#00E5A0', fontSize: '0.76rem' }}>
           Boxscore publié à {publishedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. Les actions enregistrées ensuite ne le seront qu'à la prochaine publication.
@@ -1162,7 +1236,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                   color: entrySide(h) === 'us' ? '#CBD5E1' : '#64748B',
                   fontSize: '0.75rem', whiteSpace: 'nowrap',
                 }}>
-                <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '0.68rem' }}>{periodLabel(h.quarter)} {formatClock(h.gameTimeSeconds)}</span>
+                <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: '0.68rem' }}>{periodLabel(h.quarter)} {gameClock(h.quarter, h.gameTimeSeconds)}</span>
                 {h.kind === 'lineup'
                   ? <><Repeat2 size={12} style={{ color: '#F59E0B' }} />{lineupText(h.lineup)}</>
                   : eventText(h.event)}
@@ -1206,7 +1280,39 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 260, overflowY: 'auto', marginTop: 10, paddingTop: 10, borderTop: '1px solid #1E2229' }}>
             {history.map(h => (
               <div key={entryKey(h)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.76rem' }}>
-                <span style={{ color: '#475569', flexShrink: 0, fontFamily: 'monospace' }}>{periodLabel(h.quarter)} {formatClock(h.gameTimeSeconds)}</span>
+                {/* Le temps se corrige sur place — c'est la seule donnée d'une ligne déjà
+                    enregistrée qu'on puisse avoir tapée de travers sans s'en apercevoir, et pour
+                    qui pose le temps à la main à chaque changement, c'est le geste le plus
+                    fréquent. La fenêtre autorisée est calculée à l'ouverture, pas à la validation :
+                    autant la lire avant de taper. */}
+                {canEdit && timeEdit?.key === entryKey(h) ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <span style={{ color: '#475569', fontFamily: 'monospace' }}>{periodLabel(h.quarter)}</span>
+                    <input
+                      autoFocus value={timeEdit.value}
+                      onChange={e => setTimeEdit(prev => prev && { ...prev, value: e.target.value, refused: false })}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter')  { e.preventDefault(); commitTimeEdit(h, timeEdit.value); }
+                        if (e.key === 'Escape') { e.preventDefault(); setTimeEdit(null); }
+                      }}
+                      onBlur={() => setTimeEdit(null)}
+                      aria-label="Corriger le temps de cette ligne"
+                      style={{ width: 62, height: 26, padding: '0 6px', borderRadius: 4, fontFamily: 'monospace', fontSize: '0.76rem', textAlign: 'center', backgroundColor: '#0D0F14', border: `1px solid ${timeEdit.refused ? '#EF4444' : '#00E5A0'}`, color: '#F1F5F9' }}
+                    />
+                    <span title="Au-delà, la ligne franchirait un changement de banc et son cinq ne serait plus le bon"
+                      style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: timeEdit.refused ? '#EF4444' : '#475569' }}>
+                      {gameClock(timeEdit.quarter, timeEdit.min)}–{gameClock(timeEdit.quarter, timeEdit.max)}
+                    </span>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => openTimeEdit(h)}
+                    disabled={!canEdit}
+                    title={canEdit ? 'Corriger le temps' : undefined}
+                    style={{ background: 'none', border: 'none', padding: 0, flexShrink: 0, fontFamily: 'monospace', fontSize: '0.76rem', color: '#475569', cursor: canEdit ? 'pointer' : 'default' }}>
+                    {periodLabel(h.quarter)} {gameClock(h.quarter, h.gameTimeSeconds)}
+                  </button>
+                )}
                 {h.kind === 'lineup' ? (
                   <>
                     <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#F59E0B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1226,7 +1332,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                     {canEdit && (
                       <button onClick={() => ask({
                         title: 'Supprimer cette action ?',
-                        detail: `${periodLabel(h.quarter)} ${formatClock(h.gameTimeSeconds)} — ${eventText(h.event)}. Elle ne sera pas récupérable.`,
+                        detail: `${periodLabel(h.quarter)} ${gameClock(h.quarter, h.gameTimeSeconds)} — ${eventText(h.event)}. Elle ne sera pas récupérable.`,
                         confirmLabel: 'Supprimer',
                         run: () => removeEvent(h.event.seq),
                       })} aria-label="Supprimer cette action"

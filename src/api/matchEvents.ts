@@ -64,6 +64,16 @@ export const matchEventsApi = {
     if (error) throw error;
   },
 
+  /** Corrige le TEMPS d'une action, jamais son quart-temps ni son instantané de cinq : la fenêtre
+   *  autorisée (`editableTimeWindow`) garantit qu'ils restent valables. */
+  async updateTime(matchId: string, seq: number, gameTimeSeconds: number): Promise<void> {
+    const { error } = await supabase
+      .from('match_events')
+      .update({ game_time_seconds: gameTimeSeconds })
+      .eq('match_id', matchId).eq('seq', seq);
+    if (error) throw error;
+  },
+
   /**
    * Actions de PLUSIEURS matchs, pour les vues saison. La clé primaire étant `(match_id, seq)`,
    * le filtre `in` sur `match_id` s'appuie sur son index : aucun index supplémentaire à créer.

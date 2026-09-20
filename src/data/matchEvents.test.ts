@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shotValue, shotZone, zoneStats } from './shotChart';
-import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, trackerHistory, type PlayerBoxscoreRow } from './matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, trackerHistory, editableTimeWindow, backwardsTime, type PlayerBoxscoreRow } from './matchEvents';
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, MatchLineupEvent } from './types';
 
@@ -191,6 +191,37 @@ describe('lineupStatsFromEvents', () => {
     const rows = lineupStatsFromEvents([ev({ x: 7.5, y: 2.0, made: true })], [], 'us', 600, 1, 300);
     expect(rows).toHaveLength(0);
   });
+
+  it('réunit un cinq revenu sur le terrain, au lieu d\'en faire deux lignes', () => {
+    // Le cas le plus courant d'un vrai match : un cinq sort, un autre joue, le premier revient.
+    // Deux lignes pour la même combinaison rendraient le tableau illisible et fausseraient toute
+    // comparaison — c'est la combinaison qu'on lit, pas le passage.
+    const aller: MatchLineupEvent[] = [
+      { matchId: 'm1', seq: 1, side: 'us', quarter: 1, gameTimeSeconds: 0,   playersIn: ['p1', 'p2'], playersOut: [],      onCourt: ['p1', 'p2'] },
+      { matchId: 'm1', seq: 2, side: 'us', quarter: 1, gameTimeSeconds: 100, playersIn: ['p3'],       playersOut: ['p2'],  onCourt: ['p1', 'p3'] },
+      { matchId: 'm1', seq: 3, side: 'us', quarter: 1, gameTimeSeconds: 250, playersIn: ['p2'],       playersOut: ['p3'],  onCourt: ['p1', 'p2'] },
+    ];
+    const rows = lineupStatsFromEvents([], aller, 'us', 600, 1, 400);
+
+    expect(rows).toHaveLength(2);
+    const back = rows.find(r => r.players.join(',') === 'p1,p2')!;
+    expect(back.seconds).toBe(250);   // 100 s au premier passage + 150 s au second
+  });
+
+  it('réunit un cinq dont les joueurs sont dans un autre ordre', () => {
+    // Les instantanés sont construits dans l'ordre des entrées sur le terrain : le même cinq peut
+    // parfaitement arriver sous deux ordres différents. La clé de regroupement est triée.
+    const desordre: MatchLineupEvent[] = [
+      { matchId: 'm1', seq: 1, side: 'us', quarter: 1, gameTimeSeconds: 0,   playersIn: [], playersOut: [], onCourt: ['p1', 'p2', 'p3'] },
+      { matchId: 'm1', seq: 2, side: 'us', quarter: 1, gameTimeSeconds: 100, playersIn: [], playersOut: [], onCourt: ['p3', 'p1', 'p2'] },
+    ];
+    const rows = lineupStatsFromEvents([
+      ev({ x: 7.5, y: 2.0, made: true, onCourt: ['p2', 'p3', 'p1'] }),
+    ], desordre, 'us', 600, 1, 300);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ players: ['p1', 'p2', 'p3'], seconds: 300, pointsFor: 2 });
+  });
 });
 
 describe('teamTotalsFromEvents', () => {
@@ -277,5 +308,103 @@ describe('trackerHistory', () => {
   it('garde les deux bancs, sans confondre leurs rangs', () => {
     const h = trackerHistory([], [lu({ seq: 1, side: 'us', gameTimeSeconds: 10 }), lu({ seq: 1, side: 'them', gameTimeSeconds: 10 })]);
     expect(h).toHaveLength(2);
+  });
+});
+
+describe('editableTimeWindow', () => {
+  const ev = (seq: number, gameTimeSeconds: number, quarter = 1): MatchEvent => ({
+    matchId: 'm1', seq, quarter, gameTimeSeconds, side: 'us', type: 'ast',
+    playerId: 'p1', onCourt: [], onCourtThem: [],
+  });
+  const lu = (seq: number, gameTimeSeconds: number, side: 'us' | 'them' = 'us', quarter = 1): MatchLineupEvent => ({
+    matchId: 'm1', seq, side, quarter, gameTimeSeconds,
+    playersIn: [], playersOut: [], onCourt: [],
+  });
+  const forEvent  = (e: MatchEvent) => ({ kind: 'event' as const,  quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds, event: e });
+  const forLineup = (l: MatchLineupEvent) => ({ kind: 'lineup' as const, quarter: l.quarter, gameTimeSeconds: l.gameTimeSeconds, lineup: l });
+
+  it('borne une action aux deux changements qui l\'encadrent', () => {
+    const a = ev(2, 250);
+    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 120), lu(2, 400)], 600)).toEqual({ min: 120, max: 400 });
+  });
+
+  it('compte AUSSI les changements du banc adverse', () => {
+    // L'action porte les DEUX cinq : franchir un changement adverse fausserait le second.
+    const a = ev(1, 250);
+    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 120), lu(1, 300, 'them')], 600))
+      .toEqual({ min: 120, max: 300 });
+  });
+
+  it('ignore les changements des autres quart-temps', () => {
+    const a = ev(1, 250, 2);
+    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 400, 'us', 1), lu(2, 500, 'us', 3)], 600))
+      .toEqual({ min: 0, max: 600 });
+  });
+
+  it('borne au quart-temps quand aucun changement n\'existe', () => {
+    const a = ev(1, 250);
+    expect(editableTimeWindow(forEvent(a), [a], [], 600)).toEqual({ min: 0, max: 600 });
+    // Prolongation : cinq minutes, quelle que soit la durée réglementaire.
+    const ot = ev(1, 60, 5);
+    expect(editableTimeWindow(forEvent(ot), [ot], [], 600)).toEqual({ min: 0, max: 300 });
+  });
+
+  it('interdit à une action de repasser AVANT le changement du même instant', () => {
+    // Chrono à l'arrêt : le changement et les actions qui suivent portent le même temps. L'action
+    // a été pointée après, son cinq est celui d'après — elle ne peut pas remonter plus haut.
+    const a = ev(1, 168);
+    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 168), lu(2, 300)], 600))
+      .toEqual({ min: 168, max: 300 });
+  });
+
+  it('laisse un changement reculer jusqu\'à la dernière action qui le précède', () => {
+    // Le cas réel : on a tapé 07:12 au lieu de 08:12, puis pointé six actions. Le changement peut
+    // redescendre jusqu'à l'action précédente, mais pas franchir celles qui le suivent.
+    const before = ev(1, 90);
+    const after  = [ev(2, 168), ev(3, 168)];
+    const l = lu(2, 168);
+    expect(editableTimeWindow(forLineup(l), [before, ...after], [lu(1, 60), l], 600))
+      .toEqual({ min: 90, max: 168 });
+  });
+
+  it('ne se borne pas à lui-même', () => {
+    const l = lu(1, 200);
+    expect(editableTimeWindow(forLineup(l), [], [l], 600)).toEqual({ min: 0, max: 600 });
+  });
+});
+
+describe('backwardsTime', () => {
+  const ev = (seq: number, gameTimeSeconds: number, quarter = 1): MatchEvent => ({
+    matchId: 'm1', seq, quarter, gameTimeSeconds, side: 'us', type: 'ast',
+    playerId: 'p1', onCourt: [], onCourtThem: [],
+  });
+  const lu = (seq: number, gameTimeSeconds: number, quarter = 1, side: 'us' | 'them' = 'us'): MatchLineupEvent => ({
+    matchId: 'm1', seq, side, quarter, gameTimeSeconds,
+    playersIn: [], playersOut: [], onCourt: [],
+  });
+
+  it('ne signale rien quand le temps avance', () => {
+    expect(backwardsTime([ev(1, 100), ev(2, 250)], [lu(1, 0), lu(2, 300)])).toBeNull();
+  });
+
+  it('ne signale rien au passage d\'un quart-temps à l\'autre', () => {
+    // Le temps repart à zéro : c'est normal, et c'est justement ce qu'on veut voir faire.
+    expect(backwardsTime([ev(1, 560, 1), ev(2, 20, 2)], [])).toBeNull();
+  });
+
+  it('signale un temps qui recule dans le même quart-temps', () => {
+    // Le quart-temps n'a pas été avancé : l'intervalle devient négatif et le temps de jeu de tout
+    // un cinq est écrasé à zéro, sans un mot.
+    expect(backwardsTime([], [lu(1, 480), lu(2, 60)]))
+      .toEqual({ quarter: 1, previous: 480, current: 60 });
+  });
+
+  it('surveille aussi le flux des actions', () => {
+    expect(backwardsTime([ev(1, 300), ev(2, 30)], [])).toEqual({ quarter: 1, previous: 300, current: 30 });
+  });
+
+  it('rend le plus ancien quand les deux bancs dérivent', () => {
+    expect(backwardsTime([], [lu(1, 400, 2), lu(2, 50, 2), lu(1, 400, 1, 'them'), lu(2, 50, 1, 'them')])?.quarter)
+      .toBe(1);
   });
 });

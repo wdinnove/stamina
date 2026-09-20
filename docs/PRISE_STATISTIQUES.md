@@ -61,7 +61,7 @@ déduisent des rotations. L'évaluation n'est pas stockée, elle se calcule.
 ```
 
 **Règle d'architecture absolue** : `src/data` n'importe JAMAIS `src/api`. Le domaine ne connaît
-pas le réseau. C'est ce qui rend les 81 tests de cette feature exécutables sans base.
+pas le réseau. C'est ce qui rend les 101 tests de cette feature exécutables sans base.
 
 ### Le trajet d'une action, de bout en bout
 
@@ -265,7 +265,11 @@ silencieuse, le pire des cas pour une saisie qu'on ne peut pas refaire.
 * **L'ordre est conservé et la file s'arrête au premier échec** : rejouer une suppression avant
   son insertion écrirait une action qui n'existe plus.
 * `queueDelete` (pur, testé dans `src/data/eventQueue.ts`) **annule une insertion encore en
-  file** au lieu d'empiler une suppression orpheline.
+  file** au lieu d'empiler une suppression orpheline, et jette au passage une correction devenue
+  sans objet — un `update` sur une ligne absente échouerait indéfiniment, et la file s'arrête au
+  premier échec.
+* `queueUpdate` (corriger le temps d'une action) **corrige l'insertion elle-même** quand elle est
+  encore en file, et ne garde sinon qu'une seule correction par action, la dernière.
 * `queueError()` expose la panne **avérée** — c'est elle qui justifie un bandeau, pas la taille de
   la file : une action en vol pendant 200 ms est le fonctionnement normal, et l'annoncer faisait
   clignoter une alerte à chaque tap.
@@ -294,7 +298,10 @@ sérialisables.
 | `teamTotalsFromEvents(events, side)` | Totaux collectifs — ils comptent **tout**, actions sans auteur comprises. |
 | `possessionsFromEvents(events, side)` | `fga − ro + tov + 0,44 × fta`. |
 | `trackerHistory(events, lineupEvents)` | Actions **et** changements mêlés, du plus récent au plus ancien. À instant égal, le changement passe **sous** l'action : un remplacement se fait sur ballon mort, le jeu reprend après. |
-| `lineupStatsFromEvents(...)` | Combinaisons de cinq : temps, possessions, points pour/contre, +/-. |
+| `lineupStatsFromEvents(...)` | Combinaisons de cinq : temps, possessions, points pour/contre, +/-. Regroupées sur le cinq **trié**, donc un cinq qui sort et revient donne UNE ligne au temps cumulé, pas deux — c'est la combinaison qu'on lit, pas le passage. |
+| `byGameTime(a, b)` | Ordre **chronologique** (quart-temps, temps, rang). Pas l'ordre de saisie — voir § 12.1. |
+| `editableTimeWindow(...)` | Bornes dans lesquelles le temps d'une saisie peut être corrigé sans invalider un cinq figé (§ 8). |
+| `backwardsTime(...)` | Première saisie dont le temps recule dans un quart-temps — toujours une erreur, jamais signalée avant. |
 
 #### 6.1 L'évaluation, et le piège des deux colonnes de fautes
 
@@ -439,6 +446,47 @@ Gabarit partagé `topBtnStyle` : quatre boutons côte à côte qui ne se ressemb
 comme quatre choses de natures différentes. L'état désactivé se voit, et l'infobulle dit ce qui
 manque.
 
+### Corriger un temps
+
+Le temps de chaque ligne de l'historique se corrige d'un clic, sur place, en `mm:ss` — **en
+décompte**, comme on le lit sur la table de marque (§ 8.1). La fenêtre autorisée est montrée à côté du
+champ *avant* la frappe — `05:40–08:12` — et une valeur hors fenêtre est **refusée**, pas rabotée
+en silence : un temps ramené tout seul à la borne serait faux sans que personne l'ait demandé.
+
+C'est le geste dont a besoin celui qui laisse le chrono à l'arrêt et pose le temps à la main à
+chaque changement : une frappe de travers sur un changement fausse deux intervalles et les minutes
+de tout un cinq. La règle des bornes est en § 12.1.
+
+### 8.1 Écoulé en base, décompté à l'écran
+
+`game_time_seconds` stocke le temps **écoulé** depuis le début du quart-temps : c'est ce qui
+permet de le convertir en axe de temps continu (`absoluteSeconds`), donc de mesurer un intervalle
+qui chevauche une fin de quart-temps.
+
+Mais **personne ne lit un match comme ça**. Le coach, l'arbitre et la feuille de marque comptent à
+rebours. L'historique affichait donc `03:00` là où la table de marque du même écran affichait
+`07:00`, pour la même action — et le CSV, censé arbitrer un désaccord avec la feuille officielle,
+ne se lisait pas dans le même sens qu'elle.
+
+`formatGameClock(quarter, gameTimeSeconds, regulationSeconds)` fait la conversion, au seul moment
+de l'affichage. Elle s'applique partout où un temps de SAISIE est montré — historique, bandeau
+d'alerte, confirmations, champ de correction, play-by-play, export CSV, et l'écran *Prise live*.
+Une prolongation décompte depuis 5 minutes.
+
+Elle ne s'applique **pas** aux DURÉES (temps de jeu d'un cinq, filtre « au moins 3:00 »), qui
+restent des durées : `formatClock` reste là pour elles, et les confondre afficherait un temps de
+jeu à l'envers.
+
+### L'alerte « le temps recule »
+
+Un chrono de basket ne remonte jamais. Une saisie dont le temps recule à l'intérieur d'un
+quart-temps est donc toujours une erreur, et presque toujours la même : on pose le temps du
+quart-temps suivant sans avoir changé de quart-temps. Le symptôme, lui, est muet — `lineupIntervals`
+borne à zéro un intervalle négatif, et le temps de jeu de tout un cinq disparaît sans un mot.
+
+Le bandeau n'est pas masquable et nomme le quart-temps, les deux temps en cause et le geste à
+faire. Tant que la saisie est dans cet état, chaque lecture est fausse.
+
 ### Confirmations
 
 Trois gestes détruisent une donnée et passent par `ConfirmModal` : **supprimer une action**,
@@ -525,17 +573,17 @@ mi-temps un joueur à 4 points ferait chuter sa moyenne de saison.
 
 ## 11. Tests
 
-**81 tests unitaires**, tous purs, aucun DOM, aucune base :
+**101 tests unitaires**, tous purs, aucun DOM, aucune base :
 
 | Fichier | Tests |
 |---|---|
-| `src/data/matchEvents.test.ts` | 23 — **dont la géométrie de `shotChart`** (corner à 3 points à 6,60 m, bascule exacte sur l'arc). Elles y sont par héritage, pas par choix : `shotChart.ts` n'a pas de fichier de test à son nom. |
+| `src/data/matchEvents.test.ts` | 35 — **dont la géométrie de `shotChart`** (corner à 3 points à 6,60 m, bascule exacte sur l'arc). Elles y sont par héritage, pas par choix : `shotChart.ts` n'a pas de fichier de test à son nom. |
 | `src/data/matchClock.test.ts` | 17 |
 | `src/components/MatchStatsTracker.test.ts` | 14 (`resolveSubstitution`, `resolveLineupEntry`, `allowsAuthor`) |
 | `src/data/matchFlow.test.ts` | 9 |
-| `src/data/playByPlay.test.ts` | 9 |
+| `src/data/playByPlay.test.ts` | 11 |
 | `src/data/boxscoreTotals.test.ts` | 5 |
-| `src/data/eventQueue.test.ts` | 4 |
+| `src/data/eventQueue.test.ts` | 10 |
 
 ```bash
 npm test              # vitest run
@@ -549,7 +597,7 @@ npm run typecheck     # tsc -b --noEmit  ← PAS `tsc --noEmit` : sans -b, une c
 E2E_EMAIL=… E2E_PASSWORD=… npx vite-node scripts/check-tracker.mjs
 ```
 
-**27 vérifications.** Le script crée un match jetable daté 2019, exerce ce que les tests unitaires
+**30 vérifications.** Le script crée un match jetable daté 2019, exerce ce que les tests unitaires
 ne peuvent pas atteindre — RLS, contraintes `CHECK`, aller-retour de sérialisation, chemin de
 publication — puis le supprime (cascade). Il vérifie notamment que la base **refuse** ce qu'elle
 doit refuser : tir sans réussite, tir avec position *et* valeur, rebond avec une réussite, tir
@@ -567,13 +615,39 @@ de `schema.sql`, rejouable.
 2. Le score, les minutes, l'évaluation et les possessions **se dérivent**, ils ne se stockent
    jamais dans `match_events`.
 3. `shotEventValue` est **le seul** à dire ce que vaut un tir.
-4. Une action porte l'instantané des **deux** cinq.
+4. Une action porte l'instantané des **deux** cinq, figé à la saisie — d'où l'interdiction de
+   franchir un changement en corrigeant un temps (§ 8).
 5. `getElapsedSeconds()` (exact) pour écrire ; `elapsedSeconds` (arrondi) pour afficher.
 6. `fte` = commises, `fpr` = provoquées, et l'évaluation **ajoute** `fpr`.
 7. Toute politique RLS d'écriture porte un `WITH CHECK` explicite.
 8. Les slugs d'onglets sont stables.
 9. La publication remplace en bloc, mais **ne vide jamais** une table quand il n'y a rien à
    écrire.
+10. **L'ordre de saisie (`seq`) n'est PAS l'ordre chronologique.** Il l'a été jusqu'à ce que le
+    temps devienne corrigeable. Tout ce qui lit le match dans le temps trie par `byGameTime` ;
+    `seq` ne sert plus qu'à départager deux actions du même instant — fréquent, puisque le chrono
+    est souvent à l'arrêt.
+
+### 12.1 Le temps corrigeable, et pourquoi il ne franchit pas un changement
+
+Le temps d'une saisie se corrige sur place dans l'historique. Deux règles suffisent à ce qu'aucun
+calcul n'ait besoin d'être rejoué :
+
+* une **action** reste entre les deux changements de banc qui l'encadrent (les deux bancs
+  comptent : elle porte les deux cinq) ;
+* un **changement** reste entre les deux saisies qui l'encadrent, actions comprises.
+
+Sans cette borne, déplacer une action de l'autre côté d'un changement laisserait ses points
+crédités à un cinq qui n'était pas sur le terrain — en silence, l'instantané étant figé. On aurait
+alors le choix entre recalculer les instantanés en cascade à chaque correction, ou vivre avec un
+écran qui ment. La borne supprime le problème au lieu de le réparer, et elle se dit en une phrase
+de basket : *une action appartient au cinq qui l'a jouée*.
+
+À temps égal, la convention de `trackerHistory` tranche (le changement précède l'action), et les
+bornes sont inclusives. C'est ce qui laisse de la place quand le chrono est à l'arrêt et qu'une
+série entière de saisies porte le même temps.
+
+Le **quart-temps** ne se corrige pas : il détermine les scores par quart-temps publiés.
 
 ---
 
@@ -590,6 +664,7 @@ de `schema.sql`, rejouable.
 | `typecheck` qui ne vérifie rien | `tsc --noEmit` sur une config à références | `tsc -b --noEmit` |
 | `Cannot access 'X' before initialization` | Valeur d'affichage déclarée avant les fonctions de nommage | Déclarer après (deux fois le cas) |
 | Alerte qui clignote à chaque tap | Bandeau lié à la taille de la file | Bandeau lié à `queueError()` |
+| Le temps de jeu de tout un cinq compté zéro | Temps posé pour le quart-temps suivant sans avoir changé de quart-temps : l'intervalle devient négatif et `lineupIntervals` le borne à zéro, sans un mot | `backwardsTime` — un chrono ne remonte jamais dans un quart-temps, donc c'est toujours une erreur de saisie |
 
 ---
 
