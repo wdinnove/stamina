@@ -5301,3 +5301,20 @@ WHERE  e.session_id = s.id
 --   JOIN   (SELECT session_id, SUM(duration) FILTER (WHERE kind = 'repos') AS repos_duration
 --           FROM session_blocks GROUP BY session_id) r ON r.session_id = s.id
 --   WHERE  r.repos_duration > 0 AND e.actual_duration = s.planned_duration;
+
+-- ────────────────────────────────────────────────────────────────
+-- MIGRATION — numéro de maillot sur les statistiques adverses publiées
+-- Script exécutable tel quel dans le SQL Editor.
+-- ────────────────────────────────────────────────────────────────
+--
+-- La prise de statistiques en direct connaît le numéro de chaque adversaire
+-- (`match_opponent_players.number`), mais `opponent_match_stats` — la table que la publication
+-- écrit et que l'onglet Boxscore lit — n'a jamais eu de colonne pour le porter : elle a été
+-- dessinée pour l'import de feuille de marque, qui ne transmet pas les numéros adverses. Publier
+-- depuis la saisie en direct perdait donc le numéro à chaque fois, en silence.
+
+ALTER TABLE opponent_match_stats ADD COLUMN IF NOT EXISTS number SMALLINT;
+
+-- Vérification
+--   SELECT column_name FROM information_schema.columns
+--    WHERE table_name = 'opponent_match_stats' AND column_name = 'number';

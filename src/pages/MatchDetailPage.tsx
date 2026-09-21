@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, ChevronDown, Edit, Save, Check } from 'lucide-react';
+import { ArrowLeft, Calendar, BarChart3, Pencil, Trash2, Upload, Settings, ChevronDown, Edit, Save, Check, FileDown } from 'lucide-react';
 import { matchesApi } from '../api/matches';
 import { statsApi } from '../api/stats';
 import { playersApi } from '../api/players';
@@ -18,10 +18,14 @@ import { useUrlSort } from '../hooks/useUrlState';
 import type { Match, Player, MatchStat, TeamMatchStat, OpponentMatchStat, TacticalEvent, TacticalCategory, TacticalDimension, TacticalDimensionOption } from '../data/types';
 import { calcPlayerAdvanced, calcPlayerAdvancedForMatch, isTeamMinutesPlausible } from '../data/playerAdvanced';
 import { evalColor, shotPct } from '../data';
+import { formatMinutes } from '../utils/format';
 import { unattributedLine, sumStatLines } from '../data/boxscoreTotals';
-import { playerNameFull, playerNameShort } from '../utils/playerName';
+import { playerNameFull } from '../utils/playerName';
 import { ratioFromSums, pctFromSums } from '../utils/ratioFromSums';
 import { LAYER } from '../styles/layers';
+import { BoxscorePdfPage, BOXSCORE_PDF_PAGE_CLASS, type BoxscorePdfRow } from '../components/BoxscorePdfPage';
+import { TeamComparisonPdfPage, TEAM_COMPARISON_PDF_PAGE_CLASS } from '../components/TeamComparisonPdfPage';
+import { exportPagesToPdf, boxscoreFilename } from '../utils/reportPdf';
 
 const MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const DAYS_FR   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -50,9 +54,85 @@ const TD: React.CSSProperties = {
   padding: '7px 10px', color: '#94A3B8', fontSize: '0.78rem', textAlign: 'center', whiteSpace: 'nowrap',
 };
 
+/**
+ * Colonne « Joueur », fixée à la MÊME largeur dans les quatre tableaux de boxscore (nous/adverse ×
+ * brutes/avancées) : sans ça, chaque tableau se dimensionne sur son nom le plus long et « Sarata
+ * BODIAN » et « ABEGUE OBIANG Messie Orphela » ne s'alignent jamais d'un tableau à l'autre.
+ */
+const PLAYER_COL_WIDTH = 168;
+const PLAYER_COL: React.CSSProperties = { width: PLAYER_COL_WIDTH, minWidth: PLAYER_COL_WIDTH, maxWidth: PLAYER_COL_WIDTH };
+
+export interface TeamComparisonRow { label: string; own: number | null; opp: number | null; higherBetter: boolean | null; fmt?: (v: number) => string }
+export interface TeamComparisonGroup { title: string; rows: TeamComparisonRow[] }
+
+/** Les groupes de l'onglet « Comparaisons équipes », extraits pour être réutilisés tels quels par
+ *  l'export PDF — même contenu à l'écran et sur le papier, pas deux listes à maintenir. */
+function buildTeamComparisonGroups(match: Match, teamStats: TeamMatchStat | null): TeamComparisonGroup[] {
+  if (!teamStats) return [];
+  const f1 = (v: number) => `${v}%`;
+  const f2 = (v: number) => v.toFixed(2);
+  const oppFga = teamStats.opp_fg2a + teamStats.opp_fg3a;
+  // `null` et non 0 quand le dénominateur est nul : « pas de donnée » n'est pas « zéro ».
+  const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : null;
+  const oppDrebPct = (teamStats.opp_rd + teamStats.ro) > 0 ? Math.round(teamStats.opp_rd / (teamStats.opp_rd + teamStats.ro) * 1000) / 10 : null;
+  return [
+    { title: 'Score', rows: [
+      { label: 'Points', own: match.scoreUs, opp: match.scoreThem, higherBetter: true },
+      { label: 'ORtg', own: teamStats.offRating, opp: teamStats.defRating, higherBetter: true, fmt: f1 },
+      { label: 'Possessions', own: teamStats.possessions, opp: teamStats.opp_possessions, higherBetter: null },
+    ]},
+    { title: 'Tirs', rows: [
+      { label: 'eFG%', own: teamStats.efgPct, opp: teamStats.opp_efgPct, higherBetter: true, fmt: f1 },
+      { label: '2pts%', own: teamStats.fg2a > 0 ? Math.round(teamStats.fg2m/teamStats.fg2a*100) : 0, opp: teamStats.opp_fg2a > 0 ? Math.round(teamStats.opp_fg2m/teamStats.opp_fg2a*100) : 0, higherBetter: true, fmt: f1 },
+      { label: '3pts%', own: teamStats.fg3a > 0 ? Math.round(teamStats.fg3m/teamStats.fg3a*100) : 0, opp: teamStats.opp_fg3a > 0 ? Math.round(teamStats.opp_fg3m/teamStats.opp_fg3a*100) : 0, higherBetter: true, fmt: f1 },
+      { label: 'LF%', own: teamStats.fta > 0 ? Math.round(teamStats.ftm/teamStats.fta*100) : 0, opp: teamStats.opp_fta > 0 ? Math.round(teamStats.opp_ftm/teamStats.opp_fta*100) : 0, higherBetter: true, fmt: f1 },
+      { label: 'FT Rate', own: teamStats.ftRate, opp: oppFtRate, higherBetter: true, fmt: f2 },
+    ]},
+    { title: 'Rebonds', rows: [
+      { label: 'RT', own: teamStats.rt, opp: teamStats.opp_rt, higherBetter: true },
+      { label: 'RO', own: teamStats.ro, opp: teamStats.opp_ro, higherBetter: true },
+      { label: 'RD', own: teamStats.rd, opp: teamStats.opp_rd, higherBetter: true },
+      { label: 'OREB%', own: teamStats.orebPct, opp: teamStats.opp_orebPct, higherBetter: true, fmt: f1 },
+      { label: 'DREB%', own: teamStats.drebPct, opp: oppDrebPct, higherBetter: true, fmt: f1 },
+    ]},
+    { title: 'Playmaking', rows: [
+      { label: 'PD', own: teamStats.pd, opp: teamStats.opp_pd, higherBetter: true },
+      { label: 'BP', own: teamStats.bp, opp: teamStats.opp_bp, higherBetter: false },
+      { label: 'TO%', own: teamStats.toPct, opp: teamStats.opp_toPct, higherBetter: false, fmt: f1 },
+    ]},
+    { title: 'Défense', rows: [
+      { label: 'CT', own: teamStats.ct, opp: teamStats.opp_ct, higherBetter: true },
+      { label: 'IN', own: teamStats.intercepts, opp: teamStats.opp_intercepts, higherBetter: true },
+    ]},
+    { title: 'Fautes', rows: [
+      { label: 'FTE', own: teamStats.fte, opp: teamStats.opp_fte, higherBetter: false },
+      { label: 'FPR', own: teamStats.fpr, opp: teamStats.opp_fpr, higherBetter: null },
+    ]},
+  ];
+}
+
+/**
+ * Nom cropé plutôt que passé à la ligne ou compressé en abrégé — `title` porte le nom complet, lu
+ * au survol comme n'importe quel texte tronqué du navigateur.
+ *
+ * La largeur est fixée en PIXELS, pas en pourcentage : le tableau n'est pas en `table-layout:
+ * fixed`, et une largeur sur le `<td>` seul reste une suggestion que le navigateur ignore dès que
+ * le texte ne peut pas passer à la ligne — la colonne s'élargit alors pour « ABEGUE OBIANG Messie
+ * Orphela » et redevient aussi inégale qu'avant. En bornant l'élément qui PORTE le texte, sa
+ * largeur intrinsèque ne dépasse jamais cette valeur, donc la colonne non plus.
+ */
+const PLAYER_NAME_TEXT: React.CSSProperties = {
+  display: 'block', width: PLAYER_COL_WIDTH - 20, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+
 interface MatchActionsMenuProps {
+  /** Droits d'écriture sur les données de l'équipe — conditionne tout ce qui MODIFIE le match.
+   *  L'export du boxscore n'en fait pas partie : lire et exporter n'est pas écrire. */
+  canEdit: boolean;
   hasStats: boolean;
   hasTactical: boolean;
+  onExportBoxscore: () => void;
+  exportingBoxscore: boolean;
   onImportStats: () => void;
   onDeleteStats: () => void;
   onImportTactical: () => void;
@@ -62,7 +142,8 @@ interface MatchActionsMenuProps {
 }
 
 function MatchActionsMenu({
-  hasStats, hasTactical, onImportStats, onDeleteStats, onImportTactical, onDeleteTactical, onEditMatch, onDeleteMatch,
+  canEdit, hasStats, hasTactical, onExportBoxscore, exportingBoxscore,
+  onImportStats, onDeleteStats, onImportTactical, onDeleteTactical, onEditMatch, onDeleteMatch,
 }: MatchActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -101,34 +182,47 @@ function MatchActionsMenu({
           backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 8,
           boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: LAYER.dropdown, padding: '4px 0',
         }}>
-          <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportStats)}>
-            <Upload size={13} />{hasStats ? 'Modifier les statistiques' : 'Importer les statistiques'}
-          </button>
           {hasStats && (
-            <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteStats)}>
-              <Trash2 size={13} />Supprimer les statistiques
+            <button className="hover:!bg-white/5" style={{ ...itemStyle, opacity: exportingBoxscore ? 0.5 : 1 }}
+              disabled={exportingBoxscore} onClick={() => run(onExportBoxscore)}>
+              <FileDown size={13} />{exportingBoxscore ? 'Génération du PDF…' : 'Exporter le boxscore (PDF)'}
             </button>
           )}
 
-          {divider}
+          {hasStats && canEdit && divider}
 
-          <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportTactical)}>
-            <Upload size={13} />{hasTactical ? 'Modifier les statistiques tactiques' : 'Importer les statistiques tactiques'}
-          </button>
-          {hasTactical && (
-            <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteTactical)}>
-              <Trash2 size={13} />Supprimer les statistiques tactiques
-            </button>
+          {canEdit && (
+            <>
+              <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportStats)}>
+                <Upload size={13} />{hasStats ? 'Modifier les statistiques' : 'Importer les statistiques'}
+              </button>
+              {hasStats && (
+                <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteStats)}>
+                  <Trash2 size={13} />Supprimer les statistiques
+                </button>
+              )}
+
+              {divider}
+
+              <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onImportTactical)}>
+                <Upload size={13} />{hasTactical ? 'Modifier les statistiques tactiques' : 'Importer les statistiques tactiques'}
+              </button>
+              {hasTactical && (
+                <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteTactical)}>
+                  <Trash2 size={13} />Supprimer les statistiques tactiques
+                </button>
+              )}
+
+              {divider}
+
+              <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onEditMatch)}>
+                <Pencil size={13} />Modifier le match
+              </button>
+              <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteMatch)}>
+                <Trash2 size={13} />Supprimer le match
+              </button>
+            </>
           )}
-
-          {divider}
-
-          <button className="hover:!bg-white/5" style={itemStyle} onClick={() => run(onEditMatch)}>
-            <Pencil size={13} />Modifier le match
-          </button>
-          <button className="hover:!bg-white/5" style={dangerStyle} onClick={() => run(onDeleteMatch)}>
-            <Trash2 size={13} />Supprimer le match
-          </button>
         </div>
       )}
     </div>
@@ -266,6 +360,9 @@ export default function MatchDetailPage() {
   const [confirmDeleteTactical, setConfirmDeleteTactical] = useState(false);
   const [deletingTactical,      setDeletingTactical]      = useState(false);
 
+  const [exportingBoxscore, setExportingBoxscore] = useState(false);
+  const [exportBoxscoreError, setExportBoxscoreError] = useState('');
+
   const [showImport, setShowImport] = useState(false);
   const [showTacticalImport, setShowTacticalImport] = useState(false);
   const [tacticalEvents, setTacticalEvents]         = useState<TacticalEvent[]>([]);
@@ -317,6 +414,8 @@ export default function MatchDetailPage() {
   // si la réponse de l'ancien match arrive après celle du nouveau) les données tactiques du
   // mauvais match sous l'en-tête du nouveau.
   const currentMatchIdRef = useRef<string | undefined>(undefined);
+  /** Conteneur des deux pages PDF, montées hors écran le temps de la capture. */
+  const boxscorePdfRef = useRef<HTMLDivElement>(null);
 
   // Index nom par id : la table par joueur du rapport tactique n'a pas à connaître l'objet Player.
   const playerNameById = useMemo(
@@ -559,6 +658,84 @@ export default function MatchDetailPage() {
       })
     : opponentStats;
 
+  /**
+   * Lignes du boxscore PDF — les MÊMES données que l'onglet Boxscore, tri courant compris :
+   * exporter reproduit ce qui est affiché, pas un ordre recalculé pour l'occasion.
+   *
+   * « Équipe » et « Totaux » suivent exactement la règle de l'écran (`unattributedLine` /
+   * `sumStatLines`) : une seule ligne de calcul pour les deux, jamais deux qui pourraient diverger.
+   */
+  const ourTeamLine = teamStats ? unattributedLine(teamStats, individualStats, 'us') : null;
+  const oppTeamLine = teamStats ? unattributedLine(teamStats, opponentStats, 'them') : null;
+
+  const boxscoreOurRows: BoxscorePdfRow[] = sortedStats.map(s => {
+    const player = playerById.get(s.playerId);
+    return {
+      name: player ? playerNameFull(player) : `${s.playerId.slice(0, 8)}…`,
+      number: player ? player.number : null,
+      starter: s.starter,
+      min: s.min, pts: s.pts,
+      fg2m: s.fg2m, fg2a: s.fg2a, fg3m: s.fg3m, fg3a: s.fg3a, ftm: s.ftm, fta: s.fta,
+      ro: s.ro, rd: s.rd, pd: s.pd, ct: s.ct, intercepts: s.intercepts, bp: s.bp,
+      fte: s.fte, fpr: s.fpr, evalValue: s.eval, plusMinus: s.plusMinus,
+    };
+  });
+  if (individualStats.length > 1 || ourTeamLine) {
+    if (ourTeamLine) {
+      boxscoreOurRows.push({ name: 'Équipe', number: null, kind: 'summary', min: null, evalValue: null, plusMinus: null, ...ourTeamLine });
+    }
+    boxscoreOurRows.push({
+      name: 'Totaux', number: null, kind: 'summary', evalValue: null, plusMinus: null,
+      min: individualStats.reduce((a, s) => a + s.min, 0),
+      ...sumStatLines([...individualStats, ...(ourTeamLine ? [ourTeamLine] : [])]),
+    });
+  }
+
+  const boxscoreOppRows: BoxscorePdfRow[] = sortedOppStats.map(s => ({
+    name: s.playerName, number: s.number,
+    min: s.min, pts: s.pts,
+    fg2m: s.fg2m, fg2a: s.fg2a, fg3m: s.fg3m, fg3a: s.fg3a, ftm: s.ftm, fta: s.fta,
+    ro: s.ro, rd: s.rd, pd: s.pd, ct: s.ct, intercepts: s.intercepts, bp: s.bp,
+    fte: s.fte, fpr: s.fpr, evalValue: s.eval, plusMinus: s.plusMinus,
+  }));
+  if (opponentStats.length > 1 || oppTeamLine) {
+    if (oppTeamLine) {
+      boxscoreOppRows.push({ name: 'Équipe', number: null, kind: 'summary', min: null, evalValue: null, plusMinus: null, ...oppTeamLine });
+    }
+    boxscoreOppRows.push({
+      name: 'Totaux', number: null, kind: 'summary', evalValue: null, plusMinus: null,
+      min: opponentStats.reduce((a, s) => a + s.min, 0),
+      ...sumStatLines([...opponentStats, ...(oppTeamLine ? [oppTeamLine] : [])]),
+    });
+  }
+
+  const hasBoxscore = boxscoreOurRows.length > 0 || boxscoreOppRows.length > 0;
+
+  // Page 3 de l'export — même contenu que l'onglet « Comparaisons équipes ».
+  const teamComparisonGroups = buildTeamComparisonGroups(match, teamStats);
+  const hasTeamComparison = teamComparisonGroups.length > 0;
+  const boxscorePdfTotalPages = 2 + (hasTeamComparison ? 1 : 0);
+
+  /**
+   * Génère le PDF à la demande : les deux pages ne sont montées (hors écran) que le temps de la
+   * capture, plutôt que de porter en permanence un second rendu du même tableau.
+   */
+  async function handleExportBoxscore() {
+    setExportingBoxscore(true);
+    setExportBoxscoreError('');
+    // Laisser React peindre les pages hors écran avant de les capturer.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    try {
+      if (!boxscorePdfRef.current) throw new Error('Rien à exporter.');
+      const nodes = Array.from(boxscorePdfRef.current.querySelectorAll<HTMLElement>(`.${BOXSCORE_PDF_PAGE_CLASS}, .${TEAM_COMPARISON_PDF_PAGE_CLASS}`));
+      await exportPagesToPdf(nodes, boxscoreFilename(match?.opponent ?? 'adversaire', match?.date ?? ''), undefined, 'landscape');
+    } catch (err) {
+      setExportBoxscoreError(err instanceof Error ? err.message : 'Erreur pendant la génération du PDF.');
+    } finally {
+      setExportingBoxscore(false);
+    }
+  }
+
   const THoppSort = (label: string, col: string, extraStyle?: React.CSSProperties) => (
     <th
       style={{ ...TH, ...extraStyle, cursor: 'pointer', userSelect: 'none', color: oppSortCol === col ? '#CBD5E1' : '#475569' }}
@@ -582,10 +759,13 @@ export default function MatchDetailPage() {
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>
           <ArrowLeft size={15} /> Matchs
         </button>
-        {canEditTeamData && (
+        {(canEditTeamData || hasBoxscore) && (
           <MatchActionsMenu
-            hasStats={!!(teamStats || individualStats.length > 0)}
+            canEdit={canEditTeamData}
+            hasStats={hasBoxscore}
             hasTactical={tacticalLoaded && tacticalEvents.length > 0}
+            onExportBoxscore={handleExportBoxscore}
+            exportingBoxscore={exportingBoxscore}
             onImportStats={() => setShowImport(true)}
             onDeleteStats={() => setConfirmDeleteStats(true)}
             onImportTactical={() => setShowTacticalImport(true)}
@@ -595,6 +775,40 @@ export default function MatchDetailPage() {
           />
         )}
       </div>
+
+      {exportBoxscoreError && (
+        <p style={{ color: '#EF4444', fontSize: '0.8rem', margin: '-12px 0 20px' }}>{exportBoxscoreError}</p>
+      )}
+
+      {/* Pages du PDF, montées HORS ÉCRAN le temps de la capture seulement — un second rendu
+          permanent du même tableau n'a aucune raison de vivre tant que personne n'exporte. */}
+      {exportingBoxscore && (
+        <div ref={boxscorePdfRef} aria-hidden
+          style={{ position: 'fixed', top: 0, left: -100000, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {boxscoreOurRows.length > 0 && (
+            <BoxscorePdfPage
+              teamLabel={selected?.team.name ?? 'Notre équipe'}
+              subtitle={`vs ${match?.opponent ?? ''} — ${match ? fmtFullDate(match.date) : ''} — ${match?.scoreUs ?? 0} - ${match?.scoreThem ?? 0}`}
+              rows={boxscoreOurRows} pageNumber={1} totalPages={boxscorePdfTotalPages}
+            />
+          )}
+          {boxscoreOppRows.length > 0 && (
+            <BoxscorePdfPage
+              teamLabel={match?.opponent ?? 'Adversaire'}
+              subtitle={`vs ${selected?.team.name ?? ''} — ${match ? fmtFullDate(match.date) : ''} — ${match?.scoreThem ?? 0} - ${match?.scoreUs ?? 0}`}
+              rows={boxscoreOppRows} pageNumber={2} totalPages={boxscorePdfTotalPages}
+            />
+          )}
+          {hasTeamComparison && (
+            <TeamComparisonPdfPage
+              ourLabel={selected?.team.name ?? 'Notre équipe'}
+              theirLabel={match?.opponent ?? 'Adversaire'}
+              subtitle={`${match ? fmtFullDate(match.date) : ''} — ${match?.scoreUs ?? 0} - ${match?.scoreThem ?? 0}`}
+              groups={teamComparisonGroups} pageNumber={3} totalPages={boxscorePdfTotalPages}
+            />
+          )}
+        </div>
+      )}
 
       {/* Hero card */}
       <div className="p-4 sm:p-6" style={{ backgroundColor: '#161920', border: `1px solid ${isWin ? '#00E5A040' : '#EF444440'}`, borderRadius: 12, marginBottom: 20, backgroundImage: isWin ? 'linear-gradient(135deg, #00E5A00A 0%, transparent 55%)' : 'linear-gradient(135deg, #EF44440A 0%, transparent 55%)', position: 'relative', overflow: 'hidden' }}>
@@ -674,7 +888,7 @@ export default function MatchDetailPage() {
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                         <thead>
                           <tr>
-                            <th style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
+                            <th style={{ ...TH, ...PLAYER_COL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             {THsort('#', 'number', { width: 32, textAlign: 'center' })}
                             {THsort('MIN', 'min')}{THsort('PTS', 'pts')}
                             <th style={TH}>2pts</th>{THsort('2%', 'fg2pct', { color: '#475569' })}
@@ -691,9 +905,9 @@ export default function MatchDetailPage() {
                             const player = playerById.get(s.playerId);
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', cursor: player ? 'pointer' : undefined }} onClick={() => player && navigate(`/performance-individuelle/${player.id}/vue-ensemble`)}>
-                                <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span title={playerNameFull(player)} style={{ ...PLAYER_NAME_TEXT, color: '#F1F5F9', fontWeight: 600 }}>{playerNameFull(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
-                                <td style={{ ...TD }}>{fmt1(s.min)}</td>
+                                <td style={{ ...TD }}>{formatMinutes(s.min)}</td>
                                 <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{s.pts}</td>
                                 <td style={TD}>{s.fg2m}/{s.fg2a}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(s.fg2m, s.fg2a)}</td>
@@ -725,7 +939,7 @@ export default function MatchDetailPage() {
                                 {teamLine && (
                                   <tr key="team" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
                                     title="Actions sans auteur : rebond d'équipe, ballon perdu sur les 24 secondes, action pointée sans joueur. Elles comptent aux totaux collectifs, à aucune ligne individuelle.">
-                                    <td style={{ ...TD, textAlign: 'left', color: '#94A3B8', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Équipe</td>
+                                    <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', color: '#94A3B8', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Équipe</td>
                                     <td style={{ ...TD, color: '#334155' }}>—</td>
                                     <td style={{ ...TD, color: '#334155' }}>—</td>
                                     <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{teamLine.pts}</td>
@@ -744,7 +958,7 @@ export default function MatchDetailPage() {
                                   </tr>
                                 )}
                                 <tr key="totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-                                  <td style={{ ...TD, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
+                                  <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
                                   <td style={{ ...TD, color: '#334155' }}>—</td>
                                   <td style={{ ...TD }}>{fmt1(minutes)}</td>
                                   <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
@@ -779,7 +993,7 @@ export default function MatchDetailPage() {
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                         <thead>
                           <tr>
-                            <th style={{ ...TH, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
+                            <th style={{ ...TH, ...PLAYER_COL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             <th style={{ ...TH, width: 32, textAlign: 'center' }}>#</th>
                             {THoppSort('MIN', 'min')}{THoppSort('PTS', 'pts')}
                             <th style={TH}>2pts</th>{THoppSort('2%', 'fg2pct', { color: '#475569' })}
@@ -794,9 +1008,9 @@ export default function MatchDetailPage() {
                         <tbody>
                           {sortedOppStats.map((s, i) => (
                             <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                              <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
-                              <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>—</td>
-                              <td style={TD}>{fmt1(s.min)}</td>
+                              <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span title={s.playerName} style={{ ...PLAYER_NAME_TEXT, color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
+                              <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{s.number ?? '—'}</td>
+                              <td style={TD}>{formatMinutes(s.min)}</td>
                               <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{s.pts}</td>
                               <td style={TD}>{s.fg2m}/{s.fg2a}</td>
                               <td style={{ ...TD, color: '#475569', fontSize: '0.72rem' }}>{pct(s.fg2m, s.fg2a)}</td>
@@ -825,7 +1039,7 @@ export default function MatchDetailPage() {
                                 {teamLine && (
                                   <tr key="opp-team" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
                                     title="Actions adverses sans auteur : pointage anonyme, rebond d'équipe, ballon perdu sur les 24 secondes.">
-                                    <td style={{ ...TD, textAlign: 'left', color: '#94A3B8', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Équipe</td>
+                                    <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', color: '#94A3B8', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Équipe</td>
                                     <td style={{ ...TD, color: '#334155' }}>—</td>
                                     <td style={{ ...TD, color: '#334155' }}>—</td>
                                     <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{teamLine.pts}</td>
@@ -844,7 +1058,7 @@ export default function MatchDetailPage() {
                                   </tr>
                                 )}
                                 <tr key="opp-totals" style={{ borderTop: '2px solid #2A2F3A', backgroundColor: 'rgba(255,255,255,0.035)' }}>
-                                  <td style={{ ...TD, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
+                                  <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', color: '#64748B', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#1A1E26' }}>Totaux</td>
                                   <td style={{ ...TD, color: '#334155' }}>—</td>
                                   <td style={TD}>{fmt1(minutes)}</td>
                                   <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{t.pts}</td>
@@ -889,7 +1103,7 @@ export default function MatchDetailPage() {
                       <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
                         <thead>
                           <tr>
-                            <th rowSpan={2} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
+                            <th rowSpan={2} style={{ ...TH, ...PLAYER_COL, textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                             <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
                             <th colSpan={5} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
                             <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Playmaking</th>
@@ -913,7 +1127,7 @@ export default function MatchDetailPage() {
                             const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                             return (
                               <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span style={{ color: '#F1F5F9', fontWeight: 600 }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
+                                <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}>{player ? <span title={playerNameFull(player)} style={{ ...PLAYER_NAME_TEXT, color: '#F1F5F9', fontWeight: 600 }}>{playerNameFull(player)}</span> : <span style={{ color: '#475569' }}>{s.playerId.slice(0, 8)}…</span>}</td>
                                 <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{player ? player.number : '—'}</td>
                                 <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePctRaw, '%')}</td>
                                 <td style={{ ...TD }}>{fmt(adv.usagePct, '%')}</td>
@@ -945,7 +1159,7 @@ export default function MatchDetailPage() {
                         <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
                           <thead>
                             <tr>
-                              <th rowSpan={2} style={{ ...TH, textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
+                              <th rowSpan={2} style={{ ...TH, ...PLAYER_COL, textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A', position: 'sticky', left: 0, zIndex: 2 }}>Joueur</th>
                               <th rowSpan={2} style={{ ...TH, width: 32, textAlign: 'center', verticalAlign: 'middle', borderBottom: '1px solid #2A2F3A' }}>#</th>
                               <th colSpan={5} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Impact offensif</th>
                               <th colSpan={4} style={{ ...TH, borderLeft: '1px solid #334155', borderBottom: 'none', textAlign: 'center', fontSize: '0.6rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Playmaking</th>
@@ -968,8 +1182,8 @@ export default function MatchDetailPage() {
                               const SEP: React.CSSProperties = { borderLeft: '1px solid #334155' };
                               return (
                                 <tr key={s.id} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                  <td style={{ ...TD, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span style={{ color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
-                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>—</td>
+                                  <td style={{ ...TD, ...PLAYER_COL, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span title={s.playerName} style={{ ...PLAYER_NAME_TEXT, color: '#F1F5F9', fontWeight: 600 }}>{s.playerName}</span></td>
+                                  <td style={{ ...TD, color: '#475569', fontSize: '0.72rem', fontWeight: 600 }}>{s.number ?? '—'}</td>
                                   <td style={{ ...TD, ...SEP }}>{fmt(adv.usagePctRaw, '%')}</td>
                                   <td style={{ ...TD }}>{fmt(adv.usagePct, '%')}</td>
                                   <td style={{ ...TD, color: adv.offRating === null ? '#475569' : adv.offRating > 90 ? '#00E5A0' : adv.offRating >= 60 ? '#F59E0B' : '#EF4444' }}>{fmt(adv.offRating)}</td>
@@ -1024,7 +1238,7 @@ export default function MatchDetailPage() {
             });
             const groups: MetricGroup[] = !sA || !sB ? [] : [
               { title: 'Score', metrics: [
-                { label: 'MIN', a: sA.min, b: sB.min, displayA: String(sA.min), displayB: String(sB.min), higherBetter: null },
+                { label: 'MIN', a: sA.min, b: sB.min, displayA: formatMinutes(sA.min), displayB: formatMinutes(sB.min), higherBetter: null },
                 { label: 'PTS', a: sA.pts, b: sB.pts, displayA: String(sA.pts), displayB: String(sB.pts), higherBetter: true },
                 { label: 'ÉVAL', a: sA.eval ?? 0, b: sB.eval ?? 0, displayA: String(sA.eval ?? '—'), displayB: String(sB.eval ?? '—'), higherBetter: true },
                 { label: '+/-', a: sA.plusMinus ?? 0, b: sB.plusMinus ?? 0, displayA: sA.plusMinus != null ? (sA.plusMinus > 0 ? `+${sA.plusMinus}` : String(sA.plusMinus)) : '—', displayB: sB.plusMinus != null ? (sB.plusMinus > 0 ? `+${sB.plusMinus}` : String(sB.plusMinus)) : '—', higherBetter: true },
@@ -1138,47 +1352,7 @@ export default function MatchDetailPage() {
           {activeTab === 'comp_teams' && (() => {
             if (!teamStats) return <EmptyState message="Statistiques collectives requises." />;
             const hasOpp = teamStats.opp_fg2a > 0 || teamStats.opp_fg3a > 0 || teamStats.opp_fta > 0;
-            const f1 = (v: number) => `${v}%`;
-            const f2 = (v: number) => v.toFixed(2);
-            const oppFga = teamStats.opp_fg2a + teamStats.opp_fg3a;
-            // `null` et non 0 quand le dénominateur est nul : « pas de donnée » n'est pas « zéro ».
-            const oppFtRate = oppFga > 0 ? Math.round(teamStats.opp_fta / oppFga * 100) / 100 : null;
-            const oppDrebPct = (teamStats.opp_rd + teamStats.ro) > 0 ? Math.round(teamStats.opp_rd / (teamStats.opp_rd + teamStats.ro) * 1000) / 10 : null;
-            type Row = { label: string; own: number | null; opp: number | null; higherBetter: boolean | null; fmt?: (v: number) => string };
-            const groups: { title: string; rows: Row[] }[] = [
-              { title: 'Score', rows: [
-                { label: 'Points', own: match.scoreUs, opp: match.scoreThem, higherBetter: true },
-                { label: 'ORtg', own: teamStats.offRating, opp: teamStats.defRating, higherBetter: true, fmt: f1 },
-                { label: 'Possessions', own: teamStats.possessions, opp: teamStats.opp_possessions, higherBetter: null },
-              ]},
-              { title: 'Tirs', rows: [
-                { label: 'eFG%', own: teamStats.efgPct, opp: teamStats.opp_efgPct, higherBetter: true, fmt: f1 },
-                { label: '2pts%', own: teamStats.fg2a > 0 ? Math.round(teamStats.fg2m/teamStats.fg2a*100) : 0, opp: teamStats.opp_fg2a > 0 ? Math.round(teamStats.opp_fg2m/teamStats.opp_fg2a*100) : 0, higherBetter: true, fmt: f1 },
-                { label: '3pts%', own: teamStats.fg3a > 0 ? Math.round(teamStats.fg3m/teamStats.fg3a*100) : 0, opp: teamStats.opp_fg3a > 0 ? Math.round(teamStats.opp_fg3m/teamStats.opp_fg3a*100) : 0, higherBetter: true, fmt: f1 },
-                { label: 'LF%', own: teamStats.fta > 0 ? Math.round(teamStats.ftm/teamStats.fta*100) : 0, opp: teamStats.opp_fta > 0 ? Math.round(teamStats.opp_ftm/teamStats.opp_fta*100) : 0, higherBetter: true, fmt: f1 },
-                { label: 'FT Rate', own: teamStats.ftRate, opp: oppFtRate, higherBetter: true, fmt: f2 },
-              ]},
-              { title: 'Rebonds', rows: [
-                { label: 'RT', own: teamStats.rt, opp: teamStats.opp_rt, higherBetter: true },
-                { label: 'RO', own: teamStats.ro, opp: teamStats.opp_ro, higherBetter: true },
-                { label: 'RD', own: teamStats.rd, opp: teamStats.opp_rd, higherBetter: true },
-                { label: 'OREB%', own: teamStats.orebPct, opp: teamStats.opp_orebPct, higherBetter: true, fmt: f1 },
-                { label: 'DREB%', own: teamStats.drebPct, opp: oppDrebPct, higherBetter: true, fmt: f1 },
-              ]},
-              { title: 'Playmaking', rows: [
-                { label: 'PD', own: teamStats.pd, opp: teamStats.opp_pd, higherBetter: true },
-                { label: 'BP', own: teamStats.bp, opp: teamStats.opp_bp, higherBetter: false },
-                { label: 'TO%', own: teamStats.toPct, opp: teamStats.opp_toPct, higherBetter: false, fmt: f1 },
-              ]},
-              { title: 'Défense', rows: [
-                { label: 'CT', own: teamStats.ct, opp: teamStats.opp_ct, higherBetter: true },
-                { label: 'IN', own: teamStats.intercepts, opp: teamStats.opp_intercepts, higherBetter: true },
-              ]},
-              { title: 'Fautes', rows: [
-                { label: 'FTE', own: teamStats.fte, opp: teamStats.opp_fte, higherBetter: false },
-                { label: 'FPR', own: teamStats.fpr, opp: teamStats.opp_fpr, higherBetter: null },
-              ]},
-            ];
+            const groups = buildTeamComparisonGroups(match, teamStats);
             return (
               <div style={{ maxWidth: 540, margin: '0 auto', width: '100%', overflowX: 'auto', border: '1px solid #2A2F3A', borderRadius: 8 }}>
                 <table className="stat-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>

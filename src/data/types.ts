@@ -361,6 +361,9 @@ export interface OpponentMatchStat {
   id: string;
   matchId: string;
   playerName: string;
+  /** Absent sur un match importé par feuille de marque (le format ne le transmet pas) ; présent
+   *  quand la publication vient de la saisie en direct, où l'adversaire a été numéroté. */
+  number: number | null;
   min: number;
   pts: number;
   fg2m: number; fg2a: number;

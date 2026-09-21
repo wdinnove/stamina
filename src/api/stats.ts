@@ -31,6 +31,8 @@ export interface BulkStatRow {
 
 export interface OpponentStatInput {
   playerName: string;
+  /** `null`/absent : match importé par feuille de marque, qui ne le transmet pas. */
+  number?: number | null;
   min: number;
   fg2m: number; fg2a: number;
   fg3m: number; fg3a: number;
@@ -308,6 +310,7 @@ export const statsApi = {
       .insert(rows.map(r => ({
         match_id:   matchId,
         player_name: r.playerName,
+        number:     r.number ?? null,
         min:        r.min,
         fg2m: r.fg2m, fg2a: r.fg2a,
         fg3m: r.fg3m, fg3a: r.fg3a,
@@ -643,6 +646,7 @@ function toOpponentMatchStat(row: Record<string, unknown>): OpponentMatchStat {
     id:         row.id          as string,
     matchId:    row.match_id    as string,
     playerName: row.player_name as string,
+    number:     row.number as number | null,
     min:        n('min'),
     pts:        n('pts'),
     fg2m:       n('fg2m'),  fg2a: n('fg2a'),

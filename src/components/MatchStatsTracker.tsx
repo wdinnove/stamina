@@ -21,6 +21,7 @@ import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents
 import { quarterSplits } from '../data/matchFlow';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
+import { formatMinutes } from '../utils/format';
 import { shotEventValue, shotValue, shotZone, ZONE_LABELS } from '../data/shotChart';
 import { playerNameShort, playerNameFull } from '../utils/playerName';
 import type {
@@ -970,6 +971,9 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
       const oppInputs: OpponentStatInput[] = rowsThem.map(r => ({
         playerName: opponentById.get(r.playerId)?.name ?? '?',
+        // Le numéro vient de la feuille adverse (`match_opponent_players`) : `opponent_match_stats`
+        // n'a longtemps eu aucune colonne pour le porter, et la publication le perdait en silence.
+        number: opponentById.get(r.playerId)?.number ?? null,
         min: r.min,
         fg2m: r.fg2m, fg2a: r.fg2a,
         fg3m: r.fg3m, fg3a: r.fg3a,
@@ -1823,7 +1827,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                     return (
                       <tr key={r.playerId} style={{ borderBottom: '1px solid #1E2229' }}>
                         <td className="tracker-cell">{name}{r.starter && <span style={{ color: '#475569' }}> ★</span>}</td>
-                        <td className="tracker-cell">{r.min > 0 ? r.min.toFixed(1) : '—'}</td>
+                        <td className="tracker-cell">{r.min > 0 ? formatMinutes(r.min) : '—'}</td>
                         <td className="tracker-cell" style={{ fontWeight: 700, color: '#F1F5F9' }}>{r.pts}</td>
                         <td className="tracker-cell">{r.fg2m}/{r.fg2a}</td>
                         <td className="tracker-cell">{r.fg3m}/{r.fg3a}</td>

@@ -141,7 +141,9 @@ try {
   console.log('\n── Publication ──');
   await statsApi.bulkUpsertForMatch(match.id, rowsUs, { ...M, scoreUs: score.us, scoreThem: score.them, result: 'win' });
   await statsApi.bulkUpsertOpponentStatsForMatch(match.id, rowsThem.map(r => ({
-    playerName: 'Dupont', min: r.min, fg2m: r.fg2m, fg2a: r.fg2a, fg3m: r.fg3m, fg3a: r.fg3a,
+    // `opp.number` (7) : reproduit le bug signalé — la publication perdait le numéro de
+    // l'adversaire, faute d'une colonne pour le porter dans `opponent_match_stats`.
+    playerName: 'Dupont', number: opp.number, min: r.min, fg2m: r.fg2m, fg2a: r.fg2a, fg3m: r.fg3m, fg3a: r.fg3a,
     ftm: r.ftm, fta: r.fta, ro: r.ro, rd: r.rd, pd: r.pd, ct: r.ct,
     intercepts: r.intercepts, bp: r.bp, fte: r.fte, fpr: r.fpr, eval: r.eval, plusMinus: r.plusMinus,
   })));
@@ -152,12 +154,14 @@ try {
   t('boxscore publié', published.length === rowsUs.length, `${published.length} ligne(s)`);
   const pub0 = published.find(r => r.playerId === five[0]);
   t('titulaire et minutes publiés', pub0.starter === true && Number(pub0.min) === 10, `starter=${pub0.starter} min=${pub0.min}`);
-  t('statistiques adverses publiées', (await statsApi.listOpponentStatsByMatchId(match.id)).length === 1);
+  const publishedOpp = await statsApi.listOpponentStatsByMatchId(match.id);
+  t('statistiques adverses publiées', publishedOpp.length === 1);
+  t('numéro de l\'adversaire publié et relu', publishedOpp[0]?.number === 7, `number=${publishedOpp[0]?.number}`);
   const teamPub = await statsApi.getTeamStatsByMatchId(match.id);
   t('totaux collectifs publiés', teamPub?.fg3m === 1 && teamPub?.opp_fg3m === 1, `fg3m=${teamPub?.fg3m} opp=${teamPub?.opp_fg3m}`);
   const teamLine = unattributedLine(teamPub, published, 'us');
   t('ligne « Équipe » du boxscore : le rebond sans auteur ressort', teamLine?.rd === 1, `rd=${teamLine?.rd ?? '—'}`);
-  const oppLine = unattributedLine(teamPub, await statsApi.listOpponentStatsByMatchId(match.id), 'them');
+  const oppLine = unattributedLine(teamPub, publishedOpp, 'them');
   t('ligne « Équipe » adverse : le tir anonyme ressort', oppLine?.fg3m === 1 && oppLine?.pts === 3, `fg3m=${oppLine?.fg3m ?? '—'} pts=${oppLine?.pts ?? '—'}`);
 
   const updated = await matchesApi.getById(match.id);
