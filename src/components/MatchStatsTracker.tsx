@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, Download, AlertTriangle, X, Maximize2, Minimize2, Film } from 'lucide-react';
+import { Undo2, Trash2, ChevronDown, Repeat2, ClipboardList, Settings, Upload, Download, AlertTriangle, X, Maximize2, Minimize2, Film, Trophy } from 'lucide-react';
 import { DiagramCourt } from './DiagramCourt';
 import { ShotGrid, SHOT_COLORS } from './ShotChart';
 import { Modal } from './Modal';
@@ -12,12 +12,12 @@ import { statsApi, type BulkStatRow, type OpponentStatInput } from '../api/stats
 import { matchesApi } from '../api/matches';
 import { useMatchClock, PERIOD_PRESETS_MIN, parseClockInput } from '../hooks/useMatchClock';
 import { useUrlSort } from '../hooks/useUrlState';
-import { periodSeconds } from '../data/matchClock';
+import { periodSeconds, REGULATION_PERIODS } from '../data/matchClock';
 import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock, formatGameClock } from '../data/liveTrackingAnalysis';
-import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, trackerHistory, editableTimeWindow, backwardsLineupChange, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type TrackerHistoryEntry } from '../data/matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, isMilestoneEvent, trackerHistory, editableActionTimeWindow, editableLineupTimeWindow, onCourtAt, backwardsLineupChange, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type TrackerHistoryEntry } from '../data/matchEvents';
 import { quarterSplits } from '../data/matchFlow';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
@@ -216,6 +216,12 @@ const SMALL_BTN: React.CSSProperties = {
   fontSize: '0.75rem', cursor: 'pointer',
 };
 
+/** Look désactivé partagé par les boutons de fin de quart-temps/match — un seul endroit à
+ *  ajuster plutôt que trois motifs `opacity`/`cursor` recopiés à la main. */
+const milestoneBtnStyle = (disabled: boolean): React.CSSProperties => ({
+  ...scoreboardBtn, opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
+});
+
 /**
  * Gabarit des boutons de la barre de commandes. Un seul, pour les quatre : côte à côte, des
  * boutons qui ne se ressemblent pas se lisent comme quatre choses de natures différentes.
@@ -265,13 +271,13 @@ const PALETTE_GROUPS: {
     { type: 'reb_def', label: 'Rebond défensif', chain: 'reb' },
     { type: 'reb_off', label: 'Rebond offensif', chain: 'reb' },
   ]},
-  { title: 'Création', buttons: [
+  { title: 'Impact', buttons: [
     { type: 'ast', label: 'Passe décisive', chain: 'ast' },
-    { type: 'tov', label: 'Ballon perdu' },
-  ]},
-  { title: 'Défense', buttons: [
-    { type: 'stl', label: 'Interception' },
     { type: 'blk', label: 'Contre' },
+  ]},
+  { title: 'Ballons', buttons: [
+    { type: 'tov', label: 'Ballon perdu' },
+    { type: 'stl', label: 'Interception' },
   ]},
   { title: 'Fautes', buttons: [
     { type: 'foul',       label: 'Faute commise' },
@@ -568,6 +574,11 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const clockRef = useRef(clock);
   clockRef.current = clock;
 
+  /** Position du chrono juste AVANT le dernier repère de fin posé — de quoi la restaurer si le
+   *  coach annule ce geste. Un seul suffit : on ne peut annuler que le DERNIER geste, jamais un
+   *  repère plus ancien (d'autres actions auraient déjà été posées derrière). */
+  const preMilestoneClockRef = useRef<{ quarter: number; elapsedSeconds: number } | null>(null);
+
   /** `seq` est calculé ICI et pas dans le setter d'état : React rejoue les updaters en mode
    *  strict, ce qui insérerait deux fois la même action en base.
    *
@@ -620,6 +631,48 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     );
     setPendingAction(null);
   }
+
+  /**
+   * Repère « fin de quart-temps » ou « fin de match » posé par le coach — une ACTION comme un tir
+   * ou un changement (tracée dans l'historique, `undo` la retire comme n'importe quelle autre),
+   * pas un simple déplacement de chrono en silence.
+   *
+   * Porte AUSSI le chrono à 00:00 restant : le cinq en place est alors crédité jusqu'au bout du
+   * quart-temps, à l'écran comme à la publication — boxscore et lineups lisent tous ce même
+   * chrono, rien d'autre à recalculer. Utile quand on a laissé filer sans pointer les dernières
+   * secondes, ou qu'une fin à horaire continu s'est arrêtée avant la durée réglementaire.
+   */
+  function recordMilestone(type: 'period_end' | 'match_end') {
+    // Position sauvée AVANT tout effet de bord sur le chrono, pour qu'`undo` puisse la restaurer
+    // si le coach s'est trompé de bouton — `nextPeriod()`/`setRemainingSeconds` ne laissent sinon
+    // aucune trace de la position d'origine.
+    preMilestoneClockRef.current = { quarter: clock.quarter, elapsedSeconds: clock.getElapsedSeconds() };
+    // Le temps de fin (00:00 restant) est passé DIRECTEMENT à l'événement — pas question de
+    // détourner le chrono affiché juste pour le lui faire lire, ce qui le ferait aussi sauter à
+    // 00:00 sous les yeux de quiconque le regarde à cet instant précis.
+    pushEvent({ type, gameTimeSeconds: periodSeconds(clock.quarter, clock.periodDurationSeconds) });
+    // Une fin de quart-temps enchaîne directement sur le suivant, chrono plein et en pause — le
+    // geste qui suit systématiquement dans la vraie vie, pas un clic de plus à faire à part.
+    // Une fin de MATCH, elle, n'a pas de quart-temps suivant : le chrono affiché est juste porté
+    // à 00:00, en pause.
+    if (type === 'period_end') {
+      clock.nextPeriod();
+    } else {
+      clock.setRemainingSeconds(0);
+      clock.pause();
+    }
+  }
+
+  /** Le quart-temps EN COURS porte-t-il déjà son repère de fin ? Un seul suffit — pas de quoi
+   *  bloquer un second clic, `undo` gère déjà le cas où le coach s'est trompé de bouton. */
+  // Mémoïsés : `events` peut compter plusieurs centaines de lignes en fin de match, et ce calcul
+  // se relancerait sinon à chaque tic de seconde du chrono (qui redéclenche un rendu) sans que
+  // `events`/`clock.quarter` n'aient réellement changé.
+  const currentPeriodEnded = useMemo(
+    () => events.some(e => e.type === 'period_end' && e.quarter === clock.quarter),
+    [events, clock.quarter],
+  );
+  const matchEnded = useMemo(() => events.some(e => e.type === 'match_end'), [events]);
 
   /**
    * Plein écran sur l'écran de saisie seul — il n'y a rien d'autre à regarder pendant un match, et
@@ -762,6 +815,15 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    *  pouvait ni vérifier qu'il était parti, ni s'apercevoir qu'on en avait fait un de trop. */
   const history = useMemo(() => trackerHistory(events, lineupEvents), [events, lineupEvents]);
 
+  /** Plus haut quart-temps réellement atteint — PAS `clock.quarter` seul : le coach peut être
+   *  revenu en arrière via « Quart-temps précédent » pour consulter d'anciennes actions, et le
+   *  menu de correction d'une action doit alors continuer à proposer tous les quarts-temps déjà
+   *  joués, pas seulement celui affiché en ce moment. */
+  const maxQuarterReached = useMemo(
+    () => Math.max(clock.quarter, ...events.map(e => e.quarter), ...lineupEvents.map(l => l.quarter)),
+    [clock.quarter, events, lineupEvents],
+  );
+
   /**
    * Annule le DERNIER GESTE, quel qu'il soit — depuis que les changements figurent dans
    * l'historique, un bouton qui n'annulerait que les actions mentirait.
@@ -784,7 +846,14 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       return;
     }
     const last = events.at(-1);
-    if (last) removeEvent(last.seq);
+    if (!last) return;
+    // Un repère de fin a déplacé le chrono comme effet de bord (quart-temps suivant, ou 00:00) :
+    // l'annuler sans le restaurer laisserait la saisie continuer au mauvais quart-temps.
+    if (isMilestoneEvent(last.type) && preMilestoneClockRef.current) {
+      clockRef.current.setPosition(preMilestoneClockRef.current.quarter, preMilestoneClockRef.current.elapsedSeconds);
+      preMilestoneClockRef.current = null;
+    }
+    removeEvent(last.seq);
   }, [lastEntry, events, removeEvent, match.id, persist]);
 
   /* ── Rotations ─────────────────────────────────────────────────────────── */
@@ -1079,28 +1148,48 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     h.kind === 'event' ? `e${h.event.seq}` : `l${h.lineup.side}${h.lineup.seq}`;
 
   /**
-   * Corrige le temps d'une ligne d'historique. Le quart-temps, lui, ne bouge pas : il détermine
-   * les scores par quart-temps publiés, et le corriger est une autre réparation.
+   * Corrige le temps — et pour une ACTION, éventuellement le quart-temps — d'une ligne
+   * d'historique. Un CHANGEMENT DE BANC, lui, ne change jamais de quart-temps : il détermine les
+   * scores par quart-temps publiés, et le corriger est une autre réparation.
    *
    * La correction est REFUSÉE hors de la fenêtre autorisée plutôt que rabotée en silence : un
    * temps ramené tout seul à la borne serait faux sans que personne l'ait demandé, et la raison
    * du refus (« ce changement est là ») est justement ce qu'il faut lire pour corriger.
    */
   function commitTimeEdit(h: TrackerHistoryEntry, raw: string) {
+    const quarter = timeEdit?.quarter ?? h.quarter;
     const remaining = parseClockInput(raw);
     // Saisi en décompte comme la table de marque, stocké en temps écoulé comme le reste de la base.
     const seconds = remaining === null
       ? null
-      : periodSeconds(h.quarter, clock.periodDurationSeconds) - remaining;
-    const window = editableTimeWindow(h, events, lineupEvents, clock.periodDurationSeconds);
+      : periodSeconds(quarter, clock.periodDurationSeconds) - remaining;
+    const window = h.kind === 'event'
+      ? editableActionTimeWindow(quarter, clock.periodDurationSeconds)
+      : editableLineupTimeWindow(h, events, lineupEvents, clock.periodDurationSeconds);
     if (seconds === null || seconds < window.min || seconds > window.max) {
       setTimeEdit(prev => prev && { ...prev, refused: true });
       return;
     }
 
     if (h.kind === 'event') {
-      setEvents(prev => prev.map(e => e.seq === h.event.seq ? { ...e, gameTimeSeconds: seconds } : e));
-      enqueueUpdateTime(match.id, h.event.seq, seconds);
+      // Le déplacement peut traverser un changement de banc, voire un quart-temps : l'instantané
+      // de cinq est recalculé plutôt que conservé, sinon les points resteraient crédités au cinq
+      // qui jouait à l'ANCIEN temps, plus forcément celui qui joue au nouveau.
+      const onCourt     = onCourtAt(lineupEvents.filter(e => e.side === 'us'),   quarter, seconds);
+      const onCourtThem = onCourtAt(lineupEvents.filter(e => e.side === 'them'), quarter, seconds);
+      // Un camp dont le quart-temps a déjà une composition connue ne doit jamais retomber à [] :
+      // ce serait déplacer l'action avant la toute première rotation posée, et elle disparaîtrait
+      // en silence des stats de lineup et du +/- (qui ignorent un onCourt vide).
+      const hasRoster = (side: LineupSide) => lineupEvents.some(e => e.side === side && e.quarter === quarter);
+      if ((hasRoster('us') && onCourt.length === 0) || (hasRoster('them') && onCourtThem.length === 0)) {
+        setTimeEdit(prev => prev && { ...prev, refused: true });
+        return;
+      }
+      setEvents(prev => prev.map(e => e.seq === h.event.seq ? { ...e, quarter, gameTimeSeconds: seconds, onCourt, onCourtThem } : e));
+      // Toujours transmis, pas seulement quand le quart-temps change : une action peut désormais
+      // traverser une rotation SANS changer de quart-temps, et l'instantané doit suivre à chaque
+      // fois — sinon la base garde le cinq d'avant pendant que l'écran affiche le bon.
+      enqueueUpdateTime(match.id, h.event.seq, seconds, { quarter, onCourt, onCourtThem });
     } else {
       const { side, seq } = h.lineup;
       setLineupEvents(prev => prev.map(e => e.side === side && e.seq === seq ? { ...e, gameTimeSeconds: seconds } : e));
@@ -1113,8 +1202,18 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    *  mieux que se faire refuser après. */
   function openTimeEdit(h: TrackerHistoryEntry) {
     if (!canEdit) return;
-    const { min, max } = editableTimeWindow(h, events, lineupEvents, clock.periodDurationSeconds);
+    const { min, max } = h.kind === 'event'
+      ? editableActionTimeWindow(h.quarter, clock.periodDurationSeconds)
+      : editableLineupTimeWindow(h, events, lineupEvents, clock.periodDurationSeconds);
     setTimeEdit({ key: entryKey(h), quarter: h.quarter, value: gameClock(h.quarter, h.gameTimeSeconds), min, max, refused: false });
+  }
+
+  /** Change le quart-temps CANDIDAT d'une action en cours de correction — sa fenêtre dépend de ce
+   *  quart-temps, donc elle se recalcule avec lui. Sans effet sur un changement de banc (pas de
+   *  sélecteur affiché pour ce cas, voir le rendu — seule une action a ce menu). */
+  function changeTimeEditQuarter(quarter: number) {
+    const { min, max } = editableActionTimeWindow(quarter, clock.periodDurationSeconds);
+    setTimeEdit(prev => prev && { ...prev, quarter, min, max, refused: false });
   }
 
   /**
@@ -1129,9 +1228,31 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     () => backwardsLineupChange(lineupEvents, clock.periodDurationSeconds),
     [lineupEvents, clock.periodDurationSeconds],
   );
+
+  /** `backwardsLineupChange` rend déjà les objets `MatchLineupEvent` EUX-MÊMES (mêmes références
+   *  que dans `lineupEvents`) : pas besoin de les re-rechercher par `seq`. */
+  const backwardsPrevious = backwards?.previous;
+  const backwardsCurrent  = backwards?.current;
+  const backwardsEntry: TrackerHistoryEntry | null = backwardsCurrent
+    ? { kind: 'lineup', quarter: backwardsCurrent.quarter, gameTimeSeconds: backwardsCurrent.gameTimeSeconds, lineup: backwardsCurrent }
+    : null;
+
+  /** La liste d'historique est triée par TEMPS, pas par ordre de saisie : les deux changements en
+   *  cause dans `backwards` s'y affichent donc déjà l'un après l'autre dans le bon sens, comme
+   *  n'importe quelle autre paire — rien ne les distingue à l'œil. D'où ce surlignage : sans lui,
+   *  parcourir la liste ne montre aucune « erreur de temps » visible, seulement deux lignes
+   *  normales, ce qui est exactement ce qui a été signalé comme trompeur.
+   *
+   *  Comparaison par RÉFÉRENCE (même objet que `backwardsCurrent`/`backwardsPrevious`), pas en
+   *  recopiant la règle d'appariement de `backwardsLineupChange` : les deux ne peuvent alors pas
+   *  diverger si cette règle change un jour. */
+  const isBackwardsRow = (h: TrackerHistoryEntry) =>
+    h.kind === 'lineup' && (h.lineup === backwardsCurrent || h.lineup === backwardsPrevious);
+
   const entrySide = (h: TrackerHistoryEntry) => (h.kind === 'event' ? h.event.side : h.lineup.side);
 
   function eventText(e: MatchEvent): string {
+    if (isMilestoneEvent(e.type)) return EVENT_LABELS[e.type];
     const author = e.side === 'us'
       ? (e.playerId ? playerNameShort(playerById.get(e.playerId)!) : 'équipe')
       : (e.opponentPlayerId ? (opponentById.get(e.opponentPlayerId)?.name ?? '?') : 'adv');
@@ -1286,13 +1407,25 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       {backwards && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.78rem', lineHeight: 1.5 }}>
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>
-            Un changement {backwards.side === 'us' ? 'de votre banc' : 'du banc adverse'} est daté{' '}
+          <span style={{ flex: 1 }}>
+            Changement {backwards.side === 'us' ? 'chez vous' : "chez l'adversaire"}
+            {backwardsCurrent && <> (<em>{lineupText(backwardsCurrent)}</em>)</>} noté à{' '}
             <strong style={{ color: '#FBBF24' }}>{periodLabel(backwards.current.quarter)} {gameClock(backwards.current.quarter, backwards.current.gameTimeSeconds)}</strong>,
-            après un autre daté {periodLabel(backwards.previous.quarter)} {gameClock(backwards.previous.quarter, backwards.previous.gameTimeSeconds)} —
-            le cinq entre les deux est donc compté <strong style={{ color: '#FBBF24' }}>zéro seconde</strong>.
-            Corrigez son temps dans l'historique&nbsp;; si un quart-temps a commencé entre les deux, passez d'abord au quart-temps suivant.
+            mais celui juste avant{backwardsPrevious && <> (<em>{lineupText(backwardsPrevious)}</em>)</>} est noté à{' '}
+            <strong style={{ color: '#FBBF24' }}>{periodLabel(backwards.previous.quarter)} {gameClock(backwards.previous.quarter, backwards.previous.gameTimeSeconds)}</strong> —
+            l'heure recule, ce qui n'est pas possible. Les joueurs sur le terrain entre les deux sont donc comptés avec <strong style={{ color: '#FBBF24' }}>0 seconde</strong> de temps de jeu.
+            {canEdit && backwardsEntry && (
+              <>
+                {' '}Cliquez sur « Corriger » pour ajuster l'heure. Si ce changement a en fait eu lieu au quart-temps suivant, changez d'abord de quart-temps, supprimez cette ligne, puis renotez-la au bon moment.
+              </>
+            )}
           </span>
+          {canEdit && backwardsEntry && (
+            <button onClick={() => { setShowFullHistory(true); openTimeEdit(backwardsEntry); }}
+              style={{ ...SMALL_BTN, height: 26, borderColor: '#F59E0B', color: '#F59E0B', flexShrink: 0 }}>
+              Corriger
+            </button>
+          )}
         </div>
       )}
 
@@ -1302,12 +1435,82 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         </div>
       )}
 
+      {/* Repère posé par le coach (bouton « Terminer le match » ci-dessous) — pas une déduction du
+          chrono : un quart-temps qui touche 00:00 tout seul ne veut pas dire que le match est fini
+          (prolongation à jouer). Reste affiché après publication : le rappel ne coûte rien tant
+          qu'on est sur cet écran. */}
+      {matchEnded && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.3)', borderRadius: 6, padding: '7px 12px', color: '#00E5A0', fontSize: '0.78rem' }}>
+          <Trophy size={15} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>Match terminé.</span>
+          {canEdit && (
+            <button onClick={openPublish} disabled={publishState !== 'idle' || events.length === 0}
+              style={{ ...SMALL_BTN, height: 28, borderColor: '#00E5A0', color: '#00E5A0' }}>
+              Publier
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Table de marque + chrono : le bloc PARTAGÉ avec le suivi live (`MatchScoreboard`) — deux
           écrans du même produit ouverts pendant le même match ne peuvent pas afficher deux tables
-          de marque différentes. Le chrono s'y corrige au clic, comme là-bas. */}
+          de marque différentes. Le chrono s'y corrige au clic, comme là-bas.
+
+          Les boutons de fin de quart-temps/match vivent dans `extraControls`, sur la même ligne
+          que les commandes du chrono : ce sont des gestes de MATCH (des actions tracées dans
+          l'historique), pas des réglages de l'écran — ils n'ont donc rien à faire dans la barre
+          de commandes du haut (plein écran, publier, exporter, réglages). */}
       <MatchScoreboard
         ourTeamName={ourTeamName} teamColor={teamColor} opponentName={opponentName}
         scoreUs={score.us} scoreThem={score.them} clock={clock} canEdit={canEdit}
+        extraControls={
+          // Avant le dernier quart-temps réglementaire, la seule question est « ce quart-temps
+          // est-il fini ? ». À partir de là, il s'en ajoute une seconde — prolongation ou match
+          // décidé — donc deux boutons plutôt qu'un, avec des libellés qui parlent de basket
+          // plutôt qu'une icône à deviner.
+          clock.quarter < REGULATION_PERIODS ? (
+            <button
+              onClick={() => ask({
+                title: 'Terminer ce quart-temps ?',
+                detail: `${periodLabel(clock.quarter)} — porte le chrono à 00:00 (le cinq en place est crédité jusqu'au bout), puis enchaîne sur ${periodLabel(clock.quarter + 1)}.`,
+                confirmLabel: 'Terminer le quart-temps',
+                run: () => recordMilestone('period_end'),
+              })}
+              disabled={currentPeriodEnded}
+              title={currentPeriodEnded ? `${periodLabel(clock.quarter)} déjà terminé` : undefined}
+              style={milestoneBtnStyle(currentPeriodEnded)}>
+              Fin du QT
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => ask({
+                  title: 'Passer en prolongation ?',
+                  detail: `${periodLabel(clock.quarter)} — porte le chrono à 00:00, puis enchaîne sur la prolongation suivante (${periodLabel(clock.quarter + 1)}).`,
+                  confirmLabel: 'Passer en prolongation',
+                  run: () => recordMilestone('period_end'),
+                })}
+                disabled={currentPeriodEnded || matchEnded}
+                title={currentPeriodEnded ? `${periodLabel(clock.quarter)} déjà terminé` : matchEnded ? 'Match déjà terminé' : undefined}
+                style={milestoneBtnStyle(currentPeriodEnded || matchEnded)}>
+                Prolongation
+              </button>
+              {/* Tout à droite : le geste le plus engageant du groupe, celui qui clôt le match. */}
+              <button
+                onClick={() => ask({
+                  title: 'Terminer le match ?',
+                  detail: 'Porte le chrono à 00:00 et marque le match comme terminé — un rappel à publier reste affiché.',
+                  confirmLabel: 'Terminer le match',
+                  run: () => recordMilestone('match_end'),
+                })}
+                disabled={matchEnded}
+                title={matchEnded ? 'Match déjà terminé' : undefined}
+                style={milestoneBtnStyle(matchEnded)}>
+                Fin de match
+              </button>
+            </>
+          )
+        }
       />
 
       {/* Accusé de réception : la dernière action enregistrée s'allume ici, juste sous le score,
@@ -1372,15 +1575,43 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         {showFullHistory && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 260, overflowY: 'auto', marginTop: 10, paddingTop: 10, borderTop: '1px solid #1E2229' }}>
             {history.map(h => (
-              <div key={entryKey(h)} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.76rem' }}>
+              <div key={entryKey(h)} style={{
+                display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.76rem',
+                backgroundColor: isBackwardsRow(h) ? 'rgba(245,158,11,0.14)' : undefined,
+                borderRadius: isBackwardsRow(h) ? 4 : undefined,
+              }}>
+                {isBackwardsRow(h) && (
+                  <span title="En cause dans l'alerte de temps ci-dessus" style={{ flexShrink: 0, display: 'flex' }}>
+                    <AlertTriangle size={12} color="#F59E0B" aria-label="En cause dans l'alerte de temps ci-dessus" />
+                  </span>
+                )}
                 {/* Le temps se corrige sur place — c'est la seule donnée d'une ligne déjà
                     enregistrée qu'on puisse avoir tapée de travers sans s'en apercevoir, et pour
                     qui pose le temps à la main à chaque changement, c'est le geste le plus
                     fréquent. La fenêtre autorisée est calculée à l'ouverture, pas à la validation :
-                    autant la lire avant de taper. */}
+                    autant la lire avant de taper.
+
+                    Le quart-temps se corrige avec, mais SEULEMENT pour une action : un changement
+                    de banc détermine les scores publiés par quart-temps, le corriger est une autre
+                    réparation (cf. `editableLineupTimeWindow`). */}
                 {canEdit && timeEdit?.key === entryKey(h) ? (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <span style={{ color: '#475569', fontFamily: 'monospace' }}>{periodLabel(h.quarter)}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+                    onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setTimeEdit(null); }}>
+                    {h.kind === 'event' ? (
+                      <select
+                        value={timeEdit.quarter}
+                        onChange={e => changeTimeEditQuarter(Number(e.target.value))}
+                        onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); setTimeEdit(null); } }}
+                        aria-label="Corriger le quart-temps de cette action"
+                        style={{ height: 26, padding: '0 2px', borderRadius: 4, fontFamily: 'monospace', fontSize: '0.72rem', backgroundColor: '#0D0F14', border: '1px solid #2A2F3A', color: '#94A3B8' }}
+                      >
+                        {Array.from({ length: maxQuarterReached }, (_, i) => i + 1).map(q => (
+                          <option key={q} value={q}>{periodLabel(q)}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span style={{ color: '#475569', fontFamily: 'monospace' }}>{periodLabel(h.quarter)}</span>
+                    )}
                     <input
                       autoFocus value={timeEdit.value}
                       onChange={e => setTimeEdit(prev => prev && { ...prev, value: e.target.value, refused: false })}
@@ -1388,11 +1619,10 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                         if (e.key === 'Enter')  { e.preventDefault(); commitTimeEdit(h, timeEdit.value); }
                         if (e.key === 'Escape') { e.preventDefault(); setTimeEdit(null); }
                       }}
-                      onBlur={() => setTimeEdit(null)}
                       aria-label="Corriger le temps de cette ligne"
                       style={{ width: 62, height: 26, padding: '0 6px', borderRadius: 4, fontFamily: 'monospace', fontSize: '0.76rem', textAlign: 'center', backgroundColor: '#0D0F14', border: `1px solid ${timeEdit.refused ? '#EF4444' : '#00E5A0'}`, color: '#F1F5F9' }}
                     />
-                    <span title="Au-delà, la ligne franchirait un changement de banc et son cinq ne serait plus le bon"
+                    <span title={h.kind === 'lineup' ? 'Au-delà, la ligne franchirait un changement de banc et son cinq ne serait plus le bon' : undefined}
                       style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: timeEdit.refused ? '#EF4444' : '#475569' }}>
                       {gameClock(timeEdit.quarter, timeEdit.min)}–{gameClock(timeEdit.quarter, timeEdit.max)}
                     </span>

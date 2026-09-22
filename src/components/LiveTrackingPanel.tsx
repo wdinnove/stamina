@@ -14,7 +14,7 @@ import {
   playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, periodLabel, formatClock, formatGameClock,
   rentabiliteColor, OFFENSE_THRESHOLDS, DEFENSE_THRESHOLDS,
 } from '../data/liveTrackingAnalysis';
-import { scoreFromEvents } from '../data/matchEvents';
+import { scoreFromEvents, isMilestoneEvent } from '../data/matchEvents';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type {
   Match, Player, Play, MatchOpponentPlayer, MatchLineupEvent, MatchLiveAction, MatchEvent, LineupSide, LiveSide,
@@ -137,7 +137,9 @@ export function LiveTrackingPanel({ match, players, canEdit }: LiveTrackingPanel
       setActions(acts);
       setPlays(teamPlays);
       setRosterIds(roster);
-      setStatEvents(trackedCount);
+      // Les repères « fin de quart-temps »/« fin de match » ne sont pas des actions statistiques :
+      // ce compteur croisé avec la saisie simplifiée ne doit pas les inclure.
+      setStatEvents(trackedCount.filter(e => !isMilestoneEvent(e.type)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {

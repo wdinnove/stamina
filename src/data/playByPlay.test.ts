@@ -45,6 +45,14 @@ describe('playByPlayRows', () => {
     expect(col(row, 'Score nous')).toBe('2');
   });
 
+  it('rend un repère de fin de quart-temps/match sans auteur ni points, sans planter', () => {
+    const [row] = playByPlayRows([ev({ seq: 1, type: 'period_end' })], NAMES, 600);
+    expect(col(row, 'Action')).toBe('Fin de quart-temps');
+    expect(col(row, 'Joueur')).toBe('');
+    expect(col(row, 'Résultat')).toBe('');
+    expect(col(row, 'Points')).toBe('');
+  });
+
   it('laisse le joueur vide sur une action adverse anonyme — cas normal, pas une donnée manquante', () => {
     const [row] = playByPlayRows([ev({ seq: 1, side: 'them', type: 'reb_def' })], NAMES, 600);
     expect(col(row, 'Joueur')).toBe('');

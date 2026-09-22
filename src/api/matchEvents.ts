@@ -1,5 +1,6 @@
 import { supabase } from './client';
 import type { MatchEvent } from '../data/types';
+import type { EventTimePatch } from '../data/eventQueue';
 
 /**
  * Flux d'événements de la prise de statistiques en direct (`match_events`).
@@ -64,12 +65,21 @@ export const matchEventsApi = {
     if (error) throw error;
   },
 
-  /** Corrige le TEMPS d'une action, jamais son quart-temps ni son instantané de cinq : la fenêtre
-   *  autorisée (`editableTimeWindow`) garantit qu'ils restent valables. */
-  async updateTime(matchId: string, seq: number, gameTimeSeconds: number): Promise<void> {
+  /**
+   * Corrige le temps d'une action et, quand `patch` est fourni, son quart-temps et son instantané
+   * de cinq recalculé (`onCourtAt`, côté appelant — voir `commitTimeEdit` : il le fournit à
+   * CHAQUE correction d'action, pas seulement quand le quart-temps change, car une action peut
+   * désormais traverser une rotation dans le même quart-temps).
+   */
+  async updateTime(
+    matchId: string, seq: number, gameTimeSeconds: number,
+    patch?: EventTimePatch,
+  ): Promise<void> {
     const { error } = await supabase
       .from('match_events')
-      .update({ game_time_seconds: gameTimeSeconds })
+      .update(patch
+        ? { game_time_seconds: gameTimeSeconds, quarter: patch.quarter, on_court: patch.onCourt, on_court_them: patch.onCourtThem }
+        : { game_time_seconds: gameTimeSeconds })
       .eq('match_id', matchId).eq('seq', seq);
     if (error) throw error;
   },

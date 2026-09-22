@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shotValue, shotZone, zoneStats } from './shotChart';
-import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, trackerHistory, editableTimeWindow, backwardsLineupChange, sortLineupRows, type EventLineupRow, type PlayerBoxscoreRow } from './matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, isMilestoneEvent, trackerHistory, editableActionTimeWindow, editableLineupTimeWindow, backwardsLineupChange, sortLineupRows, type EventLineupRow, type PlayerBoxscoreRow } from './matchEvents';
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, MatchLineupEvent } from './types';
 
@@ -147,6 +147,25 @@ describe('boxscoreFromEvents', () => {
     expect(rows[0].min).toBe(5);
     expect(rows[0].pts).toBe(0);
   });
+
+  it('un repère de fin de quart-temps/match ne modifie AUCUNE colonne de stat', () => {
+    // Même avec un auteur (le champ l'admet, `event_one_author` ne l'interdit pas) : le switch
+    // n'a aucun cas pour ces deux types, et c'est voulu — sinon un « Fin de match » ferait
+    // apparaître une ligne de stat fantôme.
+    const rows = boxscoreFromEvents([ev({ playerId: 'p1', type: 'period_end', onCourt: ['p1', 'p2'] })], lineups, 600, 1, 600);
+    const p1 = rows.find(r => r.playerId === 'p1')!;
+    expect(p1).toMatchObject({
+      pts: 0, fg2a: 0, fg3a: 0, fta: 0, ro: 0, rd: 0, pd: 0, ct: 0, intercepts: 0, bp: 0, fte: 0, fpr: 0,
+    });
+  });
+});
+
+describe('isMilestoneEvent', () => {
+  it('distingue les repères des vraies actions', () => {
+    expect(isMilestoneEvent('period_end')).toBe(true);
+    expect(isMilestoneEvent('match_end')).toBe(true);
+    expect(isMilestoneEvent('shot')).toBe(false);
+  });
 });
 
 describe('possessionsFromEvents', () => {
@@ -242,6 +261,11 @@ describe('teamTotalsFromEvents', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].fg2a).toBe(0);
   });
+
+  it('ignore les repères de fin de quart-temps/match', () => {
+    const events = [ev({ x: 7.5, y: 9.0, made: true }), ev({ type: 'period_end' })];
+    expect(teamTotalsFromEvents(events, 'us')).toMatchObject({ fg3a: 1, fg3m: 1 });
+  });
 });
 
 describe('evaluation', () => {
@@ -311,7 +335,20 @@ describe('trackerHistory', () => {
   });
 });
 
-describe('editableTimeWindow', () => {
+describe('editableActionTimeWindow', () => {
+  it('couvre tout le quart-temps demandé, sans aucune borne de voisinage', () => {
+    // Son instantané de cinq se recalcule à chaque correction (`onCourtAt`), rien à borner ici.
+    expect(editableActionTimeWindow(1, 600)).toEqual({ min: 0, max: 600 });
+  });
+
+  it('prévisualise la fenêtre d\'un quart-temps candidat, prolongation comprise', () => {
+    // Cinq minutes, quelle que soit la durée réglementaire — utile pour prévisualiser avant de
+    // valider un déplacement d'action vers une prolongation.
+    expect(editableActionTimeWindow(5, 600)).toEqual({ min: 0, max: 300 });
+  });
+});
+
+describe('editableLineupTimeWindow', () => {
   const ev = (seq: number, gameTimeSeconds: number, quarter = 1): MatchEvent => ({
     matchId: 'm1', seq, quarter, gameTimeSeconds, side: 'us', type: 'ast',
     playerId: 'p1', onCourt: [], onCourtThem: [],
@@ -320,41 +357,14 @@ describe('editableTimeWindow', () => {
     matchId: 'm1', seq, side, quarter, gameTimeSeconds,
     playersIn: [], playersOut: [], onCourt: [],
   });
-  const forEvent  = (e: MatchEvent) => ({ kind: 'event' as const,  quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds, event: e });
   const forLineup = (l: MatchLineupEvent) => ({ kind: 'lineup' as const, quarter: l.quarter, gameTimeSeconds: l.gameTimeSeconds, lineup: l });
 
-  it('borne une action aux deux changements qui l\'encadrent', () => {
-    const a = ev(2, 250);
-    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 120), lu(2, 400)], 600)).toEqual({ min: 120, max: 400 });
-  });
-
-  it('compte AUSSI les changements du banc adverse', () => {
-    // L'action porte les DEUX cinq : franchir un changement adverse fausserait le second.
-    const a = ev(1, 250);
-    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 120), lu(1, 300, 'them')], 600))
-      .toEqual({ min: 120, max: 300 });
-  });
-
-  it('ignore les changements des autres quart-temps', () => {
-    const a = ev(1, 250, 2);
-    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 400, 'us', 1), lu(2, 500, 'us', 3)], 600))
-      .toEqual({ min: 0, max: 600 });
-  });
-
-  it('borne au quart-temps quand aucun changement n\'existe', () => {
-    const a = ev(1, 250);
-    expect(editableTimeWindow(forEvent(a), [a], [], 600)).toEqual({ min: 0, max: 600 });
+  it('borne au quart-temps quand aucun voisin n\'existe', () => {
+    const l = lu(1, 250);
+    expect(editableLineupTimeWindow(forLineup(l), [], [l], 600)).toEqual({ min: 0, max: 600 });
     // Prolongation : cinq minutes, quelle que soit la durée réglementaire.
-    const ot = ev(1, 60, 5);
-    expect(editableTimeWindow(forEvent(ot), [ot], [], 600)).toEqual({ min: 0, max: 300 });
-  });
-
-  it('interdit à une action de repasser AVANT le changement du même instant', () => {
-    // Chrono à l'arrêt : le changement et les actions qui suivent portent le même temps. L'action
-    // a été pointée après, son cinq est celui d'après — elle ne peut pas remonter plus haut.
-    const a = ev(1, 168);
-    expect(editableTimeWindow(forEvent(a), [a], [lu(1, 168), lu(2, 300)], 600))
-      .toEqual({ min: 168, max: 300 });
+    const ot = lu(1, 60, 'us', 5);
+    expect(editableLineupTimeWindow(forLineup(ot), [], [ot], 600)).toEqual({ min: 0, max: 300 });
   });
 
   it('laisse un changement reculer jusqu\'à la dernière action qui le précède', () => {
@@ -363,15 +373,18 @@ describe('editableTimeWindow', () => {
     const before = ev(1, 90);
     const after  = [ev(2, 168), ev(3, 168)];
     const l = lu(2, 168);
-    expect(editableTimeWindow(forLineup(l), [before, ...after], [lu(1, 60), l], 600))
+    expect(editableLineupTimeWindow(forLineup(l), [before, ...after], [lu(1, 60), l], 600))
       .toEqual({ min: 90, max: 168 });
   });
 
   it('ne se borne pas à lui-même', () => {
     const l = lu(1, 200);
-    expect(editableTimeWindow(forLineup(l), [], [l], 600)).toEqual({ min: 0, max: 600 });
+    expect(editableLineupTimeWindow(forLineup(l), [], [l], 600)).toEqual({ min: 0, max: 600 });
   });
 });
+
+// `onCourtAt` est testée dans liveTrackingAnalysis.test.ts, où vit son implémentation partagée
+// avec `recomputeOnCourtSnapshots` — ce fichier ne fait que la ré-exporter.
 
 describe('backwardsLineupChange', () => {
   const lu = (seq: number, gameTimeSeconds: number, quarter = 1, side: 'us' | 'them' = 'us'): MatchLineupEvent => ({
@@ -393,8 +406,8 @@ describe('backwardsLineupChange', () => {
     // cinq entre les deux est crédité de rien.
     expect(backwardsLineupChange([lu(1, 480), lu(2, 60)], 600)).toMatchObject({
       side: 'us',
-      previous: { quarter: 1, gameTimeSeconds: 480 },
-      current:  { quarter: 1, gameTimeSeconds: 60 },
+      previous: { quarter: 1, gameTimeSeconds: 480, seq: 1 },
+      current:  { quarter: 1, gameTimeSeconds: 60, seq: 2 },
     });
   });
 

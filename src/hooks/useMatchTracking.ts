@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { matchEventsApi } from '../api/matchEvents';
 import { matchLiveApi } from '../api/matchLive';
+import { isMilestoneEvent } from '../data/matchEvents';
 import type { MatchEvent, MatchLineupEvent, MatchOpponentPlayer } from '../data/types';
 
 /**
@@ -26,7 +27,7 @@ export interface MatchTracking {
 }
 
 export function useMatchTracking(matchId: string): MatchTracking {
-  const [events, setEvents] = useState<MatchEvent[]>([]);
+  const [rawEvents, setRawEvents] = useState<MatchEvent[]>([]);
   const [lineupEvents, setLineupEvents] = useState<MatchLineupEvent[]>([]);
   const [opponents, setOpponents] = useState<MatchOpponentPlayer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +42,7 @@ export function useMatchTracking(matchId: string): MatchTracking {
         matchLiveApi.getLineupEvents(matchId),
         matchLiveApi.getOpponentPlayers(matchId),
       ]);
-      setEvents(evts);
+      setRawEvents(evts);
       setLineupEvents(lineups);
       setOpponents(opps);
     } catch (err) {
@@ -55,14 +56,21 @@ export function useMatchTracking(matchId: string): MatchTracking {
 
   const { lastQuarter, lastElapsedSeconds } = useMemo(() => {
     let q = 1, s = 0;
-    for (const e of [...events, ...lineupEvents]) {
+    // Les repères « fin de quart-temps »/« fin de match » comptent ICI : c'est justement ce qui
+    // permet de dater la vraie fin du match plutôt que de la sous-estimer à la dernière action.
+    for (const e of [...rawEvents, ...lineupEvents]) {
       if (e.quarter > q || (e.quarter === q && e.gameTimeSeconds > s)) {
         q = e.quarter;
         s = e.gameTimeSeconds;
       }
     }
     return { lastQuarter: q, lastElapsedSeconds: s };
-  }, [events, lineupEvents]);
+  }, [rawEvents, lineupEvents]);
+
+  /** Les repères de fin ne sont PAS des actions : les onglets de lecture (courbe, QT par QT,
+   *  grille de tir, lineups) ne doivent ni les afficher ni les compter — ils n'existent que pour
+   *  dater la fin du match, déjà exploité ci-dessus. */
+  const events = useMemo(() => rawEvents.filter(e => !isMilestoneEvent(e.type)), [rawEvents]);
 
   return {
     events, lineupEvents, opponents,

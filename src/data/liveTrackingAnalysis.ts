@@ -167,10 +167,43 @@ export function playingTime(
 }
 
 /**
+ * Dernier `onCourt` connu à un instant donné (quart-temps, temps), sur une liste déjà ramenée à UN
+ * SEUL banc — la même question posée deux fois dans cette base (ici et pour recaler une action
+ * déplacée dans `matchEvents.ts`), donc une seule réponse.
+ *
+ * Comparaison LEXICOGRAPHIQUE (quart-temps, puis temps, puis `seq` pour départager une égalité) :
+ * équivalente à l'axe absolu (`absoluteSeconds`) sans avoir besoin de connaître la durée de chaque
+ * quart-temps, tant que `gameTimeSeconds` reste dans les bornes de son propre quart-temps — ce qui
+ * est toujours vrai ici. Égalité de temps = déjà joué, même convention que `trackerHistory`
+ * (« le changement précède l'action »).
+ *
+ * Ne suppose PAS la liste déjà triée (elle ne l'est pas forcément : `seq` peut être daté dans le
+ * désordre après une correction de temps, cf. `backwardsLineupChange`) : un seul passage linéaire
+ * qui garde le plus grand, plutôt qu'un tri à chaque appel.
+ */
+export function onCourtAt<T extends { quarter: number; gameTimeSeconds: number; seq: number; onCourt: string[] }>(
+  stream: T[],
+  targetQuarter: number,
+  targetTime: number,
+): string[] {
+  let best: T | undefined;
+  for (const item of stream) {
+    const atOrBefore = item.quarter < targetQuarter || (item.quarter === targetQuarter && item.gameTimeSeconds <= targetTime);
+    if (!atOrBefore) continue;
+    const better = !best
+      || item.quarter > best.quarter
+      || (item.quarter === best.quarter && item.gameTimeSeconds > best.gameTimeSeconds)
+      || (item.quarter === best.quarter && item.gameTimeSeconds === best.gameTimeSeconds && item.seq > best.seq);
+    if (better) best = item;
+  }
+  return best?.onCourt ?? [];
+}
+
+/**
  * Recalcule les instantanés `onCourt` après la suppression d'un changement de banc — seul cas où
  * une suppression a un effet en cascade (une action, elle, ne détermine jamais l'état d'une autre
  * ligne). Rejoue chaque banc séparément dans l'ordre de rang (`seq`), puis retrouve pour chaque
- * action le dernier cinq connu de chaque banc à son (quarter, gameTimeSeconds).
+ * action le dernier cinq connu de chaque banc à son (quarter, gameTimeSeconds) via `onCourtAt`.
  *
  * Pure — ne touche pas la base : à l'appelant de comparer avant/après et de persister les seules
  * lignes dont `onCourt` a réellement changé.
@@ -184,7 +217,7 @@ export function recomputeOnCourtSnapshots(
   (Object.keys(bySide) as LineupSide[]).forEach(side => bySide[side].sort((a, b) => a.seq - b.seq));
 
   const recomputedEvents: MatchLineupEvent[] = [];
-  const snapshotsBySide: Record<LineupSide, { quarter: number; time: number; onCourt: string[] }[]> = { us: [], them: [] };
+  const snapshotsBySide: Record<LineupSide, { quarter: number; gameTimeSeconds: number; seq: number; onCourt: string[] }[]> = { us: [], them: [] };
 
   for (const side of Object.keys(bySide) as LineupSide[]) {
     let current: string[] = [];
@@ -192,23 +225,14 @@ export function recomputeOnCourtSnapshots(
       current = current.filter(id => !e.playersOut.includes(id));
       for (const id of e.playersIn) if (!current.includes(id)) current.push(id);
       recomputedEvents.push({ ...e, onCourt: current });
-      snapshotsBySide[side].push({ quarter: e.quarter, time: e.gameTimeSeconds, onCourt: current });
+      snapshotsBySide[side].push({ quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds, seq: e.seq, onCourt: current });
     }
-  }
-
-  function onCourtAt(side: LineupSide, quarter: number, time: number): string[] {
-    let result: string[] = [];
-    for (const snap of snapshotsBySide[side]) {
-      if (snap.quarter < quarter || (snap.quarter === quarter && snap.time <= time)) result = snap.onCourt;
-      else break;
-    }
-    return result;
   }
 
   const recomputedActions = actions.map(a => ({
     ...a,
-    onCourt: onCourtAt('us', a.quarter, a.gameTimeSeconds),
-    onCourtThem: onCourtAt('them', a.quarter, a.gameTimeSeconds),
+    onCourt: onCourtAt(snapshotsBySide.us, a.quarter, a.gameTimeSeconds),
+    onCourtThem: onCourtAt(snapshotsBySide.them, a.quarter, a.gameTimeSeconds),
   }));
 
   return { lineupEvents: recomputedEvents, actions: recomputedActions };

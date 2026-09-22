@@ -1,5 +1,5 @@
 import { matchEventsApi } from './matchEvents';
-import { queueDelete, queueUpdate, type QueuedOp } from '../data/eventQueue';
+import { queueDelete, queueUpdate, type QueuedOp, type EventTimePatch } from '../data/eventQueue';
 import type { MatchEvent } from '../data/types';
 
 /**
@@ -85,8 +85,11 @@ export function enqueueInsert(event: MatchEvent) {
 
 /** La règle (corriger une action pas encore partie corrige l'insertion elle-même) vit dans
  *  `data/eventQueue.ts`, où elle est testée. */
-export function enqueueUpdateTime(matchId: string, seq: number, gameTimeSeconds: number) {
-  queue = queueUpdate(queue, matchId, seq, gameTimeSeconds);
+export function enqueueUpdateTime(
+  matchId: string, seq: number, gameTimeSeconds: number,
+  patch?: EventTimePatch,
+) {
+  queue = queueUpdate(queue, matchId, seq, gameTimeSeconds, patch);
   write(queue);
   notify();
   void flushQueue();
@@ -116,7 +119,7 @@ export async function flushQueue(): Promise<Error | null> {
           const seq = await matchEventsApi.insert(op.event);
           if (seq !== op.event.seq) needsResync = true;
         } else if (op.kind === 'update') {
-          await matchEventsApi.updateTime(op.matchId, op.seq, op.gameTimeSeconds);
+          await matchEventsApi.updateTime(op.matchId, op.seq, op.gameTimeSeconds, op.patch);
         } else {
           await matchEventsApi.delete(op.matchId, op.seq);
         }

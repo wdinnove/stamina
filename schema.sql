@@ -5318,3 +5318,31 @@ ALTER TABLE opponent_match_stats ADD COLUMN IF NOT EXISTS number SMALLINT;
 -- Vérification
 --   SELECT column_name FROM information_schema.columns
 --    WHERE table_name = 'opponent_match_stats' AND column_name = 'number';
+
+-- ────────────────────────────────────────────────────────────────
+-- MIGRATION — repères « fin de quart-temps » / « fin de match » (match_events)
+-- Script exécutable tel quel dans le SQL Editor.
+-- ────────────────────────────────────────────────────────────────
+--
+-- Le coach qui déclare un quart-temps ou le match terminé pose un geste — au même titre qu'un tir
+-- ou un changement de banc : il doit rester dans l'historique et pouvoir être annulé. Deux
+-- nouveaux `type`, sans auteur ni effet sur aucune statistique (aucune fonction de src/data qui
+-- agrège les événements ne les reconnaît, c'est volontaire) :
+--   • 'period_end' — le quart-temps en cours est terminé, même si le chrono n'a pas couru
+--     jusqu'à 00:00 (horaire continu, fin de saisie avant la dernière possession…) ;
+--   • 'match_end'  — le match est terminé.
+--
+-- Le CHECK sur `type` est un CHECK de colonne, donc nommé automatiquement par Postgres
+-- (`<table>_<colonne>_check`) : c'est ce nom qu'il faut viser pour le remplacer.
+
+ALTER TABLE match_events DROP CONSTRAINT IF EXISTS match_events_type_check;
+
+ALTER TABLE match_events
+  ADD CONSTRAINT match_events_type_check CHECK (type IN (
+    'shot', 'ft', 'reb_off', 'reb_def', 'ast', 'stl', 'blk', 'tov', 'foul', 'foul_drawn',
+    'period_end', 'match_end'
+  ));
+
+-- Vérification
+--   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+--    WHERE conrelid = 'match_events'::regclass AND conname = 'match_events_type_check';

@@ -41,7 +41,23 @@ export interface PlayerBoxscoreRow {
 export const EVENT_LABELS: Record<MatchEventType, string> = {
   shot: 'Tir', ft: 'LF', reb_off: 'Rebond off.', reb_def: 'Rebond déf.', ast: 'Passe déc.',
   stl: 'Interception', blk: 'Contre', tov: 'Ballon perdu', foul: 'Faute', foul_drawn: 'Faute provoquée',
+  period_end: 'Fin de quart-temps', match_end: 'Fin de match',
 };
+
+/**
+ * `period_end`/`match_end` : des repères posés par le coach, jamais des statistiques.
+ *
+ * Personne n'a besoin de ce garde-fou pour les CALCULS : aucun `switch`/`if` d'agrégation
+ * (boxscore, totaux, possessions, +/-) n'a de cas pour ces deux types, donc ils y tombent déjà à
+ * zéro sans qu'on ait à les exclure explicitement. Cette fonction sert à deux endroits qui, eux,
+ * ont vraiment besoin de LE SAVOIR : l'affichage du libellé dans l'historique (`eventText`, pas de
+ * suffixe auteur pour un repère) et `useMatchTracking`/`LiveTrackingPanel`, qui filtrent les
+ * repères des écrans de LECTURE (courbe, QT par QT, grille de tir, lineups, compteurs d'actions) —
+ * le play-by-play CSV, lui, les affiche volontairement (testé exprès dans playByPlay.test.ts).
+ */
+export function isMilestoneEvent(type: MatchEventType): boolean {
+  return type === 'period_end' || type === 'match_end';
+}
 
 /** Points rapportés par un événement — 0 pour tout ce qui n'est pas un tir réussi. */
 export function eventPoints(event: MatchEvent): number {
@@ -278,7 +294,7 @@ export function trackerHistory(events: MatchEvent[], lineupEvents: MatchLineupEv
  * Ordre CHRONOLOGIQUE d'un flux d'actions : quart-temps, puis temps, puis rang de saisie.
  *
  * Ce n'est pas l'ordre de saisie. Les deux coïncidaient tant que le temps d'une action ne pouvait
- * pas être corrigé ; depuis qu'il le peut (`editableTimeWindow`), trier par rang ferait repartir
+ * pas être corrigé ; depuis qu'il le peut (`editableActionTimeWindow`), trier par rang ferait repartir
  * la courbe d'écart en arrière, terminer une série avant qu'elle ne commence, et sortir un CSV
  * dont les temps ne se suivent plus. Le rang ne sert plus qu'à départager deux actions du même
  * instant — fréquent quand le chrono est à l'arrêt.
@@ -294,50 +310,42 @@ export interface TimeWindow {
 }
 
 /**
- * Bornes dans lesquelles le temps d'une saisie peut être corrigé sans rendre faux ce qui est déjà
- * enregistré.
- *
- * Chaque action porte l'INSTANTANÉ des deux cinq au moment où elle a été pointée. La déplacer de
- * l'autre côté d'un changement de banc laisserait ses points crédités à un cinq qui n'était pas
- * sur le terrain — et rien ne le signalerait, ni à l'écran ni dans les totaux. Plutôt que de
- * recalculer les instantanés en cascade à chaque correction, on interdit le franchissement :
- *
- *   • une ACTION reste entre les deux changements qui l'encadrent ;
- *   • un CHANGEMENT reste entre les deux saisies qui l'encadrent, actions comprises.
- *
- * C'est la même règle vue du basket — une action appartient au cinq qui l'a jouée — et il n'y a
- * alors plus rien à recalculer.
+ * Bornes dans lesquelles le temps d'une ACTION peut être corrigé — n'importe lesquelles dans le
+ * quart-temps choisi (`quarter`, celui de la correction candidate, pas forcément le quart-temps
+ * d'origine). Son instantané de cinq (`onCourt`/`onCourtThem`) est recalculé à chaque correction
+ * (`onCourtAt`), pas figé — elle peut donc changer de temps ET de quart-temps librement.
+ */
+export function editableActionTimeWindow(quarter: number, regulationSeconds: number): TimeWindow {
+  return { min: 0, max: periodSeconds(quarter, regulationSeconds) };
+}
+
+/**
+ * Bornes dans lesquelles le temps d'un CHANGEMENT DE BANC peut être corrigé sans rendre faux ce
+ * qui est déjà enregistré — entre les deux saisies qui l'encadrent DANS SON PROPRE quart-temps
+ * (actions comprises) : ce sont D'AUTRES lignes, jamais recalculées, qui portent son effet — le
+ * déplacer au-delà les invaliderait en silence. Son quart-temps, lui, ne se corrige pas ici : il
+ * détermine les scores par quart-temps publiés, et le réparer est une autre opération.
  *
  * À temps ÉGAL, la convention de `trackerHistory` tranche : le changement précède l'action. Un
  * changement posé au même instant borne donc l'action par le bas, et une action au même instant
  * borne le changement par le haut. C'est ce qui laisse de la place quand le chrono est à l'arrêt
  * et que toute une série de saisies porte le même temps.
- *
- * Le QUART-TEMPS, lui, ne se corrige pas ici : il détermine les scores par quart-temps publiés,
- * et le réparer est une autre opération.
  */
-export function editableTimeWindow(
-  target: TrackerHistoryEntry,
+export function editableLineupTimeWindow(
+  target: Extract<TrackerHistoryEntry, { kind: 'lineup' }>,
   events: MatchEvent[],
   lineupEvents: MatchLineupEvent[],
   regulationSeconds: number,
 ): TimeWindow {
   const t = target.gameTimeSeconds;
-  const isAction = target.kind === 'event';
-
   const neighbours: number[] = [
     ...lineupEvents
-      .filter(l => l.quarter === target.quarter
-        && !(target.kind === 'lineup' && l.side === target.lineup.side && l.seq === target.lineup.seq))
+      .filter(l => l.quarter === target.quarter && !(l.side === target.lineup.side && l.seq === target.lineup.seq))
       .map(l => l.gameTimeSeconds),
-    // Une action n'est bornée que par les changements ; deux actions se réordonnent librement,
-    // rien ne dépend de leur ordre relatif. Un changement, lui, est aussi borné par les actions :
-    // les franchir invaliderait l'instantané qu'elles portent.
-    ...(isAction ? [] : events.filter(e => e.quarter === target.quarter).map(e => e.gameTimeSeconds)),
+    ...events.filter(e => e.quarter === target.quarter).map(e => e.gameTimeSeconds),
   ];
-
-  const before = neighbours.filter(s => (isAction ? s <= t : s < t));
-  const after  = neighbours.filter(s => (isAction ? s > t : s >= t));
+  const before = neighbours.filter(s => s < t);
+  const after  = neighbours.filter(s => s >= t);
 
   return {
     min: before.length > 0 ? Math.max(...before) : 0,
@@ -345,11 +353,26 @@ export function editableTimeWindow(
   };
 }
 
+/**
+ * Cinq sur le terrain à un instant donné — le dernier changement de banc à cet instant ou avant,
+ * y compris à travers un changement de quart-temps. Sert à recalculer l'instantané d'une action
+ * déplacée par `editableActionTimeWindow`.
+ *
+ * Implémentation partagée avec `recomputeOnCourtSnapshots` (même question posée là pour une autre
+ * raison : reconstituer l'historique après une suppression) — une seule réponse à « qui était sur
+ * le terrain à cet instant », pas deux qui pourraient un jour diverger. Prend une liste DÉJÀ
+ * ramenée à un seul banc : filtrer par `side` reste à la charge de l'appelant.
+ */
+export { onCourtAt } from './liveTrackingAnalysis';
+
 export interface BackwardsLineupChange {
   side: LineupSide;
-  /** Le changement précédent, puis celui qui est daté avant lui. */
-  previous: { quarter: number; gameTimeSeconds: number };
-  current:  { quarter: number; gameTimeSeconds: number };
+  /** Le changement précédent, puis celui qui est daté avant lui — les objets `MatchLineupEvent`
+   *  EUX-MÊMES (mêmes références que dans `lineupEvents`), pas un sous-ensemble : l'écran en a
+   *  besoin en entier (joueurs entrés/sortis) pour les nommer, et les comparer par référence évite
+   *  de les re-rechercher par `seq` une seconde fois. */
+  previous: MatchLineupEvent;
+  current:  MatchLineupEvent;
 }
 
 /**
@@ -378,8 +401,7 @@ export function backwardsLineupChange(
     const stream = lineupEvents.filter(l => l.side === side).sort((a, b) => a.seq - b.seq);
     for (let i = 1; i < stream.length; i++) {
       if (at(stream[i]) < at(stream[i - 1])) {
-        const pick = (e: MatchLineupEvent) => ({ quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds });
-        return { side, previous: pick(stream[i - 1]), current: pick(stream[i]) };
+        return { side, previous: stream[i - 1], current: stream[i] };
       }
     }
   }

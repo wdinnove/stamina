@@ -57,6 +57,34 @@ describe('queueUpdate', () => {
     q = queueUpdate(q, 'm1', 4, 300);
     expect(q).toHaveLength(2);
   });
+
+  it('porte le quart-temps et l\'instantané recalculé quand l\'action change de quart-temps', () => {
+    const patch = { quarter: 2, onCourt: ['a'], onCourtThem: ['b'] };
+    expect(queueUpdate([], 'm1', 3, 10, patch)).toEqual([{ kind: 'update', matchId: 'm1', seq: 3, gameTimeSeconds: 10, patch }]);
+  });
+
+  it('applique le même correctif à une insertion encore en file', () => {
+    const patch = { quarter: 2, onCourt: ['a'], onCourtThem: ['b'] };
+    const q = queueUpdate([{ kind: 'insert', event: ev(1, 100) }], 'm1', 1, 10, patch);
+    expect(q).toEqual([{ kind: 'insert', event: { ...ev(1, 10), ...patch } }]);
+  });
+
+  it('reporte le patch d\'une correction en attente si la nouvelle n\'en porte pas', () => {
+    // Hors ligne : une 1ère correction change le quart-temps (patch en file, pas encore partie),
+    // puis une 2e ne retouche que le temps dans ce même quart-temps (donc sans patch). Le patch de
+    // la 1ère ne doit pas disparaître — sinon le changement de quart-temps ne partirait jamais.
+    const patch = { quarter: 2, onCourt: ['a'], onCourtThem: ['b'] };
+    let q = queueUpdate([], 'm1', 3, 10, patch);
+    q = queueUpdate(q, 'm1', 3, 15);
+    expect(q).toEqual([{ kind: 'update', matchId: 'm1', seq: 3, gameTimeSeconds: 15, patch }]);
+  });
+
+  it('un nouveau patch remplace l\'ancien, il ne s\'y ajoute pas', () => {
+    let q = queueUpdate([], 'm1', 3, 10, { quarter: 2, onCourt: ['a'], onCourtThem: [] });
+    const second = { quarter: 3, onCourt: ['b'], onCourtThem: [] };
+    q = queueUpdate(q, 'm1', 3, 20, second);
+    expect(q).toEqual([{ kind: 'update', matchId: 'm1', seq: 3, gameTimeSeconds: 20, patch: second }]);
+  });
 });
 
 describe('queueDelete face à une correction en attente', () => {

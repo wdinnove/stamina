@@ -61,7 +61,7 @@ déduisent des rotations. L'évaluation n'est pas stockée, elle se calcule.
 ```
 
 **Règle d'architecture absolue** : `src/data` n'importe JAMAIS `src/api`. Le domaine ne connaît
-pas le réseau. C'est ce qui rend les 101 tests de cette feature exécutables sans base.
+pas le réseau. C'est ce qui rend les 120 tests de cette feature exécutables sans base.
 
 ### Le trajet d'une action, de bout en bout
 
@@ -300,7 +300,9 @@ sérialisables.
 | `trackerHistory(events, lineupEvents)` | Actions **et** changements mêlés, du plus récent au plus ancien. À instant égal, le changement passe **sous** l'action : un remplacement se fait sur ballon mort, le jeu reprend après. |
 | `lineupStatsFromEvents(...)` | Combinaisons de cinq : temps, possessions, points pour/contre, +/-. Regroupées sur le cinq **trié**, donc un cinq qui sort et revient donne UNE ligne au temps cumulé, pas deux — c'est la combinaison qu'on lit, pas le passage. |
 | `byGameTime(a, b)` | Ordre **chronologique** (quart-temps, temps, rang). Pas l'ordre de saisie — voir § 12.1. |
-| `editableTimeWindow(...)` | Bornes dans lesquelles le temps d'une saisie peut être corrigé sans invalider un cinq figé (§ 8). |
+| `editableActionTimeWindow(quarter, reg)` | Fenêtre du temps (et quart-temps) corrigeable d'une action — tout le quart-temps choisi (§ 12.1). |
+| `editableLineupTimeWindow(...)` | Fenêtre du temps corrigeable d'un changement de banc — bornée par ses voisins (§ 12.1). |
+| `onCourtAt(stream, quarter, t)` | Cinq sur le terrain à un instant donné, sur un banc déjà filtré — recalcule l'instantané d'une action déplacée (§ 12.1). |
 | `backwardsLineupChange(...)` | Premier changement de banc daté avant le précédent — le seul cas où du temps de jeu disparaît vraiment. |
 | `sortLineupRows(...)` | Tri des combinaisons, partagé par l'écran de saisie et l'onglet Lineups. Les ratios `null` tombent en bas dans les deux sens. |
 
@@ -454,9 +456,14 @@ décompte**, comme on le lit sur la table de marque (§ 8.1). La fenêtre autori
 champ *avant* la frappe — `05:40–08:12` — et une valeur hors fenêtre est **refusée**, pas rabotée
 en silence : un temps ramené tout seul à la borne serait faux sans que personne l'ait demandé.
 
+Pour une **action**, un sélecteur de quart-temps apparaît à côté du temps : elle peut donc être
+recalée dans un autre quart-temps, son instantané de cinq étant recalculé à la validation. Un
+**changement de banc** n'a pas ce sélecteur — son quart-temps ne se corrige pas ici (§ 12.1).
+
 C'est le geste dont a besoin celui qui laisse le chrono à l'arrêt et pose le temps à la main à
-chaque changement : une frappe de travers sur un changement fausse deux intervalles et les minutes
-de tout un cinq. La règle des bornes est en § 12.1.
+chaque changement, ou qui a oublié d'avancer le quart-temps avant de pointer une action : une
+frappe de travers sur un changement fausse deux intervalles et les minutes de tout un cinq. La
+règle des bornes est en § 12.1.
 
 ### 8.1 Écoulé en base, décompté à l'écran
 
@@ -577,17 +584,18 @@ mi-temps un joueur à 4 points ferait chuter sa moyenne de saison.
 
 ## 11. Tests
 
-**101 tests unitaires**, tous purs, aucun DOM, aucune base :
+**120 tests unitaires**, tous purs, aucun DOM, aucune base :
 
 | Fichier | Tests |
 |---|---|
-| `src/data/matchEvents.test.ts` | 35 — **dont la géométrie de `shotChart`** (corner à 3 points à 6,60 m, bascule exacte sur l'arc). Elles y sont par héritage, pas par choix : `shotChart.ts` n'a pas de fichier de test à son nom. |
+| `src/data/matchEvents.test.ts` | 44 — **dont la géométrie de `shotChart`** (corner à 3 points à 6,60 m, bascule exacte sur l'arc). Elles y sont par héritage, pas par choix : `shotChart.ts` n'a pas de fichier de test à son nom. |
 | `src/data/matchClock.test.ts` | 17 |
 | `src/components/MatchStatsTracker.test.ts` | 14 (`resolveSubstitution`, `resolveLineupEntry`, `allowsAuthor`) |
 | `src/data/matchFlow.test.ts` | 9 |
-| `src/data/playByPlay.test.ts` | 11 |
+| `src/data/playByPlay.test.ts` | 12 |
 | `src/data/boxscoreTotals.test.ts` | 5 |
-| `src/data/eventQueue.test.ts` | 10 |
+| `src/data/eventQueue.test.ts` | 14 |
+| `src/data/liveTrackingAnalysis.test.ts` | 5 (`onCourtAt` seulement — le fichier en compte 18 au total, le reste appartient au suivi live simplifié) |
 
 ```bash
 npm test              # vitest run
@@ -601,7 +609,7 @@ npm run typecheck     # tsc -b --noEmit  ← PAS `tsc --noEmit` : sans -b, une c
 E2E_EMAIL=… E2E_PASSWORD=… npx vite-node scripts/check-tracker.mjs
 ```
 
-**30 vérifications.** Le script crée un match jetable daté 2019, exerce ce que les tests unitaires
+**33 vérifications.** Le script crée un match jetable daté 2019, exerce ce que les tests unitaires
 ne peuvent pas atteindre — RLS, contraintes `CHECK`, aller-retour de sérialisation, chemin de
 publication — puis le supprime (cascade). Il vérifie notamment que la base **refuse** ce qu'elle
 doit refuser : tir sans réussite, tir avec position *et* valeur, rebond avec une réussite, tir
@@ -632,26 +640,49 @@ de `schema.sql`, rejouable.
     `seq` ne sert plus qu'à départager deux actions du même instant — fréquent, puisque le chrono
     est souvent à l'arrêt.
 
-### 12.1 Le temps corrigeable, et pourquoi il ne franchit pas un changement
+### 12.1 Le temps corrigeable, et pourquoi une action peut changer de quart-temps mais pas un changement de banc
 
-Le temps d'une saisie se corrige sur place dans l'historique. Deux règles suffisent à ce qu'aucun
-calcul n'ait besoin d'être rejoué :
+Le temps — et pour une **action**, le quart-temps — se corrige sur place dans l'historique. Deux
+familles de lignes, deux règles, parce qu'elles ne portent pas le même genre d'instantané :
 
-* une **action** reste entre les deux changements de banc qui l'encadrent (les deux bancs
-  comptent : elle porte les deux cinq) ;
-* un **changement** reste entre les deux saisies qui l'encadrent, actions comprises.
+* une **ACTION** porte SON PROPRE instantané de cinq (`onCourt`/`onCourtThem`) et rien d'autre n'en
+  dépend en aval (`backwardsLineupChange` ne surveille jamais les actions, § 12). Il est donc
+  **recalculé à chaque correction** (`onCourtAt`, sur l'axe absolu) au lieu d'être figé — l'action
+  peut alors changer de temps ET de quart-temps librement, dans les bornes du quart-temps choisi
+  (`00:00`–fin de la période, prolongations comprises). C'est le geste qui répare un « j'ai oublié
+  d'avancer le quart-temps avant de pointer » sans rien casser ailleurs ;
+* un **CHANGEMENT DE BANC** reste borné entre les deux saisies qui l'encadrent DANS SON PROPRE
+  quart-temps, actions comprises — parce que ce sont D'AUTRES lignes (les actions voisines) qui
+  portent son effet, et elles ne sont jamais recalculées en cascade. Le déplacer au-delà les
+  invaliderait en silence. Son **quart-temps ne se corrige donc pas** ici : il détermine les scores
+  par quart-temps publiés, et le réparer est une autre opération.
 
-Sans cette borne, déplacer une action de l'autre côté d'un changement laisserait ses points
-crédités à un cinq qui n'était pas sur le terrain — en silence, l'instantané étant figé. On aurait
-alors le choix entre recalculer les instantanés en cascade à chaque correction, ou vivre avec un
-écran qui ment. La borne supprime le problème au lieu de le réparer, et elle se dit en une phrase
-de basket : *une action appartient au cinq qui l'a jouée*.
+Deux fonctions, une par famille de ligne — pas une seule qui bifurque en interne, chacune honnête
+sur ce qu'elle consomme :
+
+* `editableActionTimeWindow(quarter, regulationSeconds)` — aucune fenêtre à chercher, juste
+  `[00:00, fin de ce quart-temps]` ; l'écran l'appelle avec le quart-temps CANDIDAT pour
+  prévisualiser la fenêtre avant de valider un changement de quart-temps, exactement comme il
+  prévisualise déjà la fenêtre de temps.
+* `editableLineupTimeWindow(target, events, lineupEvents, regulationSeconds)` — le balayage de
+  voisinage ci-dessus, réservé aux changements de banc.
 
 À temps égal, la convention de `trackerHistory` tranche (le changement précède l'action), et les
-bornes sont inclusives. C'est ce qui laisse de la place quand le chrono est à l'arrêt et qu'une
-série entière de saisies porte le même temps.
+bornes du changement de banc sont inclusives. C'est ce qui laisse de la place quand le chrono est
+à l'arrêt et qu'une série entière de saisies porte le même temps.
 
-Le **quart-temps** ne se corrige pas : il détermine les scores par quart-temps publiés.
+Persistance : l'API `matchEventsApi.updateTime` accepte un `patch` optionnel (`quarter`, `onCourt`,
+`onCourtThem`) — l'écran le fournit à **chaque** correction d'une action, pas seulement quand le
+quart-temps change (une action peut désormais traverser une rotation SANS changer de quart-temps,
+et l'instantané doit suivre à chaque fois). La file hors-ligne (`queueUpdate`) le porte de bout en
+bout, y compris fusionné dans une insertion encore en attente, et REPORTE un patch pas encore parti
+si une correction suivante n'en porte pas — sans quoi un changement de quart-temps en attente de
+réseau pouvait disparaître en silence derrière une correction de temps sans rapport.
+
+`onCourtAt(stream, quarter, gameTimeSeconds)` — l'implémentation vit dans `liveTrackingAnalysis.ts`
+(partagée avec `recomputeOnCourtSnapshots`, qui pose la même question pour une autre raison : après
+la suppression d'un changement de banc). `matchEvents.ts` ne fait que la ré-exporter. `stream` doit
+déjà être ramené à un seul banc — filtrer par `side` reste à la charge de l'appelant.
 
 ---
 

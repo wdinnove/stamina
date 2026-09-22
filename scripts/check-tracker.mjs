@@ -130,13 +130,38 @@ try {
   t('temps d\'une action corrigé et relu', retimed.find(e => e.seq === 1).gameTimeSeconds === 42,
     `${retimed.find(e => e.seq === 1).gameTimeSeconds}s`);
 
+  // Déplacer une action vers un AUTRE quart-temps, avec son instantané de cinq recalculé — un
+  // aller-retour complet sur `quarter`/`on_court`/`on_court_them`, pas seulement
+  // `game_time_seconds` (la RLS elle-même ne restreint aucune colonne : elle est au niveau de la
+  // ligne, pas de la colonne).
+  await matchEventsApi.updateTime(match.id, 1, 55, { quarter: 2, onCourt: five.slice(0, 3), onCourtThem: [] });
+  const requartered = await matchEventsApi.getByMatchId(match.id);
+  const moved = requartered.find(e => e.seq === 1);
+  t('action déplacée de quart-temps et son instantané recalculé',
+    moved.quarter === 2 && moved.gameTimeSeconds === 55 && moved.onCourt.length === 3,
+    `quarter=${moved.quarter} t=${moved.gameTimeSeconds} onCourt=${moved.onCourt.length}`);
+
   await matchLiveApi.updateLineupEventTime(match.id, 'us', lineups[0].seq, 15);
   const retimedLineups = await matchLiveApi.getLineupEvents(match.id);
   t('temps d\'un changement corrigé et relu',
     retimedLineups.find(l => l.side === 'us' && l.seq === lineups[0].seq).gameTimeSeconds === 15);
 
-  await matchEventsApi.updateTime(match.id, 1, 10);   // remise en place pour la suite
+  await matchEventsApi.updateTime(match.id, 1, 10, { quarter: 1, onCourt: five, onCourtThem: [] });   // remise en place pour la suite
   await matchLiveApi.updateLineupEventTime(match.id, 'us', lineups[0].seq, lineups[0].gameTimeSeconds);
+
+  console.log('\n── Repères « fin de quart-temps » / « fin de match » ──');
+  try {
+    await matchEventsApi.insert({ ...base, seq: 8, gameTimeSeconds: 100, type: 'period_end' });
+    await matchEventsApi.insert({ ...base, seq: 9, gameTimeSeconds: 100, type: 'match_end' });
+    const withMilestones = await matchEventsApi.getByMatchId(match.id);
+    t('repères insérés et relus, sans auteur ni statistique',
+      withMilestones.some(e => e.seq === 8 && e.type === 'period_end' && !e.playerId) &&
+      withMilestones.some(e => e.seq === 9 && e.type === 'match_end'  && !e.playerId));
+    await matchEventsApi.delete(match.id, 8);   // repères de test, hors du flux publié plus bas
+    await matchEventsApi.delete(match.id, 9);
+  } catch (e) {
+    t('repères de fin acceptés par la contrainte de type', false, `migration absente — ${e.message.split('\n')[0].slice(0, 70)}`);
+  }
 
   console.log('\n── Publication ──');
   await statsApi.bulkUpsertForMatch(match.id, rowsUs, { ...M, scoreUs: score.us, scoreThem: score.them, result: 'win' });

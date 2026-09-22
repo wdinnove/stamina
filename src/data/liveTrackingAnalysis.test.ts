@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, periodLabel, formatClock,
+  playStats, lineupStats, playerPlusMinus, playingTime, recomputeOnCourtSnapshots, onCourtAt, periodLabel, formatClock,
 } from './liveTrackingAnalysis';
 import type { MatchLiveAction, MatchLineupEvent, Play } from './types';
 
@@ -115,6 +115,41 @@ describe('playingTime', () => {
     ];
     const totals = playingTime(events, 'us', 1, 100, 600);
     expect(totals.has('x')).toBe(false);
+  });
+});
+
+describe('onCourtAt', () => {
+  const snap = (seq: number, gameTimeSeconds: number, onCourt: string[], quarter = 1) =>
+    ({ quarter, gameTimeSeconds, seq, onCourt });
+
+  it('rend le cinq du dernier changement à cet instant ou avant', () => {
+    const stream = [snap(1, 0, ['a']), snap(2, 300, ['b'])];
+    expect(onCourtAt(stream, 1, 200)).toEqual(['a']);
+    expect(onCourtAt(stream, 1, 300)).toEqual(['b']);
+    expect(onCourtAt(stream, 1, 599)).toEqual(['b']);
+  });
+
+  it('rend [] avant le premier changement', () => {
+    expect(onCourtAt([snap(1, 100, ['a'])], 1, 50)).toEqual([]);
+  });
+
+  it('traverse un changement de quart-temps', () => {
+    const stream = [snap(1, 550, ['a'], 1), snap(2, 10, ['b'], 2)];
+    expect(onCourtAt(stream, 2, 5)).toEqual(['a']);
+    expect(onCourtAt(stream, 2, 10)).toEqual(['b']);
+  });
+
+  it('ne suppose pas la liste triée : trouve le max même en désordre de seq', () => {
+    // Cas réel après une correction de temps : `seq` peut ne plus refléter l'ordre chronologique
+    // (cf. `backwardsLineupChange`). Un simple `break` sur le premier dépassement se tromperait.
+    const stream = [snap(2, 100, ['b']), snap(1, 50, ['a']), snap(3, 400, ['c'])];
+    expect(onCourtAt(stream, 1, 200)).toEqual(['b']);
+    expect(onCourtAt(stream, 1, 500)).toEqual(['c']);
+  });
+
+  it('à temps égal, départage par seq — le plus grand gagne', () => {
+    const stream = [snap(1, 100, ['a']), snap(2, 100, ['b'])];
+    expect(onCourtAt(stream, 1, 100)).toEqual(['b']);
   });
 });
 

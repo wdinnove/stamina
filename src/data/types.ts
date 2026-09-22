@@ -802,7 +802,12 @@ export type MatchEventType =
   | 'blk'         // contre
   | 'tov'         // ballon perdu
   | 'foul'        // faute commise
-  | 'foul_drawn'; // faute provoquée (subie par nous, sifflée contre l'adversaire)
+  | 'foul_drawn'  // faute provoquée (subie par nous, sifflée contre l'adversaire)
+  // Repères posés par le coach, sans auteur ni effet sur aucune statistique (aucune fonction de
+  // src/data qui agrège les événements ne les reconnaît, et c'est voulu — ils ne font qu'exister
+  // dans l'historique, comme un tir ou un changement, pour rester tracés et annulables).
+  | 'period_end'  // quart-temps déclaré terminé, même si le chrono n'a pas couru jusqu'à 00:00
+  | 'match_end';  // match déclaré terminé
 
 export interface MatchEvent {
   matchId: string;
