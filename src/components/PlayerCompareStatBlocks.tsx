@@ -5,6 +5,7 @@ import type { PlayerAdvancedStats } from '../data/playerAdvanced';
 
 import { averageWeeklyLoad } from '../utils/weeklyLoad';
 import { roundedAvg } from '../utils/avg';
+import { formatMinutes } from '../utils/format';
 
 /**
  * Rendu des blocs "Tendances" (Performance/Charge/Bien-être/Scoring/Défense/Playmaking/Rebonds)
@@ -223,7 +224,7 @@ export function PlayerCompareStatBlocks({ a, b, teamStatsMap, display }: Props) 
 
           <Block title="Performance globale" subtitle={mSub} badge={{ period: evalP, season: evalS }} contentHeight={height(BH.perf)}>
             <>
-              <Row label="Temps de jeu"    period={p('min')} season={s('min')} />
+              <Row label="Temps de jeu"    period={p('min')} season={s('min')} format={formatMinutes} />
               <Row label="Points"           period={p('pts')} season={s('pts')} />
               <Row label="Évaluation"       period={evalP}    season={evalS} />
               <Row label="+/-"              period={pmP}      season={pmS}      sign />

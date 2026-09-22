@@ -9,6 +9,7 @@ import { Badge } from './Badge';
 import { PlayerAvatar } from './PlayerAvatar';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
+import { formatMinutes } from '../utils/format';
 
 const SORT_KEYS = ['name', 'position', 'min', 'eval', 'score'] as const;
 type SortKey = typeof SORT_KEYS[number];
@@ -124,7 +125,7 @@ export function TeamArchetypesPanel({ reports, roster, selection, rankingRows, n
                 </span>
               </td>
               <td style={TD}>{row.player.position || '—'}</td>
-              <td style={{ ...TD, color: normalized25 ? '#F59E0B' : '#94A3B8' }}>{row.avgMin !== null ? row.avgMin : '—'}</td>
+              <td style={{ ...TD, color: normalized25 ? '#F59E0B' : '#94A3B8' }}>{formatMinutes(row.avgMin)}</td>
               <td style={TD}>{row.evalAvg !== null ? row.evalAvg : '—'}</td>
               <td style={{ ...TD, color: '#00E5A0', fontWeight: 700 }}>
                 {row.score}%

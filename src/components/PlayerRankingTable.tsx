@@ -4,6 +4,7 @@ import { playerNameFull, playerNameShort } from '../utils/playerName';
 import type { IndicatorDef } from '../data/crossAnalysis';
 import type { Player } from '../data/types';
 import { useUrlSort } from '../hooks/useUrlState';
+import { formatMinutes } from '../utils/format';
 
 export interface RankingRow {
   player: Player;
@@ -116,7 +117,7 @@ export function PlayerRankingTable({ rows, def, teamAvg, normalized25, onOpenPla
                 </span>
               </td>
               <td style={TD}>{r.player.position || '—'}</td>
-              <td style={{ ...TD, color: normalized25 ? '#F59E0B' : '#94A3B8' }}>{r.avgMin !== null ? r.avgMin : '—'}</td>
+              <td style={{ ...TD, color: normalized25 ? '#F59E0B' : '#94A3B8' }}>{formatMinutes(r.avgMin)}</td>
               <td style={TD}>{r.evalAvg !== null ? r.evalAvg : '—'}</td>
               <td style={{ ...TD, color: r.value !== null ? (def.valueColor?.(r.value) ?? '#F1F5F9') : '#475569', fontWeight: 700 }}>
                 {r.value !== null ? fmtValue(def, r.value) : '—'}

@@ -3,6 +3,7 @@ import {
   reportDec, MUTED, FAINT, type Tone,
 } from './ReportKit';
 import { ratioFromSums } from '../utils/ratioFromSums';
+import { formatMinutes } from '../utils/format';
 import type { MatchStat, Player } from '../data/types';
 
 export interface PlayerStatsSectionData {
@@ -90,8 +91,7 @@ export function ReportPlayerStatsSection({ index, subject, data }: {
             />
             <StatBlock
               label="Temps de jeu"
-              value={reportDec(min)}
-              unit="min"
+              value={formatMinutes(min)}
               hint={sharePct !== null ? `${sharePct} % du temps disponible` : 'par match, en moyenne'}
             />
             <StatBlock
@@ -158,7 +158,7 @@ export function playerStatsFindings(
 
   out.push({
     tone: 'neutral',
-    text: `${games.length} match${games.length > 1 ? 's' : ''} disputé${games.length > 1 ? 's' : ''} sur ${data.teamGames} — ${reportDec(min)} minutes et ${reportDec(pts)} points de moyenne${sharePct !== null ? `, soit ${sharePct} % du temps de jeu disponible` : ''}.`,
+    text: `${games.length} match${games.length > 1 ? 's' : ''} disputé${games.length > 1 ? 's' : ''} sur ${data.teamGames} — ${formatMinutes(min)} et ${reportDec(pts)} points de moyenne${sharePct !== null ? `, soit ${sharePct} % du temps de jeu disponible` : ''}.`,
   });
 
   if (data.teamGames > 0 && games.length < data.teamGames * 0.6) {

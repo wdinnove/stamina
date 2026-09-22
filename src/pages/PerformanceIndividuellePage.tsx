@@ -25,7 +25,7 @@ import { mondayIso, getWeekTier, weeklyLoadBuckets, averageWeeklyLoad } from '..
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { evalColor } from '../data';
 import { playerNameFull } from '../utils/playerName';
-import { fmt1 } from '../utils/format';
+import { fmt1, formatMinutes } from '../utils/format';
 import { detectRiskAlerts, type PlayerCrossData } from '../data/crossAnalysis';
 import type { MatchStat, TeamMatchStat, Action } from '../data/types';
 
@@ -332,7 +332,7 @@ export default function PerformanceIndividuellePage() {
             title="Statistiques"
             value={evalAvgP !== null ? fmt1(evalAvgP) : '—'}
             valueColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
-            subtitle={`${avgMinP ?? 0} min / match`}
+            subtitle={`${formatMinutes(avgMinP, '0:00')} / match`}
             borderColor={evalAvgP !== null ? evalColor(evalAvgP, statThresholds) : '#475569'}
             onOpen={() => setActiveTab('statistiques-brutes')}
           />

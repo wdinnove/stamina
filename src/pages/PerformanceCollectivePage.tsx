@@ -33,7 +33,7 @@ import { fmtDateWithDay } from '../utils/dateFormat';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { roundedAvg } from '../utils/avg';
 import { teamAverageOfField } from '../utils/teamAverage';
-import { fmt1 } from '../utils/format';
+import { fmt1, formatMinutes } from '../utils/format';
 import {
   playerAttributeIndicators, getSeries, periodValueOf, detectRiskAlerts,
   type CrossScope, type IndicatorDef,
@@ -900,7 +900,7 @@ export default function PerformanceCollectivePage() {
                           <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
                           <td style={TD}>{tit}</td>
-                          <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#F1F5F9' }}>{avgMin}</td>
+                          <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#F1F5F9' }}>{formatMinutes(avgMin)}</td>
                           <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
                           <td style={{ ...TD, fontSize: '0.7rem' }}>{fg2mPg}/{fg2aPg}</td>
                           <td style={{ ...TD }}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
@@ -927,7 +927,7 @@ export default function PerformanceCollectivePage() {
                       <td style={TD}>—</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{fmt(pjFooter.n)}</td>
                       <td style={TD}>{fmt(pjFooter.tit)}</td>
-                      <td style={{ ...TD, color: '#F1F5F9' }}>{fmt(pjFooter.avgMin)}</td>
+                      <td style={{ ...TD, color: '#F1F5F9' }}>{formatMinutes(pjFooter.avgMin)}</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjFooter.avgPts)}</td>
                       <td style={{ ...TD, fontSize: '0.7rem' }}>{fmt(pjFooter.fg2mPg)}/{fmt(pjFooter.fg2aPg)}</td>
                       <td style={{ ...TD }}>{fmt(pjFooter.fg2Pct, '%')}</td>
@@ -987,7 +987,7 @@ export default function PerformanceCollectivePage() {
                         <td style={{ ...TD, textAlign: 'left', color: '#F1F5F9', fontWeight: 600, position: 'sticky', left: 0, zIndex: 1, backgroundColor: i % 2 === 0 ? '#161920' : '#1A1E26' }}><span className="hidden md:inline">{playerNameFull(p)}</span><span className="md:hidden">{playerNameShort(p)}</span></td>
                         <td style={{ ...TD, color: '#475569' }}>{p.number}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{n}</td>
-                        <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{avgMin}</td>
+                        <td style={{ ...TD, color: normalize25 ? '#F59E0B' : '#94A3B8' }}>{formatMinutes(avgMin)}</td>
                         <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{avgPts}</td>
                         <td style={{ ...TD }}>{fmt(usagePctRaw, '%')}</td>
                         <td style={{ ...TD }}>{fmt(usagePct, '%')}</td>
@@ -1009,7 +1009,7 @@ export default function PerformanceCollectivePage() {
                       <td style={{ ...TL, position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}>Moyenne équipe</td>
                       <td style={TD}>—</td>
                       <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{fmt(pjAdvFooter.n)}</td>
-                      <td style={{ ...TD, color: '#94A3B8' }}>{fmt(pjAdvFooter.avgMin)}</td>
+                      <td style={{ ...TD, color: '#94A3B8' }}>{formatMinutes(pjAdvFooter.avgMin)}</td>
                       <td style={{ ...TD, ...SEP, color: '#F1F5F9', fontWeight: 800 }}>{fmt(pjAdvFooter.avgPts)}</td>
                       <td style={{ ...TD }}>{fmt(pjAdvFooter.usagePctRaw, '%')}</td>
                       <td style={{ ...TD }}>{fmt(pjAdvFooter.usagePct, '%')}</td>

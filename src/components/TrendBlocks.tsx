@@ -58,12 +58,13 @@ export interface MetricRowProps {
   dec?: number;
   sign?: boolean;
   muted?: boolean; // stat secondaire / contexte
+  format?: (v: number) => string; // remplace fmt(v, dec) — ex. minutes en mm:ss
 }
 
 // Colonnes droites à largeur fixe pour alignement parfait sur toutes les lignes
 const COL = { period: 56, arrow: 22, season: 56, evo: 18 } as const;
 
-export function MetricRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false }: MetricRowProps) {
+export function MetricRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false, format }: MetricRowProps) {
   const pct = deltaPct(period, season);
   const significant = !muted && pct !== null && Math.abs(pct) >= 3;
   // Le chiffre du côté gagnant porte SA couleur de filtre, l'autre reste neutre.
@@ -76,8 +77,9 @@ export function MetricRow({ label, period, season, unit = '', higherIsBetter = t
   // % et " UA" s'affichent dans le chiffre, les autres unités vont dans le label
   const unitInNumber = unit === '%' || unit === ' UA';
   const unitSuffix = unitInNumber ? unit : '';
-  const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmt(period, dec)}${unitSuffix}` : '—';
-  const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmt(season, dec)}${unitSuffix}` : '—';
+  const fmtVal = format ?? ((v: number) => `${fmt(v, dec)}${unitSuffix}`);
+  const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmtVal(period)}` : '—';
+  const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmtVal(season)}` : '—';
   const evoStr    = pct === null || muted ? '' : significant ? (pct > 0 ? '↑' : '↓') : '=';
   const unitLabel = unit && !unitInNumber ? unit.trim() : '';
 
@@ -132,12 +134,13 @@ function BarTrack({ pct, color, value, empty }: { pct: number; color: string; va
  * convention que le mode tableau, et elle reprend le principe du bloc 4 Factors où une seule barre
  * est colorée. Colorer les deux (comportement précédent) identifiait les groupes mais ne disait
  * rien du résultat de la ligne. */
-export function MetricBarRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false }: MetricRowProps) {
+export function MetricBarRow({ label, period, season, unit = '', higherIsBetter = true, dec = 1, sign = false, muted = false, format }: MetricRowProps) {
   const unitInNumber = unit === '%' || unit === ' UA';
   const unitSuffix = unitInNumber ? unit : '';
   const unitLabel = unit && !unitInNumber ? unit.trim() : '';
-  const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmt(period, dec)}${unitSuffix}` : '—';
-  const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmt(season, dec)}${unitSuffix}` : '—';
+  const fmtVal = format ?? ((v: number) => `${fmt(v, dec)}${unitSuffix}`);
+  const periodStr = period !== null ? `${sign && period > 0 ? '+' : ''}${fmtVal(period)}` : '—';
+  const seasonStr = season !== null ? `${sign && season > 0 ? '+' : ''}${fmtVal(season)}` : '—';
 
   const winner = winningSide(period, season, higherIsBetter, muted);
   const maxAbs = Math.max(Math.abs(period ?? 0), Math.abs(season ?? 0)) || 1;

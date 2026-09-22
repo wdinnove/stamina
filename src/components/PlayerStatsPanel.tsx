@@ -8,6 +8,7 @@ import { useUrlSort } from '../hooks/useUrlState';
 import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from '../data/playerAdvanced';
 import type { MatchStat, TeamMatchStat } from '../data/types';
 import type { StatThresholds } from '../contexts/TeamSeasonContext';
+import { formatMinutes } from '../utils/format';
 
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 function fmtShortDate(iso: string) {
@@ -246,7 +247,7 @@ export function PlayerStatsPanel({
                         <td style={TD}>{m.homeAway === 'home' ? 'D' : 'E'}</td>
                         <td style={{ ...TD, color: resCol, fontWeight: 700 }}>{m.scoreUs}-{m.scoreThem}</td>
                         <td style={TD}>{m.starter ? '✓' : '–'}</td>
-                        <td style={{ ...TD, color: '#F1F5F9' }}>{m.min ?? '—'}</td>
+                        <td style={{ ...TD, color: '#F1F5F9' }}>{formatMinutes(m.min)}</td>
                         <td style={{ ...TD, color: '#F1F5F9', fontWeight: 800 }}>{m.pts}</td>
                         <td style={TD}>{m.fg2m}/{m.fg2a}</td>
                         <td style={{ ...TD, color: '#94A3B8' }}>{fg2p !== null ? `${fg2p}%` : '—'}</td>
@@ -274,7 +275,7 @@ export function PlayerStatsPanel({
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={{ ...TD, color: '#64748B' }}>—</td>
                     <td style={TD}>{rows.filter(m => m.starter).length}</td>
-                    <td style={{ ...TD }}>{avgD('min')}</td>
+                    <td style={{ ...TD }}>{formatMinutes(avgD('min'))}</td>
                     <td style={{ ...TD, color: '#F1F5F9', fontWeight: 700 }}>{avgD('pts')}</td>
                     <td style={{ ...TD, color: '#64748B', fontSize: '0.7rem' }}>{avgD('fg2m')}/{avgD('fg2a')}</td>
                     <td style={{ ...TD, color: '#475569' }}>{fg2Pct !== null ? `${fg2Pct}%` : '—'}</td>
