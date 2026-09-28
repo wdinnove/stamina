@@ -1,5 +1,5 @@
 import { matchEventsApi } from './matchEvents';
-import { queueDelete, queueUpdate, type QueuedOp, type EventTimePatch } from '../data/eventQueue';
+import { queueDelete, queueUpdate, settleOp, reconcileAfterInsert, type QueuedOp, type EventTimePatch } from '../data/eventQueue';
 import type { MatchEvent } from '../data/types';
 
 /**
@@ -117,7 +117,15 @@ export async function flushQueue(): Promise<Error | null> {
       try {
         if (op.kind === 'insert') {
           const seq = await matchEventsApi.insert(op.event);
-          if (seq !== op.event.seq) needsResync = true;
+          if (seq !== op.event.seq) {
+            needsResync = true;
+          } else {
+            // Une correction ou une annulation sur cette même ligne, tapée pendant l'envoi, a pu
+            // la fusionner dans une nouvelle insertion ou la retirer en la croyant encore locale :
+            // la renvoyer telle quelle dupliquerait la ligne en base, ou laisserait orpheline une
+            // ligne pourtant annulée (cf. `reconcileAfterInsert`).
+            queue = reconcileAfterInsert(queue, op, op.event.matchId, seq);
+          }
         } else if (op.kind === 'update') {
           await matchEventsApi.updateTime(op.matchId, op.seq, op.gameTimeSeconds, op.patch);
         } else {
@@ -129,7 +137,10 @@ export async function flushQueue(): Promise<Error | null> {
         return lastError;
       }
       lastError = null;
-      queue.shift();
+      // Pas `queue.shift()` : `op` peut avoir été remplacé par une correction plus récente sur la
+      // même ligne pendant l'envoi (cf. `settleOp`) — retirer par position perdrait alors cette
+      // correction plus récente au lieu de l'opération qui vient réellement de partir.
+      queue = settleOp(queue, op);
       write(queue);
       notify();
     }

@@ -70,3 +70,56 @@ export function queueUpdate(
     { kind: 'update', matchId, seq, gameTimeSeconds, patch: patch ?? previous?.patch },
   ];
 }
+
+/**
+ * Ce que devient la file une fois une opération ENVOYÉE avec succès — retirée par RÉFÉRENCE,
+ * jamais par position (`shift()`).
+ *
+ * Pendant l'attente réseau d'un envoi, une nouvelle correction sur la MÊME ligne peut être tapée :
+ * `queueUpdate`/`queueDelete` retirent alors l'opération en cours d'envoi et la remplacent par une
+ * plus récente, ailleurs dans la file. Si `flushQueue` retirait ensuite l'élément en tête sans
+ * vérifier lequel s'y trouve encore, c'est cette correction plus récente — jamais partie au
+ * serveur — qui disparaîtrait à sa place. Ici, l'opération envoyée n'étant plus dans la file
+ * (remplacée), on ne retire rien : la correction qui l'a remplacée reste en attente et partira au
+ * tour suivant.
+ */
+export function settleOp(queue: QueuedOp[], op: QueuedOp): QueuedOp[] {
+  const i = queue.indexOf(op);
+  return i < 0 ? queue : [...queue.slice(0, i), ...queue.slice(i + 1)];
+}
+
+/**
+ * Ce que devient la file juste après qu'une insertion a RÉUSSI sous son propre `seq` (pas de
+ * réattribution — ce cas-là déclenche déjà une resynchronisation complète ailleurs).
+ *
+ * Pendant que cette insertion était en vol, une correction de temps sur la MÊME ligne a pu la
+ * fusionner dans une nouvelle opération `insert` (cf. `queueUpdate`) — plus récente, donc distincte
+ * de `sent` par référence. La renvoyer telle quelle la ferait INSÉRER UNE SECONDE FOIS à la
+ * prochaine purge : la ligne existe déjà en base sous ce `seq` depuis l'envoi qu'on vient de
+ * terminer, donc c'est une CORRECTION qu'il faut faire partir, pas une nouvelle insertion. On
+ * convertit ici cette insertion fusionnée en `update` portant les mêmes données.
+ */
+export function reconcileInsertedRow(queue: QueuedOp[], sent: QueuedOp, matchId: string, seq: number): QueuedOp[] {
+  return queue.map(op => {
+    if (op === sent || op.kind !== 'insert' || !sameRow(op, matchId, seq)) return op;
+    const { gameTimeSeconds, quarter, onCourt, onCourtThem } = op.event;
+    return { kind: 'update', matchId, seq, gameTimeSeconds, patch: { quarter, onCourt, onCourtThem } };
+  });
+}
+
+/**
+ * Réconciliation complète après une insertion réussie sous son propre `seq` — orchestre
+ * `reconcileInsertedRow` et couvre en plus l'ANNULATION reçue pendant l'envoi.
+ *
+ * `queueDelete` suppose l'insertion encore purement locale pour annuler les deux gestes sans rien
+ * envoyer : une hypothèse correcte tant qu'elle est vraie, mais fausse ici puisque l'envoi vient de
+ * réussir. Si plus AUCUNE trace de cette ligne ne subsiste dans la file (ni insertion fusionnée, ni
+ * mise à jour), c'est qu'elle a été annulée sur cette hypothèse erronée : il faut alors reposer une
+ * suppression, sous peine de laisser en base une ligne que l'écran croit annulée.
+ */
+export function reconcileAfterInsert(queue: QueuedOp[], sent: QueuedOp, matchId: string, seq: number): QueuedOp[] {
+  if (queue.includes(sent)) return queue;   // rien ne l'a touchée pendant l'envoi
+  return queue.some(op => sameRow(op, matchId, seq))
+    ? reconcileInsertedRow(queue, sent, matchId, seq)
+    : [...queue, { kind: 'delete', matchId, seq }];
+}
