@@ -4966,7 +4966,8 @@ CREATE POLICY "match_opponent_players_select" ON match_opponent_players
 DROP POLICY IF EXISTS "match_opponent_players_write" ON match_opponent_players;
 CREATE POLICY "match_opponent_players_write" ON match_opponent_players
   FOR ALL TO authenticated
-  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- 2bis. Joueuses de NOTRE équipe retenues pour ce match (la « feuille de match »).
 --    Convention : AUCUNE ligne = tout l'effectif de la saison est disponible. C'est le défaut, et
@@ -4989,7 +4990,8 @@ CREATE POLICY "match_roster_select" ON match_roster
 DROP POLICY IF EXISTS "match_roster_write" ON match_roster;
 CREATE POLICY "match_roster_write" ON match_roster
   FOR ALL TO authenticated
-  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- 3. Rotations — une ligne par changement, sur l'un ou l'autre banc ('us' / 'them').
 --    `on_court` est un instantané complet après le changement (pas seulement les entrantes/
@@ -5016,7 +5018,8 @@ CREATE POLICY "match_lineup_events_select" ON match_lineup_events
 DROP POLICY IF EXISTS "match_lineup_events_write" ON match_lineup_events;
 CREATE POLICY "match_lineup_events_write" ON match_lineup_events
   FOR ALL TO authenticated
-  USING (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
 
 -- 4. Fin de possession — une ligne par possession pointée, pour l'UNE ou l'AUTRE équipe (`side`
 --    'offense' = nous avions le ballon, 'defense' = l'adversaire l'avait). Un panier marqué en
@@ -5346,3 +5349,36 @@ ALTER TABLE match_events
 -- Vérification
 --   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
 --    WHERE conrelid = 'match_events'::regclass AND conname = 'match_events_type_check';
+
+-- ────────────────────────────────────────────────────────────────
+-- MIGRATION — WITH CHECK manquant sur 3 policies d'écriture
+-- Script exécutable tel quel dans le SQL Editor.
+-- ────────────────────────────────────────────────────────────────
+--
+-- match_opponent_players_write, match_roster_write et match_lineup_events_write n'avaient qu'une
+-- clause USING, sans WITH CHECK — l'état exact que match_events_write avait avant son propre
+-- correctif (plus haut dans ce fichier) : « Sans lui, l'insertion était refusée par la RLS. »
+
+DROP POLICY IF EXISTS "match_opponent_players_write" ON match_opponent_players;
+CREATE POLICY "match_opponent_players_write" ON match_opponent_players
+  FOR ALL TO authenticated
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "match_roster_write" ON match_roster;
+CREATE POLICY "match_roster_write" ON match_roster
+  FOR ALL TO authenticated
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+DROP POLICY IF EXISTS "match_lineup_events_write" ON match_lineup_events;
+CREATE POLICY "match_lineup_events_write" ON match_lineup_events
+  FOR ALL TO authenticated
+  USING      (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())))
+  WITH CHECK (match_id IN (SELECT id FROM matches WHERE team_id IN (SELECT * FROM writable_team_ids())));
+
+-- Vérification — les trois doivent ressortir avec un `with_check` NON NUL :
+--   SELECT tablename, policyname, with_check IS NOT NULL AS a_with_check
+--   FROM   pg_policies
+--   WHERE  tablename IN ('match_opponent_players', 'match_roster', 'match_lineup_events')
+--     AND  policyname LIKE '%_write';

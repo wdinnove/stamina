@@ -164,6 +164,30 @@ export function useMatchClock(matchId?: string, regulationSeconds?: number): Mat
     } catch { /* quota ou navigation privée : le chrono reste utilisable, il ne survivra pas au rechargement */ }
   }, [matchId, quarter, coarseElapsed, running]);
 
+  /**
+   * Resynchronisation LIVE entre deux écrans du direct sur le même match : l'événement `storage`
+   * ne se déclenche jamais dans l'onglet qui vient d'écrire, seulement dans les AUTRES — c'est
+   * exactement le canal qu'il manquait pour que la tablette B adopte la position posée par la
+   * tablette A sans attendre un remontage. Comme toute reprise, la position adoptée revient en
+   * PAUSE : reprendre est un geste volontaire du coach sur CET écran.
+   */
+  useEffect(() => {
+    if (!matchId) return;
+    const key = STORAGE_PREFIX + matchId;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key || e.newValue === null) return;
+      const restored = readStored(matchId);
+      if (!restored) return;
+      posRef.current = { baseSeconds: restored.elapsedSeconds, startedAt: null };
+      setRunning(false);
+      setQuarter(restored.quarter);
+      setCoarseElapsed(coarse(restored.elapsedSeconds));
+      notify();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [matchId, notify]);
+
   const subscribeSeconds = useCallback((fn: () => void) => {
     listeners.add(fn);
     return () => { listeners.delete(fn); };

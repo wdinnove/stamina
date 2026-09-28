@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSubstitution, resolveLineupEntry, allowsAuthor } from './MatchStatsTracker';
+import { resolveSubstitution, resolveLineupEntry, resolveLineupUndo, allowsAuthor } from './MatchStatsTracker';
 import type { MatchLineupEvent } from '../data/types';
 
 const FIVE = ['p1', 'p2', 'p3', 'p4', 'p5'];
@@ -72,6 +72,25 @@ describe('resolveLineupEntry', () => {
   it("n'amende jamais un changement : quelqu'un en est sorti", () => {
     const last = LINEUP({ seq: 2, playersIn: ['p9'], playersOut: ['p3'], onCourt: ['p1', 'p2', 'p9'] });
     expect(resolveLineupEntry(last, 'p4')).toEqual({ kind: 'push', onCourt: ['p1', 'p2', 'p9', 'p4'] });
+  });
+});
+
+describe('resolveLineupUndo', () => {
+  it('efface seulement le dernier joueur ajouté à un cinq encore en composition', () => {
+    // La régression à ne jamais réintroduire : `resolveLineupEntry` amende la même ligne à chaque
+    // joueur composé, donc annuler ne doit défaire que le dernier, pas toute la ligne.
+    const last = LINEUP({ seq: 1, playersIn: ['p1', 'p2', 'p3'], onCourt: ['p1', 'p2', 'p3'] });
+    expect(resolveLineupUndo(last)).toEqual({ kind: 'shrink', playersIn: ['p1', 'p2'], onCourt: ['p1', 'p2'] });
+  });
+
+  it('supprime la ligne quand elle ne porte qu\'un seul joueur', () => {
+    const last = LINEUP({ seq: 1, playersIn: ['p1'], onCourt: ['p1'] });
+    expect(resolveLineupUndo(last)).toEqual({ kind: 'delete' });
+  });
+
+  it('supprime toujours un vrai changement — il n\'amende jamais', () => {
+    const last = LINEUP({ seq: 2, playersIn: ['p9', 'p4'], playersOut: ['p3'], onCourt: ['p1', 'p2', 'p9', 'p4'] });
+    expect(resolveLineupUndo(last)).toEqual({ kind: 'delete' });
   });
 });
 

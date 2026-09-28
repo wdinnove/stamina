@@ -30,12 +30,6 @@ function read(): QueuedOp[] {
   }
 }
 
-function write(ops: QueuedOp[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(ops));
-  } catch { /* quota : la file reste en mémoire pour cette session */ }
-}
-
 let queue: QueuedOp[] = read();
 let flushing = false;
 /**
@@ -51,6 +45,22 @@ const listeners = new Set<() => void>();
 
 function notify() {
   for (const fn of listeners) fn();
+}
+
+/**
+ * `localStorage.setItem` peut échouer (quota dépassé, navigation privée sur certains navigateurs) —
+ * en avalant cette erreur en silence, une action restait affichée à l'écran et acquittée par
+ * `enqueueInsert`, mais absente du disque : un plantage avant le prochain envoi la perdait sans
+ * qu'aucun bandeau ne l'ait jamais signalé. On la fait remonter par le même canal qu'un échec
+ * réseau (`queueError`), pour que le bandeau et le bouton « Réessayer » existants la couvrent aussi.
+ */
+function write(ops: QueuedOp[]) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(ops));
+  } catch (err) {
+    lastError = err instanceof Error ? err : new Error("Erreur d'enregistrement local");
+    notify();
+  }
 }
 
 /** S'abonne aux changements de la file (taille, resynchronisation demandée). */

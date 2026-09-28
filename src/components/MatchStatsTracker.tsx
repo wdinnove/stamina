@@ -145,6 +145,26 @@ export function resolveLineupEntry(last: MatchLineupEvent | undefined, playerId:
     : { kind: 'push', onCourt };
 }
 
+export type LineupUndo =
+  | { kind: 'delete' }
+  | { kind: 'shrink'; playersIn: string[]; onCourt: string[] };
+
+/**
+ * Que défait « Annuler » sur un changement de banc — pure, donc testable sans DOM.
+ *
+ * `resolveLineupEntry` amende la MÊME ligne à chaque joueur entré tant que le cinq se compose
+ * (jamais une ligne par joueur, cf. son commentaire) : annuler doit donc défaire ce dernier ajout
+ * SEUL, pas toute la ligne — sinon composer un cinq de départ à quatre joueurs, se tromper sur le
+ * dernier et cliquer « Annuler » effaçait les quatre d'un coup.
+ *
+ * Une ligne à un seul joueur n'a rien à rétrécir : la défaire, c'est la supprimer — c'est aussi le
+ * cas d'un vrai changement (`playersOut` non vide), qui n'amende jamais.
+ */
+export function resolveLineupUndo(l: MatchLineupEvent): LineupUndo {
+  if (l.playersOut.length > 0 || l.playersIn.length <= 1) return { kind: 'delete' };
+  return { kind: 'shrink', playersIn: l.playersIn.slice(0, -1), onCourt: l.onCourt.slice(0, -1) };
+}
+
 /** Ce que la publication va REMPLACER — relevé juste avant d'ouvrir la confirmation, pour que
  *  l'alerte parle du contenu réel du match et pas d'un cas général. */
 interface ExistingStats { players: number; opponents: number; team: boolean; scoreUs: number | null; scoreThem: number | null }
@@ -396,6 +416,13 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
    * Chargement du match. Les rotations, la feuille et l'effectif adverse sont PARTAGÉS avec le
    * suivi live (mêmes tables) : un cinq posé là-bas est déjà posé ici, et inversement.
    */
+  /** Prochain `seq` à attribuer à une action — une ref plutôt qu'un calcul sur `events` à chaque
+   *  `pushEvent` : deux enregistrements déclenchés avant que React n'ait re-rendu (deux taps très
+   *  rapprochés) liraient sinon le MÊME `events` capturé en fermeture et obtiendraient le même
+   *  `seq`, faisant disparaître les deux actions ensemble à la moindre suppression/annulation. Une
+   *  ref se lit et s'incrémente de façon synchrone, hors du cycle de rendu. */
+  const nextSeqRef = useRef(1);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -407,6 +434,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         matchLiveApi.getRoster(match.id),
       ]);
       setEvents(evts);
+      nextSeqRef.current = evts.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
       setLineupEvents(lineups);
       setOpponents(opps);
       setRosterIds(new Set(roster));
@@ -432,10 +460,18 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   useEffect(() => {
     if (loading || resumedMatchRef.current === match.id) return;
     resumedMatchRef.current = match.id;
+    // Un repère « fin de quart-temps » est écrit au temps PLEIN de l'ANCIEN quart-temps (celui qui
+    // vient de se terminer), alors que `recordMilestone` a déjà fait avancer le chrono au SUIVANT.
+    // Le prendre tel quel ramènerait la reprise sur l'ancien quart-temps à 00:00 restant au lieu du
+    // nouveau à temps plein, tant qu'aucune action n'y a encore été posée.
+    const positions: { quarter: number; gameTimeSeconds: number }[] = [
+      ...events.map(e => e.type === 'period_end' ? { quarter: e.quarter + 1, gameTimeSeconds: 0 } : e),
+      ...lineupEvents,
+    ];
     let last: { quarter: number; gameTimeSeconds: number } | null = null;
-    for (const e of [...events, ...lineupEvents]) {
-      if (!last || e.quarter > last.quarter || (e.quarter === last.quarter && e.gameTimeSeconds > last.gameTimeSeconds)) {
-        last = { quarter: e.quarter, gameTimeSeconds: e.gameTimeSeconds };
+    for (const at of positions) {
+      if (!last || at.quarter > last.quarter || (at.quarter === last.quarter && at.gameTimeSeconds > last.gameTimeSeconds)) {
+        last = at;
       }
     }
     if (last) clock.setPosition(last.quarter, last.gameTimeSeconds);
@@ -588,7 +624,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const pushEvent = useCallback((over: Partial<MatchEvent> & { type: MatchEventType }) => {
     const event: MatchEvent = {
       matchId: match.id,
-      seq: events.reduce((m, e) => Math.max(m, e.seq), 0) + 1,
+      seq: nextSeqRef.current++,
       quarter: clockRef.current.quarter,
       gameTimeSeconds: clockRef.current.getElapsedSeconds(),
       side: 'us',
@@ -600,7 +636,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     setSelection(null);
     // Passe par la file : une salle sans réseau ne doit pas faire perdre une action (api/matchEventQueue.ts).
     enqueueInsert(event);
-  }, [match.id, events, onCourtBySide.us, onCourtBySide.them]);
+  }, [match.id, onCourtBySide.us, onCourtBySide.them]);
 
   /** Traduit la sélection courante en champs d'événement — le seul endroit qui sait qu'une
    *  joueur adverse s'écrit dans `opponentPlayerId` et pas dans `playerId`. */
@@ -840,9 +876,16 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const undo = useCallback(() => {
     if (lastEntry?.kind === 'lineup') {
       const { side, seq } = lastEntry.lineup;
-      setLineupEvents(prev => prev.filter(e => !(e.side === side && e.seq === seq)));
+      const decision = resolveLineupUndo(lastEntry.lineup);
+      if (decision.kind === 'delete') {
+        setLineupEvents(prev => prev.filter(e => !(e.side === side && e.seq === seq)));
+        persist(() => matchLiveApi.deleteLineupEvent(match.id, side, seq));
+      } else {
+        const { playersIn, onCourt } = decision;
+        setLineupEvents(prev => prev.map(e => e.side === side && e.seq === seq ? { ...e, playersIn, onCourt } : e));
+        persist(() => matchLiveApi.updateLineupEventRoster(match.id, side, seq, playersIn, onCourt));
+      }
       setPendingSub(null);
-      persist(() => matchLiveApi.deleteLineupEvent(match.id, side, seq));
       return;
     }
     const last = events.at(-1);
@@ -957,6 +1000,19 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
   useClockHotkey(clock, canEdit && !modalOpen);
 
+  /**
+   * Bascule le mode changement — désarme AUSSI une action/tir en attente d'auteur, pas seulement
+   * `pendingSub` : sans ça, une action armée avant un aller-retour en mode changement survivait, et
+   * le prochain tap sur un joueur (pour le sélectionner, ou pour la substitution elle-même) la
+   * faisait partir silencieusement sur le mauvais joueur.
+   */
+  const toggleSubMode = useCallback(() => {
+    setSubMode(v => !v);
+    setPendingSub(null);
+    setPendingAction(null);
+    setPendingShot(null);
+  }, []);
+
   useEffect(() => {
     if (!canEdit || modalOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -967,8 +1023,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
 
       if (e.key === 'c') {
         e.preventDefault();
-        setSubMode(v => !v);
-        setPendingSub(null);
+        toggleSubMode();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         if (pendingAction) setPendingAction(null);
@@ -979,7 +1034,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [canEdit, modalOpen, pendingAction, pendingShot, pendingSub]);
+  }, [canEdit, modalOpen, pendingAction, pendingShot, pendingSub, toggleSubMode]);
 
   /* ── Publication ───────────────────────────────────────────────────────── */
 
@@ -1352,11 +1407,17 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         <div style={{ flex: 1 }} />
 
         {canEdit && (() => {
-          const disabled = publishState !== 'idle' || events.length === 0;
+          // `queueFailed` bloque aussi la publication : `events` (optimiste) peut alors contenir
+          // une action jamais réellement écrite en base, et publier calculerait un boxscore que le
+          // serveur ne peut pas confirmer — une republication ultérieure l'écraserait en silence
+          // dès que l'action, elle, ne partirait jamais (échec permanent, pas une simple coupure).
+          const disabled = publishState !== 'idle' || events.length === 0 || queueFailed;
           return (
             <button onClick={openPublish} disabled={disabled} style={topBtnStyle({ disabled })}
               title={events.length === 0
                 ? 'Rien à publier : aucune action enregistrée'
+                : queueFailed
+                ? "Des actions n'ont pas pu être enregistrées : publier attendrait de les inclure"
                 : 'Publier le boxscore dans les statistiques du match'}>
               <Upload size={14} />{publishState === 'checking' ? 'Vérification…' : 'Publier'}
             </button>
@@ -1393,7 +1454,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '8px 12px', color: '#F59E0B', fontSize: '0.78rem' }}>
           <AlertTriangle size={15} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>
-            {pending} action{pending > 1 ? 's' : ''} n'{pending > 1 ? 'ont' : 'a'} pas pu être enregistrée{pending > 1 ? 's' : ''}. Elle{pending > 1 ? 's repartiront' : ' repartira'} au retour du réseau — ne fermez pas l'onglet.
+            {pending} action{pending > 1 ? 's' : ''} n'{pending > 1 ? 'ont' : 'a'} pas pu être enregistrée{pending > 1 ? 's' : ''}. Elle{pending > 1 ? 's repartiront' : ' repartira'} dès que possible — ne fermez pas l'onglet.
           </span>
           <button onClick={() => { flushQueue().then(err => setError(err ? err.message : '')); }}
             style={{ ...SMALL_BTN, height: 28, borderColor: '#F59E0B', color: '#F59E0B' }}>
@@ -1804,7 +1865,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
               qu'une boîte à lui : la colonne du milieu a ainsi une bordure et un padding, comme
               les deux colonnes d'effectif. */}
           {canEdit && (
-            <button onClick={() => { setSubMode(v => !v); setPendingSub(null); }} aria-pressed={subMode}
+            <button onClick={toggleSubMode} aria-pressed={subMode}
               title="Mode changement (c) : hors de ce mode, sélectionner un joueur ne fait que l'armer pour la saisie"
               style={{
                 gridColumn: '1 / -1',
@@ -2224,11 +2285,21 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
       {showRosterModal && (
         <RosterModal
           players={players} rosterIds={rosterIds} onCourt={onCourt}
-          onToggle={id => setRosterIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id); else next.add(id);
-            return next;
-          })}
+          onToggle={id => {
+            const removing = rosterIds.has(id);
+            setRosterIds(prev => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id); else next.add(id);
+              return next;
+            });
+            // Retiré de la feuille et absent du terrain : il disparaît de tout l'écran (banc ET
+            // terrain), donc de toute prise possible — une sélection qui le viserait encore
+            // resterait armée sur quelqu'un d'invisible, et la prochaine action partirait sur lui
+            // en silence (cf. `removeOpponent`, qui fait le même geste côté adverse).
+            if (removing && !onCourt.includes(id)) {
+              setSelection(prev => prev?.side === 'us' && prev.id === id ? null : prev);
+            }
+          }}
           onToggleAll={() => setRosterIds(prev => prev.size === players.length ? new Set(onCourt) : new Set(players.map(p => p.id)))}
           onClose={() => {
             setShowRosterModal(false);

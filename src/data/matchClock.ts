@@ -55,9 +55,11 @@ export const PAUSED_AT_ZERO: ClockPosition = { baseSeconds: 0, startedAt: null }
  * tout le cinq présent.
  */
 export function elapsedAt(pos: ClockPosition, now: number, periodDurationSeconds: number): number {
-  const raw = pos.startedAt === null
-    ? pos.baseSeconds
-    : pos.baseSeconds + (now - pos.startedAt) / 1000;
+  // `Math.max(0, ...)` sur l'écoulé DEPUIS `startedAt`, pas seulement sur le résultat final : une
+  // horloge système qui recule pendant que le chrono tourne (correction manuelle, fuseau) ne doit
+  // pas faire régresser le temps affiché — juste le maintenir, le temps que l'horloge rattrape.
+  const running = pos.startedAt === null ? 0 : Math.max(0, (now - pos.startedAt) / 1000);
+  const raw = pos.baseSeconds + running;
   return Math.min(periodDurationSeconds, Math.max(0, Math.floor(raw)));
 }
 

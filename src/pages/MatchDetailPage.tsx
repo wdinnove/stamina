@@ -1558,7 +1558,11 @@ export default function MatchDetailPage() {
           )}
 
           {activeTab === 'stats_tracker' && (
-            <MatchStatsTracker match={match} players={players} canEdit={canEditTeamData} />
+            // `key` : sans lui, naviguer d'un match à l'autre sans démontage (lien direct, pas de
+            // rechargement) laissait la sélection en cours, une vidéo ouverte ou le bandeau de
+            // publication du match PRÉCÉDENT survivre — `load()` ne réinitialise que les données du
+            // nouveau match, pas cet état d'écran. Un `key` force un composant neuf par match.
+            <MatchStatsTracker key={match.id} match={match} players={players} canEdit={canEditTeamData} />
           )}
 
           {activeTab === 'game_plan' && (

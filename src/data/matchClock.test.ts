@@ -24,6 +24,12 @@ describe('elapsedAt', () => {
   it('ne descend jamais sous zéro', () => {
     expect(elapsedAt({ baseSeconds: -30, startedAt: null }, T0, PERIOD)).toBe(0);
   });
+
+  it('ne recule pas si l\'horloge système recule pendant que le chrono tourne', () => {
+    // Correction manuelle, changement de fuseau : `now` peut tomber AVANT `startedAt`. Le temps
+    // affiché doit rester figé à `baseSeconds`, pas chuter sous zéro puis se clamper à 0.
+    expect(elapsedAt(running(120), T0 - 30_000, PERIOD)).toBe(120);
+  });
 });
 
 describe('isExpired', () => {

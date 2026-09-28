@@ -148,6 +148,16 @@ describe('boxscoreFromEvents', () => {
     expect(rows[0].pts).toBe(0);
   });
 
+  it('un tir sans position ni valeur n\'est jamais crédité comme réussi', () => {
+    // Sans `x`/`y` ni `value` explicite (donnée héritée/importée), `shotEventValue` rend `null` :
+    // `scoreFromEvents` compte ce tir pour 0 point (`?? 0`), le boxscore ne doit pas diverger en
+    // le comptant comme un 2 points réussi malgré `made: true`.
+    const events = [ev({ playerId: 'p1', made: true, onCourt: ['p1', 'p2'] })];
+    const [p1] = boxscoreFromEvents(events, lineups, 600, 1, 600);
+    expect(p1).toMatchObject({ fg2a: 1, fg2m: 0, pts: 0 });
+    expect(scoreFromEvents(events).us).toBe(0);
+  });
+
   it('un repère de fin de quart-temps/match ne modifie AUCUNE colonne de stat', () => {
     // Même avec un auteur (le champ l'admet, `event_one_author` ne l'interdit pas) : le switch
     // n'a aucun cas pour ces deux types, et c'est voulu — sinon un « Fin de match » ferait
@@ -179,6 +189,13 @@ describe('possessionsFromEvents', () => {
     ];
     // 2 tirs − 1 RO + 1 perte + 0,44 × 1 LF
     expect(possessionsFromEvents(events, 'us')).toBeCloseTo(2.44, 2);
+  });
+
+  it('ne devient jamais négatif', () => {
+    // Un rebond offensif au tout début d'une tranche observée (ex. un quart-temps), avant qu'aucun
+    // tir de champ n'y ait encore eu lieu — seulement le lancer franc manqué qui l'a précédé.
+    const events = [ev({ type: 'ft', made: false }), ev({ type: 'reb_off' })];
+    expect(possessionsFromEvents(events, 'us')).toBe(0);
   });
 });
 
@@ -265,6 +282,11 @@ describe('teamTotalsFromEvents', () => {
   it('ignore les repères de fin de quart-temps/match', () => {
     const events = [ev({ x: 7.5, y: 9.0, made: true }), ev({ type: 'period_end' })];
     expect(teamTotalsFromEvents(events, 'us')).toMatchObject({ fg3a: 1, fg3m: 1 });
+  });
+
+  it('un tir sans position ni valeur n\'est jamais crédité comme réussi', () => {
+    const events = [ev({ made: true })];
+    expect(teamTotalsFromEvents(events, 'us')).toMatchObject({ fg2a: 1, fg2m: 0 });
   });
 });
 
@@ -380,6 +402,14 @@ describe('editableLineupTimeWindow', () => {
   it('ne se borne pas à lui-même', () => {
     const l = lu(1, 200);
     expect(editableLineupTimeWindow(forLineup(l), [], [l], 600)).toEqual({ min: 0, max: 600 });
+  });
+
+  it('ignore les changements de banc de l\'AUTRE camp — chaque flux est indépendant', () => {
+    // Un changement adverse à 210s ne doit borner ni gêner la correction d'un changement 'us',
+    // puisque chaque `MatchLineupEvent` ne porte que l'onCourt de son propre banc.
+    const l = lu(2, 200);
+    const lineupEvents = [lu(1, 100), l, lu(1, 210, 'them')];
+    expect(editableLineupTimeWindow(forLineup(l), [], lineupEvents, 600)).toEqual({ min: 100, max: 600 });
   });
 });
 

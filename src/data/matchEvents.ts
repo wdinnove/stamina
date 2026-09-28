@@ -166,8 +166,11 @@ export function boxscoreFromEvents(
     switch (e.type) {
       case 'shot': {
         const value = shotEventValue(e);
+        // `value === null` (ni position ni valeur explicite) : classé à 2 points par défaut pour
+        // le compte de tentatives, mais JAMAIS crédité comme réussi — `eventPoints`/`scoreFromEvents`
+        // comptent ce même tir pour 0 point, et le boxscore doit rester en accord avec le score.
         if (value === 3) { r.fg3a += 1; if (e.made) r.fg3m += 1; }
-        else             { r.fg2a += 1; if (e.made) r.fg2m += 1; }
+        else             { r.fg2a += 1; if (e.made && value !== null) r.fg2m += 1; }
         break;
       }
       case 'ft':         r.fta += 1; if (e.made) r.ftm += 1; break;
@@ -212,8 +215,11 @@ export function teamTotalsFromEvents(events: MatchEvent[], side: LineupSide): Te
     if (e.side !== side) continue;
     switch (e.type) {
       case 'shot': {
-        if (shotEventValue(e) === 3) { t.fg3a += 1; if (e.made) t.fg3m += 1; }
-        else                         { t.fg2a += 1; if (e.made) t.fg2m += 1; }
+        const value = shotEventValue(e);
+        // Même règle qu'au boxscore individuel : un tir sans position ni valeur n'est jamais
+        // crédité comme réussi, pour rester en accord avec `scoreFromEvents`.
+        if (value === 3) { t.fg3a += 1; if (e.made) t.fg3m += 1; }
+        else             { t.fg2a += 1; if (e.made && value !== null) t.fg2m += 1; }
         break;
       }
       case 'ft':         t.fta += 1; if (e.made) t.ftm += 1; break;
@@ -245,7 +251,10 @@ export function possessionsFromEvents(events: MatchEvent[], side: MatchEvent['si
     else if (e.type === 'reb_off') ro += 1;
     else if (e.type === 'tov') tov += 1;
   }
-  return fga - ro + tov + 0.44 * fta;
+  // Bornée à zéro comme le reste des dérivées de ce genre (`lineupIntervals`, `unattributedLine`) :
+  // un rebond offensif pointé avant tout tir de champ dans la tranche observée (ex. un lancer franc
+  // manqué en tout début de quart-temps) rendrait sinon un nombre de possessions négatif.
+  return Math.max(0, fga - ro + tov + 0.44 * fta);
 }
 
 /** Totaux d'équipe — mêmes champs que `CollectiveStatInput` (api/stats.ts), redéfinis ici pour
@@ -339,9 +348,13 @@ export function editableLineupTimeWindow(
 ): TimeWindow {
   const t = target.gameTimeSeconds;
   const neighbours: number[] = [
+    // Uniquement le flux du MÊME camp : chaque `MatchLineupEvent` ne porte que l'`onCourt` de son
+    // propre banc, un changement adverse n'a donc aucune incidence sur la cohérence de celui-ci.
     ...lineupEvents
-      .filter(l => l.quarter === target.quarter && !(l.side === target.lineup.side && l.seq === target.lineup.seq))
+      .filter(l => l.side === target.lineup.side && l.quarter === target.quarter && l.seq !== target.lineup.seq)
       .map(l => l.gameTimeSeconds),
+    // Les actions, elles, portent `onCourt` ET `onCourtThem` quel que soit leur propre `side` :
+    // toutes bornent le changement, sans distinction de camp.
     ...events.filter(e => e.quarter === target.quarter).map(e => e.gameTimeSeconds),
   ];
   const before = neighbours.filter(s => s < t);
