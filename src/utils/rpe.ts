@@ -29,7 +29,31 @@ export interface LoadEntry {
   date: string;
   rpe: number;
   actualDuration?: number;
+  /** Temps de TRAVAIL effectif de la séance planifiée (hors blocs "repos"), quand elle a été
+   *  détaillée en blocs — cf. `sessionWorkDuration`. Absent si la séance n'a pas de blocs :
+   *  `effectiveDuration` retombe alors sur `plannedDuration`. */
+  workDuration?: number;
   plannedDuration: number;
+}
+
+/**
+ * Durée à retenir pour la charge d'une séance — la plus RÉELLE des trois disponibles, dans
+ * l'ordre : ce que le joueur a réellement déclaré (`actualDuration`), sinon le temps de travail
+ * effectif planifié (`workDuration`, hors repos), sinon seulement la durée globale planifiée par
+ * le coach (`plannedDuration`, qui peut inclure des temps morts non détaillés en blocs).
+ */
+export function effectiveDuration(e: { actualDuration?: number; workDuration?: number; plannedDuration: number }): number {
+  return e.actualDuration ?? e.workDuration ?? e.plannedDuration;
+}
+
+/**
+ * Charge d'une séance (méthode RPE × durée, Foster) — point d'entrée UNIQUE de cette formule,
+ * utilisée pour l'ACWR, le TSB, la charge hebdomadaire et tous les totaux affichés. Recopier
+ * `rpe * (actualDuration ?? plannedDuration)` à chaque endroit était ce qui a laissé le calcul
+ * diverger du temps de travail réel des séances détaillées en blocs.
+ */
+export function sessionLoad(e: { rpe: number; actualDuration?: number; workDuration?: number; plannedDuration: number }): number {
+  return e.rpe * effectiveDuration(e);
 }
 
 /**
@@ -68,14 +92,20 @@ export function rpeLabel(v: number): string {
 export function computeAcwr(history: LoadEntry[], refDate?: string): number | null {
   if (history.length === 0) return null;
   const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const ref = refDate ? new Date(refDate) : new Date(sorted[sorted.length - 1].date);
+  // Midi local, comme `computePmcSeries` : une date-seule parsée sans heure vaut minuit UTC, et
+  // `setDate` raisonne en heure LOCALE — sur un fuseau à l'ouest de Greenwich, ça décalait les
+  // fenêtres de 7j/28j d'un jour entier.
+  const ref = new Date((refDate ?? sorted[sorted.length - 1].date) + 'T12:00:00');
   const load = (days: number) => {
     const cutoff = new Date(ref);
     // -(days-1) car les deux bornes sont inclusives : ex. 7j = J-6 → J (7 jours pile), pas J-7 → J (8 jours)
     cutoff.setDate(cutoff.getDate() - (days - 1));
-    const entries = sorted.filter(e => new Date(e.date) >= cutoff && new Date(e.date) <= ref);
+    const entries = sorted.filter(e => {
+      const d = new Date(e.date + 'T12:00:00');
+      return d >= cutoff && d <= ref;
+    });
     if (!entries.length) return 0;
-    return entries.reduce((s, e) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0) / days;
+    return entries.reduce((s, e) => s + sessionLoad(e), 0) / days;
   };
   const chronic = load(28);
   if (!chronic) return null;
@@ -120,8 +150,7 @@ export function computePmcSeries(history: LoadEntry[], endDate?: string): PmcPoi
   if (!history.length) return [];
   const dailyLoad = new Map<string, number>();
   history.forEach(e => {
-    const load = e.rpe * (e.actualDuration ?? e.plannedDuration);
-    dailyLoad.set(e.date, (dailyLoad.get(e.date) ?? 0) + load);
+    dailyLoad.set(e.date, (dailyLoad.get(e.date) ?? 0) + sessionLoad(e));
   });
   const firstDate = [...history.map(e => e.date)].sort()[0];
   const end = endDate ?? new Date().toLocaleDateString('sv');

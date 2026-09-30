@@ -182,6 +182,9 @@ export interface RPEEntry {
   categoryName?: string;
   categoryColor?: string;
   plannedDuration: number;
+  /** Temps de travail effectif de la séance (hors blocs "repos"), joint depuis `session_blocks` —
+   *  cf. `effectiveDuration` dans `utils/rpe.ts`. Absent si la séance n'a pas de blocs détaillés. */
+  workDuration?: number;
   teamName?: string;
 }
 

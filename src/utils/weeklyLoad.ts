@@ -34,8 +34,9 @@ export function getWeekTier(ua: number, lightMax = DEFAULT_THRESHOLDS.lightMax, 
 
 import { mean, roundedAvg } from './avg';
 import { teamAverage, type TeamAverage } from './teamAverage';
+import { sessionLoad } from './rpe';
 
-export interface WeeklyLoadRow { date: string; playerId: string; rpe: number; actualDuration?: number; plannedDuration: number }
+export interface WeeklyLoadRow { date: string; playerId: string; rpe: number; actualDuration?: number; workDuration?: number; plannedDuration: number }
 export interface WeeklyLoadBucket {
   week: string;
   load: number;
@@ -65,7 +66,7 @@ export function weeklyLoadBuckets(rows: WeeklyLoadRow[]): WeeklyLoadBucket[] {
     const wk = mondayIso(r.date);
     if (!weekMap.has(wk)) weekMap.set(wk, { load: 0, players: new Set(), rpes: [] });
     const w = weekMap.get(wk)!;
-    w.load += r.rpe * (r.actualDuration ?? r.plannedDuration);
+    w.load += sessionLoad(r);
     w.players.add(r.playerId);
     w.rpes.push(r.rpe);
   }
@@ -92,7 +93,7 @@ function weeklyLoadsOfPlayer(rows: WeeklyLoadRow[]): number[] {
   const byWeek = new Map<string, number>();
   for (const r of rows) {
     const wk = mondayIso(r.date);
-    byWeek.set(wk, (byWeek.get(wk) ?? 0) + r.rpe * (r.actualDuration ?? r.plannedDuration));
+    byWeek.set(wk, (byWeek.get(wk) ?? 0) + sessionLoad(r));
   }
   return [...byWeek.values()];
 }

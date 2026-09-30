@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getWeekTier, weeklyLoadBuckets, averageWeeklyLoad } from '../utils/weeklyLoad';
 import { mondayIso as getWeekMonday } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel } from '../utils/rpe';
+import { rpeColor, rpeLabel, effectiveDuration, sessionLoad } from '../utils/rpe';
 import { fmtDate, fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
 import { roundedAvg } from '../utils/avg';
@@ -35,7 +35,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
   const [indivTableView, setIndivTableView] = useState<'session' | 'week'>('week');
 
   const avgRPE = roundedAvg(filtered.map((e: RPEEntry) => e.rpe));
-  const toWeeklyRow = (e: RPEEntry) => ({ date: e.date, playerId: e.playerId, rpe: e.rpe, actualDuration: e.actualDuration, plannedDuration: e.plannedDuration });
+  const toWeeklyRow = (e: RPEEntry) => ({ date: e.date, playerId: e.playerId, rpe: e.rpe, actualDuration: e.actualDuration, workDuration: e.workDuration, plannedDuration: e.plannedDuration });
   const weeklyBuckets = weeklyLoadBuckets(filtered.map(toWeeklyRow));
   const weeklyChartData = weeklyBuckets.map(b => ({ date: fmtDate(b.week), load: Math.round(b.load) }));
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
@@ -95,7 +95,7 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
           .sort((a: RPEEntry, b: RPEEntry) => a.date.localeCompare(b.date))
           .map((e: RPEEntry) => ({
             date: fmtDateWithDay(e.date),
-            load: Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
+            load: Math.round(sessionLoad(e)),
             rpe:  e.rpe,
           }));
         const comboData = indivComboView === 'session' ? sessionCombo : weekCombo;
@@ -138,9 +138,9 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
           const k = getWeekMonday(e.date);
           if (!weekMap.has(k)) weekMap.set(k, { rpes: [], totalLoad: 0, totalDur: 0, dates: [], teams: new Set() });
           const w = weekMap.get(k)!;
-          const dur = e.actualDuration ?? e.plannedDuration;
+          const dur = effectiveDuration(e);
           w.rpes.push(e.rpe);
-          w.totalLoad += e.rpe * dur;
+          w.totalLoad += sessionLoad(e);
           w.totalDur  += dur;
           w.dates.push(e.date);
           if (e.teamName) w.teams.add(e.teamName);
@@ -195,8 +195,8 @@ export function PlayerLoadPanel({ history, filtered, thresholds, showSeasonDiff,
                   </thead>
                   <tbody>
                     {filtered.map(e => {
-                      const dur     = e.actualDuration ?? e.plannedDuration;
-                      const load    = e.rpe * dur;
+                      const dur     = effectiveDuration(e);
+                      const load    = sessionLoad(e);
                       const rpeC    = rpeColor(e.rpe);
                       const lCfg    = loadCfgSession(load);
                       return (

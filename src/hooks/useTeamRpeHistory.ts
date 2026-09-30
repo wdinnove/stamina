@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
-import { computeAcwr, computeTsb, teamAvgRpe } from '../utils/rpe';
+import { computeAcwr, computeTsb, teamAvgRpe, sessionLoad } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { roundedAvg } from '../utils/avg';
 import { EMPTY_TEAM_AVERAGE, type TeamAverage } from '../utils/teamAverage';
@@ -136,7 +136,7 @@ export function useTeamRpeHistory(
         return;
       }
 
-      let rpeRows: Array<{ rpe: number; actualDuration: number | undefined; playerId: string; sessionId: string }>;
+      let rpeRows: Array<{ rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string; sessionId: string }>;
       try {
         rpeRows = await rpeApi.listRpeDetailsBySessionIds(sessionIds);
       } catch (err: unknown) {
@@ -146,7 +146,7 @@ export function useTeamRpeHistory(
       }
 
       // ── Per-session aggregation
-      const entriesBySession = new Map<string, Array<{ rpe: number; actualDuration: number | undefined; playerId: string }>>();
+      const entriesBySession = new Map<string, Array<{ rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string }>>();
       rpeRows.forEach(r => {
         if (!entriesBySession.has(r.sessionId)) entriesBySession.set(r.sessionId, []);
         entriesBySession.get(r.sessionId)!.push(r);
@@ -169,9 +169,10 @@ export function useTeamRpeHistory(
             avg:        roundedAvg(vals) ?? 0,
             max:        Math.max(...vals),
             min:        Math.min(...vals),
-            // Charge par joueur (actual_duration si saisie, sinon durée prévue) — pas une simple
-            // multiplication par la durée prévue, qui ignore les durées réelles individuelles
-            totalLoad:  Math.round(entries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? s.plannedDuration), 0)),
+            // Charge par joueur — la plus réelle des durées disponibles (cf. `effectiveDuration`) :
+            // pas une simple multiplication par la durée prévue, qui ignore le temps réellement
+            // déclaré et le temps de travail effectif des séances détaillées en blocs.
+            totalLoad:  Math.round(entries.reduce((sum, e) => sum + sessionLoad({ ...e, plannedDuration: s.plannedDuration }), 0)),
           };
         })
         .sort((a, b) => b.date.localeCompare(a.date));
@@ -214,6 +215,7 @@ export function useTeamRpeHistory(
         playerId: r.playerId,
         rpe: r.rpe,
         actualDuration: r.actualDuration,
+        workDuration: r.workDuration,
         plannedDuration: sessionMap.get(r.sessionId)?.plannedDuration ?? 0,
       })).filter(r => r.date)));
 
@@ -252,10 +254,10 @@ export function useTeamRpeHistory(
         if (!playerMap.has(r.playerId)) playerMap.set(r.playerId, { rpes: [], sessions: new Set(), load: 0, rpes3w: [] });
         const p    = playerMap.get(r.playerId)!;
         const sess = sessionMap.get(r.sessionId);
-        const dur  = r.actualDuration ?? sess?.plannedDuration ?? 0;
+        const load = sess ? sessionLoad({ ...r, plannedDuration: sess.plannedDuration }) : 0;
         p.rpes.push(r.rpe);
         p.sessions.add(r.sessionId);
-        p.load += r.rpe * dur;
+        p.load += load;
         if (sess && sess.date >= _3wAgoStr) {
           p.rpes3w.push(r.rpe);
         }
@@ -263,7 +265,7 @@ export function useTeamRpeHistory(
           const wk = getWeekMonday(sess.date);
           if (!playerWeekLoadMap.has(r.playerId)) playerWeekLoadMap.set(r.playerId, new Map());
           const pw = playerWeekLoadMap.get(r.playerId)!;
-          pw.set(wk, (pw.get(wk) ?? 0) + r.rpe * dur);
+          pw.set(wk, (pw.get(wk) ?? 0) + load);
         }
       });
 
@@ -305,6 +307,7 @@ export function useTeamRpeHistory(
           playerId: r.playerId,
           rpe: r.rpe,
           actualDuration: r.actualDuration,
+          workDuration: r.workDuration,
           plannedDuration: sessionById.get(r.sessionId)?.plannedDuration ?? 0,
         })).filter(r => r.date)));
       }, () => {});
@@ -323,6 +326,7 @@ export function useTeamRpeHistory(
             date:            row.date,
             rpe:             row.rpe,
             actualDuration:  row.actualDuration,
+            workDuration:    row.workDuration,
             plannedDuration: row.plannedDuration,
           });
         });

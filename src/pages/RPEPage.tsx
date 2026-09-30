@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router';
 import { getWeekTier } from '../utils/weeklyLoad';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, sessionWorkDuration } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, sessionWorkDuration, sessionLoad } from '../utils/rpe';
 import { roundedAvg } from '../utils/avg';
 import { EMPTY_TEAM_AVERAGE } from '../utils/teamAverage';
-import type { LoadEntry } from '../utils/rpe';
 import { fmtDate, fmtDateShort, fmtDateWithDay } from '../utils/dateFormat';
 import { fmt1 } from '../utils/format';
 import {
@@ -33,17 +32,6 @@ import type { Player, RPEEntry, TeamCategory, TrainingAttendance } from '../data
 function todayStr(): string {
   return new Date().toLocaleDateString('sv');
 }
-
-/** Nombre de jours entre la 1ère entrée et aujourd'hui (0 si aucune entrée) — sert à juger la fiabilité de l'ACWR/TSB */
-function historySpanDays(entries: LoadEntry[]): number {
-  if (!entries.length) return 0;
-  const firstDate = [...entries.map(e => e.date)].sort()[0];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const first = new Date(firstDate + 'T00:00:00');
-  return Math.floor((today.getTime() - first.getTime()) / 86400000) + 1;
-}
-
-const MIN_RELIABLE_HISTORY_DAYS = 28;
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -350,10 +338,10 @@ export default function RPEPage() {
   const chartData    = [...filtered].sort((a, b) => a.date.localeCompare(b.date)).map((e: RPEEntry) => ({
     date:  fmtDate(e.date),
     rpe:   e.rpe,
-    load:  Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)),
+    load:  Math.round(sessionLoad(e)),
   }));
   const lastRPE      = filtered.length ? [...filtered].sort((a: RPEEntry, b: RPEEntry) => b.date.localeCompare(a.date))[0] : undefined;
-  const totalLoad    = filtered.reduce((s: number, e: RPEEntry) => s + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+  const totalLoad    = filtered.reduce((s: number, e: RPEEntry) => s + sessionLoad(e), 0);
 
   // ── Team saison derived values
   // Agrégation hebdo (charge ramenée à l'effectif DISTINCT de la semaine, RPE selon la règle

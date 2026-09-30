@@ -18,7 +18,7 @@ import { sumInjuryDays } from '../utils/medical';
 import { FilterField, filterControlStyle } from '../components/FilterField';
 import { roundedAvg } from '../utils/avg';
 import type { DatePreset } from '../components/DateRangeCard';
-import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN } from '../utils/rpe';
+import { rpeColor, rpeLabel, computeAcwr, acwrZone, computeTsb, tsbZone, ALERT_TITLE_PLAIN, CHARGE_ZONE_PLAIN, sessionLoad } from '../utils/rpe';
 import { wellnessScoreColor, wellnessTier } from '../utils/wellness';
 import { presenceRate, presenceColor } from '../utils/attendance';
 import { mondayIso, getWeekTier, weeklyLoadBuckets, averageWeeklyLoad } from '../utils/weeklyLoad';
@@ -241,7 +241,7 @@ export default function PerformanceIndividuellePage() {
   // beaucoup de séances/semaines, plutôt que de tout tasser dans la largeur disponible.
   const loadSessionCombo = useMemo(() => [...rpeFiltered]
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map(e => ({ date: fmtDateWithDay(e.date), load: Math.round(e.rpe * (e.actualDuration ?? e.plannedDuration)), rpe: e.rpe })),
+    .map(e => ({ date: fmtDateWithDay(e.date), load: Math.round(sessionLoad(e)), rpe: e.rpe })),
   [rpeFiltered]);
   const loadWeekBuckets = useMemo(() => weeklyLoadBuckets(rpeFiltered), [rpeFiltered]);
   const loadWeekCombo = loadWeekBuckets.map(b => ({ date: fmtDate(b.week), load: Math.round(b.load), rpe: b.avgRpe ?? 0 }));

@@ -26,7 +26,7 @@ import type {
 import { VARIABLES, type IndicatorSense, type TeamVariable } from './pca';
 import { ratioFromSums } from '../utils/ratioFromSums';
 import { calcPlayerAdvancedForMatch, calcPlayerAdvancedForPeriod, perMatchPtsProd, type PlayerAdvancedStats } from './playerAdvanced';
-import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, type LoadEntry } from '../utils/rpe';
+import { computeAcwr, acwrZone, computePmcSeries, tsbZone, rpeColor, sessionLoad, type LoadEntry } from '../utils/rpe';
 import { getWeekTier, mondayIso } from '../utils/weeklyLoad';
 import { presenceRate } from '../utils/attendance';
 import { WELLNESS_DIMENSIONS, wellnessScoreColor, aggregateTeamWellnessDaily } from '../utils/wellness';
@@ -209,8 +209,6 @@ function teamPeriodValueOf(v: TeamVariable): NonNullable<IndicatorDef['teamPerio
   if (!sums) return teamMatchAvg(v.get);
   return (d, from, to) => ratioFromSums(teamMatchesIn(d, from, to), sums.num, sums.den, sums.factor ?? 100);
 }
-
-const sessionLoad = (e: RPEEntry) => e.rpe * (e.actualDuration ?? e.plannedDuration);
 
 /** Moyenne par date des valeurs non nulles extraites des matchs */
 function matchSeries<T extends { date: string }>(rows: T[], from: string, to: string, get: (m: T) => number | null | undefined): SeriesPoint[] {

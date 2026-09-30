@@ -17,7 +17,7 @@ import { Modal, PlayerAvatar, RpeKpiCard, Badge, CategoryBadge, CATEGORY_FALLBAC
 import { ExerciseView } from '../components';
 import { createScene, type DiagramScene } from '../utils/diagram';
 import RichTextEditor from '../components/RichTextEditor';
-import { computeAcwr, acwrZone, rpeColor, estimatedSessionRpe } from '../utils/rpe';
+import { computeAcwr, acwrZone, rpeColor, estimatedSessionRpe, sessionLoad, sessionWorkDuration } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { wellnessTier as sharedWellnessTier } from '../utils/wellness';
 import { getWeekTier } from '../utils/weeklyLoad';
@@ -141,7 +141,7 @@ function acuteLoadBefore(history: LoadEntry[], sessionDate: string): number {
   const { startStr, endStr } = windowBefore(sessionDate);
   return history
     .filter(e => e.date >= startStr && e.date <= endStr)
-    .reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? e.plannedDuration), 0);
+    .reduce((sum, e) => sum + sessionLoad(e), 0);
 }
 
 // Score bien-être moyen sur les 7 jours précédant la date de séance
@@ -1859,7 +1859,11 @@ export default function TrainingSessionDetailPage() {
   const rpeValues       = rpeEntries.map(e => e.rpe);
   // Moyenne d'UNE séance : une seule entrée par joueur, donc moyenne simple.
   const avgRpe          = roundedAvg(rpeValues);
-  const totalLoad       = rpeEntries.reduce((sum, e) => sum + e.rpe * (e.actualDuration ?? session.plannedDuration), 0);
+  // Temps de travail effectif de CETTE séance (hors blocs "repos") — `undefined`, pas 0, quand
+  // aucun bloc n'a été détaillé : `sessionWorkDuration([])` vaudrait 0 et écraserait sinon la
+  // durée planifiée globale (`effectiveDuration` ne retombe dessus que si `workDuration` est absent).
+  const workDuration    = blocks.length > 0 ? sessionWorkDuration(blocks) : undefined;
+  const totalLoad       = rpeEntries.reduce((sum, e) => sum + sessionLoad({ ...e, workDuration, plannedDuration: session.plannedDuration }), 0);
   const blockLoadUa     = blocks.reduce((s, b) => s + b.loadUa, 0);
   const estimatedRpe    = estimatedSessionRpe(blocks);
   const avgLoadPerPlayer = rpeEntries.length > 0 ? totalLoad / rpeEntries.length : null;
@@ -2110,7 +2114,7 @@ export default function TrainingSessionDetailPage() {
                           const weekTier   = weekLoad > 0 ? getWeekTier(weekLoad, thresholds.lightMax, thresholds.normalMax) : null;
                           const wellnessAvg = wellnessAvgBefore(wellnessMap[p.id] ?? [], session.date);
                           const rpeEntry   = rpeMap[p.id];
-                          const sessLoad   = rpeEntry ? rpeEntry.rpe * (rpeEntry.actualDuration ?? session.plannedDuration) : null;
+                          const sessLoad   = rpeEntry ? sessionLoad({ ...rpeEntry, workDuration, plannedDuration: session.plannedDuration }) : null;
                           const sessTier   = sessLoad !== null ? getWeekTier(sessLoad, sessionLoadLight, sessionLoadNormal) : null;
                           const highRisk = acwrTier?.label === 'Risque élevé';
                           const rowBg    = highRisk ? 'rgba(239,68,68,0.05)' : 'transparent';

@@ -4,7 +4,7 @@ import { useObjectives } from './useObjectives';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { objectivesApi } from '../api';
 import { teamWellnessAvg, wellnessRawValue, WELLNESS_DIMENSIONS } from '../utils/wellness';
-import { teamAvgRpe, computeAcwr, computeTsb } from '../utils/rpe';
+import { teamAvgRpe, computeAcwr, computeTsb, sessionLoad } from '../utils/rpe';
 import { averageWeeklyLoad, weeklyLoadBuckets, teamAvgWeeklyLoad } from '../utils/weeklyLoad';
 import { indicatorByKey, periodValueOf } from '../data/crossAnalysis';
 import { playerNameShort } from '../utils/playerName';
@@ -197,7 +197,7 @@ export function useReportData(from: string, to: string) {
           teamAvgRpe:   teamRpeRefs.avgRpe,
           sessions:     new Set(periodRpe.map(r => r.sessionId)).size,
           teamSessions: teamRpeRefs.sessions,
-          totalLoad:    Math.round(periodRows.reduce((s, r) => s + r.rpe * (r.actualDuration ?? r.plannedDuration), 0)),
+          totalLoad:    Math.round(periodRows.reduce((s, r) => s + sessionLoad(r), 0)),
           weeks: weeklyLoadBuckets(periodRows).map(b => ({
             week: b.week,
             load: Math.round(b.load),
@@ -246,7 +246,7 @@ export function useReportData(from: string, to: string) {
 /** `RPEEntry` → la forme attendue par les utilitaires de charge hebdomadaire. */
 const toLoadRow = (playerId: string) => (r: RPEEntry) => ({
   date: r.date, playerId, rpe: r.rpe,
-  actualDuration: r.actualDuration, plannedDuration: r.plannedDuration,
+  actualDuration: r.actualDuration, workDuration: r.workDuration, plannedDuration: r.plannedDuration,
 });
 
 function sameWeek(date: string, monday: string): boolean {

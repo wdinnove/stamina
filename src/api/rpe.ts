@@ -1,5 +1,6 @@
 import { supabase } from './client';
 import type { RPEEntry, TrainingSession } from '../data/types';
+import { sessionBlocksApi } from './sessionBlocks';
 
 export interface ListRpeFilters {
   playerId?: string;
@@ -22,7 +23,7 @@ function toSession(row: Record<string, unknown>): TrainingSession {
   };
 }
 
-function toEntry(row: Record<string, unknown>, session: TrainingSession): RPEEntry {
+function toEntry(row: Record<string, unknown>, session: TrainingSession, workDuration?: number): RPEEntry {
   return {
     id:              row.id              as string,
     sessionId:       row.session_id      as string,
@@ -34,6 +35,7 @@ function toEntry(row: Record<string, unknown>, session: TrainingSession): RPEEnt
     categoryName:    session.categoryName,
     categoryColor:   session.categoryColor,
     plannedDuration: session.plannedDuration,
+    workDuration,
   };
 }
 
@@ -61,32 +63,36 @@ export const rpeApi = {
   },
 
   // RPE détaillées (rpe, durée réelle, joueur, séance) pour un lot de séances — agrégations client (moyennes, charge…)
-  async listRpeDetailsBySessionIds(sessionIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; playerId: string; sessionId: string }>> {
+  async listRpeDetailsBySessionIds(sessionIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string; sessionId: string }>> {
     if (!sessionIds.length) return [];
-    const { data, error } = await supabase
-      .from('rpe_entries')
-      .select('rpe, actual_duration, player_id, session_id')
-      .in('session_id', sessionIds);
+    const [{ data, error }, workDurations] = await Promise.all([
+      supabase.from('rpe_entries').select('rpe, actual_duration, player_id, session_id').in('session_id', sessionIds),
+      sessionBlocksApi.workDurationsBySessions(sessionIds),
+    ]);
     if (error) throw error;
     return (data ?? []).map(r => ({
       rpe: r.rpe as number, actualDuration: (r.actual_duration as number | null) ?? undefined,
+      workDuration: workDurations.get(r.session_id as string),
       playerId: r.player_id as string, sessionId: r.session_id as string,
     }));
   },
 
   // Historique RPE complet (avec date/durée planifiée de la séance jointe) pour un lot de joueurs — ACWR/TSB
-  async listRpeWithSessionByPlayerIds(playerIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; playerId: string; date: string; plannedDuration: number }>> {
+  async listRpeWithSessionByPlayerIds(playerIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string; date: string; plannedDuration: number }>> {
     if (!playerIds.length) return [];
     const { data, error } = await supabase
       .from('rpe_entries')
-      .select('rpe, actual_duration, player_id, training_sessions!inner(date, planned_duration)')
+      .select('rpe, actual_duration, player_id, session_id, training_sessions!inner(date, planned_duration)')
       .in('player_id', playerIds);
     if (error) throw error;
-    return (data as unknown as Array<{ rpe: number; actual_duration: number | null; player_id: string; training_sessions: { date: string; planned_duration: number } }>)
-      .map(r => ({
-        rpe: r.rpe, actualDuration: r.actual_duration ?? undefined, playerId: r.player_id,
-        date: r.training_sessions.date, plannedDuration: r.training_sessions.planned_duration,
-      }));
+    const rows = data as unknown as Array<{ rpe: number; actual_duration: number | null; player_id: string; session_id: string; training_sessions: { date: string; planned_duration: number } }>;
+    // Temps de travail effectif par séance — charge réelle plutôt que la seule durée planifiée
+    // globale (cf. `effectiveDuration`, `utils/rpe.ts`).
+    const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id))]);
+    return rows.map(r => ({
+      rpe: r.rpe, actualDuration: r.actual_duration ?? undefined, workDuration: workDurations.get(r.session_id),
+      playerId: r.player_id, date: r.training_sessions.date, plannedDuration: r.training_sessions.planned_duration,
+    }));
   },
 
   // Toutes les entrées RPE d'une saison et/ou d'un joueur, enrichies depuis la séance jointe
@@ -98,11 +104,12 @@ export const rpeApi = {
     if (filters.playerId) query = query.eq('player_id', filters.playerId);
     const { data, error } = await query;
     if (error) throw error;
-    return (data ?? [])
-      .map(row => {
-        const r = row as Record<string, unknown>;
+    const rows = (data ?? []) as Record<string, unknown>[];
+    const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id as string))]);
+    return rows
+      .map(r => {
         const session = toSession(r.training_sessions as Record<string, unknown>);
-        return toEntry(r, session);
+        return toEntry(r, session, workDurations.get(r.session_id as string));
       })
       .sort((a, b) => a.date.localeCompare(b.date));
   },
@@ -229,7 +236,9 @@ export const rpeApi = {
       .eq('player_id', playerId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data ?? []).map(row => {
+    const rows = (data ?? []) as Record<string, unknown>[];
+    const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id as string))]);
+    return rows.map(row => {
       const s = row.training_sessions as Record<string, unknown>;
       const teams = s.teams as Record<string, unknown> | null;
       const cat = s.team_categories as { id: string; name: string; color: string } | null | undefined;
@@ -243,7 +252,7 @@ export const rpeApi = {
         categoryColor:   cat?.color,
         plannedDuration: s.planned_duration as number,
       };
-      const entry = toEntry(row as Record<string, unknown>, session);
+      const entry = toEntry(row, session, workDurations.get(row.session_id as string));
       return { ...entry, teamName: teams?.name as string | undefined };
     });
   },
