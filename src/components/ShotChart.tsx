@@ -28,8 +28,13 @@ export function ShotMarkers({ shots, colors, radius = 0.34 }: {
   return (
     <>
       {shots.map(s => s.made
-        ? <circle key={s.seq} cx={s.x} cy={s.y} r={radius} fill={colors.made} opacity={0.9} />
-        : <g key={s.seq} stroke={colors.miss} strokeWidth={radius * 0.35} strokeLinecap="round" opacity={0.85}>
+        // `matchId`+`seq` : `seq` seul n'est unique QUE dans un match. Cette carte est aussi
+        // utilisée sur plusieurs matchs à la fois (`ShotChartExplorer`/saison) où deux matchs
+        // partagent forcément des `seq` bas — une clé sur `seq` seul confondait alors deux tirs
+        // de matchs différents, et React pouvait laisser un vieux marqueur affiché après un
+        // changement de filtre au lieu de le retirer.
+        ? <circle key={`${s.matchId}-${s.seq}`} cx={s.x} cy={s.y} r={radius} fill={colors.made} opacity={0.9} />
+        : <g key={`${s.matchId}-${s.seq}`} stroke={colors.miss} strokeWidth={radius * 0.35} strokeLinecap="round" opacity={0.85}>
             <path d={`M ${s.x! - arm} ${s.y! - arm} L ${s.x! + arm} ${s.y! + arm}`} />
             <path d={`M ${s.x! + arm} ${s.y! - arm} L ${s.x! - arm} ${s.y! + arm}`} />
           </g>)}
