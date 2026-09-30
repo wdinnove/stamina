@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shotValue, shotZone, zoneStats } from './shotChart';
-import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, isMilestoneEvent, trackerHistory, editableActionTimeWindow, editableLineupTimeWindow, backwardsLineupChange, sortLineupRows, type EventLineupRow, type PlayerBoxscoreRow } from './matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, plusMinusFromEvents, possessionsFromEvents, lineupStatsFromEvents, teamTotalsFromEvents, evaluation, isMilestoneEvent, trackerHistory, editableActionTimeWindow, editableLineupTimeWindow, backwardsLineupChange, sortLineupRows, comboStatsFromLineups, combosAcrossMatches, lineupRowView, type EventLineupRow, type PlayerBoxscoreRow } from './matchEvents';
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, MatchLineupEvent } from './types';
 
@@ -462,7 +462,7 @@ describe('backwardsLineupChange', () => {
 
 describe('sortLineupRows', () => {
   const row = (over: Partial<EventLineupRow>): EventLineupRow => ({
-    players: ['p1'], seconds: 0, possessions: 0, oppPossessions: 0,
+    players: ['p1'], seconds: 0, matches: 1, possessions: 0, oppPossessions: 0,
     pointsFor: 0, pointsAgainst: 0, plusMinus: 0,
     pointsPerPossession: null, oppPointsPerPossession: null, ...over,
   });
@@ -506,5 +506,57 @@ describe('sortLineupRows', () => {
     const rows = [row({ seconds: 10 }), row({ seconds: 300 })];
     sortLineupRows(rows, 'seconds', 'desc', nameOf);
     expect(rows.map(r => r.seconds)).toEqual([10, 300]);
+  });
+});
+
+describe('comboStatsFromLineups', () => {
+  const row = (players: string[], over: Partial<EventLineupRow>): EventLineupRow => ({
+    players, seconds: 0, matches: 1, possessions: 0, oppPossessions: 0,
+    pointsFor: 0, pointsAgainst: 0, plusMinus: 0,
+    pointsPerPossession: null, oppPointsPerPossession: null, ...over,
+  });
+
+  it('compte chaque trio une fois', () => {
+    expect(comboStatsFromLineups([row(['a', 'b', 'c', 'd', 'e'], {})], 3)).toHaveLength(10);
+  });
+
+  it('somme les cinq qui contiennent le duo et recalcule les ratios', () => {
+    const duos = comboStatsFromLineups([
+      row(['a', 'b', 'c', 'd', 'e'], { seconds: 100, possessions: 4, pointsFor: 6, pointsAgainst: 2 }),
+      row(['a', 'b', 'f', 'g', 'h'], { seconds: 50,  possessions: 2, pointsFor: 0, pointsAgainst: 4 }),
+    ], 2);
+    expect(duos).toHaveLength(10 + 10 - 1);   // a-b compté une seule fois
+    const ab = duos.find(d => d.players.join() === 'a,b')!;
+    expect(ab).toMatchObject({ seconds: 150, possessions: 6, pointsFor: 6, pointsAgainst: 6, plusMinus: 0, pointsPerPossession: 1 });
+  });
+});
+
+describe('combosAcrossMatches / lineupRowView', () => {
+  const row = (players: string[], over: Partial<EventLineupRow>): EventLineupRow => ({
+    players, seconds: 0, matches: 1, possessions: 0, oppPossessions: 0,
+    pointsFor: 0, pointsAgainst: 0, plusMinus: 0,
+    pointsPerPossession: null, oppPointsPerPossession: null, ...over,
+  });
+
+  it('compte un duo UNE fois par match, même vu dans plusieurs cinq', () => {
+    const m1 = [row(['a', 'b', 'c', 'd', 'e'], { seconds: 60 }), row(['a', 'b', 'f', 'g', 'h'], { seconds: 60 })];
+    const m2 = [row(['a', 'b', 'c', 'd', 'e'], { seconds: 120 })];
+    const ab = combosAcrossMatches([m1, m2], 2).find(r => r.players.join() === 'a,b')!;
+    expect(ab).toMatchObject({ matches: 2, seconds: 240 });
+    const five = combosAcrossMatches([m1, m2], 5).find(r => r.players.join() === 'a,b,c,d,e')!;
+    expect(five).toMatchObject({ matches: 2, seconds: 180 });
+  });
+
+  it('par match divise les volumes, pour 100 poss. ramène aux possessions', () => {
+    const r = row(['a'], {
+      matches: 2, seconds: 600, possessions: 20, oppPossessions: 25,
+      pointsFor: 24, pointsAgainst: 20, plusMinus: 4, pointsPerPossession: 1.2, oppPointsPerPossession: 0.8,
+    });
+    expect(lineupRowView(r, 'match')).toMatchObject({ seconds: 300, pointsFor: 12, plusMinus: 2, pointsPerPossession: 1.2 });
+    const v = lineupRowView(r, 'per100');
+    expect(v.pointsFor).toBeCloseTo(120);
+    expect(v.pointsAgainst).toBeCloseTo(80);
+    expect(v.plusMinus).toBeCloseTo(40);
+    expect(lineupRowView(row(['a'], {}), 'per100').plusMinus).toBeNull();
   });
 });

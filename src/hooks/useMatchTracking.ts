@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { matchEventsApi } from '../api/matchEvents';
 import { matchLiveApi } from '../api/matchLive';
-import { isMilestoneEvent } from '../data/matchEvents';
+import { isMilestoneEvent, lastTrackedInstant } from '../data/matchEvents';
 import type { MatchEvent, MatchLineupEvent, MatchOpponentPlayer } from '../data/types';
 
 /**
@@ -54,18 +54,9 @@ export function useMatchTracking(matchId: string): MatchTracking {
 
   useEffect(() => { load(); }, [load]);
 
-  const { lastQuarter, lastElapsedSeconds } = useMemo(() => {
-    let q = 1, s = 0;
-    // Les repères « fin de quart-temps »/« fin de match » comptent ICI : c'est justement ce qui
-    // permet de dater la vraie fin du match plutôt que de la sous-estimer à la dernière action.
-    for (const e of [...rawEvents, ...lineupEvents]) {
-      if (e.quarter > q || (e.quarter === q && e.gameTimeSeconds > s)) {
-        q = e.quarter;
-        s = e.gameTimeSeconds;
-      }
-    }
-    return { lastQuarter: q, lastElapsedSeconds: s };
-  }, [rawEvents, lineupEvents]);
+  const { lastQuarter, lastElapsedSeconds } = useMemo(
+    () => lastTrackedInstant(rawEvents, lineupEvents), [rawEvents, lineupEvents],
+  );
 
   /** Les repères de fin ne sont PAS des actions : les onglets de lecture (courbe, QT par QT,
    *  grille de tir, lineups) ne doivent ni les afficher ni les compter — ils n'existent que pour

@@ -17,7 +17,7 @@ import { useClockHotkey } from '../hooks/useClockHotkey';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { COURT_SIZE } from '../utils/diagram';
 import { periodLabel, formatClock, formatGameClock } from '../data/liveTrackingAnalysis';
-import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, teamTotalsFromEvents, EVENT_LABELS, isMilestoneEvent, trackerHistory, editableActionTimeWindow, editableLineupTimeWindow, onCourtAt, backwardsLineupChange, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type TrackerHistoryEntry } from '../data/matchEvents';
+import { boxscoreFromEvents, scoreFromEvents, eventPoints, lineupStatsFromEvents, comboStatsFromLineups, COMBO_SIZES, COMBO_LABEL, type ComboSize, teamTotalsFromEvents, EVENT_LABELS, isMilestoneEvent, trackerHistory, editableActionTimeWindow, editableLineupTimeWindow, onCourtAt, backwardsLineupChange, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type TrackerHistoryEntry } from '../data/matchEvents';
 import { quarterSplits } from '../data/matchFlow';
 import { playByPlayRows, PLAY_BY_PLAY_HEADER } from '../data/playByPlay';
 import { toCsv, downloadCsv, csvFilename } from '../utils/csv';
@@ -384,6 +384,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const [showLineups, setShowLineups] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
   const [lineupSide, setLineupSide] = useState<LineupSide>('us');
+  const [comboSize, setComboSize] = useState<ComboSize>(5);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [shotInput, setShotInputState] = useState<ShotInput>(readShotInput);
@@ -579,14 +580,16 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
   const { sortKey: lineupSortKey, sortDir: lineupSortDir, toggleSort: toggleLineupSort } =
     useUrlSort<LineupSortKey>({ key: 'seconds', dir: 'desc' }, { ns: 'cinq', allowed: LINEUP_SORT_KEYS });
 
-  const lineupRows = useMemo(
-    () => sortLineupRows(
-      lineupStatsFromEvents(events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed),
+  const lineupRows = useMemo(() => {
+    const fives = lineupStatsFromEvents(events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed);
+    return sortLineupRows(
+      comboSize === 5 ? fives : comboStatsFromLineups(fives, comboSize),
       lineupSortKey, lineupSortDir, id => rosterName(lineupSide, id),
-    ),
+    );
+  },
     // `rosterName` dépend des effectifs, qui ne bougent pas pendant qu'on lit un tableau trié.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed, lineupSortKey, lineupSortDir],
+    [events, lineupEvents, lineupSide, clock.periodDurationSeconds, clock.quarter, coarseElapsed, comboSize, lineupSortKey, lineupSortDir],
   );
 
   const shotsUs = useMemo(
@@ -2168,6 +2171,18 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                   {label}
                 </button>
               ))}
+              {COMBO_SIZES.map(([n, label]) => (
+                <button key={n} onClick={() => setComboSize(n)} aria-pressed={comboSize === n}
+                  style={{
+                    height: 32, padding: '0 12px', borderRadius: 6, fontSize: '0.74rem', cursor: 'pointer',
+                    marginLeft: n === 5 ? 8 : 0,
+                    border: `1px solid ${comboSize === n ? '#00E5A0' : '#2A2F3A'}`,
+                    backgroundColor: comboSize === n ? '#00E5A01F' : '#0D0F14',
+                    color: comboSize === n ? '#00E5A0' : '#94A3B8',
+                  }}>
+                  {label}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -2183,7 +2198,7 @@ export function MatchStatsTracker({ match, players, canEdit }: MatchStatsTracker
                 <thead>
                   <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
                     {([
-                      ['Cinq', 'players'], ['Temps', 'seconds'], ['Poss.', 'possessions'],
+                      [COMBO_LABEL[comboSize], 'players'], ['Temps', 'seconds'], ['Poss.', 'possessions'],
                       ['Pts/poss.', 'pointsPerPossession'], ['Pour', 'pointsFor'],
                       ['Contre', 'pointsAgainst'], ['+/-', 'plusMinus'],
                     ] as [string, LineupSortKey][]).map(([label, key]) => (

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useUrlSort } from '../hooks/useUrlState';
 import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { lineupStatsFromEvents, plusMinusFromEvents, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey } from '../data/matchEvents';
+import { lineupStatsFromEvents, combosAcrossMatches, lineupRowView, COMBO_SIZES, COMBO_LABEL, type ComboSize, plusMinusFromEvents, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type LineupMode, type EventLineupRow } from '../data/matchEvents';
 import { playingTime, formatClock } from '../data/liveTrackingAnalysis';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player, LineupSide } from '../data/types';
@@ -51,7 +51,6 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
     useMatchTracking(match.id);
 
   const [side, setSide] = useState<LineupSide>('us');
-  const [minSeconds, setMinSeconds] = useState<number>(30);
 
   const nameById = useMemo(() => new Map(players.map(p => [p.id, playerNameShort(p)])), [players]);
   const oppNameById = useMemo(() => new Map(opponents.map(p => [p.id, p.name])), [opponents]);
@@ -65,16 +64,7 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
     [events, lineupEvents, side, period, lastQuarter, lastElapsedSeconds],
   );
 
-  /** Le tri vit dans l'URL, comme partout ailleurs (`useUrlSort`) : un tableau trié se partage
-   *  avec le tri qu'on avait sous les yeux, et survit à un aller-retour d'onglet. */
-  const { sortKey, sortDir, toggleSort } = useUrlSort<LineupSortKey>(
-    { key: 'seconds', dir: 'desc' }, { ns: 'cinq', allowed: LINEUP_SORT_KEYS },
-  );
-
-  const shown = useMemo(
-    () => sortLineupRows(rows.filter(r => r.seconds >= minSeconds), sortKey, sortDir, nameOf),
-    [rows, minSeconds, sortKey, sortDir, nameOf],
-  );
+  const matchFives = useMemo(() => [rows], [rows]);
 
   /** Temps de jeu et +/- individuels, à côté des combinaisons : ce sont les deux lectures d'une
    *  même rotation, et les séparer sur deux écrans oblige à faire l'aller-retour. */
@@ -111,19 +101,7 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <style>{`
-        .lineup-cell { padding: 7px 8px; font-size: 0.76rem; text-align: right; color: #CBD5E1; }
-        .lineup-cell:first-child { text-align: left; color: #F1F5F9; }
-        .lineup-head { padding: 6px 8px; font-size: 0.62rem; text-align: right; color: #64748B;
-          text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
-        .lineup-head:first-child { text-align: left; }
-        /* L'en-tête EST le bouton : un tableau où seule une petite flèche est cliquable se
-           manque une fois sur deux. Il hérite de la cellule (alignement, couleur, graisse). */
-        .lineup-sort { background: none; border: none; padding: 0; cursor: pointer;
-          font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
-          white-space: nowrap; }
-        .lineup-sort:hover { color: #94A3B8; }
-      `}</style>
+      <style>{LINEUP_TABLE_CSS}</style>
 
       <div style={{ ...PANEL, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -134,68 +112,9 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
             </button>
           ))}
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: '#64748B', fontSize: '0.74rem' }}>Au moins</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {MIN_SECONDS_PRESETS.map(s => (
-              <button key={s} onClick={() => setMinSeconds(s)} aria-pressed={minSeconds === s}
-                style={toggleStyle(minSeconds === s)}>
-                {s === 0 ? 'Tout' : formatClock(s)}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      <div style={PANEL}>
-        <p style={SECTION_TITLE}>Combinaisons de cinq</p>
-        {shown.length === 0 ? (
-          <p style={{ color: '#475569', fontSize: '0.8rem', margin: 0 }}>
-            {rows.length === 0
-              ? "Aucun cinq relevé de ce côté : les rotations n'ont pas été suivies."
-              : `Aucune combinaison n'atteint ${formatClock(minSeconds)}.`}
-          </p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
-                  {([
-                    ['Cinq', 'players'], ['Temps', 'seconds'], ['Poss.', 'possessions'],
-                    ['Pts/poss.', 'pointsPerPossession'], ['Encaissé/poss.', 'oppPointsPerPossession'],
-                    ['Pour', 'pointsFor'], ['Contre', 'pointsAgainst'], ['+/-', 'plusMinus'],
-                  ] as [string, LineupSortKey][]).map(([label, key]) => (
-                    <th key={key} className="lineup-head">
-                      <button onClick={() => toggleSort(key)} className="lineup-sort"
-                        aria-label={`Trier par ${label}`}
-                        style={{ color: sortKey === key ? '#CBD5E1' : undefined }}>
-                        {label}{sortArrow(sortKey === key, sortDir)}
-                      </button>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map(r => (
-                  <tr key={r.players.join(',')} style={{ borderBottom: '1px solid #1E2229' }}>
-                    <td className="lineup-cell">{r.players.map(nameOf).join(', ')}</td>
-                    <td className="lineup-cell" style={{ fontFamily: 'monospace', color: '#94A3B8' }}>{formatClock(r.seconds)}</td>
-                    <td className="lineup-cell">{r.possessions.toFixed(1)}</td>
-                    <td className="lineup-cell">{r.pointsPerPossession !== null ? r.pointsPerPossession.toFixed(2) : '—'}</td>
-                    <td className="lineup-cell">{r.oppPointsPerPossession !== null ? r.oppPointsPerPossession.toFixed(2) : '—'}</td>
-                    <td className="lineup-cell">{r.pointsFor}</td>
-                    <td className="lineup-cell">{r.pointsAgainst}</td>
-                    <td className="lineup-cell" style={{ fontWeight: 700, color: plusMinusColor(r.plusMinus) }}>
-                      {signed(r.plusMinus)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <LineupComboTable matchFives={matchFives} nameOf={nameOf} />
 
       <div style={PANEL}>
         <p style={SECTION_TITLE}>Par joueur</p>
@@ -238,6 +157,181 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
     </div>
   );
 }
+
+/** Sous ce temps réel, une ligne « pour 100 possessions » est une extrapolation trop fragile pour
+ *  être lue comme les autres : elle reste affichée, mais grisée. */
+const PER100_RELIABLE_SECONDS = 300;
+
+/**
+ * Tableau des combinaisons — cinq, trios ou duos — à partir des lignes de cinq de chaque match.
+ * Partagé par l'onglet Lineups d'un match (un seul match) et celui de l'analyse collective.
+ */
+export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_PRESETS }: {
+  /** Une liste de cinq par match. Le mode « par match » n'est proposé qu'à partir de deux. */
+  matchFives: EventLineupRow[][];
+  nameOf: (id: string) => string;
+  minPresets?: readonly number[];
+}) {
+  /** 5 = combinaisons complètes ; 3 / 2 = trios / duos, sommés sur tous les cinq où ils jouaient ensemble. */
+  const [comboSize, setComboSize] = useState<ComboSize>(5);
+  const [mode, setMode] = useState<LineupMode>('total');
+  const multiMatch = matchFives.length > 1;
+  const effectiveMode: LineupMode = mode === 'match' && !multiMatch ? 'total' : mode;
+  const [minSeconds, setMinSeconds] = useState<number>(minPresets[1] ?? 0);
+  /** Joueurs retenus : une ligne n'est gardée que si elle les contient TOUS. Un seul joueur →
+   *  toutes ses combinaisons ; deux en mode Cinq → les cinq où ils jouaient ensemble. */
+  const [picked, setPicked] = useState<string[]>([]);
+  const togglePicked = (id: string) =>
+    setPicked(ps => (ps.includes(id) ? ps.filter(p => p !== id) : [...ps, id]));
+
+  const roster = useMemo(
+    () => [...new Set(matchFives.flat().flatMap(r => r.players))].sort((a, b) => nameOf(a).localeCompare(nameOf(b))),
+    [matchFives, nameOf],
+  );
+
+  /** Le tri vit dans l'URL, comme partout ailleurs (`useUrlSort`) : un tableau trié se partage
+   *  avec le tri qu'on avait sous les yeux, et survit à un aller-retour d'onglet. */
+  const { sortKey, sortDir, toggleSort } = useUrlSort<LineupSortKey>(
+    { key: 'seconds', dir: 'desc' }, { ns: 'cinq', allowed: LINEUP_SORT_KEYS },
+  );
+
+  const shown = useMemo(() => {
+    const combos = combosAcrossMatches(matchFives, comboSize);
+    // Un joueur absent de la liste (changement de camp) ne filtre rien plutôt que de tout vider.
+    const active = picked.filter(id => roster.includes(id));
+    // Le temps minimum porte sur le temps RÉEL cumulé, quel que soit le mode : c'est l'échantillon.
+    const kept = combos.filter(r => r.seconds >= minSeconds && active.every(id => r.players.includes(id)));
+    return sortLineupRows(kept.map(r => lineupRowView(r, effectiveMode)), sortKey, sortDir, nameOf);
+  }, [matchFives, comboSize, effectiveMode, minSeconds, picked, roster, sortKey, sortDir, nameOf]);
+
+  const per100 = effectiveMode === 'per100';
+  const digits = effectiveMode === 'match' ? 1 : 0;
+  const columns: [string, LineupSortKey][] = [
+    [COMBO_LABEL[comboSize], 'players'],
+    ...(multiMatch ? [['Matchs', 'matches'] as [string, LineupSortKey]] : []),
+    [effectiveMode === 'match' ? 'Temps/match' : 'Temps', 'seconds'],
+    [effectiveMode === 'match' ? 'Poss./match' : 'Poss.', 'possessions'],
+    // En mode « pour 100 », Pour/100 EST Pts/poss × 100 : les deux colonnes feraient doublon.
+    ...(per100 ? [] : [['Pts/poss.', 'pointsPerPossession'], ['Encaissé/poss.', 'oppPointsPerPossession']] as [string, LineupSortKey][]),
+    [per100 ? 'Pour /100' : 'Pour', 'pointsFor'],
+    [per100 ? 'Contre /100' : 'Contre', 'pointsAgainst'],
+    [per100 ? 'Net /100' : '+/-', 'plusMinus'],
+  ];
+
+  return (
+    <div style={PANEL}>
+      <style>{LINEUP_TABLE_CSS}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {COMBO_SIZES.map(([n, label]) => (
+            <button key={n} onClick={() => setComboSize(n)} aria-pressed={comboSize === n}
+              style={toggleStyle(comboSize === n)}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 4 }}>
+          {([['total', 'Total'], ...(multiMatch ? [['match', 'Par match']] : []), ['per100', 'Pour 100 poss.']] as [LineupMode, string][])
+            .map(([m, label]) => (
+              <button key={m} onClick={() => setMode(m)} aria-pressed={effectiveMode === m}
+                style={toggleStyle(effectiveMode === m)}>
+                {label}
+              </button>
+            ))}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: '#64748B', fontSize: '0.74rem' }}>Au moins</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {minPresets.map(s => (
+              <button key={s} onClick={() => setMinSeconds(s)} aria-pressed={minSeconds === s}
+                style={toggleStyle(minSeconds === s)}>
+                {s === 0 ? 'Tout' : formatClock(s)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+        {roster.map(id => (
+          <button key={id} onClick={() => togglePicked(id)} aria-pressed={picked.includes(id)}
+            style={{ ...toggleStyle(picked.includes(id)), height: 28, padding: '0 10px' }}>
+            {nameOf(id)}
+          </button>
+        ))}
+        {picked.length > 0 && (
+          <button onClick={() => setPicked([])} style={{ ...toggleStyle(false), height: 28, padding: '0 10px', color: '#64748B' }}>
+            Effacer
+          </button>
+        )}
+      </div>
+      <p style={SECTION_TITLE}>{comboSize === 5 ? 'Combinaisons de cinq' : COMBO_LABEL[comboSize]}</p>
+      {shown.length === 0 ? (
+        <p style={{ color: '#475569', fontSize: '0.8rem', margin: 0 }}>
+          {matchFives.every(f => f.length === 0)
+            ? "Aucun cinq relevé de ce côté : les rotations n'ont pas été suivies."
+            : picked.length > comboSize
+              ? `${picked.length} joueurs sélectionnés : une combinaison de ${comboSize} ne peut pas tous les contenir.`
+              : `Aucune combinaison ne correspond (temps minimum ${formatClock(minSeconds)}, joueurs sélectionnés).`}
+        </p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #2A2F3A' }}>
+                {columns.map(([label, key]) => (
+                  <th key={key} className="lineup-head">
+                    <button onClick={() => toggleSort(key)} className="lineup-sort"
+                      aria-label={`Trier par ${label}`}
+                      style={{ color: sortKey === key ? '#CBD5E1' : undefined }}>
+                      {label}{sortArrow(sortKey === key, sortDir)}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(r => (
+                <tr key={r.players.join(',')} style={{
+                  borderBottom: '1px solid #1E2229',
+                  opacity: per100 && r.seconds < PER100_RELIABLE_SECONDS ? 0.45 : 1,
+                }}
+                  title={per100 && r.seconds < PER100_RELIABLE_SECONDS ? `Moins de ${formatClock(PER100_RELIABLE_SECONDS)} ensemble : extrapolation fragile` : undefined}>
+                  <td className="lineup-cell">{r.players.map(nameOf).join(', ')}</td>
+                  {multiMatch && <td className="lineup-cell">{r.matches}</td>}
+                  <td className="lineup-cell" style={{ fontFamily: 'monospace', color: '#94A3B8' }}>{formatClock(Math.round(r.seconds))}</td>
+                  <td className="lineup-cell">{r.possessions.toFixed(1)}</td>
+                  {!per100 && <td className="lineup-cell">{r.pointsPerPossession !== null ? r.pointsPerPossession.toFixed(2) : '—'}</td>}
+                  {!per100 && <td className="lineup-cell">{r.oppPointsPerPossession !== null ? r.oppPointsPerPossession.toFixed(2) : '—'}</td>}
+                  <td className="lineup-cell">{r.pointsFor !== null ? r.pointsFor.toFixed(digits) : '—'}</td>
+                  <td className="lineup-cell">{r.pointsAgainst !== null ? r.pointsAgainst.toFixed(digits) : '—'}</td>
+                  <td className="lineup-cell" style={{ fontWeight: 700, color: plusMinusColor(r.plusMinus ?? 0) }}>
+                    {r.plusMinus !== null ? signed(Number(r.plusMinus.toFixed(digits))) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LINEUP_TABLE_CSS = `
+  .lineup-cell { padding: 7px 8px; font-size: 0.76rem; text-align: right; color: #CBD5E1; }
+  .lineup-cell:first-child { text-align: left; color: #F1F5F9; }
+  .lineup-head { padding: 6px 8px; font-size: 0.62rem; text-align: right; color: #64748B;
+    text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+  .lineup-head:first-child { text-align: left; }
+  /* L'en-tête EST le bouton : un tableau où seule une petite flèche est cliquable se
+     manque une fois sur deux. Il hérite de la cellule (alignement, couleur, graisse). */
+  .lineup-sort { background: none; border: none; padding: 0; cursor: pointer;
+    font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+    white-space: nowrap; }
+  .lineup-sort:hover { color: #94A3B8; }
+`;
 
 function toggleStyle(active: boolean): React.CSSProperties {
   return {

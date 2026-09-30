@@ -426,6 +426,8 @@ export interface EventLineupRow {
   players: string[];
   /** Temps passé ensemble sur le terrain, en secondes. */
   seconds: number;
+  /** Matchs où la combinaison a joué — 1 sur un match, compté par `combosAcrossMatches` sinon. */
+  matches: number;
   /** Possessions du camp observé pendant que ce cinq était en jeu (formule du rythme). */
   possessions: number;
   oppPossessions: number;
@@ -440,10 +442,18 @@ export interface EventLineupRow {
 /** Colonnes triables d'un tableau de combinaisons. `players` trie sur les NOMS affichés, pas sur
  *  les identifiants — c'est ce que lit l'utilisateur. */
 export const LINEUP_SORT_KEYS = [
-  'players', 'seconds', 'possessions', 'pointsPerPossession',
+  'players', 'matches', 'seconds', 'possessions', 'pointsPerPossession',
   'oppPointsPerPossession', 'pointsFor', 'pointsAgainst', 'plusMinus',
 ] as const;
 export type LineupSortKey = typeof LINEUP_SORT_KEYS[number];
+
+/** Ligne triable : une `EventLineupRow`, ou sa version affichée (moyenne, pour 100 possessions),
+ *  où points et +/- peuvent manquer faute de possession mesurée. */
+export type LineupSortable = Omit<EventLineupRow, 'pointsFor' | 'pointsAgainst' | 'plusMinus'> & {
+  pointsFor: number | null;
+  pointsAgainst: number | null;
+  plusMinus: number | null;
+};
 
 /**
  * Tri d'un tableau de combinaisons, partagé par l'écran de saisie et l'onglet Lineups — deux
@@ -452,12 +462,12 @@ export type LineupSortKey = typeof LINEUP_SORT_KEYS[number];
  * Un ratio `null` n'est pas zéro : c'est « aucune possession mesurée ». Il tombe en bas du tableau
  * dans les DEUX sens, plutôt que de se faire passer pour la pire performance de la soirée.
  */
-export function sortLineupRows(
-  rows: EventLineupRow[],
+export function sortLineupRows<R extends LineupSortable>(
+  rows: R[],
   key: LineupSortKey,
   dir: 'asc' | 'desc',
   nameOf: (id: string) => string,
-): EventLineupRow[] {
+): R[] {
   const sign = dir === 'asc' ? 1 : -1;
   return [...rows].sort((a, b) => {
     if (key === 'players') {
@@ -499,7 +509,7 @@ export function lineupStatsFromEvents(
     let r = rows.get(key);
     if (!r) {
       r = {
-        players: [...onCourt].sort(), seconds: 0, possessions: 0, oppPossessions: 0,
+        players: [...onCourt].sort(), seconds: 0, matches: 1, possessions: 0, oppPossessions: 0,
         pointsFor: 0, pointsAgainst: 0, plusMinus: 0,
         pointsPerPossession: null, oppPointsPerPossession: null,
       };
@@ -536,4 +546,105 @@ export function lineupStatsFromEvents(
   }
 
   return [...rows.values()].sort((a, b) => b.seconds - a.seconds || b.plusMinus - a.plusMinus);
+}
+
+/** Tailles de combinaison proposées par les deux tableaux (onglet Lineups, écran de saisie). */
+export const COMBO_SIZES = [[5, 'Cinq'], [3, 'Trios'], [2, 'Duos']] as const;
+export type ComboSize = typeof COMBO_SIZES[number][0];
+export const COMBO_LABEL: Record<ComboSize, string> = { 5: 'Cinq', 3: 'Trio', 2: 'Duo' };
+
+/**
+ * Duos (ou trios…) tirés des lignes de cinq : toutes les mesures d'une ligne sont additives
+ * (temps, possessions, points), un duo est donc exactement la somme des cinq qui le contiennent.
+ * Les ratios sont recalculés sur ces sommes, jamais moyennés. `matches` n'est pas cumulé (un duo
+ * vu dans trois cinq d'un même match a joué UN match) : sur plusieurs matchs, `combosAcrossMatches`.
+ */
+export function comboStatsFromLineups(lineups: EventLineupRow[], size: number): EventLineupRow[] {
+  const rows = new Map<string, EventLineupRow>();
+  const combos = (ids: string[], k: number): string[][] =>
+    k === 0 ? [[]] : ids.flatMap((id, i) => combos(ids.slice(i + 1), k - 1).map(c => [id, ...c]));
+
+  for (const l of lineups) {
+    for (const players of combos(l.players, Math.min(size, l.players.length))) {
+      const key = players.join(',');
+      const r = rows.get(key) ?? {
+        players, seconds: 0, matches: 1, possessions: 0, oppPossessions: 0,
+        pointsFor: 0, pointsAgainst: 0, plusMinus: 0,
+        pointsPerPossession: null, oppPointsPerPossession: null,
+      };
+      r.seconds += l.seconds;
+      r.possessions += l.possessions;
+      r.oppPossessions += l.oppPossessions;
+      r.pointsFor += l.pointsFor;
+      r.pointsAgainst += l.pointsAgainst;
+      rows.set(key, r);
+    }
+  }
+
+  for (const r of rows.values()) {
+    r.plusMinus = r.pointsFor - r.pointsAgainst;
+    r.possessions = Math.round(r.possessions * 100) / 100;
+    r.oppPossessions = Math.round(r.oppPossessions * 100) / 100;
+    r.pointsPerPossession    = r.possessions > 0 ? r.pointsFor / r.possessions : null;
+    r.oppPointsPerPossession = r.oppPossessions > 0 ? r.pointsAgainst / r.oppPossessions : null;
+  }
+  return [...rows.values()];
+}
+
+/** Combinaisons cumulées sur plusieurs matchs (une liste de cinq par match), avec le nombre de
+ *  matchs où chacune a joué — le diviseur du mode « par match ». */
+export function combosAcrossMatches(perMatch: EventLineupRow[][], size: number): EventLineupRow[] {
+  const each = perMatch.map(fives => comboStatsFromLineups(fives, size));
+  const count = new Map<string, number>();
+  for (const r of each.flat()) count.set(r.players.join(','), (count.get(r.players.join(',')) ?? 0) + 1);
+  const merged = comboStatsFromLineups(each.flat(), size);
+  for (const r of merged) r.matches = count.get(r.players.join(',')) ?? 1;
+  return merged;
+}
+
+/** Modes de lecture d'un tableau de combinaisons. */
+export type LineupMode = 'total' | 'match' | 'per100';
+
+/**
+ * Valeurs affichées selon le mode. Seuls les volumes changent ; Pts/poss, le vrai temps en mode
+ * « pour 100 » et les possessions (la taille de l'échantillon) restent lisibles tels quels.
+ *   - 'match'  : volumes divisés par les matchs où la combinaison a RÉELLEMENT joué ;
+ *   - 'per100' : Pour / Contre / +/- ramenés à 100 possessions (ORtg, DRtg, Net Rating) — neutralise
+ *     le rythme, que le temps de jeu ne neutralise pas.
+ */
+export function lineupRowView(r: EventLineupRow, mode: LineupMode): LineupSortable {
+  if (mode === 'match') {
+    const n = r.matches;
+    return {
+      ...r, seconds: r.seconds / n, possessions: r.possessions / n, oppPossessions: r.oppPossessions / n,
+      pointsFor: r.pointsFor / n, pointsAgainst: r.pointsAgainst / n, plusMinus: r.plusMinus / n,
+    };
+  }
+  if (mode === 'per100') {
+    const o = r.pointsPerPossession, d = r.oppPointsPerPossession;
+    return {
+      ...r,
+      pointsFor: o === null ? null : o * 100,
+      pointsAgainst: d === null ? null : d * 100,
+      plusMinus: o === null || d === null ? null : (o - d) * 100,
+    };
+  }
+  return r;
+}
+
+/** Repère « fin » d'un match pour les calculs de temps : le dernier instant enregistré. Les repères
+ *  « fin de quart-temps »/« fin de match » comptent ICI (passer les événements BRUTS) : c'est
+ *  justement ce qui date la vraie fin plutôt que de la sous-estimer à la dernière action. */
+export function lastTrackedInstant(
+  events: { quarter: number; gameTimeSeconds: number }[],
+  lineupEvents: { quarter: number; gameTimeSeconds: number }[],
+): { lastQuarter: number; lastElapsedSeconds: number } {
+  let q = 1, s = 0;
+  for (const e of [...events, ...lineupEvents]) {
+    if (e.quarter > q || (e.quarter === q && e.gameTimeSeconds > s)) {
+      q = e.quarter;
+      s = e.gameTimeSeconds;
+    }
+  }
+  return { lastQuarter: q, lastElapsedSeconds: s };
 }
