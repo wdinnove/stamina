@@ -18,6 +18,10 @@ const EVENT_COLUMNS =
 
 /** Colonnes lues, jamais `*` : toute colonne ajoutée plus tard traverserait le réseau à chaque
  *  chargement de match sans être lue. */
+/** Page de lignes lues, sous le plafond serveur (1000) : `rows.length < ROW_PAGE` veut alors bien
+ *  dire « dernière page », pas « réponse tronquée ». */
+export const ROW_PAGE = 500;
+
 export const matchEventsApi = {
   async getByMatchId(matchId: string): Promise<MatchEvent[]> {
     const { data, error } = await supabase
@@ -90,6 +94,10 @@ export const matchEventsApi = {
    *
    * Le lot d'ids est découpé, parce qu'une liste d'UUID entière part dans l'URL de la requête
    * PostgREST et qu'une saison de quarante matchs la ferait dépasser la limite du serveur.
+   *
+   * Et chaque lot est paginé : la réponse est plafonnée côté serveur (1000 lignes chez Supabase)
+   * SANS erreur, et 25 matchs d'actions la dépassent — la carte saison n'aurait lu qu'une partie
+   * des tirs. Tri sur la clé primaire complète, pour que les pages ne se chevauchent pas.
    */
   async getByMatchIds(matchIds: string[]): Promise<MatchEvent[]> {
     if (matchIds.length === 0) return [];
@@ -98,14 +106,20 @@ export const matchEventsApi = {
     for (let i = 0; i < matchIds.length; i += CHUNK) chunks.push(matchIds.slice(i, i + CHUNK));
 
     const results = await Promise.all(chunks.map(async ids => {
-      const { data, error } = await supabase
-        .from('match_events')
-        .select(EVENT_COLUMNS)
-        .in('match_id', ids)
-        .order('match_id', { ascending: true })
-        .order('seq', { ascending: true });
-      if (error) throw error;
-      return (data ?? []).map(toMatchEvent);
+      const out: MatchEvent[] = [];
+      for (let from = 0; ; from += ROW_PAGE) {
+        const { data, error } = await supabase
+          .from('match_events')
+          .select(EVENT_COLUMNS)
+          .in('match_id', ids)
+          .order('match_id', { ascending: true })
+          .order('seq', { ascending: true })
+          .range(from, from + ROW_PAGE - 1);
+        if (error) throw error;
+        const rows = data ?? [];
+        out.push(...rows.map(toMatchEvent));
+        if (rows.length < ROW_PAGE) return out;
+      }
     }));
     return results.flat();
   },
