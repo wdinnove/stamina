@@ -60,7 +60,13 @@ const EVO_SORT_KEYS = [...['date', 'score'], ...WELLNESS_DIMENSIONS.map(d => d.k
 
 export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDiff, subjectLabel }: WellnessPomsPanelProps) {
   // Courbes par dimension du graphique "Évolution › Global" : masquées par défaut, affichées au clic sur la légende
-  const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('global');
+  // "Par type" par défaut : c'est la lecture axe par axe qui dit CE QUI ne va pas, pas juste que
+  // le score global a bougé.
+  const [evoTab, setEvoTab] = useState<'global' | 'detail' | 'history'>('detail');
+  // Profil POMS : la DERNIÈRE saisie par défaut — un coach qui consulte l'écran avant une séance
+  // veut savoir comment le joueur se sent LÀ, pas une moyenne diluée sur toute la période. La
+  // moyenne de période reste consultable en un clic, elle raconte une autre histoire (tendance).
+  const [pomsMode, setPomsMode] = useState<'last' | 'avg'>('last');
   const [hiddenDimCurves, setHiddenDimCurves] = useState<Set<string>>(() => new Set(dimensions.map(d => d.key)));
   // `ns` : le classement bien-être partage cette page et porte lui aussi un tri.
   const { sortKey: evoSortKey, sortDir: evoSortDir, toggleSort: toggleEvoSort } =
@@ -73,20 +79,31 @@ export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDi
   const avgOf = (metric: WellnessMetric) => teamWellnessAvg(entries, metric).value;
   const nPlayers = teamWellnessAvg(entries).players;
 
+  // Dernière saisie chronologique du périmètre — en vue équipe, `series` est déjà l'agrégat
+  // quotidien (une voix par jour), donc c'est le dernier JOUR d'équipe ; en vue joueur, sa toute
+  // dernière fiche.
+  const lastEntry = historyAsc.length ? historyAsc[historyAsc.length - 1] : null;
+
   // Une mini-série par dimension : valeurs brutes sur la courbe, axe inversé pour les dimensions
   // "inversées" (fatigue/stress/douleurs) pour que le haut du graphique reste toujours "mieux".
   const dimensionSeries = dimensions.map(dim => {
     const avg = avgOf(dim.key);
+    const last = lastEntry ? (lastEntry[dim.key as keyof WellnessEntry] as number) : null;
     return {
       ...dim,
       avg,
+      last,
+      current: pomsMode === 'last' ? last : avg,
       series: historyAsc.map((e, i) => ({ idx: i, date: fmtDate(e.date), value: e[dim.key as keyof WellnessEntry] as number })),
     };
   });
 
-  // Score global de la période : une seule moyenne, réutilisée pour le radar POMS et le KPI "Score global"
+  // Score global affiché au centre du radar : la dernière saisie par défaut, la moyenne de
+  // période sur bascule — cf. `pomsMode`.
   const scoreAvg    = avgOf('score');
-  const radarColor  = scoreColor(scoreAvg ?? 5);
+  const scoreLast   = lastEntry?.score ?? null;
+  const scoreCurrent = pomsMode === 'last' ? scoreLast : scoreAvg;
+  const radarColor  = scoreColor(scoreCurrent ?? 5);
 
   // ── Comparaison vs moyenne saison, réutilisée par le radar POMS et les KPI de période ──
   const seasonScoreAvg = teamWellnessAvg(seasonEntries, 'score').value;
@@ -95,9 +112,16 @@ export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDi
 
   const radarData = dimensionSeries.map(dim => {
     const prev = dimSeasonAvg(dim.key);
-    const diff = dim.avg !== null && prev !== null ? Math.round((dim.avg - prev) * 10) / 10 : null;
-    return { dim: dim.shortLabel, value: dim.avg ?? 0, avg: dim.avg, inverted: dim.inverted, diff, fullMark: 10 };
+    const diff = dim.current !== null && prev !== null ? Math.round((dim.current - prev) * 10) / 10 : null;
+    return { dim: dim.shortLabel, value: dim.current ?? 0, avg: dim.current, inverted: dim.inverted, diff, fullMark: 10 };
   });
+
+  // Sous-titre du profil POMS : la date de la saisie affichée, ou — sans date à montrer — de quoi
+  // il s'agit (une moyenne, pas un instant précis). Remplace le texte fixe "état émotionnel du
+  // moment", qui ne disait pas QUAND ni SUR QUOI porte le chiffre affiché.
+  const pomsInfo = pomsMode === 'last'
+    ? (lastEntry ? fmtDate(lastEntry.date) : 'aucune saisie sur la période')
+    : 'moyenne sur la période';
 
   // Série du score global + les 6 dimensions (remises "plus haut = mieux" via wellnessRawValue, même sens que le score)
   const scoreSeries = historyAsc.map((e, i) => ({
@@ -171,8 +195,22 @@ export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDi
         <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 16 }}>
           <Card className="md:col-span-1" style={{ display: 'flex', flexDirection: 'column', alignSelf: 'start' }}>
             <CardTitle icon={<Heart size={12} style={{ color: '#F472B6' }} />} mb={14}
-              info="état émotionnel du moment"
-              right={<span style={{ color: '#475569', fontSize: '0.7rem' }}>{historyAsc.length} saisie{historyAsc.length > 1 ? 's' : ''}</span>}
+              info={pomsInfo}
+              right={
+                <div style={{ display: 'flex', gap: 2, backgroundColor: '#0D0F14', borderRadius: 6, padding: 2 }}>
+                  {([['last', 'Dernière saisie'], ['avg', 'Moyenne période']] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => setPomsMode(key)} disabled={key === 'last' && !lastEntry}
+                      style={{
+                        padding: '3px 10px', borderRadius: 4, border: 'none', cursor: key === 'last' && !lastEntry ? 'not-allowed' : 'pointer',
+                        fontSize: '0.7rem', fontWeight: pomsMode === key ? 700 : 400, whiteSpace: 'nowrap',
+                        backgroundColor: pomsMode === key ? '#1E2229' : 'transparent',
+                        color: key === 'last' && !lastEntry ? '#334155' : pomsMode === key ? '#00E5A0' : '#475569',
+                      }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              }
             >Profil POMS</CardTitle>
             <div style={{ position: 'relative', height: RADAR_HEIGHT }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -227,9 +265,11 @@ export function WellnessPomsPanel({ entries, series, seasonEntries, showSeasonDi
                 </RadarChart>
               </ResponsiveContainer>
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
-                <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{fmt1(scoreAvg)}</div>
-                {/* Le n de la moyenne non pondérée — masqué en vue joueur, où il vaut toujours 1. */}
-                {nPlayers > 1 && (
+                <div style={{ color: radarColor, fontSize: '1.1rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', lineHeight: 1 }}>{fmt1(scoreCurrent)}</div>
+                {/* La date de la dernière saisie vit dans le sous-titre de la carte (`pomsInfo`),
+                    pas ici : pas de doublon. Le n de la moyenne non pondérée, lui, n'a de sens
+                    qu'en mode "Moyenne période" — masqué en vue joueur, où il vaut toujours 1. */}
+                {pomsMode === 'avg' && nPlayers > 1 && (
                   <div style={{ color: '#475569', fontSize: '0.6rem', marginTop: 3 }}>{nPlayers} joueurs</div>
                 )}
               </div>

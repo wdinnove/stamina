@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
 import { roundedAvg } from '../utils/avg';
 import type { Player, WellnessEntry } from '../data/types';
 import { WELLNESS_DIMENSIONS, wellnessDimColor, wellnessScoreColor, type WellnessDimension } from '../utils/wellness';
 import { playerNameFull, playerNameShort } from '../utils/playerName';
 import { fmt1 } from '../utils/format';
+import { fmtDateShort } from '../utils/dateFormat';
 import { useUrlSort } from '../hooks/useUrlState';
 
 interface WellnessPlayerRankingTableProps {
@@ -18,11 +20,24 @@ const SORT_KEYS = [...['name', 'score'], ...WELLNESS_DIMENSIONS.map(d => d.key)]
 export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRankingTableProps) {
   // `ns` : le panneau POMS, sur la même page, porte son propre tableau triable.
   const { sortKey, sortDir, toggleSort } = useUrlSort<SortKey>({ key: 'score', dir: 'desc' }, { ns: 'classement', allowed: SORT_KEYS });
+  // Dernière saisie par défaut, comme le profil POMS juste au-dessus : une moyenne de période
+  // masque justement le joueur qui va mal AUJOURD'HUI derrière quinze jours de bonnes saisies.
+  const [mode, setMode] = useState<'last' | 'avg'>('last');
 
   const rows = roster
     .map(player => {
       const playerEntries = entries.filter(e => e.playerId === player.id);
       if (playerEntries.length === 0) return null;
+      if (mode === 'last') {
+        const last = [...playerEntries].sort((a, b) => a.date.localeCompare(b.date)).at(-1)!;
+        return {
+          player, date: last.date,
+          avg: {
+            fatigue: last.fatigue, mood: last.mood, stress: last.stress,
+            motivation: last.motivation, sleep: last.sleep, soreness: last.soreness, score: last.score,
+          },
+        };
+      }
       const avg = {
         fatigue:    roundedAvg(playerEntries.map(e => e.fatigue))    ?? 0,
         mood:       roundedAvg(playerEntries.map(e => e.mood))       ?? 0,
@@ -32,9 +47,9 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
         soreness:   roundedAvg(playerEntries.map(e => e.soreness))   ?? 0,
         score:      roundedAvg(playerEntries.map(e => e.score))      ?? 0,
       };
-      return { player, avg };
+      return { player, date: null, avg };
     })
-    .filter((r): r is { player: Player; avg: Record<WellnessDimension['key'] | 'score', number> } => r !== null);
+    .filter((r): r is { player: Player; date: string | null; avg: Record<WellnessDimension['key'] | 'score', number> } => r !== null);
 
   const dir = sortDir === 'asc' ? 1 : -1;
   const sorted = [...rows].sort((a, b) => {
@@ -55,15 +70,35 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
           .wellness-rank-table th, .wellness-rank-table td { padding: 8px 12px !important; }
         }
       `}</style>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ListOrdered size={13} color="#94A3B8" />
-        <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Classement joueurs</p>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2A2F3A', backgroundColor: '#1A1E26', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ListOrdered size={13} color="#94A3B8" />
+          <p style={{ color: '#94A3B8', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0, fontWeight: 600 }}>Classement joueurs</p>
+        </div>
+        <div style={{ display: 'flex', gap: 2, backgroundColor: '#0D0F14', borderRadius: 6, padding: 2 }}>
+          {([['last', 'Dernière saisie'], ['avg', 'Moyenne période']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setMode(key)}
+              style={{
+                padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                fontSize: '0.7rem', fontWeight: mode === key ? 700 : 400, whiteSpace: 'nowrap',
+                backgroundColor: mode === key ? '#1E2229' : 'transparent',
+                color: mode === key ? '#00E5A0' : '#475569',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table className="wellness-rank-table" style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ backgroundColor: '#1A1E26', position: 'sticky', top: 0, zIndex: 1 }}>
               <th onClick={() => toggleSort('name')} style={{ ...thBase, whiteSpace: 'nowrap', color: sortKey === 'name' ? '#94A3B8' : '#475569', position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#1A1E26' }}>Nom{sortArrow('name')}</th>
+              {mode === 'last' && (
+                // Pas de tri sur cette colonne : des dates différentes d'un joueur à l'autre
+                // n'ont pas d'ordre "meilleur/pire" à faire ressortir, contrairement aux valeurs.
+                <th style={{ ...thBase, cursor: 'default', color: '#475569' }}>Le</th>
+              )}
               {WELLNESS_DIMENSIONS.map(dim => (
                 <th key={dim.key} onClick={() => toggleSort(dim.key)} style={{ ...thBase, color: sortKey === dim.key ? '#94A3B8' : '#475569' }}>{dim.shortLabel}{sortArrow(dim.key)}</th>
               ))}
@@ -71,11 +106,14 @@ export function WellnessPlayerRankingTable({ entries, roster }: WellnessPlayerRa
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ player, avg }) => (
+            {sorted.map(({ player, date, avg }) => (
               <tr key={player.id} style={{ borderBottom: '1px solid #1E2229' }}
                 onMouseEnter={el => (el.currentTarget.style.backgroundColor = '#1E222940')}
                 onMouseLeave={el => (el.currentTarget.style.backgroundColor = 'transparent')}>
                 <td style={{ padding: '8px 8px', color: '#F1F5F9', fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, backgroundColor: '#161920' }}><span className="hidden md:inline">{playerNameFull(player)}</span><span className="md:hidden">{playerNameShort(player)}</span></td>
+                {mode === 'last' && (
+                  <td style={{ padding: '8px 8px', color: '#64748B', fontSize: '0.76rem', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>{date ? fmtDateShort(date) : '—'}</td>
+                )}
                 {WELLNESS_DIMENSIONS.map(dim => (
                   <td key={dim.key} style={{ padding: '8px 8px', color: wellnessDimColor(avg[dim.key], dim.inverted), fontWeight: 700, fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}>{fmt1(avg[dim.key])}</td>
                 ))}

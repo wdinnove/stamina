@@ -91,7 +91,10 @@ export default function WellnessPage() {
   const [teamHistory, setTeamHistory]               = useState<WellnessEntry[]>([]);
   const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
 
-  const dateRange = useDateRange(selected?.season.startDate, 21, selected?.season.endDate);
+  // "Saison" par défaut : la dernière saisie (POMS, classement) répond déjà à "maintenant", ce
+  // filtre sert la tendance et le classement — une fenêtre de 21j masquait des joueurs qui
+  // n'avaient simplement rien saisi récemment, sans que rien ne l'y ait rendu visible.
+  const dateRange = useDateRange(selected?.season.startDate, 'saison', selected?.season.endDate);
 
   const [showLinkModal,    setShowLinkModal]    = useState(false);
   const [linkSelected,     setLinkSelected]     = useState<Set<string>>(new Set());
