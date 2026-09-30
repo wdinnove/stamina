@@ -10,7 +10,11 @@
 import { HALF } from '../utils/diagram';
 import type { MatchEvent, LineupSide } from './types';
 
-const { basket, threeR, threeInset, restrictedR, laneHW, laneV, w } = HALF;
+const { basket, threeR, threeInset, threeStopV, laneHW, laneV, w } = HALF;
+
+/** Rayon de la zone « sous le cercle ». Volontairement plus large que la zone de non-charge
+ *  (`restrictedR`, 1,25 m) : les finitions près du panier débordent de ce demi-cercle. */
+export const CLOSE_R = 1.75;
 
 /** Frontière des tiers d'angle (gauche / axe / droite), mesurée depuis le panier. */
 const THIRD_ANGLE = Math.PI / 6; // 30°
@@ -74,11 +78,12 @@ export function shotZone(x: number, y: number): ShotZone {
   const right = angle > THIRD_ANGLE;
 
   if (shotValue(x, y) === 3) {
-    if (isCorner(x)) return x <= threeInset ? 'corner_gauche' : 'corner_droite';
+    // Le corner s'arrête avec la portion droite de la ligne : plus bas, c'est l'aile.
+    if (isCorner(x) && y <= threeStopV) return x <= threeInset ? 'corner_gauche' : 'corner_droite';
     return left ? 'aile_gauche' : right ? 'aile_droite' : 'arc_axe';
   }
 
-  if (distanceToBasket(x, y) <= restrictedR) return 'cercle';
+  if (distanceToBasket(x, y) <= CLOSE_R) return 'cercle';
   if (Math.abs(x - basket.u) <= laneHW && y <= laneV) return 'raquette';
   return left ? 'mid_gauche' : right ? 'mid_droite' : 'mid_axe';
 }
@@ -136,4 +141,69 @@ export function zoneStats(events: MatchEvent[], side: LineupSide): ZoneStatRow[]
       thin:   attempts < MIN_ATTEMPTS_FOR_PCT,
     };
   });
+}
+
+/* ── Carte des zones ──────────────────────────────────────────────────────── */
+
+/** Centre visuel de chaque zone, où la carte centre son étiquette (pastille + compteur) — choisi
+ *  à la main : un barycentre tombe collé au bord pour les corners. Le test vérifie que chaque point est bien
+ *  dans sa zone, pour qu'un redécoupage ne laisse pas une étiquette chez la voisine. */
+export const ZONE_LABEL_POINTS: Record<ShotZone, { x: number; y: number }> = {
+  cercle:        { x: 7.5,   y: 1.575 }, // sur le panier
+  raquette:      { x: 7.5,   y: 4.55 },
+  mid_gauche:    { x: 3.0,   y: 3.0 },
+  mid_axe:       { x: 7.5,   y: 7.05 },
+  mid_droite:    { x: 12.0,  y: 3.0 },
+  corner_gauche: { x: 0.45,  y: 1.5 },
+  corner_droite: { x: 14.55, y: 1.5 },
+  aile_gauche:   { x: 1.9,   y: 8.0 },
+  arc_axe:       { x: 7.5,   y: 11.2 },
+  aile_droite:   { x: 13.1,  y: 8.0 },
+};
+
+export type ZoneTier = 'good' | 'mid' | 'bad';
+
+/** Seuils de réussite (FG%) par type de zone : au moins `good` = vert, sous `bad` = rouge, orange
+ *  entre les deux. Le cercle suit les seuils de la raquette. */
+const TIER_THRESHOLDS = {
+  raquette: { good: 65, bad: 40 },
+  mid:      { good: 50, bad: 35 },
+  three:    { good: 35, bad: 25 },
+} as const;
+
+export function zoneTier(zone: ShotZone, fgPct: number): ZoneTier {
+  const t = zone === 'cercle' || zone === 'raquette' ? TIER_THRESHOLDS.raquette
+    : zone.startsWith('mid_') ? TIER_THRESHOLDS.mid
+    : TIER_THRESHOLDS.three;
+  return fgPct >= t.good ? 'good' : fgPct < t.bad ? 'bad' : 'mid';
+}
+
+/* ── Carte de densité (lissée) ────────────────────────────────────────────── */
+
+export interface DensityGrid { cols: number; rows: number; step: number; values: Float32Array }
+
+/**
+ * Densité de tirs lissée (noyau gaussien de largeur `bandwidth`, en mètres) sur une grille qui
+ * pave le demi-terrain au pas `step`. Valeurs ramenées à 0–1 (1 = le foyer le plus dense), rangées
+ * ligne par ligne.
+ */
+export function densityGrid(points: { x: number; y: number }[], step: number, bandwidth: number): DensityGrid {
+  const cols = Math.ceil(w / step);
+  const rows = Math.ceil(HALF.h / step);
+  const values = new Float32Array(cols * rows);
+  const k = -1 / (2 * bandwidth * bandwidth);
+  const reach = Math.ceil((3 * bandwidth) / step); // au-delà de 3 σ, la contribution est négligeable
+  let max = 0;
+  for (const p of points) {
+    const pc = Math.floor(p.x / step), pr = Math.floor(p.y / step);
+    for (let r = Math.max(0, pr - reach); r <= Math.min(rows - 1, pr + reach); r++) {
+      for (let c = Math.max(0, pc - reach); c <= Math.min(cols - 1, pc + reach); c++) {
+        const dx = (c + 0.5) * step - p.x, dy = (r + 0.5) * step - p.y;
+        const v = (values[r * cols + c] += Math.exp((dx * dx + dy * dy) * k));
+        if (v > max) max = v;
+      }
+    }
+  }
+  if (max > 0) for (let i = 0; i < values.length; i++) values[i] /= max;
+  return { cols, rows, step, values };
 }

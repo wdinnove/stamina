@@ -31,7 +31,7 @@ function arc(from: [number, number], to: [number, number], r: number, sweep: 0 |
 }
 
 /** Lignes d'un demi-terrain, dans son repère local. */
-function HalfCourtLines({ transform }: { transform?: string }) {
+export function HalfCourtLines({ transform }: { transform?: string }) {
   const { basket, laneHW, laneV, ftCircleR, restrictedR, threeR, threeInset, threeStopV, ringR, backboardV, backboardHW, centerR, w, h } = HALF;
   const laneL = basket.u - laneHW;
   const laneR = basket.u + laneHW;

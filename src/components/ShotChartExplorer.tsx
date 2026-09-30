@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ShotCourt, SHOT_COLORS } from './ShotChart';
+import { ShotCourt, ShotZoneHeat, ShotDensityMap, DensityLegend, ZoneTierLegend, SHOT_COLORS } from './ShotChart';
 import { zoneStats, MIN_ATTEMPTS_FOR_PCT } from '../data/shotChart';
 import { periodLabel } from '../data/liveTrackingAnalysis';
 import type { MatchEvent, LineupSide } from '../data/types';
@@ -39,6 +39,7 @@ const SECTION_TITLE: React.CSSProperties = {
 };
 
 type Outcome = 'all' | 'made' | 'miss';
+type View = 'points' | 'zones' | 'densite';
 
 export function ShotChartExplorer({
   events, usLabel, themLabel, teamColor, authors, showQuarterFilter = false,
@@ -47,6 +48,7 @@ export function ShotChartExplorer({
   const [playerId, setPlayerId] = useState<string>('');   // '' = tous
   const [outcome, setOutcome] = useState<Outcome>('all');
   const [quarter, setQuarter] = useState<number>(0);      // 0 = tout
+  const [view, setView] = useState<View>('points');
 
   const sideShots = useMemo(
     () => events.filter(e => e.side === side && e.type === 'shot' && e.x !== undefined),
@@ -100,6 +102,14 @@ export function ShotChartExplorer({
 
       <div style={{ ...PANEL, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4 }}>
+          {([['points', 'Tirs'], ['zones', 'Réussite'], ['densite', 'Fréquence']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setView(v)} aria-pressed={view === v} style={toggleStyle(view === v)}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 4 }}>
           {([['us', usLabel], ['them', themLabel]] as const).map(([s, label]) => (
             <button key={s} onClick={() => { setSide(s); setPlayerId(''); }} aria-pressed={side === s} style={toggleStyle(side === s)}>
               {label}
@@ -111,20 +121,20 @@ export function ShotChartExplorer({
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ color: '#64748B', fontSize: '0.74rem' }}>Joueur</span>
             <select value={playerId} onChange={e => setPlayerId(e.target.value)}
-              style={{ height: 32, padding: '0 8px', borderRadius: 6, backgroundColor: '#0D0F14', border: '1px solid #2A2F3A', color: '#CBD5E1', fontSize: '0.78rem', cursor: 'pointer' }}>
+              style={{ width: 180, height: 32, padding: '0 8px', borderRadius: 6, backgroundColor: '#0D0F14', border: '1px solid #2A2F3A', color: '#CBD5E1', fontSize: '0.78rem', cursor: 'pointer' }}>
               <option value="">Tous</option>
               {sideAuthors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </label>
         )}
 
-        <div style={{ display: 'flex', gap: 4 }}>
+        {view === 'points' && <div style={{ display: 'flex', gap: 4 }}>
           {([['all', 'Tous'], ['made', 'Réussis'], ['miss', 'Manqués']] as const).map(([v, label]) => (
             <button key={v} onClick={() => setOutcome(v)} aria-pressed={outcome === v} style={toggleStyle(outcome === v)}>
               {label}
             </button>
           ))}
-        </div>
+        </div>}
 
         {showQuarterFilter && quarters.length > 1 && (
           <div style={{ display: 'flex', gap: 4 }}>
@@ -140,9 +150,20 @@ export function ShotChartExplorer({
 
       <div className="shot-layout">
         <div style={PANEL}>
-          <ShotCourt shots={shots} colors={colors} radius={0.3} />
+          {view === 'zones' ? <ShotZoneHeat zones={zones} />
+            // Densité : les tentatives, donc sans le filtre Réussis / Manqués (comme les zones).
+            : view === 'densite' ? <ShotDensityMap shots={zoneShots} />
+            : <ShotCourt shots={shots} colors={colors} radius={0.3} />}
           <p style={{ color: '#94A3B8', fontSize: '0.8rem', margin: '10px 0 0', textAlign: 'center' }}>
-            {shots.length === 0
+            {view === 'densite'
+              ? (zoneShots.length === 0
+                  ? 'Aucun tir ne correspond à ces filtres.'
+                  : <>{zoneShots.length} tir{zoneShots.length > 1 ? 's' : ''} tenté{zoneShots.length > 1 ? 's' : ''} · <DensityLegend /></>)
+              : view === 'zones'
+              ? (zoneShots.length === 0
+                  ? 'Aucun tir ne correspond à ces filtres.'
+                  : <span title="Bon ≥ 65 / 50 / 35 %, faible < 40 / 35 / 25 % (raquette / mi-distance / 3 pts)">Réussite par zone · <ZoneTierLegend /></span>)
+              : shots.length === 0
               ? 'Aucun tir ne correspond à ces filtres.'
               : outcome === 'all'
                 ? <>{made}/{shots.length} · <strong style={{ color: '#F1F5F9' }}>{Math.round((made / shots.length) * 100)} %</strong></>

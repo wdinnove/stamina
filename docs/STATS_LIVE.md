@@ -266,10 +266,10 @@ panier (0° = axe du panier, tiers gauche / axe / droite à ±30°) :
 
 | Zone | Définition (constantes `HALF`) |
 |---|---|
-| Cercle | distance au panier ≤ `restrictedR` (1,25 m) |
+| Cercle | distance au panier ≤ `CLOSE_R` (1,75 m — plus large que la zone de non-charge) |
 | Raquette | `abs(x − 7,5) ≤ laneHW` et `y ≤ laneV`, hors cercle |
 | Mi-distance gauche / axe / droite | reste des 2 pts, par tiers d'angle |
-| Corner 3 gauche / droite | `x ≤ threeInset` (0,9) ou `x ≥ 14,1` |
+| Corner 3 gauche / droite | `x ≤ threeInset` (0,9) ou `x ≥ 14,1`, et `y ≤ threeStopV` (2,99) — plus bas, c'est l'aile |
 | Arc 3 aile gauche / axe / aile droite | distance ≥ `threeR` (6,75 m), par tiers d'angle |
 
 Test à écrire dans `shotChart.test.ts` : le passage corner → arc doit tomber exactement sur
