@@ -16,7 +16,7 @@ import {
   TeamTrendHero, ResponsiveTabNav, TEAM_SUBJECT, ObjectivesPanel, TeamArchetypesPanel, ArchetypeSelect,
   RpeKpiCard, TeamRpeSub, TeamSessionHistoryTable, TeamMedicalOverview, TeamCompareByMatch, TeamCompareBySeason, TeamCompareByPeriod,
   TeamQuarterBreakdown, TacticalStatsSection, TacticalFilterBar, LoadingSteps, MbtiTeamPanel, MbtiStaffPanel, PlayerNotesPanel,
-  SeasonShotChartPanel, SeasonLineupsPanel
+  SeasonShotChartPanel, SeasonLineupsPanel, SeasonChemistryPanel
 } from '../components';
 import type { RankingRow } from '../components/PlayerRankingTable';
 import { ARCHETYPE_SELECTIONS, type ArchetypeSelection } from '../data/archetypes';
@@ -102,7 +102,7 @@ const colAvgInt = <T,>(rows: T[], get: (r: T) => number | null): number | null =
 type Tab = 'overview' | 'players-basic' | 'players-advanced' | 'matches-basic' | 'matches-advanced' | 'matches-quarters'
          | 'impact' | 'pca' | 'ranking' | 'archetypes' | 'mbti' | 'staff-mbti' | 'notes' | 'dynamic' | 'load' | 'rpe' | 'wellness' | 'medical' | 'correlations'
          | 'tactical-brutes' | 'tactical-dashboard'
-         | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives' | 'shot-chart' | 'lineups';
+         | 'compare-match' | 'compare-season' | 'compare-player' | 'objectives' | 'shot-chart' | 'lineups' | 'chemistry';
 
 const TAB_SLUGS: Record<string, Tab> = {
   'vue-ensemble':            'overview',
@@ -111,6 +111,7 @@ const TAB_SLUGS: Record<string, Tab> = {
   'stats-joueurs-avancees':  'players-advanced',
   'grille-de-tir':           'shot-chart',
   'lineups':                 'lineups',
+  'affinites':               'chemistry',
   'stats-matchs':            'matches-basic',
   'stats-matchs-avancees':   'matches-advanced',
   'qt-par-qt':               'matches-quarters',
@@ -159,6 +160,7 @@ const TAB_GROUPS: { label?: string; tabs: { key: Tab; slug: string; label: strin
     // n'ont pas de position de tir. L'onglet reste visible avec un état vide qui l'explique.
     { key: 'shot-chart',       slug: 'grille-de-tir',          label: 'Grille de tir' },
     { key: 'lineups',          slug: 'lineups',                label: 'Lineups' },
+    { key: 'chemistry',        slug: 'affinites',              label: 'Affinités' },
   ] },
   { label: 'Statistiques matchs', tabs: [
     { key: 'matches-basic',    slug: 'stats-matchs',          label: 'Brutes' },
@@ -196,7 +198,7 @@ const TAB_DEFAULT_PRESET: Record<Tab, DatePreset> = {
   load: 'saison', rpe: 'saison', wellness: 'saison', medical: 'saison', correlations: 'saison', objectives: 'saison',
   'tactical-brutes': 'saison', 'tactical-dashboard': 'saison',
   'compare-match': 'saison', 'compare-season': 'saison', 'compare-player': 'saison',
-  'shot-chart': 'saison', lineups: 'saison',
+  'shot-chart': 'saison', lineups: 'saison', chemistry: 'saison',
 };
 
 export default function PerformanceCollectivePage() {
@@ -857,6 +859,11 @@ export default function PerformanceCollectivePage() {
       {/* ══ LINEUPS (saison) ════════════════════════════════════════════════ */}
       {activeTab === 'lineups' && (
         <SeasonLineupsPanel matches={filteredSeasonMatches} players={players} />
+      )}
+
+      {/* ══ AFFINITÉS (saison) ══════════════════════════════════════════════ */}
+      {activeTab === 'chemistry' && (
+        <SeasonChemistryPanel matches={filteredSeasonMatches} players={players} />
       )}
 
       {/* ══ STATISTIQUES JOUEURS ════════════════════════════════════════════ */}

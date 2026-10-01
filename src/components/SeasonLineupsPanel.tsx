@@ -1,10 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { matchEventsApi } from '../api/matchEvents';
-import { matchLiveApi } from '../api/matchLive';
-import { lineupStatsFromEvents, isMilestoneEvent, lastTrackedInstant } from '../data/matchEvents';
+import { useMemo, useCallback } from 'react';
+import { useSeasonMatchFives } from '../hooks/useSeasonMatchFives';
 import { LineupComboTable } from './MatchLineupsPanel';
 import { playerNameShort } from '../utils/playerName';
-import type { Match, Player, MatchEvent, MatchLineupEvent } from '../data/types';
+import type { Match, Player } from '../data/types';
 
 /**
  * Lineups sur PLUSIEURS matchs : chaque match est mesuré à part (sa durée de quart-temps, sa fin),
@@ -26,36 +24,7 @@ const PANEL: React.CSSProperties = {
 const SEASON_MIN_PRESETS = [0, 60, 300, 600] as const;
 
 export function SeasonLineupsPanel({ matches, players }: SeasonLineupsPanelProps) {
-  const [events, setEvents] = useState<MatchEvent[]>([]);
-  const [lineupEvents, setLineupEvents] = useState<MatchLineupEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  // Clé stable : la liste de matchs est recalculée à chaque rendu de la page parente.
-  const matchIdsKey = matches.map(m => m.id).sort().join(',');
-
-  useEffect(() => {
-    let cancelled = false;
-    const ids = matchIdsKey ? matchIdsKey.split(',') : [];
-    setLoading(true);
-    setError('');
-    Promise.all([matchEventsApi.getByMatchIds(ids), matchLiveApi.getLineupEventsByMatchIds(ids)])
-      .then(([evts, lineups]) => { if (!cancelled) { setEvents(evts); setLineupEvents(lineups); } })
-      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Erreur de chargement'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [matchIdsKey]);
-
-  /** Une liste de cinq par match suivi : chaque match est mesuré à part, le cumul se fait ensuite. */
-  const matchFives = useMemo(() => matches.map(m => {
-    const raw = events.filter(e => e.matchId === m.id);
-    const lineups = lineupEvents.filter(l => l.matchId === m.id);
-    const { lastQuarter, lastElapsedSeconds } = lastTrackedInstant(raw, lineups);
-    return lineupStatsFromEvents(
-      raw.filter(e => !isMilestoneEvent(e.type)), lineups, 'us',
-      m.periodDurationSeconds, lastQuarter, lastElapsedSeconds,
-    );
-  }).filter(rows => rows.length > 0), [matches, events, lineupEvents]);
+  const { matchFives, loading, error } = useSeasonMatchFives(matches);
   const trackedMatches = matchFives.length;
 
   const nameById = useMemo(() => new Map(players.map(p => [p.id, playerNameShort(p)])), [players]);
