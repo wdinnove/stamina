@@ -135,3 +135,131 @@ export function layoutChemistry(
 
   return new Map(ids.map(id => [id, pos[index.get(id)!]]));
 }
+
+/** Une mesure réelle, sans correction : temps, possessions, +/- /100. */
+export interface SplitPart {
+  seconds: number;
+  possessions: number;
+  /** +/- /100 — null sans possession mesurée des deux côtés. */
+  net: number | null;
+}
+
+/** Un duo vu sous trois angles : les deux ensemble, et chacun quand l'autre est sur le banc. */
+export interface PairSplit {
+  together: SplitPart;
+  aWithout: SplitPart;
+  bWithout: SplitPart;
+}
+
+/**
+ * « Ensemble / A sans B / B sans A », sur les cinq de plusieurs matchs. Trois chiffres réels dans
+ * la même unité que le reste : répondre à « les fait-on jouer ensemble ? » sans métrique dérivée.
+ */
+export function pairSplit(perMatch: EventLineupRow[][], a: string, b: string): PairSplit {
+  const acc = () => ({ seconds: 0, possessions: 0, oppPossessions: 0, pointsFor: 0, pointsAgainst: 0 });
+  const parts = { together: acc(), aWithout: acc(), bWithout: acc() };
+  for (const r of perMatch.flat()) {
+    const hasA = r.players.includes(a), hasB = r.players.includes(b);
+    const t = hasA && hasB ? parts.together : hasA ? parts.aWithout : hasB ? parts.bWithout : null;
+    if (!t) continue;
+    t.seconds += r.seconds;
+    t.possessions += r.possessions;
+    t.oppPossessions += r.oppPossessions;
+    t.pointsFor += r.pointsFor;
+    t.pointsAgainst += r.pointsAgainst;
+  }
+  const done = (p: ReturnType<typeof acc>): SplitPart => ({
+    seconds: p.seconds,
+    possessions: p.possessions,
+    net: p.possessions > 0 && p.oppPossessions > 0
+      ? (p.pointsFor / p.possessions - p.pointsAgainst / p.oppPossessions) * 100
+      : null,
+  });
+  return { together: done(parts.together), aWithout: done(parts.aWithout), bWithout: done(parts.bWithout) };
+}
+
+export type PairVerdictKind = 'together' | 'apart' | 'aAlone' | 'bAlone' | 'even' | 'unsure';
+
+/** Écart (pts/100) en deçà duquel deux chiffres sont considérés comme équivalents. */
+const VERDICT_MARGIN = 5;
+
+/**
+ * La conclusion en une phrase, pour un coach qui ne lit pas de statistiques. Prudente par
+ * construction : sous `minSeconds` dans l'une des trois situations, elle refuse de conclure.
+ */
+export function pairVerdict(split: PairSplit, nameA: string, nameB: string, minSeconds: number): { kind: PairVerdictKind; text: string } {
+  const { together: t, aWithout: a, bWithout: b } = split;
+  if (t.net === null || a.net === null || b.net === null
+    || t.seconds < minSeconds || a.seconds < minSeconds || b.seconds < minSeconds) {
+    return { kind: 'unsure', text: 'Pas assez de minutes pour conclure : il faut les voir jouer ensemble, et chacun sans l\'autre.' };
+  }
+  if (t.net >= Math.max(a.net, b.net) + VERDICT_MARGIN) {
+    return { kind: 'together', text: `${nameA} et ${nameB} font mieux ensemble que séparément : à faire jouer ensemble.` };
+  }
+  if (t.net <= Math.min(a.net, b.net) - VERDICT_MARGIN) {
+    return { kind: 'apart', text: `${nameA} et ${nameB} font moins bien ensemble que séparément : plutôt à séparer.` };
+  }
+  if (a.net >= t.net + VERDICT_MARGIN) return { kind: 'aAlone', text: `${nameA} fait mieux sans ${nameB} : association à surveiller.` };
+  if (b.net >= t.net + VERDICT_MARGIN) return { kind: 'bAlone', text: `${nameB} fait mieux sans ${nameA} : association à surveiller.` };
+  return { kind: 'even', text: `Ensemble ou séparément, pas de différence nette pour ${nameA} et ${nameB}.` };
+}
+
+const signedRound = (v: number) => { const r = Math.round(v); return `${r > 0 ? '+' : ''}${r}`; };
+const minutes = (s: number) => `${Math.round(s / 60)} min`;
+
+/** Écart à l'équipe (pts/100) en deçà duquel un joueur est « dans la moyenne ». */
+const TEAM_MARGIN = 3;
+
+/**
+ * Bilan d'un joueur en quelques phrases, pour un coach qui ne lit pas de statistiques. Uniquement
+ * des chiffres réels déjà visibles à l'écran (+/- /100, minutes) et les verdicts de `pairVerdict` ;
+ * un partenaire n'est cité que s'il a joué au moins `reliableSeconds` avec lui.
+ */
+export function playerReport(
+  node: ChemistryNode,
+  teamNet: number | null,
+  links: ChemistryLink[],
+  perMatch: EventLineupRow[][],
+  nameOf: (id: string) => string,
+  reliableSeconds: number,
+): string[] {
+  const me = nameOf(node.id);
+  const lines: string[] = [];
+
+  if (node.net === null) return [`${me} : pas encore de possession mesurée.`];
+  let level = `L'équipe est à ${signedRound(node.net)} /100 quand ${me} est sur le terrain (${minutes(node.seconds)})`;
+  if (teamNet !== null) {
+    const d = node.net - teamNet;
+    level += Math.abs(d) < TEAM_MARGIN
+      ? `, dans la moyenne de l'équipe (${signedRound(teamNet)}).`
+      : d > 0 ? `, mieux que la moyenne de l'équipe (${signedRound(teamNet)}).`
+        : `, moins bien que la moyenne de l'équipe (${signedRound(teamNet)}).`;
+  } else level += '.';
+  lines.push(level);
+
+  const mine = links
+    .filter(l => (l.a === node.id || l.b === node.id) && l.duoNet !== null && l.seconds >= reliableSeconds)
+    .map(l => ({ partner: l.a === node.id ? l.b : l.a, link: l }))
+    .sort((x, y) => y.link.duoNet! - x.link.duoNet!);
+  if (mine.length === 0) {
+    lines.push(`Pas encore assez de minutes avec un même partenaire (${minutes(reliableSeconds)}) pour parler de duos.`);
+    return lines;
+  }
+
+  const best = mine[0], worst = mine[mine.length - 1];
+  lines.push(`Meilleur duo : avec ${nameOf(best.partner)}, ${signedRound(best.link.duoNet!)} /100 en ${minutes(best.link.seconds)}.`);
+  if (worst !== best) {
+    lines.push(`Duo le plus difficile : avec ${nameOf(worst.partner)}, ${signedRound(worst.link.duoNet!)} /100 en ${minutes(worst.link.seconds)}.`);
+  }
+
+  // Ensemble / séparément : seulement les conclusions nettes, pas les « pas de différence ».
+  const together: string[] = [], apart: string[] = [];
+  for (const { partner } of mine) {
+    const v = pairVerdict(pairSplit(perMatch, node.id, partner), me, nameOf(partner), reliableSeconds).kind;
+    if (v === 'together') together.push(nameOf(partner));
+    if (v === 'apart') apart.push(nameOf(partner));
+  }
+  if (together.length) lines.push(`Fait mieux avec que séparément : ${together.join(', ')} — à associer.`);
+  if (apart.length) lines.push(`Fait moins bien avec que séparément : ${apart.join(', ')} — plutôt à séparer.`);
+  return lines;
+}

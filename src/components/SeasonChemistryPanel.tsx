@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useSeasonMatchFives } from '../hooks/useSeasonMatchFives';
-import { chemistryFromMatches, layoutChemistry, type ChemistryLink, type ChemistryNode } from '../data/lineupChemistry';
+import { chemistryFromMatches, layoutChemistry, pairSplit, pairVerdict, playerReport, type ChemistryLink, type ChemistryNode, type PairSplit, type PairVerdictKind } from '../data/lineupChemistry';
 import {
   combosAcrossMatches, SEASON_MIN_PRESETS, SEASON_DEFAULT_MIN, MIN_PARAM, RELIABLE_SECONDS, NET_LABEL, NET_HELP, minPresetLabel,
 } from '../data/matchEvents';
@@ -57,6 +57,8 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
   const minSeconds = Number(minParam);
   const setMinSeconds = (s: number) => setMinParam(String(s));
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Duo ouvert dans le panneau : « ensemble / chacun sans l'autre ». */
+  const [pair, setPair] = useState<[string, string] | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   /** Le survol prévisualise, le clic fige : la carte et le tableau suivent le même joueur. */
   const focusId = hoverId ?? selectedId;
@@ -149,12 +151,22 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
       .slice(0, TOP_FIVES);
   }, [fives, selectedId, minSeconds]);
 
-  /** Onglet Lineups, filtré sur ce joueur — en gardant la période et l'équipe de l'adresse. */
-  const openInLineups = (id: string) => {
+  /** Onglet Lineups, filtré sur ces joueurs — en gardant la période, le seuil et l'équipe de l'adresse. */
+  const openInLineups = (ids: string[]) => {
     const params = new URLSearchParams(location.search);
-    params.set('avec', id);
+    params.set('avec', ids.join(','));
     navigate(`/performance-collective/lineups?${params}`);
   };
+
+  const split = useMemo(() => (pair ? pairSplit(matchFives, pair[0], pair[1]) : null), [matchFives, pair]);
+
+  /** Bilan texte de chaque joueur affiché, dans l'ordre du tableau. */
+  const reports = useMemo(
+    () => shownNodes.map(node => ({ node, lines: playerReport(node, teamNet, links, matchFives, nameOf, RELIABLE_SECONDS) })),
+    // `nameOf` dépend des joueurs, qui ne changent pas pendant la lecture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shownNodes, teamNet, links, matchFives, nameById],
+  );
 
   if (loading) return <div style={{ color: C.faint, padding: 24 }}>Chargement des affinités…</div>;
   if (error)   return <div style={{ color: C.bad, padding: 24 }}>{error}</div>;
@@ -171,7 +183,9 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
     );
   }
 
-  const toggle = (id: string) => setSelectedId(s => (s === id ? null : id));
+  const toggle = (id: string) => { setPair(null); setSelectedId(s => (s === id ? null : id)); };
+  /** Ouvre un duo ; la carte suit le premier joueur, pour garder ses traits en évidence. */
+  const openPair = (a: string, b: string) => { setPair([a, b]); setSelectedId(a); };
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const isRelated = (id: string) => focusId === null || id === focusId || !!linkOf(focusId, id);
 
@@ -289,7 +303,11 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
 
         {/* ── Partenaires du joueur sélectionné ── */}
         <div style={{ ...PANEL, flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-          {!selected ? (
+          {pair && split ? (
+            <PairView nameA={nameOf(pair[0])} nameB={nameOf(pair[1])} split={split}
+              verdict={pairVerdict(split, nameOf(pair[0]), nameOf(pair[1]), RELIABLE_SECONDS)}
+              onBack={() => setPair(null)} onOpenLineups={() => openInLineups(pair)} />
+          ) : !selected ? (
             <>
               <p style={SECTION_TITLE}>Partenaires</p>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', padding: '24px 8px', color: C.ghost }}>
@@ -299,7 +317,7 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                   <line x1="14" y1="19" x2="22" y2="15" stroke={C.ghost} strokeWidth="1.5" />
                 </svg>
                 <p style={{ margin: 0, fontSize: '0.8rem', lineHeight: 1.5, maxWidth: 220 }}>
-                  Sélectionnez un joueur sur la carte ou dans le tableau pour voir avec qui l'associer, et qui éviter.
+                  Cliquez sur un joueur pour voir ses duos, ou sur une case du tableau pour comparer deux joueurs ensemble et séparément.
                 </p>
               </div>
             </>
@@ -323,7 +341,7 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                   </p>
                 </div>
               </div>
-              <PartnerList title="Ses duos" items={partners} nameOf={nameOf} maxAbs={maxAbsNet} onPick={toggle} />
+              <PartnerList title="Ses duos" items={partners} nameOf={nameOf} maxAbs={maxAbsNet} onPick={id => openPair(selectedId!, id)} />
               {selectedFives.length > 0 && (
                 <div>
                   <p style={{ ...SECTION_TITLE, color: C.faint, fontSize: '0.62rem', marginBottom: 6 }}>Meilleurs cinq</p>
@@ -343,7 +361,7 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                   </div>
                 </div>
               )}
-              <button onClick={() => openInLineups(selectedId!)}
+              <button onClick={() => openInLineups([selectedId!])}
                 style={{ alignSelf: 'flex-start', height: 30, padding: '0 12px', borderRadius: 6, fontSize: '0.74rem', cursor: 'pointer',
                   border: `1px solid ${C.border}`, backgroundColor: C.ink, color: C.soft, fontWeight: 600 }}>
                 Voir ses lineups →
@@ -368,8 +386,8 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
         {shownNodes.length >= 2 && (
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: '1 1 260px', maxWidth: 360 }}>
-            <DuoList title="Meilleurs duos" items={topDuos.good} nameOf={nameOf} maxAbs={maxAbsNet} onPick={toggle} empty={`Aucun duo d'au moins ${minPresetLabel(RELIABLE_SECONDS)} ensemble.`} />
-            <DuoList title="Pires duos" items={topDuos.bad} nameOf={nameOf} maxAbs={maxAbsNet} onPick={toggle} empty="—" />
+            <DuoList title="Meilleurs duos" items={topDuos.good} nameOf={nameOf} maxAbs={maxAbsNet} onPick={openPair} empty={`Aucun duo d'au moins ${minPresetLabel(RELIABLE_SECONDS)} ensemble.`} />
+            <DuoList title="Pires duos" items={topDuos.bad} nameOf={nameOf} maxAbs={maxAbsNet} onPick={openPair} empty="—" />
           </div>
           <div style={{ overflowX: 'auto', flex: '3 1 480px', minWidth: 0 }} onMouseLeave={() => setHoverId(null)}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 3, fontSize: '0.72rem', margin: '0 auto' }}>
@@ -409,7 +427,7 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                       return (
                         <td key={col.id} className="chem-cell"
                           title={l ? cellTitle(nameOf(row.id), nameOf(col.id), l) : hiddenTitle(nameOf(row.id), nameOf(col.id), anyLinkOf(row.id, col.id), minSeconds)}
-                          onClick={() => toggle(row.id)} onMouseEnter={() => setHoverId(row.id)}
+                          onClick={() => (anyLinkOf(row.id, col.id) ? openPair(row.id, col.id) : toggle(row.id))} onMouseEnter={() => setHoverId(row.id)}
                           style={{
                             ...CELL, cursor: 'pointer',
                             backgroundColor: l ? tint(l.duoNet) : '#12151B',
@@ -432,6 +450,32 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
         <p style={{ color: C.ghost, fontSize: '0.72rem', margin: 0, lineHeight: 1.5 }}>
           {NET_HELP} Le même chiffre que l'onglet Lineups (Duos · Pour 100 poss.). Estompée : moins de {minPresetLabel(RELIABLE_SECONDS)} ensemble,
           à confirmer. En diagonale, le joueur seul sur le terrain. « · » : moins de {minPresetLabel(minSeconds)} ensemble (survolez pour la valeur).
+        </p>
+      </div>
+
+      {/* ── Bilan par joueur, en phrases ── */}
+      <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={SECTION_TITLE}>Bilan par joueur</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 10 }}>
+          {reports.map(({ node, lines }) => (
+            <div key={node.id} style={{ padding: '12px 14px', borderRadius: 10, backgroundColor: C.ink,
+              border: `1px solid ${selectedId === node.id ? C.muted : C.line}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <button onClick={() => toggle(node.id)} title="Voir ses duos"
+                  style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', color: C.text, fontSize: '0.86rem', fontWeight: 700, textAlign: 'left' }}>
+                  {nameOf(node.id)}
+                </button>
+                <span style={{ color: valueColor(node.net), fontWeight: 800, fontSize: '0.9rem', fontVariantNumeric: 'tabular-nums' }}>{fmtSigned(node.net)}</span>
+              </div>
+              {lines.map((line, i) => (
+                <p key={i} style={{ margin: 0, color: i === 0 ? C.soft : C.muted, fontSize: '0.76rem', lineHeight: 1.55 }}>{line}</p>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p style={{ color: C.ghost, fontSize: '0.72rem', margin: 0, lineHeight: 1.5 }}>
+          Un partenaire n'est cité qu'à partir de {minPresetLabel(RELIABLE_SECONDS)} ensemble. « À associer » / « à séparer » : comparaison
+          entre jouer ensemble et chacun sans l'autre (cliquez sur une case du tableau pour le détail).
         </p>
       </div>
     </div>
@@ -492,7 +536,7 @@ function PartnerList({ title, items, nameOf, maxAbs, onPick }: {
         {items.map(({ id, link }) => {
           const s = link.duoNet ?? 0;
           return (
-            <button key={id} onClick={() => onPick(id)} title={`Voir ${nameOf(id)}`}
+            <button key={id} onClick={() => onPick(id)} title={`Ensemble, et chacun sans l'autre`}
               style={{
                 display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 44px 64px 36px', alignItems: 'center', gap: 10,
                 padding: '6px 4px', background: 'none', border: 'none', borderBottom: `1px solid ${C.line}`,
@@ -557,7 +601,7 @@ function DuoList({ title, items, nameOf, maxAbs, onPick, empty }: {
   items: ChemistryLink[];
   nameOf: (id: string) => string;
   maxAbs: number;
-  onPick: (id: string) => void;
+  onPick: (a: string, b: string) => void;
   empty: string;
 }) {
   return (
@@ -568,28 +612,110 @@ function DuoList({ title, items, nameOf, maxAbs, onPick, empty }: {
       ) : items.map(l => {
         const s = l.duoNet ?? 0;
         return (
-          <div key={`${l.a}|${l.b}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 44px 56px 32px', alignItems: 'center', gap: 10,
-            padding: '6px 0', borderBottom: `1px solid ${C.line}` }}>
+          <button key={`${l.a}|${l.b}`} onClick={() => onPick(l.a, l.b)} title="Ensemble, et chacun sans l'autre"
+            style={{ ...ROW_BTN, gridTemplateColumns: 'minmax(0, 1fr) 44px 56px 32px' }}>
             <span style={{ fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>
-              <button onClick={() => onPick(l.a)} style={LINK_BTN}>{nameOf(l.a)}</button>
-              <span style={{ color: C.ghost }}> + </span>
-              <button onClick={() => onPick(l.b)} style={LINK_BTN}>{nameOf(l.b)}</button>
+              {nameOf(l.a)}<span style={{ color: C.ghost }}> + </span>{nameOf(l.b)}
             </span>
             <span style={{ color: C.faint, fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>{Math.round(l.seconds / 60)} min</span>
             <span style={{ height: 6, borderRadius: 3, backgroundColor: C.ink, overflow: 'hidden' }}>
               <span style={{ display: 'block', height: '100%', width: `${Math.max(6, (Math.abs(s) / maxAbs) * 100)}%`, backgroundColor: valueColor(s), borderRadius: 3 }} />
             </span>
             <span style={{ color: valueColor(s), fontWeight: 700, fontSize: '0.8rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtSigned(s)}</span>
-          </div>
+          </button>
         );
       })}
     </div>
   );
 }
 
-const LINK_BTN: React.CSSProperties = {
-  background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer',
+const ROW_BTN: React.CSSProperties = {
+  display: 'grid', alignItems: 'center', gap: 10, width: '100%', padding: '6px 4px', background: 'none', border: 'none',
+  borderBottom: `1px solid ${C.line}`, borderRadius: 4, cursor: 'pointer', textAlign: 'left', font: 'inherit',
 };
+
+const VERDICT_COLOR: Record<PairVerdictKind, string> = {
+  together: C.good, apart: C.bad, aAlone: '#F59E0B', bAlone: '#F59E0B', even: C.muted, unsure: C.faint,
+};
+
+/** Un duo vu sous trois angles, avec sa conclusion en une phrase — pour un coach, pas un statisticien. */
+function PairView({ nameA, nameB, split, verdict, onBack, onOpenLineups }: {
+  nameA: string;
+  nameB: string;
+  split: PairSplit;
+  verdict: { kind: PairVerdictKind; text: string };
+  onBack: () => void;
+  onOpenLineups: () => void;
+}) {
+  const rows: [string, PairSplit['together']][] = [
+    ['Ensemble', split.together],
+    [`${nameA} sans ${nameB}`, split.aWithout],
+    [`${nameB} sans ${nameA}`, split.bWithout],
+  ];
+  const maxAbs = Math.max(10, ...rows.map(([, p]) => Math.abs(p.net ?? 0)));
+  const color = VERDICT_COLOR[verdict.kind];
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ ...SECTION_TITLE, marginBottom: 4 }}>Duo</p>
+          <p style={{ margin: 0, color: C.text, fontSize: '1rem', fontWeight: 700 }}>{nameA} + {nameB}</p>
+        </div>
+        <button onClick={onBack} aria-label="Fermer le duo"
+          style={{ height: 28, padding: '0 10px', borderRadius: 6, fontSize: '0.72rem', cursor: 'pointer', border: `1px solid ${C.border}`, backgroundColor: C.ink, color: C.muted }}>
+          ← Retour
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rows.map(([label, p], i) => {
+          const v = p.net;
+          const w = v === null ? 0 : (Math.abs(v) / maxAbs) * 50;
+          return (
+            <div key={label} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 40px', gap: 10, alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: i === 0 ? C.text : C.soft, fontSize: '0.78rem', fontWeight: i === 0 ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                  <span style={{ color: C.faint, fontSize: '0.68rem', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{Math.round(p.seconds / 60)} min</span>
+                </div>
+                {/* Barre centrée sur 0 : à droite on gagne, à gauche on perd. */}
+                <div style={{ position: 'relative', height: 8, borderRadius: 4, backgroundColor: C.ink }}>
+                  <span style={{ position: 'absolute', left: '50%', top: -2, bottom: -2, width: 1, backgroundColor: C.border }} />
+                  {v !== null && (
+                    <span style={{ position: 'absolute', top: 0, bottom: 0, borderRadius: 4, backgroundColor: valueColor(v),
+                      left: v >= 0 ? '50%' : `${50 - w}%`, width: `${Math.max(w, 1)}%` }} />
+                  )}
+                </div>
+              </div>
+              <span style={{ color: valueColor(v), fontWeight: 700, fontSize: '0.9rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtSigned(v)}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.5, color: C.text,
+        backgroundColor: `${color}14`, border: `1px solid ${color}55` }}>
+        {verdict.text}
+      </p>
+
+      <details style={{ color: C.muted, fontSize: '0.74rem', lineHeight: 1.6 }}>
+        <summary style={{ cursor: 'pointer', color: C.soft, fontWeight: 600 }}>Comment lire ?</summary>
+        <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+          <li><strong style={{ color: C.soft }}>Ensemble</strong> : le {NET_LABEL} quand les deux sont sur le terrain.</li>
+          <li><strong style={{ color: C.soft }}>{nameA} sans {nameB}</strong> : quand {nameA} joue et {nameB} est sur le banc.</li>
+          <li>Si « Ensemble » dépasse les deux autres lignes, elles se valorisent : à faire jouer ensemble. S'il est en dessous des deux, elles se gênent.</li>
+          <li>Il faut au moins {minPresetLabel(RELIABLE_SECONDS)} dans chaque situation pour conclure.</li>
+        </ul>
+      </details>
+
+      <button onClick={onOpenLineups}
+        style={{ alignSelf: 'flex-start', height: 30, padding: '0 12px', borderRadius: 6, fontSize: '0.74rem', cursor: 'pointer',
+          border: `1px solid ${C.border}`, backgroundColor: C.ink, color: C.soft, fontWeight: 600, marginTop: 'auto' }}>
+        Voir leurs lineups →
+      </button>
+    </>
+  );
+}
 
 function segmentStyle(active: boolean): React.CSSProperties {
   return {

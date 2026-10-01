@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chemistryFromMatches, layoutChemistry, type ChemistryLink } from './lineupChemistry';
+import { chemistryFromMatches, layoutChemistry, pairSplit, pairVerdict, playerReport, type ChemistryLink } from './lineupChemistry';
 import type { EventLineupRow } from './matchEvents';
 
 const row = (players: string[], over: Partial<EventLineupRow>): EventLineupRow => ({
@@ -45,3 +45,56 @@ describe('layoutChemistry', () => {
   });
 });
 
+
+describe('pairSplit / pairVerdict', () => {
+  const five = (players: string[], seconds: number, pf: number, pa: number) =>
+    row(players, { seconds, possessions: 20, oppPossessions: 20, pointsFor: pf, pointsAgainst: pa });
+
+  const matches = [[
+    five(['a', 'b', 'c', 'd', 'e'], 700, 26, 20),   // ensemble : +30
+    five(['a', 'f', 'g', 'h', 'i'], 700, 22, 20),   // a sans b : +10
+    five(['b', 'f', 'g', 'h', 'i'], 700, 19, 20),   // b sans a : −5
+    five(['c', 'd', 'e', 'f', 'g'], 700, 30, 10),   // ni l'un ni l'autre : ignoré
+  ]];
+
+  it('sépare ensemble, A sans B et B sans A', () => {
+    const s = pairSplit(matches, 'a', 'b');
+    expect(s.together).toMatchObject({ seconds: 700 });
+    expect(s.together.net).toBeCloseTo(30);
+    expect(s.aWithout.net).toBeCloseTo(10);
+    expect(s.bWithout.net).toBeCloseTo(-5);
+  });
+
+  it('conclut en une phrase, et refuse sans assez de minutes', () => {
+    const s = pairSplit(matches, 'a', 'b');
+    expect(pairVerdict(s, 'A', 'B', 600).kind).toBe('together');
+    expect(pairVerdict(s, 'A', 'B', 800).kind).toBe('unsure');
+    const apart = pairSplit([[five(['a', 'b', 'c', 'd', 'e'], 700, 16, 20), five(['a', 'f', 'g', 'h', 'i'], 700, 22, 20), five(['b', 'f', 'g', 'h', 'i'], 700, 21, 20)]], 'a', 'b');
+    expect(pairVerdict(apart, 'A', 'B', 600).kind).toBe('apart');
+  });
+});
+
+describe('playerReport', () => {
+  const five = (players: string[], seconds: number, pf: number, pa: number) =>
+    row(players, { seconds, possessions: 20, oppPossessions: 20, pointsFor: pf, pointsAgainst: pa });
+  const matches = [[
+    five(['a', 'b', 'c', 'd', 'e'], 700, 26, 20),
+    five(['a', 'f', 'g', 'h', 'i'], 700, 22, 20),
+    five(['b', 'f', 'g', 'h', 'i'], 700, 19, 20),
+  ]];
+  const nameOf = (id: string) => id.toUpperCase();
+
+  it('écrit le niveau, le meilleur duo et les associations nettes', () => {
+    const { nodes, links, teamNet } = chemistryFromMatches(matches);
+    const text = playerReport(nodes.find(n => n.id === 'a')!, teamNet, links, matches, nameOf, 600).join(' ');
+    expect(text).toContain('quand A est sur le terrain');
+    expect(text).toContain('Meilleur duo : avec');
+    expect(text).toContain('B — à associer');
+  });
+
+  it('ne conclut rien sans assez de minutes ensemble', () => {
+    const { nodes, links, teamNet } = chemistryFromMatches(matches);
+    const text = playerReport(nodes.find(n => n.id === 'a')!, teamNet, links, matches, nameOf, 3600).join(' ');
+    expect(text).toContain('Pas encore assez de minutes');
+  });
+});
