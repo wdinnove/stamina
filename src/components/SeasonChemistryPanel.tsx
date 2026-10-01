@@ -1,14 +1,17 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useSeasonMatchFives } from '../hooks/useSeasonMatchFives';
-import { chemistryFromMatches, layoutChemistry, shrink, RELIABLE_POSSESSIONS, type ChemistryLink, type ChemistryNode } from '../data/lineupChemistry';
-import { combosAcrossMatches } from '../data/matchEvents';
+import { chemistryFromMatches, layoutChemistry, type ChemistryLink, type ChemistryNode } from '../data/lineupChemistry';
+import {
+  combosAcrossMatches, SEASON_MIN_PRESETS, SEASON_DEFAULT_MIN, MIN_PARAM, RELIABLE_SECONDS, NET_LABEL, NET_HELP, minPresetLabel,
+} from '../data/matchEvents';
+import { useUrlState } from '../hooks/useUrlState';
 import { formatClock } from '../data/liveTrackingAnalysis';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player } from '../data/types';
 
 /**
- * Carte des affinités : un point par joueur, proches quand leur duo fait mieux qu'attendu, loin
+ * Carte des affinités : un point par joueur, proches quand leur duo fait mieux que l'équipe, loin
  * quand il fait moins bien (cf. `lineupChemistry`). La carte donne l'impression d'ensemble ; les
  * traits et le tableau joueurs × joueurs donnent la valeur exacte de chaque duo — une carte à plat
  * ne peut pas respecter toutes les distances à la fois.
@@ -34,11 +37,8 @@ const SECTION_TITLE: React.CSSProperties = {
   letterSpacing: '0.06em', margin: 0,
 };
 
-/** Temps minimum ensemble (et sur le terrain, pour un joueur) pour qu'un duo compte. */
-const MIN_PRESETS = [300, 600, 1200] as const;
-
-/** Valeur (pts/100, déjà ramenée vers 0) à laquelle une couleur atteint son intensité maximale. */
-const COLOR_SCALE = 12;
+/** Valeur (pts/100) à laquelle une couleur atteint son intensité maximale. */
+const COLOR_SCALE = 25;
 /** En deçà (en valeur absolue), une valeur est neutre : un +1 n'est pas un signal à colorer. */
 const NEUTRAL_BAND = 3;
 /** Nombre d'entrées des listes « meilleurs / pires duos » et « meilleurs cinq ». */
@@ -52,7 +52,10 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
   const { matchFives, loading, error } = useSeasonMatchFives(matches);
   const navigate = useNavigate();
   const location = useLocation();
-  const [minSeconds, setMinSeconds] = useState<number>(600);
+  // Même seuil, même clé d'adresse que l'onglet Lineups : un duo visible ici l'est là-bas, et inversement.
+  const [minParam, setMinParam] = useUrlState(MIN_PARAM, String(SEASON_DEFAULT_MIN), { allowed: SEASON_MIN_PRESETS.map(String) });
+  const minSeconds = Number(minParam);
+  const setMinSeconds = (s: number) => setMinParam(String(s));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   /** Le survol prévisualise, le clic fige : la carte et le tableau suivent le même joueur. */
@@ -66,19 +69,29 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
   /** Joueurs retenus : assez de temps sur le terrain, triés par apport (le tableau suit cet ordre). */
   const shownNodes = useMemo(
     () => nodes.filter(n => n.seconds >= minSeconds)
-      .sort((a, b) => (b.vsTeam ?? -Infinity) - (a.vsTeam ?? -Infinity)),
+      .sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity)),
     [nodes, minSeconds],
   );
   const nodeById = useMemo(() => new Map(shownNodes.map(n => [n.id, n])), [shownNodes]);
   /** Duos lisibles : les deux joueurs affichés ET assez de temps ensemble. */
   const shownLinks = useMemo(
-    () => links.filter(l => nodeById.has(l.a) && nodeById.has(l.b) && l.seconds >= minSeconds && l.synergy !== null),
+    () => links.filter(l => nodeById.has(l.a) && nodeById.has(l.b) && l.seconds >= minSeconds && l.duoNet !== null),
     [links, nodeById, minSeconds],
   );
   const linkOf = useMemo(() => {
     const m = new Map(shownLinks.map(l => [`${l.a}|${l.b}`, l]));
     return (x: string, y: string) => m.get(x < y ? `${x}|${y}` : `${y}|${x}`);
   }, [shownLinks]);
+  /** Tous les duos, même sous le seuil : une case « · » dit quand même ce qu'elle cache. */
+  const anyLinkOf = useMemo(() => {
+    const m = new Map(links.map(l => [`${l.a}|${l.b}`, l]));
+    return (x: string, y: string) => m.get(x < y ? `${x}|${y}` : `${y}|${x}`);
+  }, [links]);
+  /** Duos entre joueurs affichés, mais sous le seuil de temps — comptés pour ne pas disparaître en silence. */
+  const hiddenDuos = useMemo(
+    () => links.filter(l => nodeById.has(l.a) && nodeById.has(l.b) && l.seconds < minSeconds && l.seconds > 0).length,
+    [links, nodeById, minSeconds],
+  );
 
   const positions = useMemo(() => {
     // Ordre alphabétique des ids pour le départ : la carte ne dépend pas du tri d'affichage.
@@ -104,23 +117,24 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
     return [...shownLinks].sort((x, y) => Number(touches(x)) - Number(touches(y)) || x.seconds - y.seconds);
   }, [shownLinks, focusId]);
 
+  /** Tous les duos du joueur sélectionné, du meilleur au moins bon. */
   const partners = useMemo(() => {
-    if (!selectedId) return { good: [], bad: [] };
-    const all = shownLinks
+    if (!selectedId) return [];
+    return shownLinks
       .filter(l => l.a === selectedId || l.b === selectedId)
       .map(l => ({ id: l.a === selectedId ? l.b : l.a, link: l }))
-      .sort((x, y) => (y.link.synergy ?? 0) - (x.link.synergy ?? 0));
-    return { good: all.filter(p => (p.link.synergy ?? 0) >= 0), bad: all.filter(p => (p.link.synergy ?? 0) < 0).reverse() };
+      .sort((x, y) => (y.link.duoNet ?? 0) - (x.link.duoNet ?? 0));
   }, [shownLinks, selectedId]);
-  const maxAbsSynergy = Math.max(1, ...shownLinks.map(l => Math.abs(l.synergy ?? 0)));
+  const maxAbsNet = Math.max(1, ...shownLinks.map(l => Math.abs(l.duoNet ?? 0)));
 
-  /** Les duos les plus nets dans chaque sens — la réponse directe, sans parcourir le tableau. */
+  /** Meilleurs et pires duos — seulement parmi ceux assez joués : sinon deux minutes heureuses
+   *  passeraient en tête. */
   const topDuos = useMemo(() => {
-    const sorted = [...shownLinks].sort((x, y) => (y.synergy ?? 0) - (x.synergy ?? 0));
-    return {
-      good: sorted.filter(l => (l.synergy ?? 0) >= NEUTRAL_BAND).slice(0, TOP_DUOS),
-      bad:  sorted.filter(l => (l.synergy ?? 0) <= -NEUTRAL_BAND).reverse().slice(0, TOP_DUOS),
-    };
+    const sorted = shownLinks
+      .filter(l => l.seconds >= RELIABLE_SECONDS)
+      .sort((x, y) => (y.duoNet ?? 0) - (x.duoNet ?? 0));
+    const good = sorted.slice(0, TOP_DUOS);
+    return { good, bad: sorted.filter(l => !good.includes(l)).reverse().slice(0, TOP_DUOS) };
   }, [shownLinks]);
 
   /** Cinq complets cumulés sur la période : « dans quel cinq le faire jouer », après « avec qui ». */
@@ -130,13 +144,8 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
     return fives
       .filter(f => f.players.includes(selectedId) && f.seconds >= minSeconds / 2
         && f.pointsPerPossession !== null && f.oppPointsPerPossession !== null)
-      .map(f => {
-        const possessions = (f.possessions + f.oppPossessions) / 2;
-        const net = (f.pointsPerPossession! - f.oppPointsPerPossession!) * 100;
-        return { players: f.players, seconds: f.seconds, net, rank: shrink(net, possessions)! };
-      })
-      // Classés sur la valeur ramenée vers 0 : un +40 de deux minutes ne passe pas devant un +12 d'un quart-temps.
-      .sort((x, y) => y.rank - x.rank)
+      .map(f => ({ players: f.players, seconds: f.seconds, net: (f.pointsPerPossession! - f.oppPointsPerPossession!) * 100 }))
+      .sort((x, y) => y.net - x.net)
       .slice(0, TOP_FIVES);
   }, [fives, selectedId, minSeconds]);
 
@@ -182,15 +191,16 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Stat value={matchFives.length} label={matchFives.length > 1 ? 'matchs saisis' : 'match saisi'} />
           <Stat value={shownNodes.length} label="joueurs" />
-          <Stat value={shownLinks.length} label="duos mesurables" />
-          {teamNet !== null && <Stat value={fmtSigned(teamNet)} label="équipe /100 poss." />}
+          <Stat value={shownLinks.length} label="duos affichés" />
+          {hiddenDuos > 0 && <Stat value={hiddenDuos} label={`sous ${minPresetLabel(minSeconds)}`} />}
+          {teamNet !== null && <Stat value={fmtSigned(teamNet)} label={`${NET_LABEL} équipe`} />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ color: C.faint, fontSize: '0.74rem' }}>Au moins ensemble</span>
           <div role="group" aria-label="Temps minimum ensemble" style={{ display: 'flex', padding: 3, gap: 2, borderRadius: 8, backgroundColor: C.ink, border: `1px solid ${C.border}` }}>
-            {MIN_PRESETS.map(s => (
+            {SEASON_MIN_PRESETS.map(s => (
               <button key={s} onClick={() => setMinSeconds(s)} aria-pressed={minSeconds === s} style={segmentStyle(minSeconds === s)}>
-                {s / 60} min
+                {minPresetLabel(s)}
               </button>
             ))}
           </div>
@@ -206,7 +216,7 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
           </div>
           {shownNodes.length < 2 ? (
             <p style={{ color: C.ghost, fontSize: '0.8rem', margin: 0 }}>
-              Pas assez de joueurs au-dessus de {minSeconds / 60} min sur le terrain.
+              Pas assez de joueurs avec au moins {minPresetLabel(minSeconds)} sur le terrain.
             </p>
           ) : (
             <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, backgroundColor: C.ink }}
@@ -223,7 +233,7 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                 const pa = positions.get(l.a), pb = positions.get(l.b);
                 if (!pa || !pb) return null;
                 const touches = focusId !== null && (l.a === focusId || l.b === focusId);
-                const s = l.synergy ?? 0;
+                const s = l.duoNet ?? 0;
                 const base = 0.12 + 0.5 * intensity(s);
                 return (
                   <line key={`${l.a}|${l.b}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
@@ -231,8 +241,8 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                     strokeWidth={(touches ? 1.5 : 1) * (1 + 4 * (l.seconds / maxLinkSeconds))}
                     strokeOpacity={focusId === null ? base : touches ? Math.max(0.55, base + 0.3) : 0.03}
                     strokeLinecap="round" style={{ transition: 'stroke-opacity .15s' }}
-                    // Pointillés : échantillon encore mince, même ramené vers 0.
-                    strokeDasharray={l.possessions < RELIABLE_POSSESSIONS ? '5 6' : undefined} />
+                    // Pointillés : échantillon trop mince pour conclure.
+                    strokeDasharray={l.seconds < RELIABLE_SECONDS ? '5 6' : undefined} />
                 );
               })}
 
@@ -240,25 +250,27 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                 const p = positions.get(n.id);
                 if (!p) return null;
                 const r = radius(n);
-                const color = valueColor(n.vsTeam);
+                // Écart BRUT sur le terrain : rouge = l'équipe perd vraiment avec ce joueur, pas
+                // « moins bien que la moyenne » — ce qui se lisait comme « mauvais joueur ».
+                const color = valueColor(n.net);
                 const isSel = selectedId === n.id;
                 return (
                   <g key={n.id} className="chem-node" tabIndex={0} role="button"
-                    aria-label={`${nameOf(n.id)}, ${fmtSigned(n.vsTeam)} par rapport à l'équipe`}
+                    aria-label={`${nameOf(n.id)}, ${fmtSigned(n.net)} pour 100 possessions sur le terrain`}
                     opacity={isRelated(n.id) ? 1 : 0.25}
                     onMouseEnter={() => setHoverId(n.id)} onMouseLeave={() => setHoverId(null)}
                     onFocus={() => setHoverId(n.id)} onBlur={() => setHoverId(null)}
                     onClick={e => { e.stopPropagation(); toggle(n.id); }}
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(n.id); } }}>
-                    <title>{`${nameOf(n.id)} — ${fmtSigned(n.vsTeam)} vs équipe (${fmtSigned(n.net)} /100 sur le terrain), ${formatClock(Math.round(n.seconds))}`}</title>
+                    <title>{`${nameOf(n.id)} sur le terrain — ${NET_LABEL} : ${fmtSigned(n.net)} (${fmtSigned(n.vsTeam)} vs l'équipe), ${formatClock(Math.round(n.seconds))}`}</title>
                     {isSel && <circle cx={p.x} cy={p.y} r={r + 7} fill="none" stroke={color} strokeOpacity={0.35} strokeWidth={6} />}
                     {/* Fond opaque d'abord : sans lui, les traits traversent les points. */}
                     <circle cx={p.x} cy={p.y} r={r} fill={C.panel} />
-                    <circle className="chem-ring" cx={p.x} cy={p.y} r={r} fill={color} fillOpacity={0.18 + 0.5 * intensity(n.vsTeam)}
+                    <circle className="chem-ring" cx={p.x} cy={p.y} r={r} fill={color} fillOpacity={0.18 + 0.5 * intensity(n.net)}
                       stroke={color} strokeWidth={isSel ? 2.5 : 1.5} />
                     <text x={p.x} y={p.y + 4} textAnchor="middle" fill={C.text} fontSize={11} fontWeight={700}
                       style={{ fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>
-                      {fmtSigned(n.vsTeam)}
+                      {fmtSigned(n.net)}
                     </text>
                     {/* Halo de la couleur du fond : le nom reste lisible par-dessus un trait. */}
                     <text x={p.x} y={p.y + r + 15} textAnchor="middle" fill={isSel ? C.text : C.soft} fontSize={12} fontWeight={600}
@@ -302,14 +314,16 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                   </p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ margin: 0, color: valueColor(selected.vsTeam), fontSize: '1.25rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
-                    {fmtSigned(selected.vsTeam)}
+                  <p style={{ margin: 0, color: valueColor(selected.net), fontSize: '1.25rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtSigned(selected.net)}
                   </p>
-                  <p style={{ margin: 0, color: C.faint, fontSize: '0.68rem' }}>vs équipe /100</p>
+                  <p style={{ margin: 0, color: C.faint, fontSize: '0.68rem' }}>{NET_LABEL} sur le terrain</p>
+                  <p style={{ margin: '2px 0 0', color: C.ghost, fontSize: '0.68rem', fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtSigned(selected.vsTeam)} vs moyenne équipe
+                  </p>
                 </div>
               </div>
-              <PartnerList title="À associer" items={partners.good} nameOf={nameOf} maxAbs={maxAbsSynergy} onPick={toggle} />
-              <PartnerList title="À éviter" items={partners.bad} nameOf={nameOf} maxAbs={maxAbsSynergy} onPick={toggle} />
+              <PartnerList title="Ses duos" items={partners} nameOf={nameOf} maxAbs={maxAbsNet} onPick={toggle} />
               {selectedFives.length > 0 && (
                 <div>
                   <p style={{ ...SECTION_TITLE, color: C.faint, fontSize: '0.62rem', marginBottom: 6 }}>Meilleurs cinq</p>
@@ -334,12 +348,11 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                   border: `1px solid ${C.border}`, backgroundColor: C.ink, color: C.soft, fontWeight: 600 }}>
                 Voir ses lineups →
               </button>
-              {partners.good.length + partners.bad.length === 0 && (
-                <p style={{ color: C.ghost, fontSize: '0.8rem', margin: 0 }}>Aucun duo de plus de {minSeconds / 60} min pour ce joueur.</p>
+              {partners.length === 0 && (
+                <p style={{ color: C.ghost, fontSize: '0.8rem', margin: 0 }}>Aucun duo d'au moins {minPresetLabel(minSeconds)} pour ce joueur.</p>
               )}
               <p style={{ color: C.ghost, fontSize: '0.7rem', margin: 'auto 0 0', lineHeight: 1.5 }}>
-                Synergie : points pour 100 possessions au-delà de ce qu'on attendait du duo, ramenés vers 0 sur un petit échantillon.
-                Cinq : écart pour 100 possessions, sur au moins {minSeconds / 120} min.
+                {NET_HELP}
               </p>
             </>
           )}
@@ -349,14 +362,14 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
       {/* ── Tableau joueurs × joueurs ── */}
       <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <p style={SECTION_TITLE}>Synergie des duos</p>
+          <p style={SECTION_TITLE}>Duos</p>
           <ScaleLegend />
         </div>
         {shownNodes.length >= 2 && (
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: '1 1 260px', maxWidth: 360 }}>
-            <DuoList title="Meilleurs duos" items={topDuos.good} nameOf={nameOf} maxAbs={maxAbsSynergy} onPick={toggle} empty="Aucun duo nettement au-dessus." />
-            <DuoList title="Duos à éviter" items={topDuos.bad} nameOf={nameOf} maxAbs={maxAbsSynergy} onPick={toggle} empty="Aucun duo nettement en dessous." />
+            <DuoList title="Meilleurs duos" items={topDuos.good} nameOf={nameOf} maxAbs={maxAbsNet} onPick={toggle} empty={`Aucun duo d'au moins ${minPresetLabel(RELIABLE_SECONDS)} ensemble.`} />
+            <DuoList title="Pires duos" items={topDuos.bad} nameOf={nameOf} maxAbs={maxAbsNet} onPick={toggle} empty="—" />
           </div>
           <div style={{ overflowX: 'auto', flex: '3 1 480px', minWidth: 0 }} onMouseLeave={() => setHoverId(null)}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 3, fontSize: '0.72rem', margin: '0 auto' }}>
@@ -384,27 +397,28 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
                     {shownNodes.map(col => {
                       const inFocus = focusId === null || row.id === focusId || col.id === focusId;
                       if (col.id === row.id) {
-                        // Diagonale : l'apport du joueur lui-même, en contour pour ne pas le lire comme un duo.
+                        // Diagonale : le joueur lui-même sur le terrain, en contour pour ne pas le lire comme un duo.
                         return (
-                          <td key={col.id} className="chem-cell" title={`${nameOf(row.id)} : ${fmtSigned(row.vsTeam)} vs équipe (${fmtSigned(row.net)} /100 sur le terrain)`}
-                            style={{ ...CELL, boxShadow: `inset 0 0 0 1.5px ${valueColor(row.vsTeam)}`, color: valueColor(row.vsTeam), opacity: inFocus ? 1 : 0.3 }}>
-                            {fmtSigned(row.vsTeam)}
+                          <td key={col.id} className="chem-cell" title={`${nameOf(row.id)} sur le terrain — ${NET_LABEL} : ${fmtSigned(row.net)} (${fmtSigned(row.vsTeam)} vs l'équipe)`}
+                            style={{ ...CELL, boxShadow: `inset 0 0 0 1.5px ${valueColor(row.net)}`, color: valueColor(row.net), opacity: inFocus ? 1 : 0.3 }}>
+                            {fmtSigned(row.net)}
                           </td>
                         );
                       }
                       const l = linkOf(row.id, col.id);
                       return (
                         <td key={col.id} className="chem-cell"
-                          title={l ? cellTitle(nameOf(row.id), nameOf(col.id), l) : `${nameOf(row.id)} + ${nameOf(col.id)} : moins de ${minSeconds / 60} min ensemble`}
+                          title={l ? cellTitle(nameOf(row.id), nameOf(col.id), l) : hiddenTitle(nameOf(row.id), nameOf(col.id), anyLinkOf(row.id, col.id), minSeconds)}
                           onClick={() => toggle(row.id)} onMouseEnter={() => setHoverId(row.id)}
                           style={{
                             ...CELL, cursor: 'pointer',
-                            backgroundColor: l ? tint(l.synergy) : '#12151B',
-                            color: l ? (strong(l.synergy) ? '#FFFFFF' : isNeutral(l.synergy) ? C.faint : C.soft) : '#2A2F3A',
-                            fontWeight: l && strong(l.synergy) ? 700 : 500,
-                            opacity: inFocus ? 1 : 0.3,
+                            backgroundColor: l ? tint(l.duoNet) : '#12151B',
+                            color: l ? (strong(l.duoNet) ? '#FFFFFF' : isNeutral(l.duoNet) ? C.faint : C.soft) : '#2A2F3A',
+                            fontWeight: l && strong(l.duoNet) ? 700 : 500,
+                            // Échantillon mince : estompé, pour qu'on ne le lise pas comme les autres.
+                            opacity: !inFocus ? 0.3 : l && l.seconds < RELIABLE_SECONDS ? 0.5 : 1,
                           }}>
-                          {l ? fmtSigned(l.synergy) : '·'}
+                          {l ? fmtSigned(l.duoNet) : '·'}
                         </td>
                       );
                     })}
@@ -416,9 +430,8 @@ export function SeasonChemistryPanel({ matches, players }: SeasonChemistryPanelP
           </div>
         )}
         <p style={{ color: C.ghost, fontSize: '0.72rem', margin: 0, lineHeight: 1.5 }}>
-          Chaque case : ce que le duo fait de plus (ou de moins) que la moyenne de ses deux joueurs, pour 100 possessions,
-          ramené vers 0 sur un petit échantillon. Entre −{NEUTRAL_BAND} et +{NEUTRAL_BAND} : neutre. En diagonale, l'apport du joueur
-          par rapport à l'équipe. « · » : moins de {minSeconds / 60} min ensemble.
+          {NET_HELP} Le même chiffre que l'onglet Lineups (Duos · Pour 100 poss.). Estompée : moins de {minPresetLabel(RELIABLE_SECONDS)} ensemble,
+          à confirmer. En diagonale, le joueur seul sur le terrain. « · » : moins de {minPresetLabel(minSeconds)} ensemble (survolez pour la valeur).
         </p>
       </div>
     </div>
@@ -442,24 +455,24 @@ function Legend() {
   const bar = (color: string) => <span style={{ width: 18, height: 3, borderRadius: 2, backgroundColor: color }} />;
   return (
     <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', color: C.faint, fontSize: '0.7rem' }}>
-      {item(<span style={{ display: 'inline-flex', gap: 3 }}>{dot(C.good)}{dot(C.bad)}</span>, 'Apport vs équipe')}
+      {item(<span style={{ display: 'inline-flex', gap: 3 }}>{dot(C.good)}{dot(C.bad)}</span>, `${NET_LABEL} du joueur`)}
       {item(<span style={{ width: 10, height: 10, borderRadius: '50%', border: `1.5px solid ${C.faint}` }} />, 'Taille = temps de jeu')}
-      {item(<span style={{ display: 'inline-flex', gap: 3 }}>{bar(C.good)}{bar(C.bad)}</span>, 'Synergie du duo')}
-      {item(<span style={{ width: 18, height: 0, borderTop: `2px dashed ${C.faint}` }} />, `< ${RELIABLE_POSSESSIONS} poss.`)}
+      {item(<span style={{ display: 'inline-flex', gap: 3 }}>{bar(C.good)}{bar(C.bad)}</span>, `${NET_LABEL} du duo`)}
+      {item(<span style={{ width: 18, height: 0, borderTop: `2px dashed ${C.faint}` }} />, `< ${minPresetLabel(RELIABLE_SECONDS)}, à confirmer`)}
     </div>
   );
 }
 
-/** Échelle de couleur du tableau, de −20 à +20. */
+/** Échelle de couleur du tableau, de −25 à +25 pts/100. */
 function ScaleLegend() {
-  const steps = [-12, -7, -4, 0, 4, 7, 12];
+  const steps = [-25, -15, -7, 0, 7, 15, 25];
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.faint, fontSize: '0.7rem' }}>
-      <span>Moins bien</span>
+      <span>Perdant</span>
       <span style={{ display: 'inline-flex', gap: 2 }}>
         {steps.map(v => <span key={v} style={{ width: 16, height: 10, borderRadius: 3, backgroundColor: tint(v) }} />)}
       </span>
-      <span>Mieux qu'attendu</span>
+      <span>Gagnant</span>
     </div>
   );
 }
@@ -477,7 +490,7 @@ function PartnerList({ title, items, nameOf, maxAbs, onPick }: {
       <p style={{ ...SECTION_TITLE, color: C.faint, fontSize: '0.62rem', marginBottom: 6 }}>{title}</p>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {items.map(({ id, link }) => {
-          const s = link.synergy ?? 0;
+          const s = link.duoNet ?? 0;
           return (
             <button key={id} onClick={() => onPick(id)} title={`Voir ${nameOf(id)}`}
               style={{
@@ -528,8 +541,15 @@ const fmtSigned = (v: number | null) => {
 
 function cellTitle(a: string, b: string, l: ChemistryLink): string {
   return `${a} + ${b} — ${formatClock(Math.round(l.seconds))} ensemble, ${Math.round(l.possessions)} possessions\n`
-    + `Duo : ${fmtSigned(l.duoNet)} /100 · attendu : ${fmtSigned(l.expected)}\n`
-    + `Synergie : ${fmtSigned(l.synergy)} (brute ${fmtSigned(l.rawSynergy)}, ramenée vers 0 selon l'échantillon)`;
+    + `${NET_LABEL} : ${fmtSigned(l.duoNet)}`
+    + (l.seconds < RELIABLE_SECONDS ? `\nMoins de ${minPresetLabel(RELIABLE_SECONDS)} ensemble : à confirmer` : '');
+}
+
+/** Case « · » : le duo existe peut-être, sous le seuil — on dit ce qu'il cache plutôt que rien. */
+function hiddenTitle(a: string, b: string, l: ChemistryLink | undefined, minSeconds: number): string {
+  if (!l || l.seconds === 0) return `${a} + ${b} : jamais ensemble sur le terrain`;
+  return `${a} + ${b} — ${formatClock(Math.round(l.seconds))} ensemble : ${NET_LABEL} ${fmtSigned(l.duoNet)}\n`
+    + `Sous le seuil de ${minPresetLabel(minSeconds)} : masqué de la carte et des listes`;
 }
 
 function DuoList({ title, items, nameOf, maxAbs, onPick, empty }: {
@@ -546,7 +566,7 @@ function DuoList({ title, items, nameOf, maxAbs, onPick, empty }: {
       {items.length === 0 ? (
         <p style={{ color: C.ghost, fontSize: '0.76rem', margin: 0 }}>{empty}</p>
       ) : items.map(l => {
-        const s = l.synergy ?? 0;
+        const s = l.duoNet ?? 0;
         return (
           <div key={`${l.a}|${l.b}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 44px 56px 32px', alignItems: 'center', gap: 10,
             padding: '6px 0', borderBottom: `1px solid ${C.line}` }}>

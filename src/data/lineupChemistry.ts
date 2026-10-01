@@ -3,26 +3,13 @@ import { combosAcrossMatches, type EventLineupRow } from './matchEvents';
 /**
  * Affinités entre joueurs, tirées des cinq relevés en direct.
  *
- * Deux lectures distinctes :
- *   - l'APPORT d'un joueur : l'écart pour 100 possessions quand il est sur le terrain ;
- *   - la SYNERGIE d'un duo : ce que le duo fait DE PLUS que ce qu'on attendait de ses deux joueurs
- *     (la moyenne de leurs apports). Sans ce retrait, le meilleur joueur de l'équipe aurait un bon
- *     duo avec tout le monde — grâce à lui, pas grâce à l'association.
+ * Un seul chiffre par duo, le même que l'onglet Lineups (Duos · Pour 100 poss.) : l'écart pour
+ * 100 possessions pendant que les deux joueurs sont ensemble sur le terrain. Pas de correction
+ * cachée — un même duo affiche la même valeur sur les deux pages.
  *
- * Les deux sont RAMENÉS VERS 0 selon leur échantillon (`shrink`) : un +25 sur 20 possessions, ce
- * sont deux paniers de plus, du bruit ; le même +25 sur 120 possessions est un signal.
+ * La prudence sur les petits échantillons est VISUELLE (pointillés, cases estompées, listes
+ * réservées aux duos assez joués, cf. `RELIABLE_SECONDS`) plutôt qu'appliquée aux chiffres.
  */
-
-/** Possessions « à priori » : à ce nombre de possessions observées, une mesure garde la moitié de
- *  sa valeur. Ordre de grandeur usuel pour les lineups ; plus haut, la carte devient plus prudente. */
-export const PRIOR_POSSESSIONS = 30;
-/** Sous ce nombre de possessions, un duo reste incertain même ramené vers 0 (trait en pointillés). */
-export const RELIABLE_POSSESSIONS = 40;
-
-/** Ramène `v` vers 0 d'autant plus que l'échantillon est petit : v × n / (n + PRIOR_POSSESSIONS). */
-export function shrink(v: number | null, possessions: number): number | null {
-  return v === null ? null : (v * possessions) / (possessions + PRIOR_POSSESSIONS);
-}
 
 export interface ChemistryNode {
   id: string;
@@ -31,9 +18,8 @@ export interface ChemistryNode {
   possessions: number;
   /** Écart pour 100 possessions sur le terrain — null sans possession mesurée des deux côtés. */
   net: number | null;
-  /** `net` moins celui de l'équipe sur la même période, ramené vers 0 selon l'échantillon : sur une
-   *  saison gagnante, tous les joueurs sont positifs en absolu, et seule cette différence dit qui
-   *  tire l'équipe vers le haut. */
+  /** `net` moins celui de l'équipe sur la même période : sur une saison gagnante, tous les joueurs
+   *  sont positifs en absolu, et seule cette différence dit qui tire l'équipe vers le haut. */
   vsTeam: number | null;
 }
 
@@ -43,17 +29,12 @@ export interface ChemistryLink {
   b: string;
   /** Temps passé ensemble sur le terrain, en secondes. */
   seconds: number;
-  /** Possessions jouées ensemble (moyenne attaque / défense) — la taille de l'échantillon. */
+  /** Possessions jouées ensemble, comptées comme la colonne « Poss. » de l'onglet Lineups. */
   possessions: number;
-  /** Écart pour 100 possessions du duo. */
+  /** Écart pour 100 possessions du duo — la valeur affichée, identique à l'onglet Lineups. */
   duoNet: number | null;
-  /** Ce qu'on attendait du duo : la moyenne des apports des deux joueurs. */
-  expected: number | null;
-  /** `duoNet − expected`, brut. */
-  rawSynergy: number | null;
-  /** `rawSynergy` ramenée vers 0 selon l'échantillon : positif, le duo fait mieux que ses deux
-   *  joueurs ; négatif, moins bien. C'est la valeur affichée et utilisée pour la carte. */
-  synergy: number | null;
+  /** `duoNet` moins celui de l'équipe : sert seulement à placer les joueurs sur la carte. */
+  vsTeam: number | null;
 }
 
 const net100 = (r: EventLineupRow): number | null =>
@@ -73,40 +54,35 @@ export function chemistryFromMatches(perMatch: EventLineupRow[][]): { nodes: Che
 
   const nodes: ChemistryNode[] = combosAcrossMatches(perMatch, 1).map(r => {
     const net = net100(r);
-    const possessions = (r.possessions + r.oppPossessions) / 2;
     return {
-      id: r.players[0], seconds: r.seconds, possessions, net,
-      vsTeam: net === null || teamNet === null ? null : shrink(net - teamNet, possessions),
+      id: r.players[0], seconds: r.seconds, possessions: r.possessions, net,
+      vsTeam: net === null || teamNet === null ? null : net - teamNet,
     };
   });
-  const netById = new Map(nodes.map(n => [n.id, n.net]));
 
   const links: ChemistryLink[] = combosAcrossMatches(perMatch, 2).map(r => {
     const [a, b] = r.players;
-    const na = netById.get(a) ?? null;
-    const nb = netById.get(b) ?? null;
     const duoNet = net100(r);
-    const expected = na === null || nb === null ? null : (na + nb) / 2;
-    const possessions = (r.possessions + r.oppPossessions) / 2;
-    const rawSynergy = duoNet === null || expected === null ? null : duoNet - expected;
-    return { a, b, seconds: r.seconds, possessions, duoNet, expected, rawSynergy, synergy: shrink(rawSynergy, possessions) };
+    return {
+      a, b, seconds: r.seconds, possessions: r.possessions, duoNet,
+      vsTeam: duoNet === null || teamNet === null ? null : duoNet - teamNet,
+    };
   });
 
   return { nodes, links, teamNet };
 }
 
-/** Synergie (pts/100, déjà ramenée vers 0) à laquelle deux joueurs sont collés au plus près, ou
- *  écartés au plus loin. */
-const SYNERGY_SCALE = 15;
+/** Écart à l'équipe (pts/100) auquel deux joueurs sont collés au plus près, ou écartés au plus loin. */
+const DISTANCE_SCALE = 25;
 const NEUTRAL_DISTANCE = 1;
 
 /**
- * Place les joueurs sur un plan : proches quand leur duo a une bonne synergie, loin quand il en a
- * une mauvaise. Une carte à plat ne peut pas respecter toutes les distances à la fois : c'est le
+ * Place les joueurs sur un plan : proches quand leur duo fait mieux que l'équipe, loin quand il fait
+ * moins bien. Une carte à plat ne peut pas respecter toutes les distances à la fois : c'est le
  * meilleur compromis (descente de gradient sur l'écart aux distances visées), pondéré par le temps
  * joué ensemble — un duo de 40 minutes pèse plus qu'un duo de 10.
  *
- * Un duo sous `minSeconds`, ou sans synergie mesurable, vise la distance neutre avec un poids
+ * Un duo sous `minSeconds`, ou sans écart mesurable, vise la distance neutre avec un poids
  * minime : il ne tire la carte dans aucun sens, il évite seulement que les points se superposent.
  *
  * Déterministe (départ sur un cercle, dans l'ordre reçu) : la même saison donne toujours la même
@@ -133,8 +109,8 @@ export function layoutChemistry(
     for (let j = i + 1; j < n; j++) {
       const [a, b] = [ids[i], ids[j]].sort();
       const l = linkByPair.get(`${a}|${b}`);
-      if (l && l.synergy !== null && l.seconds >= minSeconds) {
-        const s = Math.max(-1, Math.min(1, l.synergy / SYNERGY_SCALE));
+      if (l && l.vsTeam !== null && l.seconds >= minSeconds) {
+        const s = Math.max(-1, Math.min(1, l.vsTeam / DISTANCE_SCALE));
         target.push({ i, j, d: NEUTRAL_DISTANCE * (1 - 0.7 * s), w: Math.min(1, l.seconds / (minSeconds * 3 || 1)) });
       } else {
         target.push({ i, j, d: NEUTRAL_DISTANCE * 1.2, w: 0.05 });

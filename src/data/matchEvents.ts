@@ -553,6 +553,34 @@ export const COMBO_SIZES = [[5, 'Cinq'], [3, 'Trios'], [2, 'Duos']] as const;
 export type ComboSize = typeof COMBO_SIZES[number][0];
 export const COMBO_LABEL: Record<ComboSize, string> = { 5: 'Cinq', 3: 'Trio', 2: 'Duo' };
 
+/*
+ * Règles de lecture COMMUNES aux onglets Lineups et Affinités. Elles étaient différentes d'un
+ * onglet à l'autre (1 min contre 10 min, 5 min contre 40 possessions, « Net » contre « Écart ») :
+ * un même duo apparaissait d'un côté et pas de l'autre, sans qu'aucun écran ne dise pourquoi.
+ */
+
+/** Temps minimum ensemble, en secondes — sur plusieurs matchs (analyse collective). */
+export const SEASON_MIN_PRESETS = [0, 300, 600, 1200] as const;
+export const SEASON_DEFAULT_MIN = 300;
+/** Même réglage sur un seul match, à son échelle. */
+export const MATCH_MIN_PRESETS = [0, 30, 60, 180] as const;
+export const MATCH_DEFAULT_MIN = 30;
+/** Paramètre d'adresse du temps minimum : partagé, il suit d'un onglet à l'autre. */
+export const MIN_PARAM = 'min';
+
+/** Sous ce temps ensemble, une combinaison reste affichée mais « à confirmer » : quelques paniers
+ *  suffisent à faire son +/- /100. Une seule règle, en minutes, partout. */
+export const RELIABLE_SECONDS = 600;
+
+/** Le nom unique du chiffre central, et sa définition affichée telle quelle. */
+export const NET_LABEL = '+/- /100';
+export const NET_HELP = '+/- /100 : points marqués moins points encaissés, ramenés à 100 possessions, quand ces joueurs sont ensemble sur le terrain.';
+
+/** Libellé d'un seuil : « Tout », « 30 s », « 5 min ». */
+export function minPresetLabel(seconds: number): string {
+  return seconds === 0 ? 'Tout' : seconds < 60 ? `${seconds} s` : `${seconds / 60} min`;
+}
+
 /**
  * Duos (ou trios…) tirés des lignes de cinq : toutes les mesures d'une ligne sont additives
  * (temps, possessions, points), un duo est donc exactement la somme des cinq qui le contiennent.

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useUrlSort, useUrlState } from '../hooks/useUrlState';
 import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
-import { lineupStatsFromEvents, combosAcrossMatches, lineupRowView, COMBO_SIZES, COMBO_LABEL, type ComboSize, plusMinusFromEvents, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type LineupMode, type EventLineupRow } from '../data/matchEvents';
+import { lineupStatsFromEvents, combosAcrossMatches, lineupRowView, MATCH_MIN_PRESETS, MATCH_DEFAULT_MIN, MIN_PARAM, RELIABLE_SECONDS, NET_LABEL, NET_HELP, minPresetLabel, COMBO_SIZES, COMBO_LABEL, type ComboSize, plusMinusFromEvents, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type LineupMode, type EventLineupRow } from '../data/matchEvents';
 import { playingTime, formatClock } from '../data/liveTrackingAnalysis';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player, LineupSide } from '../data/types';
@@ -32,9 +32,6 @@ const SECTION_TITLE: React.CSSProperties = {
   letterSpacing: '0.05em', margin: '0 0 8px',
 };
 
-/** Sous ce seuil, un cinq n'a pas joué : c'est une rotation en cours de composition ou une erreur
- *  de saisie, et ses ratios n'ont aucun sens. Le filtre est ajustable, pas imposé. */
-const MIN_SECONDS_PRESETS = [0, 30, 60, 180] as const;
 
 const PLAYER_SORT_KEYS = ['id', 'seconds', 'plusMinus'] as const;
 type PlayerSortKey = typeof PLAYER_SORT_KEYS[number];
@@ -158,26 +155,28 @@ export function MatchLineupsPanel({ match, players }: MatchLineupsPanelProps) {
   );
 }
 
-/** Sous ce temps réel, une ligne « pour 100 possessions » est une extrapolation trop fragile pour
- *  être lue comme les autres : elle reste affichée, mais grisée. */
-const PER100_RELIABLE_SECONDS = 300;
-
 /**
  * Tableau des combinaisons — cinq, trios ou duos — à partir des lignes de cinq de chaque match.
  * Partagé par l'onglet Lineups d'un match (un seul match) et celui de l'analyse collective.
  */
-export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_PRESETS }: {
+export function LineupComboTable({ matchFives, nameOf, minPresets = MATCH_MIN_PRESETS, defaultMin = MATCH_DEFAULT_MIN }: {
   /** Une liste de cinq par match. Le mode « par match » n'est proposé qu'à partir de deux. */
   matchFives: EventLineupRow[][];
   nameOf: (id: string) => string;
+  /** Seuils de temps minimum ensemble (secondes) : ceux d'un match, ou ceux d'une saison. */
   minPresets?: readonly number[];
+  defaultMin?: number;
 }) {
   /** 5 = combinaisons complètes ; 3 / 2 = trios / duos, sommés sur tous les cinq où ils jouaient ensemble. */
   const [comboSize, setComboSize] = useState<ComboSize>(5);
   const [mode, setMode] = useState<LineupMode>('total');
   const multiMatch = matchFives.length > 1;
   const effectiveMode: LineupMode = mode === 'match' && !multiMatch ? 'total' : mode;
-  const [minSeconds, setMinSeconds] = useState<number>(minPresets[1] ?? 0);
+  // Dans l'URL, sous la même clé que l'onglet Affinités : le seuil suit d'un onglet à l'autre, et un
+  // même duo est visible des deux côtés, ou d'aucun.
+  const [minParam, setMinParam] = useUrlState(MIN_PARAM, String(defaultMin), { allowed: minPresets.map(String) });
+  const minSeconds = Number(minParam);
+  const setMinSeconds = (s: number) => setMinParam(String(s));
   /** Joueurs retenus : une ligne n'est gardée que si elle les contient TOUS. Un seul joueur →
    *  toutes ses combinaisons ; deux en mode Cinq → les cinq où ils jouaient ensemble. */
   // Dans l'URL (`?avec=id1,id2`) : l'onglet Affinités y renvoie avec un joueur déjà sélectionné.
@@ -218,7 +217,7 @@ export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_
     ...(per100 ? [] : [['Pts/poss.', 'pointsPerPossession'], ['Encaissé/poss.', 'oppPointsPerPossession']] as [string, LineupSortKey][]),
     [per100 ? 'Pour /100' : 'Pour', 'pointsFor'],
     [per100 ? 'Contre /100' : 'Contre', 'pointsAgainst'],
-    [per100 ? 'Net /100' : '+/-', 'plusMinus'],
+    [per100 ? NET_LABEL : '+/-', 'plusMinus'],
   ];
 
   return (
@@ -250,7 +249,7 @@ export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_
             {minPresets.map(s => (
               <button key={s} onClick={() => setMinSeconds(s)} aria-pressed={minSeconds === s}
                 style={toggleStyle(minSeconds === s)}>
-                {s === 0 ? 'Tout' : formatClock(s)}
+                {minPresetLabel(s)}
               </button>
             ))}
           </div>
@@ -276,7 +275,7 @@ export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_
             ? "Aucun cinq relevé de ce côté : les rotations n'ont pas été suivies."
             : picked.length > comboSize
               ? `${picked.length} joueurs sélectionnés : une combinaison de ${comboSize} ne peut pas tous les contenir.`
-              : `Aucune combinaison ne correspond (temps minimum ${formatClock(minSeconds)}, joueurs sélectionnés).`}
+              : `Aucune combinaison ne correspond (au moins ${minPresetLabel(minSeconds)} ensemble, joueurs sélectionnés).`}
         </p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -295,12 +294,15 @@ export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_
               </tr>
             </thead>
             <tbody>
-              {shown.map(r => (
+              {shown.map(r => {
+                // Temps RÉEL cumulé (en mode « par match », `seconds` est une moyenne).
+                const fragile = (effectiveMode === 'match' ? r.seconds * r.matches : r.seconds) < RELIABLE_SECONDS;
+                return (
                 <tr key={r.players.join(',')} style={{
                   borderBottom: '1px solid #1E2229',
-                  opacity: per100 && r.seconds < PER100_RELIABLE_SECONDS ? 0.45 : 1,
+                  opacity: fragile ? 0.45 : 1,
                 }}
-                  title={per100 && r.seconds < PER100_RELIABLE_SECONDS ? `Moins de ${formatClock(PER100_RELIABLE_SECONDS)} ensemble : extrapolation fragile` : undefined}>
+                  title={fragile ? `Moins de ${minPresetLabel(RELIABLE_SECONDS)} ensemble : à confirmer` : undefined}>
                   <td className="lineup-cell">{r.players.map(nameOf).join(', ')}</td>
                   {multiMatch && <td className="lineup-cell">{r.matches}</td>}
                   <td className="lineup-cell" style={{ fontFamily: 'monospace', color: '#94A3B8' }}>{formatClock(Math.round(r.seconds))}</td>
@@ -313,11 +315,15 @@ export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_
                     {r.plusMinus !== null ? signed(Number(r.plusMinus.toFixed(digits))) : '—'}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+      <p style={{ color: '#475569', fontSize: '0.72rem', margin: '10px 0 0', lineHeight: 1.5 }}>
+        {NET_HELP} Lignes estompées : moins de {minPresetLabel(RELIABLE_SECONDS)} ensemble, à confirmer.
+      </p>
     </div>
   );
 }

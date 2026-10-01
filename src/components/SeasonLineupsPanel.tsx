@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import { useSeasonMatchFives } from '../hooks/useSeasonMatchFives';
 import { LineupComboTable } from './MatchLineupsPanel';
+import { SEASON_MIN_PRESETS, SEASON_DEFAULT_MIN } from '../data/matchEvents';
 import { playerNameShort } from '../utils/playerName';
 import type { Match, Player } from '../data/types';
 
@@ -19,9 +20,6 @@ export interface SeasonLineupsPanelProps {
 const PANEL: React.CSSProperties = {
   backgroundColor: '#161920', border: '1px solid #2A2F3A', borderRadius: 10, padding: 14,
 };
-
-/** Seuils plus larges qu'en match : sur une saison, 30 s ensemble ne disent rien. */
-const SEASON_MIN_PRESETS = [0, 60, 300, 600] as const;
 
 export function SeasonLineupsPanel({ matches, players }: SeasonLineupsPanelProps) {
   const { matchFives, loading, error } = useSeasonMatchFives(matches);
@@ -52,7 +50,7 @@ export function SeasonLineupsPanel({ matches, players }: SeasonLineupsPanelProps
         Cumul sur {trackedMatches} match{trackedMatches > 1 ? 's' : ''} saisi{trackedMatches > 1 ? 's' : ''} en
         direct, parmi les {matches.length} de la période.
       </p>
-      <LineupComboTable matchFives={matchFives} nameOf={nameOf} minPresets={SEASON_MIN_PRESETS} />
+      <LineupComboTable matchFives={matchFives} nameOf={nameOf} minPresets={SEASON_MIN_PRESETS} defaultMin={SEASON_DEFAULT_MIN} />
     </div>
   );
 }

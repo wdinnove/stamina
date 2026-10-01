@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chemistryFromMatches, layoutChemistry, shrink, type ChemistryLink } from './lineupChemistry';
+import { chemistryFromMatches, layoutChemistry, type ChemistryLink } from './lineupChemistry';
 import type { EventLineupRow } from './matchEvents';
 
 const row = (players: string[], over: Partial<EventLineupRow>): EventLineupRow => ({
@@ -9,7 +9,7 @@ const row = (players: string[], over: Partial<EventLineupRow>): EventLineupRow =
 });
 
 describe('chemistryFromMatches', () => {
-  it('mesure la synergie comme l\'écart au duo attendu', () => {
+  it('donne au duo le même Net /100 que l\'onglet Lineups, et l\'apport par rapport à l\'équipe', () => {
     // a+b ensemble : +40/100 ; a sans b : −20/100.
     const { nodes, links } = chemistryFromMatches([[
       row(['a', 'b', 'c', 'd', 'e'], { seconds: 300, possessions: 10, oppPossessions: 10, pointsFor: 14, pointsAgainst: 10, pointsPerPossession: 1.4, oppPointsPerPossession: 1.0 }),
@@ -21,18 +21,15 @@ describe('chemistryFromMatches', () => {
     expect(b.net).toBeCloseTo(40);
     const ab = links.find(l => l.a === 'a' && l.b === 'b')!;
     expect(ab.duoNet).toBeCloseTo(40);
-    expect(ab.expected).toBeCloseTo(25);
-    expect(ab.rawSynergy).toBeCloseTo(15);
-    // 10 possessions ensemble : ramenée vers 0, 15 × 10 / (10 + 30).
-    expect(ab.synergy).toBeCloseTo(3.75);
-    // Équipe : (22 − 20) / 20 poss. × 100 = +10 ; b est 30 au-dessus, sur 10 possessions.
-    expect(b.vsTeam).toBeCloseTo(7.5);
+    // Équipe : (22 − 20) / 20 poss. × 100 = +10.
+    expect(ab.vsTeam).toBeCloseTo(30);
+    expect(b.vsTeam).toBeCloseTo(30);
   });
 });
 
 describe('layoutChemistry', () => {
-  const link = (a: string, b: string, synergy: number): ChemistryLink =>
-    ({ a, b, seconds: 1200, possessions: 60, duoNet: synergy, expected: 0, rawSynergy: synergy, synergy });
+  const link = (a: string, b: string, vsTeam: number): ChemistryLink =>
+    ({ a, b, seconds: 1200, possessions: 60, duoNet: vsTeam, vsTeam });
 
   it('rapproche un bon duo et éloigne un mauvais', () => {
     const ids = ['a', 'b', 'c', 'd'];
@@ -48,10 +45,3 @@ describe('layoutChemistry', () => {
   });
 });
 
-describe('shrink', () => {
-  it('garde un gros échantillon, écrase un petit', () => {
-    expect(shrink(25, 20)).toBeCloseTo(10);
-    expect(shrink(25, 120)).toBeCloseTo(20);
-    expect(shrink(null, 50)).toBeNull();
-  });
-});
