@@ -1,5 +1,5 @@
-import { supabase } from './client';
-import { matchEventsApi, ROW_PAGE } from './matchEvents';
+import { supabase, fetchAllByIds } from './client';
+import { matchEventsApi } from './matchEvents';
 import type { MatchOpponentPlayer, MatchLineupEvent, MatchLiveAction, LineupSide, LiveSide } from '../data/types';
 
 const LINEUP_COLUMNS = 'match_id, seq, side, quarter, game_time_seconds, players_in, players_out, on_court';
@@ -68,28 +68,17 @@ export const matchLiveApi = {
     return (data ?? []).map(toLineupEvent);
   },
 
-  /** Même lecture que `getLineupEvents`, sur plusieurs matchs (analyse collective) — découpée et
-   *  paginée comme `matchEventsApi.getByMatchIds`, pour les mêmes raisons (URL, plafond 1000). */
+  /** Même lecture que `getLineupEvents`, sur plusieurs matchs (analyse collective). */
   async getLineupEventsByMatchIds(matchIds: string[]): Promise<MatchLineupEvent[]> {
-    const out: MatchLineupEvent[] = [];
-    for (let i = 0; i < matchIds.length; i += 25) {
-      const ids = matchIds.slice(i, i + 25);
-      for (let from = 0; ; from += ROW_PAGE) {
-        const { data, error } = await supabase
-          .from('match_lineup_events')
-          .select(LINEUP_COLUMNS)
-          .in('match_id', ids)
-          .order('match_id', { ascending: true })
-          .order('side', { ascending: true })
-          .order('seq', { ascending: true })
-          .range(from, from + ROW_PAGE - 1);
-        if (error) throw error;
-        const rows = data ?? [];
-        out.push(...rows.map(toLineupEvent));
-        if (rows.length < ROW_PAGE) break;
-      }
-    }
-    return out;
+    const rows = await fetchAllByIds(matchIds, (ids, from, to) => supabase
+      .from('match_lineup_events')
+      .select(LINEUP_COLUMNS)
+      .in('match_id', ids)
+      .order('match_id', { ascending: true })
+      .order('side', { ascending: true })
+      .order('seq', { ascending: true })
+      .range(from, to));
+    return rows.map(toLineupEvent);
   },
 
   async insertLineupEvent(event: MatchLineupEvent): Promise<void> {

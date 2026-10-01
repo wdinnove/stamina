@@ -224,6 +224,8 @@ export default function PerformanceCollectivePage() {
   const showSeasonDiff = dateRange.preset !== 'saison';
 
   const players    = useMemo(() => data?.players.map(p => p.player) ?? [], [data]);
+  /** Historique de charge déjà lu par `usePerformanceData` : l'ACWR/TSB d'équipe le réutilise. */
+  const preloadedLoad = useMemo(() => data?.players.map(p => p.allTimeRpe), [data]);
   const allStats   = useMemo(() => data?.players.flatMap(p => p.matchStats) ?? [], [data]);
   /** Index nom par id, pour la table par joueur du rapport tactique. */
   const playerNameById = useMemo(
@@ -590,7 +592,7 @@ export default function PerformanceCollectivePage() {
   const {
     playerRanking, teamKpis: rpeTeamKpis, teamSessionRows, teamWeekRows, teamPeriodAvgWeeklyLoad,
     teamAcwrAvg, teamFreshAvg,
-  } = useTeamRpeHistory(selected?.team.id, selected?.season.id, from, to, players);
+  } = useTeamRpeHistory(selected?.team.id, selected?.season.id, from, to, players, selected?.season.startDate, preloadedLoad);
   const sessionLoadLight  = Math.round(thresholds.lightMax  / thresholds.sessionsPerWeek);
   const sessionLoadNormal = Math.round(thresholds.normalMax / thresholds.sessionsPerWeek);
   const [loadComboView, setLoadComboView] = useState<'session' | 'week'>('week');

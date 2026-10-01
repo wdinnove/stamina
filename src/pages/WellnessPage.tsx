@@ -171,8 +171,8 @@ export default function WellnessPage() {
   useEffect(() => {
     if (activeTab !== 'team' || roster.length === 0) return;
     setLoadingTeamHistory(true);
-    Promise.all(roster.map(p => wellnessApi.getByPlayer(p.id)))
-      .then(lists => setTeamHistory(lists.flat()))
+    wellnessApi.list({ playerIds: roster.map(p => p.id) })
+      .then(setTeamHistory)
       .catch(() => {})
       .finally(() => setLoadingTeamHistory(false));
   }, [activeTab, roster, historyVersion]);

@@ -137,6 +137,19 @@ export const CHARGE_ZONE_PLAIN: Record<string, string> = {
   'Risque élevé':  'Charge d\'entraînement en forte hausse récente',
 };
 
+/**
+ * Premier jour d'historique RPE lu pour l'ACWR/TSB : 180 jours avant le début de la saison.
+ * L'ACWR ne lit que 28 jours ; la CTL décroît de 1/42 par jour, et après 180 jours le poids d'une
+ * séance tombe à ~1 % — négligeable. Relatif au début de SAISON (pas à aujourd'hui) pour que les
+ * courbes d'une saison passée gardent leur préchauffage.
+ */
+export const LOAD_HISTORY_WARMUP_DAYS = 180;
+export function loadHistoryStart(seasonStart: string): string {
+  const d = new Date(seasonStart + 'T12:00:00');
+  d.setDate(d.getDate() - LOAD_HISTORY_WARMUP_DAYS);
+  return d.toLocaleDateString('sv');
+}
+
 // ── PMC (modèle de Banister) : ATL / CTL / TSB ────────────────────────────────
 
 export interface PmcPoint { date: string; atl: number; ctl: number; tsb: number }

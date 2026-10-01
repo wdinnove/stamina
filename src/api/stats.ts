@@ -57,36 +57,8 @@ export interface CollectiveStatInput {
   possessions: number;
 }
 
-export interface ListMatchStatsFilters {
-  playerId?: string;
-  from?: string;
-  to?: string;
-  result?: 'win' | 'loss';
-  /** Officiels seuls par défaut — `'all'` pour mélanger officiels et amicaux. */
-  scope?: MatchScope;
-}
-
-export interface ListTeamMatchStatsFilters {
-  from?: string;
-  to?: string;
-  result?: 'win' | 'loss';
-}
-
 export const statsApi = {
   // ─── Stats individuelles ──────────────────────────────────────────────────
-
-  async listMatchStats(filters: ListMatchStatsFilters = {}): Promise<MatchStat[]> {
-    let query = supabase.from('match_stats').select('*');
-    if (filters.playerId) query = query.eq('player_id', filters.playerId);
-    if (filters.from)     query = query.gte('date', filters.from);
-    if (filters.to)       query = query.lte('date', filters.to);
-    if (filters.result)   query = query.eq('result', filters.result);
-    const scope = filters.scope ?? DEFAULT_SCOPE;
-    if (scope !== 'all')  query = query.eq('kind', scope);
-    const { data, error } = await query.order('date', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map(toMatchStat);
-  },
 
   async getPlayerStats(playerId: string, scope: MatchScope = DEFAULT_SCOPE): Promise<MatchStat[]> {
     let query = supabase
@@ -169,16 +141,6 @@ export const statsApi = {
   },
 
   // ─── Stats collectives ────────────────────────────────────────────────────
-
-  async listTeamMatchStats(filters: ListTeamMatchStatsFilters = {}): Promise<TeamMatchStat[]> {
-    let query = supabase.from('team_match_stats').select('*');
-    if (filters.from)   query = query.gte('date', filters.from);
-    if (filters.to)     query = query.lte('date', filters.to);
-    if (filters.result) query = query.eq('result', filters.result);
-    const { data, error } = await query.order('date', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map(toTeamMatchStat);
-  },
 
   async getTeamMatchStatByDate(date: string, opponent: string): Promise<TeamMatchStat | null> {
     const { data, error } = await supabase

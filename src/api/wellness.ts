@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { supabase, fetchAllRows, fetchAllByIds } from './client';
 import type { WellnessEntry, WellnessEntryMethod, WellnessQuickScaleSize } from '../data/types';
 
 export interface ListWellnessFilters {
@@ -55,25 +55,29 @@ export const wellnessApi = {
     });
     return { error };
   },
+  /**
+   * Saisies de bien-être, les plus récentes d'abord — TOUTES, paginées. Cette requête était
+   * plafonnée à 500 lignes : avec un effectif qui saisit chaque jour, la saison entière se
+   * réduisait en silence à son dernier mois.
+   */
   async list(filters: ListWellnessFilters = {}): Promise<WellnessEntry[]> {
-    let query = supabase.from('wellness_entries').select('*');
-    if (filters.playerId)          query = query.eq('player_id', filters.playerId);
-    if (filters.playerIds?.length) query = query.in('player_id', filters.playerIds);
-    if (filters.from)     query = query.gte('date', filters.from);
-    if (filters.to)       query = query.lte('date', filters.to);
-    const { data, error } = await query.order('date', { ascending: false }).limit(500);
-    if (error) throw error;
-    return (data ?? []).map(toWellness);
+    const page = (ids: string[] | undefined, from: number, to: number) => {
+      let query = supabase.from('wellness_entries').select('*');
+      if (filters.playerId) query = query.eq('player_id', filters.playerId);
+      if (ids)              query = query.in('player_id', ids);
+      if (filters.from)     query = query.gte('date', filters.from);
+      if (filters.to)       query = query.lte('date', filters.to);
+      return query.order('date', { ascending: false }).order('id').range(from, to);
+    };
+    const rows = filters.playerIds?.length
+      ? await fetchAllByIds(filters.playerIds, page)
+      : await fetchAllRows((from, to) => page(undefined, from, to));
+    // Plusieurs paquets d'ids : chacun est trié, pas leur concaténation.
+    return rows.map(toWellness).sort((a, b) => b.date.localeCompare(a.date));
   },
 
   async getByPlayer(playerId: string): Promise<WellnessEntry[]> {
-    const { data, error } = await supabase
-      .from('wellness_entries')
-      .select('*')
-      .eq('player_id', playerId)
-      .order('date', { ascending: false });
-    if (error) throw error;
-    return (data ?? []).map(toWellness);
+    return wellnessApi.list({ playerId });
   },
 
   async getLatestByPlayer(playerId: string): Promise<WellnessEntry | null> {

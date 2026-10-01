@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { supabase, chunked, fetchAllRows, fetchAllByIds } from './client';
 import type { TrainingSession, TrainingAttendance } from '../data/types';
 
 /** La catégorie voyage avec la séance : nom et couleur s'affichent partout sans que chaque
@@ -31,18 +31,6 @@ function toAttendance(row: Record<string, unknown>): TrainingAttendance {
     sparring:  (row.sparring  as boolean) ?? false,
     createdAt: row.created_at as string,
   };
-}
-
-/** Découpe une liste d'ids : un `in(...)` part dans l'URL, et une saison entière de séances y
- *  tiendrait mal. 100 UUID ≈ 3,7 ko, largement sous les limites des proxies. */
-const ID_CHUNK = 100;
-/** Taille d'une page de lignes lues. Sous le plafond serveur (1000), pour que `rows.length <
- *  ROW_PAGE` signifie bien « dernière page » et non « réponse tronquée ». */
-const ROW_PAGE = 500;
-function chunked<T>(list: T[]): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < list.length; i += ID_CHUNK) out.push(list.slice(i, i + ID_CHUNK));
-  return out;
 }
 
 export const attendanceApi = {
@@ -109,30 +97,18 @@ export const attendanceApi = {
   /**
    * Présences des séances demandées.
    *
-   * Paginée explicitement : la réponse est plafonnée côté serveur — 1000 lignes par défaut sur
-   * Supabase — et la troncature est SILENCIEUSE. Des séances entières revenaient sans aucune
-   * présence alors qu'elles étaient bien en base, dès que effectif × séances passait le seuil.
-   * On boucle donc sur `range` jusqu'à une page incomplète, au lieu de compter sur la taille de
-   * la fenêtre d'affichage pour rester sous la limite.
+   * Paginée (`fetchAllByIds`) : la réponse est plafonnée côté serveur et la troncature est
+   * SILENCIEUSE. Des séances entières revenaient sans aucune présence alors qu'elles étaient bien
+   * en base, dès que effectif × séances passait le seuil.
    */
   async listAttendance(sessionIds: string[]): Promise<TrainingAttendance[]> {
-    if (!sessionIds.length) return [];
-    const out: TrainingAttendance[] = [];
-    for (const ids of chunked(sessionIds)) {
-      for (let from = 0; ; from += ROW_PAGE) {
-        const { data, error } = await supabase
-          .from('training_attendance')
-          .select('*')
-          .in('session_id', ids)
-          .order('id')
-          .range(from, from + ROW_PAGE - 1);
-        if (error) throw error;
-        const rows = data ?? [];
-        out.push(...rows.map(toAttendance));
-        if (rows.length < ROW_PAGE) break;
-      }
-    }
-    return out;
+    const rows = await fetchAllByIds(sessionIds, (ids, from, to) => supabase
+      .from('training_attendance')
+      .select('*')
+      .in('session_id', ids)
+      .order('id')
+      .range(from, to));
+    return rows.map(toAttendance);
   },
 
   /**
@@ -164,25 +140,18 @@ export const attendanceApi = {
    * dont le sélecteur d'historique se limite aux gens de l'équipe.
    */
   async listSeasonGuestPlayerIds(teamId: string, seasonId: string): Promise<string[]> {
-    const ids = new Set<string>();
     // Une ligne par (séance, partenaire) : une poignée de partenaires sur une saison entière
     // pèse quelques centaines de lignes. On pagine quand même — la troncature serveur est
     // silencieuse, et un partenaire manquant deviendrait introuvable sans le moindre signe.
-    for (let from = 0; ; from += ROW_PAGE) {
-      const { data, error } = await supabase
-        .from('training_attendance')
-        .select('id, player_id, training_sessions!inner(team_id, season_id)')
-        .eq('sparring', true)
-        .eq('training_sessions.team_id', teamId)
-        .eq('training_sessions.season_id', seasonId)
-        .order('id')
-        .range(from, from + ROW_PAGE - 1);
-      if (error) throw error;
-      const rows = data ?? [];
-      rows.forEach(r => ids.add(r.player_id as string));
-      if (rows.length < ROW_PAGE) break;
-    }
-    return [...ids];
+    const rows = await fetchAllRows((from, to) => supabase
+      .from('training_attendance')
+      .select('id, player_id, training_sessions!inner(team_id, season_id)')
+      .eq('sparring', true)
+      .eq('training_sessions.team_id', teamId)
+      .eq('training_sessions.season_id', seasonId)
+      .order('id')
+      .range(from, to));
+    return [...new Set(rows.map(r => r.player_id as string))];
   },
 
   /** `sparring` est écrit à chaque fois : c'est la présence qui porte l'étiquette, et une même

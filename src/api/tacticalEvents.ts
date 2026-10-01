@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { supabase, fetchAllByIds } from './client';
 import type { TacticalAction } from '../data/types';
 
 /** Colonnes lues, jamais `*` : la table n'en a pas d'autres aujourd'hui, mais toute colonne
@@ -33,15 +33,18 @@ export const tacticalActionsApi = {
     return (data ?? []).map(toTacticalAction);
   },
 
+  /** Plusieurs matchs : une saison dépasse le plafond, on lit donc TOUT par pages (tri sur la clé
+   *  primaire complète) plutôt que d'échouer sur la garde de troncature. */
   async getForMatches(matchIds: string[]): Promise<TacticalAction[]> {
-    if (matchIds.length === 0) return [];
-    const { data, error, count } = await supabase
+    const rows = await fetchAllByIds(matchIds, (ids, from, to) => supabase
       .from('tactical_actions')
-      .select(ACTION_COLUMNS, { count: 'exact' })
-      .in('match_id', matchIds);
-    if (error) throw error;
-    assertNotTruncated(data ?? [], count);
-    return (data ?? []).map(toTacticalAction);
+      .select(ACTION_COLUMNS)
+      .in('match_id', ids)
+      .order('match_id')
+      .order('category_id')
+      .order('seq')
+      .range(from, to));
+    return rows.map(toTacticalAction);
   },
 
   async deleteForMatch(matchId: string): Promise<void> {

@@ -1,15 +1,6 @@
-import { supabase } from './client';
+import { supabase, fetchAllByIds } from './client';
 import type { SessionBlock, SessionBlockKind } from '../data/types';
 import { sessionWorkDuration } from '../utils/rpe';
-
-/** Un `in(...)` de trop d'ids part entier dans l'URL de la requête — un historique de saison
- *  complet (toutes les séances de tous les joueurs) le dépasserait facilement. */
-const ID_CHUNK = 100;
-function chunked<T>(list: T[]): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < list.length; i += ID_CHUNK) out.push(list.slice(i, i + ID_CHUNK));
-  return out;
-}
 
 /** Une utilisation d'un exercice dans une séance, vue depuis l'exercice. */
 export interface DrillUsage {
@@ -52,13 +43,13 @@ export const sessionBlocksApi = {
   },
 
   async listBySessions(sessionIds: string[]): Promise<SessionBlock[]> {
-    if (!sessionIds.length) return [];
-    const { data, error } = await supabase
+    const rows = await fetchAllByIds(sessionIds, (ids, from, to) => supabase
       .from('session_blocks')
       .select('*')
-      .in('session_id', sessionIds);
-    if (error) throw error;
-    return (data ?? []).map(toBlock);
+      .in('session_id', ids)
+      .order('id')
+      .range(from, to));
+    return rows.map(toBlock);
   },
 
   /**
@@ -68,16 +59,13 @@ export const sessionBlocksApi = {
    * de saison complet, appelé à chaque chargement des pages de performance.
    */
   async workDurationsBySessions(sessionIds: string[]): Promise<Map<string, number>> {
-    if (!sessionIds.length) return new Map();
-    const ids = [...new Set(sessionIds)];
-    const rows = (await Promise.all(chunked(ids).map(async chunk => {
-      const { data, error } = await supabase
-        .from('session_blocks')
-        .select('session_id, kind, duration')
-        .in('session_id', chunk);
-      if (error) throw error;
-      return data ?? [];
-    }))).flat();
+    // Découpée ET paginée : 100 séances × leurs blocs approchent le plafond de 1000 lignes.
+    const rows = await fetchAllByIds(sessionIds, (ids, from, to) => supabase
+      .from('session_blocks')
+      .select('id, session_id, kind, duration')
+      .in('session_id', ids)
+      .order('id')
+      .range(from, to));
     const bySession = new Map<string, { kind: SessionBlockKind; duration: number }[]>();
     for (const r of rows) {
       const id = r.session_id as string;

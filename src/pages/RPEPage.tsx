@@ -286,7 +286,7 @@ export default function RPEPage() {
     loadingTeamHistory, teamHistoryError,
     teamSeasonAvgRpe, teamSeasonAvgWeeklyLoad, teamPeriodAvgWeeklyLoad,
     teamAcwrAvg, teamFreshAvg, teamHistoryShort,
-  } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster);
+  } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster, selected?.season.startDate);
 
   /**
    * Joueurs à saisir. Sur une séance existante, ceux qui y étaient — effectif et partenaires

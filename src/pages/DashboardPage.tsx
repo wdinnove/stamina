@@ -111,12 +111,13 @@ export default function DashboardPage() {
     Promise.all([
       playersApi.listBySeason(selected.season.id),
       actionsApi.list({ teamId: selected.team.id, seasonId: selected.season.id }),
-      rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, from30, today),
+      // Toute la saison jusqu'à aujourd'hui, une seule fois : les 30 derniers jours en sont tirés.
+      rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, undefined, today),
       matchesApi.listBySeason(selected.team.id, selected.season.id),
       staffApi.listByTeam(selected.team.id),
       supabase.auth.getUser(),
     ])
-      .then(async ([seasonPlayers, allActions, sessResult, matchesList, teamStaff, { data: { user } }]) => {
+      .then(async ([seasonPlayers, allActions, allSessRows, matchesList, teamStaff, { data: { user } }]) => {
         setMyStaffId(teamStaff.find(s => s.profileId === user?.id)?.id ?? null);
         // Matchs
         setLast3Matches(matchesList.slice(0, 3));
@@ -132,7 +133,9 @@ export default function DashboardPage() {
         );
 
         // Séances — 3 dernières (carte Entraînements, jamais impactée par le sélecteur de plage)
-        const sessions: TrainingSession[] = sessResult.map(s => ({
+        const allSessIds = allSessRows.map(s => s.id);
+        const seasonRpeRows2 = allSessIds.length ? await rpeApi.listRpeDetailsBySessionIds(allSessIds) : [];
+        const sessions: TrainingSession[] = allSessRows.filter(s => s.date >= from30).map(s => ({
           id: s.id, date: s.date, planned_duration: s.plannedDuration,
         }));
         const sessionDurMap = new Map(sessions.map(s => [s.id, s.planned_duration]));
@@ -140,7 +143,8 @@ export default function DashboardPage() {
         const recentSessions = [...sessions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
 
         if (sessionIds30d.length > 0) {
-          const rpeRows30d = await rpeApi.listRpeDetailsBySessionIds(sessionIds30d);
+          const ids30d = new Set(sessionIds30d);
+          const rpeRows30d = seasonRpeRows2.filter(r => ids30d.has(r.sessionId));
           const sessionLoadMap = new Map<string, { total: number; sumRpe: number; nb: number }>();
           for (const r of rpeRows30d) {
             if (!sessionLoadMap.has(r.sessionId)) sessionLoadMap.set(r.sessionId, { total: 0, sumRpe: 0, nb: 0 });
@@ -162,10 +166,6 @@ export default function DashboardPage() {
         } else {
           setLast3Sessions(recentSessions.map(s => ({ id: s.id, date: s.date, duration: s.planned_duration, load: null, avgRpe: null, nbPlayers: 0 })));
         }
-
-        const allSessRows = await rpeApi.listTeamSessionsInRange(selected.team.id, selected.season.id, undefined, today);
-        const allSessIds  = allSessRows.map(s => s.id);
-        const seasonRpeRows2 = await rpeApi.listRpeDetailsBySessionIds(allSessIds);
 
         const durMap2  = new Map(allSessRows.map(s => [s.id, s.plannedDuration]));
         const dateMap2 = new Map(allSessRows.map(s => [s.id, s.date]));

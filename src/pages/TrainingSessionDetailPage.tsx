@@ -1588,13 +1588,17 @@ export default function TrainingSessionDetailPage() {
     targetIds.forEach(pid => historyRequested.current.add(pid));
     historyPending.current += 1;
     setAcwrLoading(true);
+    // Deux requêtes pour tout le lot, plutôt que deux par joueur ; regroupées ensuite par joueur
+    // (un joueur sans aucune saisie garde sa liste vide, comme avant).
+    const byPlayer = <T extends { playerId: string }>(rows: T[]) =>
+      Object.fromEntries(targetIds.map(pid => [pid, rows.filter(r => r.playerId === pid)]));
     Promise.all([
-      Promise.all(targetIds.map(pid => rpeApi.listPlayerHistory(pid).then(history => [pid, history] as const))),
-      Promise.all(targetIds.map(pid => wellnessApi.getByPlayer(pid).then(entries => [pid, entries] as const))),
+      rpeApi.listPlayersHistory(targetIds),
+      wellnessApi.list({ playerIds: targetIds }),
     ])
-      .then(([rpeEntriesRes, wellnessRes]) => {
-        setHistoryMap(prev => ({ ...prev, ...Object.fromEntries(rpeEntriesRes) }));
-        setWellnessMap(prev => ({ ...prev, ...Object.fromEntries(wellnessRes) }));
+      .then(([rpeRows, wellnessRows]) => {
+        setHistoryMap(prev => ({ ...prev, ...byPlayer(rpeRows) }));
+        setWellnessMap(prev => ({ ...prev, ...byPlayer(wellnessRows) }));
       })
       // Les lots se chevauchent (présences d'abord, effectif ensuite) : le voile de chargement
       // ne tombe qu'au retour du dernier, sinon le tableau s'affiche à moitié vide puis se remplit.

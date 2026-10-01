@@ -6,6 +6,7 @@ import { tacticalActionsApi } from '../api/tacticalEvents';
 import { hydrateTacticalActions } from '../data/tacticalHydration';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { isoToday } from '../components/DateRangeCard';
+import { loadHistoryStart } from '../utils/rpe';
 import type { TeamCrossData } from '../data/crossAnalysis';
 
 export interface UsePerformanceDataOptions {
@@ -103,7 +104,7 @@ export function usePerformanceData(options: UsePerformanceDataOptions = {}) {
         attendanceApi.listAttendance(sessions.map(s => s.id)),
         // Toutes saisons confondues — nécessaire pour un ACWR/TSB fiable (28j de charge
         // chronique) même en tout début de saison, contrairement à `rpe` borné à la saison.
-        players.length ? rpeApi.listRpeWithSessionByPlayerIds(players.map(p => p.id)) : Promise.resolve([]),
+        players.length ? rpeApi.listRpeWithSessionByPlayerIds(players.map(p => p.id), loadHistoryStart(season.startDate)) : Promise.resolve([]),
         // wellness_entries n'a pas de season_id : borner explicitement à la fin de saison, sinon une
         // saison passée récupère aussi les entrées des saisons suivantes jusqu'à aujourd'hui. Scopé aux
         // joueurs de la saison (playerIds) pour ne pas remonter les autres équipes du club et rester

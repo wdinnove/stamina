@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { supabase, fetchAllRows, fetchAllByIds } from './client';
 import type { RPEEntry, TrainingSession } from '../data/types';
 import { sessionBlocksApi } from './sessionBlocks';
 
@@ -39,6 +39,25 @@ function toEntry(row: Record<string, unknown>, session: TrainingSession, workDur
   };
 }
 
+type LoadRow = { rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string; date: string; plannedDuration: number };
+
+async function loadHistory(playerIds: string[], since: string): Promise<LoadRow[]> {
+  const rows = await fetchAllByIds(playerIds, (ids, from, to) => supabase
+    .from('rpe_entries')
+    .select('id, rpe, actual_duration, player_id, session_id, training_sessions!inner(date, planned_duration)')
+    .in('player_id', ids)
+    .gte('training_sessions.date', since)
+    .order('id')
+    .range(from, to)) as Array<{ rpe: number; actual_duration: number | null; player_id: string; session_id: string; training_sessions: { date: string; planned_duration: number } }>;
+  // Temps de travail effectif par séance — charge réelle plutôt que la seule durée planifiée
+  // globale (cf. `effectiveDuration`, `utils/rpe.ts`).
+  const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id))]);
+  return rows.map(r => ({
+    rpe: r.rpe, actualDuration: r.actual_duration ?? undefined, workDuration: workDurations.get(r.session_id),
+    playerId: r.player_id, date: r.training_sessions.date, plannedDuration: r.training_sessions.planned_duration,
+  }));
+}
+
 export const rpeApi = {
   // Séances d'une équipe/saison (colonnes minimales), optionnellement bornées par date — pour les agrégations RPEPage
   async listTeamSessionsInRange(teamId: string, seasonId: string, from?: string, to?: string): Promise<Array<{ id: string; date: string; categoryName?: string; categoryColor?: string; plannedDuration: number }>> {
@@ -65,46 +84,42 @@ export const rpeApi = {
   // RPE détaillées (rpe, durée réelle, joueur, séance) pour un lot de séances — agrégations client (moyennes, charge…)
   async listRpeDetailsBySessionIds(sessionIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string; sessionId: string }>> {
     if (!sessionIds.length) return [];
-    const [{ data, error }, workDurations] = await Promise.all([
-      supabase.from('rpe_entries').select('rpe, actual_duration, player_id, session_id').in('session_id', sessionIds),
+    const [data, workDurations] = await Promise.all([
+      fetchAllByIds(sessionIds, (ids, from, to) => supabase
+        .from('rpe_entries')
+        .select('id, rpe, actual_duration, player_id, session_id')
+        .in('session_id', ids)
+        .order('id')
+        .range(from, to)),
       sessionBlocksApi.workDurationsBySessions(sessionIds),
     ]);
-    if (error) throw error;
-    return (data ?? []).map(r => ({
+    return data.map(r => ({
       rpe: r.rpe as number, actualDuration: (r.actual_duration as number | null) ?? undefined,
       workDuration: workDurations.get(r.session_id as string),
       playerId: r.player_id as string, sessionId: r.session_id as string,
     }));
   },
 
-  // Historique RPE complet (avec date/durée planifiée de la séance jointe) pour un lot de joueurs — ACWR/TSB
-  async listRpeWithSessionByPlayerIds(playerIds: string[]): Promise<Array<{ rpe: number; actualDuration: number | undefined; workDuration: number | undefined; playerId: string; date: string; plannedDuration: number }>> {
+  /**
+   * Historique RPE (avec date/durée planifiée de la séance jointe) d'un lot de joueurs, depuis
+   * `since` — ACWR/TSB. Borné (cf. `loadHistoryStart`) : sans borne, la requête grossissait à
+   * chaque saison pour des séances dont le poids dans les calculs est devenu négligeable.
+   */
+  async listRpeWithSessionByPlayerIds(playerIds: string[], since: string): Promise<LoadRow[]> {
     if (!playerIds.length) return [];
-    const { data, error } = await supabase
-      .from('rpe_entries')
-      .select('rpe, actual_duration, player_id, session_id, training_sessions!inner(date, planned_duration)')
-      .in('player_id', playerIds);
-    if (error) throw error;
-    const rows = data as unknown as Array<{ rpe: number; actual_duration: number | null; player_id: string; session_id: string; training_sessions: { date: string; planned_duration: number } }>;
-    // Temps de travail effectif par séance — charge réelle plutôt que la seule durée planifiée
-    // globale (cf. `effectiveDuration`, `utils/rpe.ts`).
-    const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id))]);
-    return rows.map(r => ({
-      rpe: r.rpe, actualDuration: r.actual_duration ?? undefined, workDuration: workDurations.get(r.session_id),
-      playerId: r.player_id, date: r.training_sessions.date, plannedDuration: r.training_sessions.planned_duration,
-    }));
+    return loadHistory(playerIds, since);
   },
 
   // Toutes les entrées RPE d'une saison et/ou d'un joueur, enrichies depuis la séance jointe
   async list(filters: ListRpeFilters = {}): Promise<RPEEntry[]> {
-    let query = supabase
-      .from('rpe_entries')
-      .select('*, training_sessions!inner(*)');
-    if (filters.seasonId) query = query.eq('training_sessions.season_id', filters.seasonId);
-    if (filters.playerId) query = query.eq('player_id', filters.playerId);
-    const { data, error } = await query;
-    if (error) throw error;
-    const rows = (data ?? []) as Record<string, unknown>[];
+    const rows = await fetchAllRows((from, to) => {
+      let query = supabase
+        .from('rpe_entries')
+        .select('*, training_sessions!inner(*)');
+      if (filters.seasonId) query = query.eq('training_sessions.season_id', filters.seasonId);
+      if (filters.playerId) query = query.eq('player_id', filters.playerId);
+      return query.order('id').range(from, to);
+    }) as Record<string, unknown>[];
     const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id as string))]);
     return rows
       .map(r => {
@@ -127,14 +142,6 @@ export const rpeApi = {
       .maybeSingle();
     if (error) throw error;
     return data ? toSession(data as Record<string, unknown>) : null;
-  },
-
-  // RPE brutes (session_id, rpe) pour un lot de séances — utilisé pour des moyennes côté client
-  async listRpeBySessionIds(sessionIds: string[]): Promise<Array<{ sessionId: string; rpe: number }>> {
-    if (!sessionIds.length) return [];
-    const { data, error } = await supabase.from('rpe_entries').select('session_id, rpe').in('session_id', sessionIds);
-    if (error) throw error;
-    return (data ?? []).map(r => ({ sessionId: r.session_id as string, rpe: r.rpe as number }));
   },
 
   // Load existing RPE values for a session as { playerId → rpe }
@@ -215,13 +222,13 @@ export const rpeApi = {
   },
 
   async listBySessions(sessionIds: string[]): Promise<{ sessionId: string; playerId: string; rpe: number }[]> {
-    if (!sessionIds.length) return [];
-    const { data, error } = await supabase
+    const data = await fetchAllByIds(sessionIds, (ids, from, to) => supabase
       .from('rpe_entries')
-      .select('session_id, player_id, rpe')
-      .in('session_id', sessionIds);
-    if (error) throw error;
-    return (data ?? []).map(r => ({
+      .select('id, session_id, player_id, rpe')
+      .in('session_id', ids)
+      .order('id')
+      .range(from, to));
+    return data.map(r => ({
       sessionId: r.session_id as string,
       playerId:  r.player_id  as string,
       rpe:       r.rpe        as number,
@@ -230,13 +237,20 @@ export const rpeApi = {
 
   // RPE history for a player — all seasons
   async listPlayerHistory(playerId: string): Promise<RPEEntry[]> {
-    const { data, error } = await supabase
+    return rpeApi.listPlayersHistory([playerId]);
+  },
+
+  /** Même historique pour plusieurs joueurs en une requête (paginée), plutôt qu'une par joueur. */
+  async listPlayersHistory(playerIds: string[]): Promise<RPEEntry[]> {
+    const rows = await fetchAllByIds(playerIds, (ids, from, to) => supabase
       .from('rpe_entries')
       .select('*, training_sessions!inner(id, date, planned_duration, season_id, team_id, teams(name), team_categories(id, name, color))')
-      .eq('player_id', playerId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    const rows = (data ?? []) as Record<string, unknown>[];
+      .in('player_id', ids)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(from, to)) as Record<string, unknown>[];
+    // Plusieurs paquets d'ids : chacun est trié, pas leur concaténation.
+    rows.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     const workDurations = await sessionBlocksApi.workDurationsBySessions([...new Set(rows.map(r => r.session_id as string))]);
     return rows.map(row => {
       const s = row.training_sessions as Record<string, unknown>;

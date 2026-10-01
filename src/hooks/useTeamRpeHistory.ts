@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { rpeApi } from '../api/rpe';
 import { playersApi } from '../api/players';
-import { computeAcwr, computeTsb, teamAvgRpe, sessionLoad } from '../utils/rpe';
+import { computeAcwr, computeTsb, teamAvgRpe, sessionLoad, loadHistoryStart } from '../utils/rpe';
 import type { LoadEntry } from '../utils/rpe';
 import { roundedAvg } from '../utils/avg';
 import { EMPTY_TEAM_AVERAGE, type TeamAverage } from '../utils/teamAverage';
@@ -77,6 +77,10 @@ export function useTeamRpeHistory(
   from: string | undefined,
   to: string | undefined,
   roster: Player[],
+  seasonStart: string | undefined,
+  /** Historique de charge déjà chargé (un tableau par joueur, cf. `usePerformanceData` →
+   *  `allTimeRpe`) : fourni, il évite de relire exactement les mêmes lignes une seconde fois. */
+  preloadedLoad?: LoadEntry[][],
 ) {
   const [teamChartData, setTeamChartData]       = useState<TeamChartDay[]>([]);
   const [teamSessionRows, setTeamSessionRows]   = useState<TeamSessionRow[]>([]);
@@ -315,9 +319,29 @@ export function useTeamRpeHistory(
 
   // ── Team-wide ACWR / Fraîcheur — moyenne des indicateurs individuels de chaque joueur (tout son historique, à ce jour)
   useEffect(() => {
-    if (roster.length === 0) { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); return; }
-    const playerIds = roster.map(p => p.id);
-    rpeApi.listRpeWithSessionByPlayerIds(playerIds)
+    const reset = () => { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); };
+    if (roster.length === 0 || !seasonStart) { reset(); return; }
+    const apply = (perPlayer: LoadEntry[][]) => {
+      const today     = todayStr();
+      const acwrs:      number[] = [];
+      const freshVals:  number[] = [];
+      const spans:      number[] = [];
+      // Un joueur sans aucune séance ne compte pas : sa « durée d'historique » de 0 ferait passer
+      // l'équipe pour trop récente.
+      perPlayer.filter(entries => entries.length > 0).forEach(entries => {
+        const a = computeAcwr(entries, today);
+        if (a !== null) acwrs.push(a);
+        const t = computeTsb(entries);
+        if (t !== null) freshVals.push(t);
+        spans.push(historySpanDays(entries));
+      });
+      setTeamAcwrAvg(acwrs.length ? Math.round(acwrs.reduce((s, v) => s + v, 0) / acwrs.length * 100) / 100 : null);
+      setTeamFreshAvg(freshVals.length ? Math.round(freshVals.reduce((s, v) => s + v, 0) / freshVals.length * 10) / 10 : null);
+      const avgSpan = spans.length ? spans.reduce((s, v) => s + v, 0) / spans.length : 0;
+      setTeamHistoryShort(avgSpan < MIN_RELIABLE_HISTORY_DAYS);
+    };
+    if (preloadedLoad) { apply(preloadedLoad); return; }
+    rpeApi.listRpeWithSessionByPlayerIds(roster.map(p => p.id), loadHistoryStart(seasonStart))
       .then(rows => {
         const byPlayer = new Map<string, LoadEntry[]>();
         rows.forEach(row => {
@@ -330,23 +354,9 @@ export function useTeamRpeHistory(
             plannedDuration: row.plannedDuration,
           });
         });
-        const today     = todayStr();
-        const acwrs:      number[] = [];
-        const freshVals:  number[] = [];
-        const spans:      number[] = [];
-        byPlayer.forEach(entries => {
-          const a = computeAcwr(entries, today);
-          if (a !== null) acwrs.push(a);
-          const t = computeTsb(entries);
-          if (t !== null) freshVals.push(t);
-          spans.push(historySpanDays(entries));
-        });
-        setTeamAcwrAvg(acwrs.length ? Math.round(acwrs.reduce((s, v) => s + v, 0) / acwrs.length * 100) / 100 : null);
-        setTeamFreshAvg(freshVals.length ? Math.round(freshVals.reduce((s, v) => s + v, 0) / freshVals.length * 10) / 10 : null);
-        const avgSpan = spans.length ? spans.reduce((s, v) => s + v, 0) / spans.length : 0;
-        setTeamHistoryShort(avgSpan < MIN_RELIABLE_HISTORY_DAYS);
-      }, () => { setTeamAcwrAvg(null); setTeamFreshAvg(null); setTeamHistoryShort(false); });
-  }, [roster]);
+        apply([...byPlayer.values()]);
+      }, reset);
+  }, [roster, seasonStart, preloadedLoad]);
 
   // Un joueur peut avoir des séances RPE sur la période sans être dans `roster` (ex. retiré de
   // l'effectif de la saison depuis) : on va chercher ces fiches séparément, indépendamment de

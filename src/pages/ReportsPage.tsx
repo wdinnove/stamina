@@ -80,7 +80,7 @@ export default function ReportsPage() {
   const {
     teamWeekRows, teamKpis, playerRanking, teamPeriodAvgWeeklyLoad, teamSeasonAvgWeeklyLoad,
     teamSeasonAvgRpe, teamAcwrAvg, teamFreshAvg, loadingTeamHistory,
-  } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster);
+  } = useTeamRpeHistory(selected?.team.id, selected?.season.id, dateRange.from, dateRange.to, roster, selected?.season.startDate);
 
   // Tout le reste — équipe comme joueurs — partage un seul chargement (celui de l'analyse collective).
   const report = useReportData(dateRange.from, dateRange.to);
