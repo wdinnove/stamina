@@ -8,7 +8,21 @@ import { combosAcrossMatches, type EventLineupRow } from './matchEvents';
  *   - la SYNERGIE d'un duo : ce que le duo fait DE PLUS que ce qu'on attendait de ses deux joueurs
  *     (la moyenne de leurs apports). Sans ce retrait, le meilleur joueur de l'équipe aurait un bon
  *     duo avec tout le monde — grâce à lui, pas grâce à l'association.
+ *
+ * Les deux sont RAMENÉS VERS 0 selon leur échantillon (`shrink`) : un +25 sur 20 possessions, ce
+ * sont deux paniers de plus, du bruit ; le même +25 sur 120 possessions est un signal.
  */
+
+/** Possessions « à priori » : à ce nombre de possessions observées, une mesure garde la moitié de
+ *  sa valeur. Ordre de grandeur usuel pour les lineups ; plus haut, la carte devient plus prudente. */
+export const PRIOR_POSSESSIONS = 30;
+/** Sous ce nombre de possessions, un duo reste incertain même ramené vers 0 (trait en pointillés). */
+export const RELIABLE_POSSESSIONS = 40;
+
+/** Ramène `v` vers 0 d'autant plus que l'échantillon est petit : v × n / (n + PRIOR_POSSESSIONS). */
+export function shrink(v: number | null, possessions: number): number | null {
+  return v === null ? null : (v * possessions) / (possessions + PRIOR_POSSESSIONS);
+}
 
 export interface ChemistryNode {
   id: string;
@@ -17,6 +31,10 @@ export interface ChemistryNode {
   possessions: number;
   /** Écart pour 100 possessions sur le terrain — null sans possession mesurée des deux côtés. */
   net: number | null;
+  /** `net` moins celui de l'équipe sur la même période, ramené vers 0 selon l'échantillon : sur une
+   *  saison gagnante, tous les joueurs sont positifs en absolu, et seule cette différence dit qui
+   *  tire l'équipe vers le haut. */
+  vsTeam: number | null;
 }
 
 export interface ChemistryLink {
@@ -25,11 +43,16 @@ export interface ChemistryLink {
   b: string;
   /** Temps passé ensemble sur le terrain, en secondes. */
   seconds: number;
+  /** Possessions jouées ensemble (moyenne attaque / défense) — la taille de l'échantillon. */
+  possessions: number;
   /** Écart pour 100 possessions du duo. */
   duoNet: number | null;
   /** Ce qu'on attendait du duo : la moyenne des apports des deux joueurs. */
   expected: number | null;
-  /** `duoNet − expected` : positif, le duo fait mieux que ses deux joueurs ; négatif, moins bien. */
+  /** `duoNet − expected`, brut. */
+  rawSynergy: number | null;
+  /** `rawSynergy` ramenée vers 0 selon l'échantillon : positif, le duo fait mieux que ses deux
+   *  joueurs ; négatif, moins bien. C'est la valeur affichée et utilisée pour la carte. */
   synergy: number | null;
 }
 
@@ -39,10 +62,23 @@ const net100 = (r: EventLineupRow): number | null =>
     : (r.pointsPerPossession - r.oppPointsPerPossession) * 100;
 
 /** Joueurs et duos cumulés sur plusieurs matchs (une liste de cinq par match). */
-export function chemistryFromMatches(perMatch: EventLineupRow[][]): { nodes: ChemistryNode[]; links: ChemistryLink[] } {
-  const nodes: ChemistryNode[] = combosAcrossMatches(perMatch, 1).map(r => ({
-    id: r.players[0], seconds: r.seconds, possessions: r.possessions, net: net100(r),
-  }));
+export function chemistryFromMatches(perMatch: EventLineupRow[][]): { nodes: ChemistryNode[]; links: ChemistryLink[]; teamNet: number | null } {
+  // L'équipe = la somme de tous ses cinq.
+  const all = perMatch.flat();
+  const sum = (f: (r: EventLineupRow) => number) => all.reduce((s, r) => s + f(r), 0);
+  const [poss, oppPoss] = [sum(r => r.possessions), sum(r => r.oppPossessions)];
+  const teamNet = poss > 0 && oppPoss > 0
+    ? (sum(r => r.pointsFor) / poss - sum(r => r.pointsAgainst) / oppPoss) * 100
+    : null;
+
+  const nodes: ChemistryNode[] = combosAcrossMatches(perMatch, 1).map(r => {
+    const net = net100(r);
+    const possessions = (r.possessions + r.oppPossessions) / 2;
+    return {
+      id: r.players[0], seconds: r.seconds, possessions, net,
+      vsTeam: net === null || teamNet === null ? null : shrink(net - teamNet, possessions),
+    };
+  });
   const netById = new Map(nodes.map(n => [n.id, n.net]));
 
   const links: ChemistryLink[] = combosAcrossMatches(perMatch, 2).map(r => {
@@ -51,17 +87,17 @@ export function chemistryFromMatches(perMatch: EventLineupRow[][]): { nodes: Che
     const nb = netById.get(b) ?? null;
     const duoNet = net100(r);
     const expected = na === null || nb === null ? null : (na + nb) / 2;
-    return {
-      a, b, seconds: r.seconds, duoNet, expected,
-      synergy: duoNet === null || expected === null ? null : duoNet - expected,
-    };
+    const possessions = (r.possessions + r.oppPossessions) / 2;
+    const rawSynergy = duoNet === null || expected === null ? null : duoNet - expected;
+    return { a, b, seconds: r.seconds, possessions, duoNet, expected, rawSynergy, synergy: shrink(rawSynergy, possessions) };
   });
 
-  return { nodes, links };
+  return { nodes, links, teamNet };
 }
 
-/** Synergie (pts/100) à laquelle deux joueurs sont collés au plus près, ou écartés au plus loin. */
-const SYNERGY_SCALE = 30;
+/** Synergie (pts/100, déjà ramenée vers 0) à laquelle deux joueurs sont collés au plus près, ou
+ *  écartés au plus loin. */
+const SYNERGY_SCALE = 15;
 const NEUTRAL_DISTANCE = 1;
 
 /**

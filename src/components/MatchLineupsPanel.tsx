@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useUrlSort } from '../hooks/useUrlState';
+import { useUrlSort, useUrlState } from '../hooks/useUrlState';
 import { useMatchTracking } from '../hooks/useMatchTracking';
 import { useTeamSeason } from '../contexts/TeamSeasonContext';
 import { lineupStatsFromEvents, combosAcrossMatches, lineupRowView, COMBO_SIZES, COMBO_LABEL, type ComboSize, plusMinusFromEvents, sortLineupRows, LINEUP_SORT_KEYS, type LineupSortKey, type LineupMode, type EventLineupRow } from '../data/matchEvents';
@@ -180,9 +180,12 @@ export function LineupComboTable({ matchFives, nameOf, minPresets = MIN_SECONDS_
   const [minSeconds, setMinSeconds] = useState<number>(minPresets[1] ?? 0);
   /** Joueurs retenus : une ligne n'est gardée que si elle les contient TOUS. Un seul joueur →
    *  toutes ses combinaisons ; deux en mode Cinq → les cinq où ils jouaient ensemble. */
-  const [picked, setPicked] = useState<string[]>([]);
+  // Dans l'URL (`?avec=id1,id2`) : l'onglet Affinités y renvoie avec un joueur déjà sélectionné.
+  const [pickedParam, setPickedParam] = useUrlState('avec', '');
+  const picked = useMemo(() => (pickedParam ? pickedParam.split(',') : []), [pickedParam]);
+  const setPicked = (ids: string[]) => setPickedParam(ids.join(','));
   const togglePicked = (id: string) =>
-    setPicked(ps => (ps.includes(id) ? ps.filter(p => p !== id) : [...ps, id]));
+    setPicked(picked.includes(id) ? picked.filter(p => p !== id) : [...picked, id]);
 
   const roster = useMemo(
     () => [...new Set(matchFives.flat().flatMap(r => r.players))].sort((a, b) => nameOf(a).localeCompare(nameOf(b))),
