@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Save, Check, Mail, X, Users, Angry, Smile, Meh, Frown, Laugh } from 'lucide-react';
+import { Save, Check, Mail, Copy, X, Users, Angry, Smile, Meh, Frown, Laugh } from 'lucide-react';
 import { sendWellnessLinks } from '../api/email';
 import { playersApi } from '../api/players';
 import { wellnessApi } from '../api/wellness';
@@ -17,6 +17,7 @@ import { WELLNESS_DIMENSIONS, wellnessQuickScale, wellnessScoreColor, wellnessDi
 import { playerNameFull } from '../utils/playerName';
 import { historyPlayerOptions } from '../utils/playerOptions';
 import { fmt1 } from '../utils/format';
+import { wellnessPublicUrl, copyToClipboard } from '../utils/publicLinks';
 import type { Player, WellnessEntry, WellnessEntryMethod } from '../data/types';
 
 const dimensions = WELLNESS_DIMENSIONS;
@@ -101,6 +102,7 @@ export default function WellnessPage() {
   const [linkSending,      setLinkSending]      = useState(false);
   const [linkSendResult,   setLinkSendResult]   = useState<{ sent: number; skipped: string[]; failed: string[] } | null>(null);
   const [linkSendError,    setLinkSendError]    = useState('');
+  const [linkCopied,       setLinkCopied]       = useState(false);
 
   // Repart de la méthode par défaut de l'équipe à chaque changement d'équipe
   useEffect(() => {
@@ -240,6 +242,19 @@ export default function WellnessPage() {
     setLinkSendResult(null);
     setLinkSendError('');
     setShowLinkModal(true);
+  }
+
+  /** Une ligne par joueur, à coller dans le groupe WhatsApp. Pas de tableau : WhatsApp n'en
+   *  affiche pas, et un bloc monospace rendrait les liens non cliquables. */
+  async function handleCopyLinks() {
+    const text = roster
+      .filter(p => linkSelected.has(p.id))
+      .map(p => `*${playerNameFull(p)}* : ${wellnessPublicUrl(p.id)}`)
+      .join('\n');
+    if (await copyToClipboard(text)) {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
   }
 
   async function handleSendLinks() {
@@ -548,8 +563,7 @@ export default function WellnessPage() {
                   {linkSelected.size} joueur{linkSelected.size > 1 ? 's' : ''} sélectionné{linkSelected.size > 1 ? 's' : ''}
                 </span>
                 <button onClick={() => {
-                  const withEmail = roster.filter(p => p.email).map(p => p.id);
-                  setLinkSelected(prev => prev.size === withEmail.length ? new Set() : new Set(withEmail));
+                  setLinkSelected(prev => prev.size === roster.length ? new Set() : new Set(roster.map(p => p.id)));
                 }} style={{ background: 'none', border: 'none', color: '#00E5A0', cursor: 'pointer', fontSize: '0.78rem' }}>
                   Tout sélectionner / désélectionner
                 </button>
@@ -561,8 +575,8 @@ export default function WellnessPage() {
                   const checked  = linkSelected.has(player.id);
                   return (
                     <label key={player.id}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 6, backgroundColor: checked ? 'rgba(0,229,160,0.06)' : '#1E2229', border: `1px solid ${checked ? 'rgba(0,229,160,0.2)' : '#2A2F3A'}`, cursor: hasEmail ? 'pointer' : 'not-allowed', opacity: hasEmail ? 1 : 0.45 }}>
-                      <input type="checkbox" checked={checked} disabled={!hasEmail}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 6, backgroundColor: checked ? 'rgba(0,229,160,0.06)' : '#1E2229', border: `1px solid ${checked ? 'rgba(0,229,160,0.2)' : '#2A2F3A'}`, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={checked}
                         onChange={() => setLinkSelected(prev => {
                           const next = new Set(prev);
                           checked ? next.delete(player.id) : next.add(player.id);
@@ -585,6 +599,10 @@ export default function WellnessPage() {
                 <button onClick={() => setShowLinkModal(false)}
                   style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: '#F1F5F9', cursor: 'pointer' }}>
                   Annuler
+                </button>
+                <button onClick={handleCopyLinks} disabled={linkSelected.size === 0}
+                  style={{ flex: 1, padding: 10, backgroundColor: '#1E2229', border: '1px solid #2A2F3A', borderRadius: 6, color: linkSelected.size === 0 ? '#475569' : '#F1F5F9', cursor: linkSelected.size === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {linkCopied ? <><Check size={14} /> Copié</> : <><Copy size={14} /> WhatsApp</>}
                 </button>
                 <button onClick={handleSendLinks} disabled={linkSending || linkSelected.size === 0}
                   style={{ flex: 1, padding: 10, backgroundColor: linkSending || linkSelected.size === 0 ? '#1E2229' : '#00E5A0', border: 'none', borderRadius: 6, color: linkSending || linkSelected.size === 0 ? '#475569' : '#0D0F14', cursor: linkSending || linkSelected.size === 0 ? 'not-allowed' : 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
